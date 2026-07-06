@@ -4,7 +4,7 @@ services:
     restart: unless-stopped
     env_file: .env
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-8080}:${PORT:-8080}"
     volumes:
       - ./data:/data                       # DB_PATH (default /data/scriba.db)
       # - /path/to/vault:/vault:ro         # set VAULT_PATH=/vault for the link index

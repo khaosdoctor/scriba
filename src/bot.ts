@@ -153,14 +153,12 @@ export class ScribaBot implements BotServices {
     if (!line) return void ctx.reply("Couldn't find that line in the note.");
 
     const literal = parseLiteralEdit(instruction);
-    let newLine: string;
-    if (literal) {
-      newLine = line.replaceAll(literal.old, literal.new);
-    } else {
-      const current = this.lineText(line, jot);
-      const edited = await this.enricher.editText(current, instruction);
-      newLine = journalLine(jot.time, edited, jot.anchor);
-    }
+    // Both branches edit only the content, then rebuild — never touch the time prefix or ^anchor.
+    const current = this.lineText(line, jot);
+    const edited = literal
+      ? current.replaceAll(literal.old, literal.new)
+      : await this.enricher.editText(current, instruction);
+    const newLine = journalLine(jot.time, edited, jot.anchor);
     const out = replaceAnchorLine(note, jot.anchor, newLine);
     if (out) await this.obsidian.writeNote(jot.note_path, out);
     await ctx.reply("✏️ updated");
@@ -186,17 +184,18 @@ export class ScribaBot implements BotServices {
     }
 
     // yes → insert the link into the jot's line
+    let applied = false;
     const jot = await this.repo.getJot(rec.jot_id);
     if (jot) {
       const note = await this.obsidian.readNote(jot.note_path);
       const line = anchorLine(note, jot.anchor);
-      if (line) {
-        const linked = line.replace(rec.surface, `[[${rec.note}|${rec.surface}]]`);
+      const linked = line?.replace(rec.surface, `[[${rec.note}|${rec.surface}]]`);
+      if (line && linked && linked !== line) {
         const out = replaceAnchorLine(note, jot.anchor, linked);
-        if (out) await this.obsidian.writeNote(jot.note_path, out);
+        if (out) { await this.obsidian.writeNote(jot.note_path, out); applied = true; }
       }
     }
-    await ctx.answerCallbackQuery({ text: "linked" });
-    await ctx.editMessageText(`🔗 "${rec.surface}" → [[${rec.note}]]`);
+    await ctx.answerCallbackQuery({ text: applied ? "linked" : "no change" });
+    await ctx.editMessageText(applied ? `🔗 "${rec.surface}" → [[${rec.note}]]` : `"${rec.surface}": nothing to link`);
   }
 }

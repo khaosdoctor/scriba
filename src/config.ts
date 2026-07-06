@@ -51,5 +51,3 @@ export const config = {
     maxWaitMs: num("FLUSH_MAX_WAIT_MS", 120_000),
   },
 } as const;
-
-export type Config = typeof config;

@@ -19,92 +19,77 @@ const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules
 - For candidates you are unsure about, DO NOT link them; list them under "ambiguous" so the human can decide.
 Respond with ONLY a JSON object: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}]}`;
 
+/** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
+const fence = (s: string): string => s.replaceAll('"""', "");
+
 /** Enrichment via the Claude Agent SDK on subscription auth (CLAUDE_CODE_OAUTH_TOKEN
  *  in the environment) — no API key. One call per jot. */
 export class Enricher {
   constructor(private model = process.env.AGENT_MODEL) {}
 
   async enrich(input: EnrichInput): Promise<EnrichResult> {
-    let text = "";
-    const usage = { input: 0, output: 0 };
-
-    const stream = query({
-      prompt: this.buildPrompt(input),
-      options: {
-        systemPrompt: SYSTEM,
-        maxTurns: 1,
-        allowedTools: [],
-        ...(this.model ? { model: this.model } : {}),
-      },
-    });
-
-    for await (const msg of stream as AsyncIterable<any>) {
-      if (msg.type === "assistant") {
-        for (const block of msg.message?.content ?? []) {
-          if (block.type === "text") text += block.text;
-        }
-        const u = msg.message?.usage;
-        if (u) { usage.input += u.input_tokens ?? 0; usage.output += u.output_tokens ?? 0; }
-      } else if (msg.type === "result" && typeof msg.result === "string" && !text) {
-        text = msg.result;
-      }
-    }
+    const cands = input.candidates.length
+      ? input.candidates.map((c) => `- "${c.surface}" -> [[${c.note}]]`).join("\n")
+      : "(none)";
+    const prompt = `Candidate links:\n${cands}\n\nJournal text:\n"""${fence(input.text)}"""`;
+    const { text, usage } = await this.run(prompt, SYSTEM);
 
     const parsed = this.extractJson(text);
-    if (!parsed?.text) {
-      throw new Error(`enrichment returned no usable JSON: ${text.slice(0, 200)}`);
-    }
+    if (!parsed?.text) throw new Error(`enrichment returned no usable JSON: ${text.slice(0, 200)}`);
     return { text: parsed.text, ambiguous: parsed.ambiguous ?? [], usage };
   }
 
   /** Vision: caption an image that arrived without one. Returns a short caption. */
   async describeImage(bytes: Uint8Array, mediaType: string): Promise<string> {
     const data = Buffer.from(bytes).toString("base64");
-    let out = "";
-    const stream = query({
-      // Agent SDK accepts an async iterable of user messages for multimodal content.
-      prompt: (async function* () {
-        yield {
-          type: "user" as const,
-          message: {
-            role: "user" as const,
-            content: [
-              { type: "image", source: { type: "base64", media_type: mediaType, data } },
-              { type: "text", text: "Write a short, factual caption (max 12 words) for this image, for a personal journal. Return only the caption." },
-            ],
-          },
-          parent_tool_use_id: null,
-          session_id: "",
-        };
-      })() as any,
-      options: { maxTurns: 1, allowedTools: [], ...(this.model ? { model: this.model } : {}) },
-    });
-    for await (const msg of stream as AsyncIterable<any>) {
-      if (msg.type === "assistant") for (const b of msg.message?.content ?? []) if (b.type === "text") out += b.text;
-      else if (msg.type === "result" && typeof msg.result === "string" && !out) out = msg.result;
-    }
-    return out.trim();
+    const prompt = (async function* () {
+      yield {
+        type: "user" as const,
+        message: {
+          role: "user" as const,
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType, data } },
+            { type: "text", text: "Write a short, factual caption (max 12 words) for this image, for a personal journal. Return only the caption." },
+          ],
+        },
+        parent_tool_use_id: null,
+        session_id: "",
+      };
+    })();
+    const { text } = await this.run(prompt as any);
+    return text.trim();
   }
 
   /** Apply a freeform edit instruction to an existing journal line's text. */
   async editText(current: string, instruction: string): Promise<string> {
-    let out = "";
-    const stream = query({
-      prompt: `Current journal text:\n"""${current}"""\n\nEdit instruction: ${instruction}\n\nReturn ONLY the edited text, nothing else. Preserve voice and any [[wikilinks]] unless the edit changes them.`,
-      options: { maxTurns: 1, allowedTools: [], ...(this.model ? { model: this.model } : {}) },
-    });
-    for await (const msg of stream as AsyncIterable<any>) {
-      if (msg.type === "assistant") for (const b of msg.message?.content ?? []) if (b.type === "text") out += b.text;
-      else if (msg.type === "result" && typeof msg.result === "string" && !out) out = msg.result;
-    }
-    return out.trim() || current;
+    const prompt = `Current journal text:\n"""${fence(current)}"""\n\nEdit instruction: ${fence(instruction)}\n\nReturn ONLY the edited text, nothing else. Preserve voice and any [[wikilinks]] unless the edit changes them.`;
+    const { text } = await this.run(prompt);
+    return text.trim() || current;
   }
 
-  private buildPrompt(input: EnrichInput): string {
-    const cands = input.candidates.length
-      ? input.candidates.map((c) => `- "${c.surface}" -> [[${c.note}]]`).join("\n")
-      : "(none)";
-    return `Candidate links:\n${cands}\n\nJournal text:\n"""${input.text}"""`;
+  /** Single-turn agent call; collects assistant text and token usage. */
+  private async run(prompt: unknown, systemPrompt?: string): Promise<{ text: string; usage: { input: number; output: number } }> {
+    let text = "";
+    const usage = { input: 0, output: 0 };
+    const stream = query({
+      prompt: prompt as any,
+      options: {
+        maxTurns: 1,
+        allowedTools: [],
+        ...(systemPrompt ? { systemPrompt } : {}),
+        ...(this.model ? { model: this.model } : {}),
+      },
+    });
+    for await (const msg of stream as AsyncIterable<any>) {
+      if (msg.type === "assistant") {
+        for (const b of msg.message?.content ?? []) if (b.type === "text") text += b.text;
+        const u = msg.message?.usage;
+        if (u) { usage.input += u.input_tokens ?? 0; usage.output += u.output_tokens ?? 0; }
+      } else if (msg.type === "result" && typeof msg.result === "string" && !text) {
+        text = msg.result;
+      }
+    }
+    return { text, usage };
   }
 
   private extractJson(s: string): { text?: string; ambiguous?: Candidate[] } | null {

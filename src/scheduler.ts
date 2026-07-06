@@ -16,7 +16,14 @@ export class Scheduler {
 
   start(): void {
     this.scheduleSummary();
-    const retry = setInterval(() => void this.processor.retrySweep(), this.retryMs);
+    let sweeping = false; // don't let a slow sweep overlap the next tick
+    const retry = setInterval(async () => {
+      if (sweeping) return;
+      sweeping = true;
+      try { await this.processor.retrySweep(); }
+      catch (e) { console.error("retry sweep failed", e); }
+      finally { sweeping = false; }
+    }, this.retryMs);
     retry.unref();
     this.timers.push(retry);
   }
