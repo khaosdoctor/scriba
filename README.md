@@ -1,61 +1,40 @@
 # scriba
 
-Friction-free journaling. Send a text or voice note to a Telegram bot; scriba writes
-an enriched entry into your Obsidian daily note.
+Telegram → Obsidian journaling. Send text or a voice note; scriba writes an enriched
+entry into your daily note. Images and videos are saved and embedded.
 
-- **Text, voice, images, video.** Type it or speak it; images and videos are saved to
-  the vault and embedded (caption kept). Non-English text/voice is translated to English
-  (Groq Whisper for voice, the agent for text) — the vault stays English.
-- **Instant placeholder.** Every jot lands in the daily note immediately as a
-  placeholder line, so ordering is fixed at arrival and never reshuffled.
-- **Enrichment.** A Claude agent adds `[[wikilinks]]` for people/projects/topics that
-  match your vault, judged in context — no blind alias matching.
-- **You stay in control.** Ambiguous links are confirmed with Telegram buttons; a "no"
-  is remembered forever. Reply to a jot to edit it (`s/old/new/`, "replace X with Y",
-  freeform, or "delete").
-- **Nightly summary** at a configured time; silent on empty days.
+- Placeholder written on arrival, filled in place — ordering never reshuffles.
+- Non-English text/voice translated to English (agent for text, Groq for voice).
+- Contextual `[[wikilinks]]`; ambiguous ones confirmed via buttons, a "no" is remembered.
+- Reply to a jot to edit it (`s/old/new/`, `replace X with Y`, freeform, or `delete`).
+- Nightly summary; silent on empty days.
 
-## Architecture
+## Stack
 
-One process, wired in `src/index.ts`, each block a class:
-
-| Class | File | Responsibility |
-|---|---|---|
-| `Repository` | `db.ts` | The only place SQL/knex lives. All persistence. |
-| `ObsidianClient` | `obsidian.ts` | Local REST API: notes, journal append, assets. |
-| `Transcriber` | `transcribe.ts` | Groq Whisper voice → English text. |
-| `Enricher` | `enrich.ts` | Claude Agent SDK: translate + link + freeform edit. |
-| `LinkIndex` | `index-links.ts` | Vault title/alias index for link candidates. |
-| `FlushQueue` | `queue.ts` | Adaptive batching (idle / size / max-wait timers). |
-| `JotProcessor` | `processor.ts` | Per-jot pipeline: media → enrich → write. |
-| `ScribaBot` | `bot.ts` | All Telegram wiring (webhook, intake, edits, buttons). |
-| `Scheduler` | `scheduler.ts` | Nightly summary + forever-retry sweep. |
-
-Pure, token-free logic (line formatting, anchor replace, candidate filtering, edit
-parsing) lives in `core.ts` and is unit-tested in `core.test.ts`.
+Node 24 (runs TS directly, no build). grammy · better-sqlite3 + knex · groq-sdk ·
+`@anthropic-ai/claude-agent-sdk`. One class per block, wired in `src/index.ts`; all SQL
+lives in `Repository` (`db.ts`); pure logic in `core.ts` (tested in `core.test.ts`).
 
 ## Auth
 
-- **Claude Agent SDK** runs on your Claude subscription — no API key. Generate a token
-  once with `claude setup-token` and set `CLAUDE_CODE_OAUTH_TOKEN`.
-- **Groq** free tier for transcription (`GROQ_API_KEY`).
-- **Obsidian** Local REST API key from the plugin settings (`OBSIDIAN_API_KEY`).
+- `CLAUDE_CODE_OAUTH_TOKEN` — Claude subscription, no API key (`claude setup-token`).
+- `GROQ_API_KEY` — voice transcription (free tier).
+- `OBSIDIAN_API_KEY` — Obsidian Local REST API.
 
 ## Develop
 
 ```sh
-npm install
-cp .env.example .env   # fill it in
-npm run migrate        # apply DB schema
-npm test               # core logic
-npm run dev            # watch mode
+npm install            # needs Node 24 (better-sqlite3 native addon)
+cp .env.example .env    # fill in
+npm run migrate         # apply schema
+npm test                # core logic
+npm run dev             # watch
 ```
 
 ## Deploy
 
-Build the image and run it on the homelab (Coolify). It needs the env vars from
-`.env.example`, a persistent volume for `DB_PATH`, and — for the link index — a
-read-only mount of the vault at `VAULT_PATH`. Migrations run automatically at boot.
+Docker image on the homelab (Coolify). Provide the `.env.example` vars, a volume for
+`DB_PATH`, and a read-only vault mount at `VAULT_PATH` (link index). Migrations run at boot.
 
 ## License
 
