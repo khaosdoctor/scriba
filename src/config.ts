@@ -28,9 +28,11 @@ export const config = {
   },
   transcription: {
     mode: transcriberMode,
-    // Each mode requires only its own config.
+    // Each mode needs only its own config. Local defaults to the bundled sidecar.
     groqApiKey: transcriberMode === "remote" ? req("GROQ_API_KEY") : "",
-    parakeetUrl: transcriberMode === "local" ? req("PARAKEET_URL") : "",
+    parakeetUrl: transcriberMode === "local"
+      ? opt("PARAKEET_URL", "http://parakeet:5092/v1/audio/transcriptions")
+      : "",
   },
   obsidian: {
     url: opt("OBSIDIAN_API_URL", "https://127.0.0.1:27124").replace(/\/$/, ""),

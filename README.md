@@ -34,8 +34,15 @@ npm run dev             # watch
 
 ## Deploy
 
-Docker image on the homelab (Coolify). Provide the `.env.example` vars, a volume for
-`DB_PATH`, and a read-only vault mount at `VAULT_PATH` (link index). Migrations run at boot.
+`docker compose up -d` (remote transcription via Groq), or with the bundled Parakeet
+sidecar for local transcription:
+
+```sh
+docker compose --profile local up -d   # also set TRANSCRIBER=local in .env
+```
+
+Provide the `.env.example` vars, a volume for `DB_PATH`, and (optional) a read-only vault
+mount at `VAULT_PATH` for the link index. Migrations run at boot.
 
 ## License
 

@@ -39,10 +39,11 @@ export class ParakeetTranscriber implements Transcriber {
   constructor(private url: string) {}
 
   async transcribe(bytes: Uint8Array, ext: string): Promise<string> {
-    // ponytail: expects a whisper.cpp / sherpa-onnx-style HTTP endpoint —
-    // POST multipart `file`, returns {text} (json) or the transcript (plain text).
+    // OpenAI-compatible ASR (e.g. ghcr.io/achetronic/parakeet): POST multipart `file`,
+    // returns {text} (json) or the transcript (plain text) with response_format=text.
     const form = new FormData();
     form.append("file", new Blob([bytes]), `audio.${ext}`);
+    form.append("response_format", "text");
     const res = await fetch(this.url, { method: "POST", body: form });
     if (!res.ok) throw new Error(`parakeet ${res.status}: ${await res.text()}`);
     const text = res.headers.get("content-type")?.includes("json")

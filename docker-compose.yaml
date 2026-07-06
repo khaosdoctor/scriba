@@ -1,0 +1,20 @@
+services:
+  scriba:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${PORT:-8080}:8080"
+    volumes:
+      - ./data:/data                       # DB_PATH (default /data/scriba.db)
+      # - /path/to/vault:/vault:ro         # set VAULT_PATH=/vault for the link index
+
+  # Local transcription sidecar. Only started with `--profile local`.
+  # Parakeet TDT 0.6B (ONNX, CPU), OpenAI-compatible /v1/audio/transcriptions.
+  # scriba reaches it at the default PARAKEET_URL http://parakeet:5092/v1/audio/transcriptions
+  parakeet:
+    image: ghcr.io/achetronic/parakeet:latest
+    restart: unless-stopped
+    profiles: ["local"]
+    expose:
+      - "5092"
