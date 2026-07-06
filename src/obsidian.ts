@@ -42,8 +42,20 @@ export class ObsidianClient {
     if (!res.ok) throw new Error(`obsidian PUT ${vaultPath}: ${res.status} ${await res.text()}`);
   }
 
+  // Serialize concurrent first-of-day creation so two intakes can't both 404-then-PUT
+  // the blank template (the later PUT would erase the earlier's placeholder line).
+  private creating = new Map<string, Promise<string>>();
+
   /** Create today's note from the vault template if it doesn't exist yet. */
   async ensureDailyNote(date: string): Promise<string> {
+    const inFlight = this.creating.get(date);
+    if (inFlight) return inFlight;
+    const p = this.doEnsureDailyNote(date).finally(() => this.creating.delete(date));
+    this.creating.set(date, p);
+    return p;
+  }
+
+  private async doEnsureDailyNote(date: string): Promise<string> {
     const path = this.dailyPath(date);
     if (await this.getFile(path) !== null) return path;
     // ponytail: fill {{date}} only; richer template automations are out of scope.

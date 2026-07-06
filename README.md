@@ -6,7 +6,9 @@ entry into your daily note. Images and videos are saved and embedded.
 - Placeholder written on arrival, filled in place — ordering never reshuffles.
 - Non-English text/voice translated to English (agent for text, Groq for voice).
 - Contextual `[[wikilinks]]`; ambiguous ones confirmed via buttons, a "no" is remembered.
-- Reply to a jot to edit it (`s/old/new/`, `replace X with Y`, freeform, or `delete`).
+- Reply to a jot to edit it (`s/old/new/`, `replace X with Y`, freeform, or `delete`);
+  edits sent while a jot is still processing are queued and applied after.
+- Failed jots retry (capped at 10; unrecoverable errors post the jot un-enriched and ping you).
 - Nightly summary; silent on empty days.
 
 ## Stack
@@ -42,7 +44,8 @@ docker compose --profile local up -d   # also set TRANSCRIBER=local in .env
 ```
 
 Provide the `.env.example` vars, a volume for `DB_PATH`, and (optional) a read-only vault
-mount at `VAULT_PATH` for the link index. Migrations run at boot.
+mount at `VAULT_PATH` for the link index. Migrations run at boot. The bot uses long
+polling, so no public URL or webhook is needed — the exposed port is only for the health check.
 
 ## License
 

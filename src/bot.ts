@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, webhookCallback } from "grammy";
+import { Bot, InlineKeyboard } from "grammy";
 import { extname } from "node:path";
 import { fetch } from "undici";
 import { config } from "./config.ts";
@@ -17,8 +17,9 @@ const MIME: Record<string, string> = {
   mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
 };
 
-/** All Telegram wiring lives here. Implements BotServices so the processor can
- *  notify the user, ask ambiguous-link questions, and download files. */
+/** All Telegram wiring lives here. Long polling — no inbound webhook. Implements
+ *  BotServices so the processor can notify, ask link questions, download files,
+ *  and trigger queued edits once a jot finishes. */
 export class ScribaBot implements BotServices {
   private bot: Bot;
   private queue!: FlushQueue;
@@ -37,17 +38,15 @@ export class ScribaBot implements BotServices {
     this.queue = queue;
   }
 
-  /** Node http handler for the Telegram webhook. */
-  webhookHandler() {
-    return webhookCallback(this.bot, "http", { secretToken: config.telegram.webhookSecret });
-  }
-
+  /** Start long polling. Returns immediately; polling runs in the background. */
   async start(): Promise<void> {
-    await this.bot.init();
-    await this.bot.api.setWebhook(`${config.telegram.webhookUrl}/telegram`, {
-      secret_token: config.telegram.webhookSecret,
+    void this.bot.start({
       allowed_updates: ["message", "callback_query"],
+      onStart: (me) => console.log(`scriba polling as @${me.username}`),
     });
+  }
+  async stop(): Promise<void> {
+    await this.bot.stop();
   }
 
   // --- BotServices ---
@@ -56,14 +55,8 @@ export class ScribaBot implements BotServices {
   }
 
   async askLink(pendingId: string, surface: string, note: string): Promise<void> {
-    const kb = new InlineKeyboard()
-      .text("Yes", `lk:y:${pendingId}`)
-      .text("No", `lk:n:${pendingId}`);
-    await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
-      `Link "${surface}" → [[${note}]]?`,
-      { reply_markup: kb },
-    );
+    const kb = new InlineKeyboard().text("Yes", `lk:y:${pendingId}`).text("No", `lk:n:${pendingId}`);
+    await this.bot.api.sendMessage(config.telegram.allowedUserId, `Link "${surface}" → [[${note}]]?`, { reply_markup: kb });
   }
 
   async downloadFile(fileId: string): Promise<DownloadedFile> {
@@ -76,6 +69,16 @@ export class ScribaBot implements BotServices {
     return { bytes, ext, mime: MIME[ext] ?? "application/octet-stream" };
   }
 
+  /** Apply edits that were queued while this jot was still processing. */
+  async onJotDone(jotId: string): Promise<void> {
+    const edits = await this.repo.takeQueuedEdits(jotId);
+    if (!edits.length) return;
+    const jot = await this.repo.getJot(jotId);
+    if (!jot) return;
+    for (const instruction of edits) await this.applyEdit(jot, instruction);
+    await this.notify(`✏️ Applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""}.`);
+  }
+
   // --- handlers ---
   private registerHandlers(): void {
     // single-user allowlist — everyone else is ignored
@@ -86,35 +89,25 @@ export class ScribaBot implements BotServices {
     this.bot.command("start", (ctx) => ctx.reply("scriba ready. Send text or a voice note to journal."));
 
     this.bot.on("message:text", async (ctx) => {
-      if (ctx.message.text.startsWith("/")) return; // other commands: ignore
+      if (ctx.message.text.startsWith("/")) return;
       if (ctx.message.reply_to_message) return this.handleEdit(ctx);
       await this.intake(ctx, "text", { rawText: ctx.message.text });
     });
 
-    this.bot.on("message:voice", (ctx) =>
-      this.intake(ctx, "audio", { fileId: ctx.message.voice.file_id }));
-    this.bot.on("message:audio", (ctx) =>
-      this.intake(ctx, "audio", { fileId: ctx.message.audio.file_id }));
+    this.bot.on("message:voice", (ctx) => this.intake(ctx, "audio", { fileId: ctx.message.voice.file_id }));
+    this.bot.on("message:audio", (ctx) => this.intake(ctx, "audio", { fileId: ctx.message.audio.file_id }));
 
     // Image/video are attachments: saved and embedded, caption kept, not transcribed.
-    this.bot.on("message:photo", (ctx) =>
-      this.intake(ctx, "image", { fileId: ctx.message.photo.at(-1)!.file_id, rawText: ctx.message.caption }));
-    this.bot.on("message:video", (ctx) =>
-      this.intake(ctx, "video", { fileId: ctx.message.video.file_id, rawText: ctx.message.caption }));
-    this.bot.on("message:video_note", (ctx) =>
-      this.intake(ctx, "video", { fileId: ctx.message.video_note.file_id }));
+    this.bot.on("message:photo", (ctx) => this.intake(ctx, "image", { fileId: ctx.message.photo.at(-1)!.file_id, rawText: ctx.message.caption }));
+    this.bot.on("message:video", (ctx) => this.intake(ctx, "video", { fileId: ctx.message.video.file_id, rawText: ctx.message.caption }));
+    this.bot.on("message:video_note", (ctx) => this.intake(ctx, "video", { fileId: ctx.message.video_note.file_id }));
 
     this.bot.on("callback_query:data", (ctx) => this.handleButton(ctx));
 
-    // Anything else (documents, stickers, locations, …): out of scope for v1.
     this.bot.on("message", (ctx) => ctx.reply("scriba handles text, voice, images, and video for now."));
   }
 
-  private async intake(
-    ctx: any,
-    kind: JotKind,
-    src: { rawText?: string; fileId?: string },
-  ): Promise<void> {
+  private async intake(ctx: any, kind: JotKind, src: { rawText?: string; fileId?: string }): Promise<void> {
     const epochMs = ctx.message.date * 1000;
     const id = makeJotId();
     const date = plainDate(epochMs);
@@ -141,27 +134,34 @@ export class ScribaBot implements BotServices {
     if (!jot) return void ctx.reply("Jot not found.");
     const instruction: string = ctx.message.text;
 
+    // Still in flight → queue the edit; onJotDone applies it once the line is written.
+    if (jot.status !== "done") {
+      await this.repo.queueEdit(jotId, instruction);
+      return void ctx.reply("⏳ still processing — I'll apply that edit once it's done.");
+    }
+    await ctx.reply(await this.applyEdit(jot, instruction));
+  }
+
+  /** Apply one edit instruction to a jot's line. Returns a short status for the user. */
+  private async applyEdit(jot: Jot, instruction: string): Promise<string> {
     const note = await this.obsidian.readNote(jot.note_path); // live read
     if (instruction.trim().toLowerCase() === "delete") {
       const out = deleteAnchorLine(note, jot.anchor);
       if (out) await this.obsidian.writeNote(jot.note_path, out);
       await this.repo.updateJot(jot.id, { status: "done" });
-      return void ctx.reply("🗑️ deleted");
+      return "🗑️ deleted";
     }
-
     const line = anchorLine(note, jot.anchor);
-    if (!line) return void ctx.reply("Couldn't find that line in the note.");
+    if (!line) return "Couldn't find that line in the note.";
 
     const literal = parseLiteralEdit(instruction);
-    // Both branches edit only the content, then rebuild — never touch the time prefix or ^anchor.
     const current = this.lineText(line, jot);
     const edited = literal
       ? current.replaceAll(literal.old, literal.new)
       : await this.enricher.editText(current, instruction);
-    const newLine = journalLine(jot.time, edited, jot.anchor);
-    const out = replaceAnchorLine(note, jot.anchor, newLine);
+    const out = replaceAnchorLine(note, jot.anchor, journalLine(jot.time, edited, jot.anchor));
     if (out) await this.obsidian.writeNote(jot.note_path, out);
-    await ctx.reply("✏️ updated");
+    return "✏️ updated";
   }
 
   /** Strip the `- _time ::_ ` prefix and ` ^anchor` suffix to get just the content. */
@@ -183,7 +183,6 @@ export class ScribaBot implements BotServices {
       return void ctx.editMessageText(`✋ "${rec.surface}" ✗ [[${rec.note}]] (won't ask again)`);
     }
 
-    // yes → insert the link into the jot's line
     let applied = false;
     const jot = await this.repo.getJot(rec.jot_id);
     if (jot) {

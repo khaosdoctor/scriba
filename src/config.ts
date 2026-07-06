@@ -21,10 +21,8 @@ if (transcriberMode !== "local" && transcriberMode !== "remote") {
 export const config = {
   telegram: {
     token: req("TELEGRAM_BOT_TOKEN"),
-    webhookSecret: req("TELEGRAM_WEBHOOK_SECRET"),
-    webhookUrl: req("WEBHOOK_URL"),
     allowedUserId: Number(req("ALLOWED_TELEGRAM_USER_ID")),
-    port: num("PORT", 8080),
+    port: num("PORT", 8080), // health endpoint only (long polling needs no inbound webhook)
   },
   transcription: {
     mode: transcriberMode,

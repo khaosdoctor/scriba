@@ -12,6 +12,8 @@ import { Scheduler } from "./scheduler.ts";
 
 async function main(): Promise<void> {
   const repo = await Repository.open(config.dbPath);
+  await repo.resetProcessing(); // crash recovery: unstick jots claimed by a dead run
+
   const obsidian = new ObsidianClient(config.obsidian);
   const transcriber = createTranscriber(config.transcription);
   const enricher = new Enricher();
@@ -31,21 +33,20 @@ async function main(): Promise<void> {
   const scheduler = new Scheduler(repo, processor, (t) => bot.notify(t));
   scheduler.start();
 
-  // Crash recovery: pick up anything left pending/failed from a previous run.
-  void processor.retrySweep();
+  void processor.retrySweep(); // pick up anything left over from a previous run
 
-  const webhook = bot.webhookHandler();
+  // Long polling needs no inbound webhook; this server exists only for a health check.
   const server = http.createServer((req, res) => {
-    if (req.method === "POST" && req.url === "/telegram") return void webhook(req, res);
     if (req.url === "/health") { res.writeHead(200).end("ok"); return; }
     res.writeHead(404).end();
   });
-  server.listen(config.telegram.port, () => console.log(`scriba listening on :${config.telegram.port}`));
+  server.listen(config.telegram.port, () => console.log(`scriba health on :${config.telegram.port}`));
 
-  await bot.start(); // registers the Telegram webhook
+  await bot.start(); // begins long polling
   console.log("scriba ready");
 
   const shutdown = async () => {
+    await bot.stop();
     server.close();
     scheduler.stop();
     links.stop();

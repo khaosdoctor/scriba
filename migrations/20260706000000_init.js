@@ -49,12 +49,13 @@ export async function up(knex) {
     t.bigInteger("created_at").notNullable();
   });
 
-  await knex.schema.createTable("metrics", (t) => {
-    t.text("day").primary();
-    t.integer("agent_calls").notNullable().defaultTo(0);
-    t.integer("agent_input_tokens").notNullable().defaultTo(0);
-    t.integer("agent_output_tokens").notNullable().defaultTo(0);
-    t.integer("groq_calls").notNullable().defaultTo(0);
+  // Edits that arrived while a jot was still processing — applied once it's done.
+  await knex.schema.createTable("queued_edits", (t) => {
+    t.increments("id").primary();
+    t.string("jot_id", 8).notNullable();
+    t.text("instruction").notNullable();
+    t.bigInteger("created_at").notNullable();
+    t.index(["jot_id"]);
   });
 
   await knex.schema.createTable("stopwords", (t) => {
@@ -65,7 +66,7 @@ export async function up(knex) {
 
 export async function down(knex) {
   await knex.schema.dropTableIfExists("stopwords");
-  await knex.schema.dropTableIfExists("metrics");
+  await knex.schema.dropTableIfExists("queued_edits");
   await knex.schema.dropTableIfExists("pending_links");
   await knex.schema.dropTableIfExists("rejections");
   await knex.schema.dropTableIfExists("msg_map");

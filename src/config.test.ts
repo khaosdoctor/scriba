@@ -3,8 +3,6 @@ import assert from "node:assert/strict";
 
 const BASE: Record<string, string> = {
   TELEGRAM_BOT_TOKEN: "t",
-  TELEGRAM_WEBHOOK_SECRET: "s",
-  WEBHOOK_URL: "https://x",
   ALLOWED_TELEGRAM_USER_ID: "1",
   OBSIDIAN_API_KEY: "o",
 };

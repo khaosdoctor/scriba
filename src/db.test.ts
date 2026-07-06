@@ -34,6 +34,17 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
     await repo.insertJot({ ...sampleJot("bbbbbbbb"), status: "failed" });
     assert.deepEqual((await repo.pendingJots()).map((j) => j.id), ["bbbbbbbb"]);
 
+    // failed jot at the retry cap is no longer eligible
+    await repo.insertJot({ ...sampleJot("cccccccc"), status: "failed", attempts: 10 });
+    assert.ok(!(await repo.pendingJots()).some((j) => j.id === "cccccccc"));
+
+    // atomic claim: wins once, then the jot is `processing` and no longer pending
+    assert.equal(await repo.claim("bbbbbbbb"), true);
+    assert.equal(await repo.claim("bbbbbbbb"), false); // already claimed
+    assert.ok(!(await repo.pendingJots()).some((j) => j.id === "bbbbbbbb"));
+    await repo.resetProcessing(); // crash recovery restores it
+    assert.ok((await repo.pendingJots()).some((j) => j.id === "bbbbbbbb"));
+
     await repo.mapMessage(42, "aaaaaaaa");
     assert.equal(await repo.jotForMessage(42), "aaaaaaaa");
 
@@ -46,13 +57,14 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
     assert.equal((await repo.takePendingLink("pppppppp"))?.note, "Lev");
     assert.equal(await repo.takePendingLink("pppppppp"), undefined); // consumed
 
-    await repo.bumpMetrics("2026-07-06", { agent_calls: 2, groq_calls: 1 });
-    await repo.bumpMetrics("2026-07-06", { agent_calls: 3 });
-    assert.equal((await repo.getMetrics("2026-07-06")).agent_calls, 5);
+    await repo.queueEdit("aaaaaaaa", "s/a/b/");
+    await repo.queueEdit("aaaaaaaa", "delete");
+    assert.deepEqual(await repo.takeQueuedEdits("aaaaaaaa"), ["s/a/b/", "delete"]);
+    assert.deepEqual(await repo.takeQueuedEdits("aaaaaaaa"), []); // cleared
 
     const stats = await repo.dayStats(0, Date.now() + 1000);
-    assert.equal(stats.jots, 2);
-    assert.equal(stats.failed, 1);
+    assert.equal(stats.jots, 3);          // aaaa(done) + bbbb(pending) + cccc(failed)
+    assert.equal(stats.failed, 1);        // only cccccccc is still failed/abandoned
   } finally {
     await repo.close();
     await rm(dbPath, { force: true });

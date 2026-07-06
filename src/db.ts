@@ -1,7 +1,14 @@
 import knexLib, { type Knex } from "knex";
 
 export type JotKind = "text" | "audio" | "image" | "video";
-export type JotStatus = "pending" | "done" | "needs_input" | "failed";
+export type JotStatus =
+  | "pending"     // placeholder written, awaiting processing
+  | "processing"  // claimed by a worker (atomic) — in flight
+  | "done"        // enriched + written
+  | "failed"      // last attempt failed; retried until attempts hit the cap
+  | "abandoned";  // gave up (cap or unrecoverable); posted un-enriched
+
+export const MAX_ATTEMPTS = 10;
 
 export interface Jot {
   id: string;
@@ -18,13 +25,6 @@ export interface Jot {
   error: string | null;
   received_at: number;
   updated_at: number;
-}
-
-export interface Metrics {
-  agent_calls: number;
-  agent_input_tokens: number;
-  agent_output_tokens: number;
-  groq_calls: number;
 }
 
 /**
@@ -63,9 +63,27 @@ export class Repository {
   async updateJot(id: string, patch: Partial<Jot>): Promise<void> {
     await this.k("jots").where({ id }).update({ ...patch, updated_at: Date.now() });
   }
-  /** Jots still needing work — awaiting first processing or a forever-retry. */
+  /**
+   * Atomically claim a jot for processing. Returns true only for the caller that won
+   * the transition pending|failed -> processing, so flush and retry sweeps can't
+   * double-process the same jot.
+   */
+  async claim(id: string): Promise<boolean> {
+    const n = await this.k("jots").where({ id }).whereIn("status", ["pending", "failed"])
+      .update({ status: "processing", updated_at: Date.now() });
+    return n > 0;
+  }
+  /** Crash recovery: any jot stuck in `processing` from a previous run goes back to pending. */
+  async resetProcessing(): Promise<void> {
+    await this.k("jots").where({ status: "processing" })
+      .update({ status: "pending", updated_at: Date.now() });
+  }
+  /** Jots eligible for (re)processing: fresh, or failed but under the retry cap. */
   async pendingJots(): Promise<Jot[]> {
-    return this.k<Jot>("jots").whereIn("status", ["pending", "failed"]).orderBy("received_at");
+    return this.k<Jot>("jots")
+      .where({ status: "pending" })
+      .orWhere((q) => q.where({ status: "failed" }).andWhere("attempts", "<", MAX_ATTEMPTS))
+      .orderBy("received_at");
   }
 
   // --- telegram message → jot map (reply-to-edit) ---
@@ -99,23 +117,28 @@ export class Repository {
   async addPendingLink(id: string, jotId: string, surface: string, note: string): Promise<void> {
     await this.k("pending_links").insert({ id, jot_id: jotId, surface, note, created_at: Date.now() });
   }
+  /** Atomic take: only one of two fast button taps gets the row. */
   async takePendingLink(id: string): Promise<{ jot_id: string; surface: string; note: string } | undefined> {
-    const row = await this.k("pending_links").where({ id }).first();
-    if (row) await this.k("pending_links").where({ id }).del();
-    return row ? { jot_id: row.jot_id, surface: row.surface, note: row.note } : undefined;
+    return this.k.transaction(async (trx) => {
+      const row = await trx("pending_links").where({ id }).first();
+      if (!row) return undefined;
+      await trx("pending_links").where({ id }).del();
+      return { jot_id: row.jot_id, surface: row.surface, note: row.note };
+    });
   }
 
-  // --- daily metrics ---
-  async bumpMetrics(day: string, patch: Partial<Metrics>): Promise<void> {
-    await this.k("metrics").insert({ day }).onConflict("day").ignore();
-    const inc: Record<string, unknown> = {};
-    for (const [key, v] of Object.entries(patch)) if (v) inc[key] = this.k.raw("?? + ?", [key, v]);
-    if (Object.keys(inc).length) await this.k("metrics").where({ day }).update(inc);
+  // --- edits queued while a jot was still processing ---
+  async queueEdit(jotId: string, instruction: string): Promise<void> {
+    await this.k("queued_edits").insert({ jot_id: jotId, instruction, created_at: Date.now() });
   }
-  async getMetrics(day: string): Promise<Metrics> {
-    return (await this.k("metrics").where({ day }).first())
-      ?? { agent_calls: 0, agent_input_tokens: 0, agent_output_tokens: 0, groq_calls: 0 };
+  async takeQueuedEdits(jotId: string): Promise<string[]> {
+    return this.k.transaction(async (trx) => {
+      const rows = await trx("queued_edits").where({ jot_id: jotId }).orderBy("created_at");
+      if (rows.length) await trx("queued_edits").where({ jot_id: jotId }).del();
+      return rows.map((r) => r.instruction as string);
+    });
   }
+
   /** Jot counts for the daily summary over a [from,to) epoch-ms window. */
   async dayStats(from: number, to: number): Promise<{ jots: number; audio: number; failed: number }> {
     const row = await this.k("jots")
@@ -123,7 +146,7 @@ export class Repository {
       .select(
         this.k.raw("COUNT(*) as jots"),
         this.k.raw("SUM(CASE WHEN kind='audio' THEN 1 ELSE 0 END) as audio"),
-        this.k.raw("SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed"),
+        this.k.raw("SUM(CASE WHEN status IN ('failed','abandoned') THEN 1 ELSE 0 END) as failed"),
       ).first();
     return { jots: Number(row?.jots ?? 0), audio: Number(row?.audio ?? 0), failed: Number(row?.failed ?? 0) };
   }

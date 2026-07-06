@@ -42,19 +42,12 @@ export class Scheduler {
   }
 
   private async sendSummary(): Promise<void> {
-    const day = plainDate();
     const start = new Date(); start.setHours(0, 0, 0, 0);
     const stats = await this.repo.dayStats(start.getTime(), Date.now());
     if (stats.jots === 0) return; // nothing today → say nothing
 
-    const m = await this.repo.getMetrics(day);
-    const lines = [
-      `📓 ${day}`,
-      `Jots: ${stats.jots} (voice: ${stats.audio})`,
-      `Enrichment: ${m.agent_calls} calls, ${m.agent_input_tokens + m.agent_output_tokens} tokens`,
-      `Transcriptions: ${m.groq_calls}`,
-    ];
-    if (stats.failed) lines.push(`⚠️ Failed/retrying: ${stats.failed}`);
+    const lines = [`📓 ${plainDate()}`, `Jots: ${stats.jots} (voice: ${stats.audio})`];
+    if (stats.failed) lines.push(`⚠️ Failed/abandoned: ${stats.failed}`);
     await this.notify(lines.join("\n"));
   }
 }
