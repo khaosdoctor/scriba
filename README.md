@@ -18,8 +18,9 @@ lives in `Repository` (`db.ts`); pure logic in `core.ts` (tested in `core.test.t
 ## Auth
 
 - `CLAUDE_CODE_OAUTH_TOKEN` — Claude subscription, no API key (`claude setup-token`).
-- `GROQ_API_KEY` — voice transcription (free tier).
 - `OBSIDIAN_API_KEY` — Obsidian Local REST API.
+- Transcription: `TRANSCRIBER=remote` (Groq, `GROQ_API_KEY`) or `local` (Parakeet
+  sidecar, `PARAKEET_URL`).
 
 ## Develop
 

@@ -2,7 +2,7 @@ import http from "node:http";
 import { config } from "./config.ts";
 import { Repository } from "./db.ts";
 import { ObsidianClient } from "./obsidian.ts";
-import { Transcriber } from "./transcribe.ts";
+import { createTranscriber } from "./transcribe.ts";
 import { Enricher } from "./enrich.ts";
 import { LinkIndex } from "./index-links.ts";
 import { JotProcessor } from "./processor.ts";
@@ -13,7 +13,7 @@ import { Scheduler } from "./scheduler.ts";
 async function main(): Promise<void> {
   const repo = await Repository.open(config.dbPath);
   const obsidian = new ObsidianClient(config.obsidian);
-  const transcriber = new Transcriber(config.groq.apiKey);
+  const transcriber = createTranscriber(config.transcription);
   const enricher = new Enricher();
   const links = new LinkIndex(config.vaultPath);
   links.startRefresh();

@@ -5,10 +5,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 
-/** Transcribes voice notes via Groq Whisper. The vault is English but the author may
- *  speak another language (e.g. Portuguese), so this uses the /translations endpoint,
- *  which always outputs English regardless of the spoken language. No video. */
-export class Transcriber {
+/** Voice note bytes → English text. Two implementations, chosen by config. */
+export interface Transcriber {
+  transcribe(bytes: Uint8Array, ext: string): Promise<string>;
+}
+
+/** Remote: Groq Whisper. Uses /translations, so any spoken language → English. */
+export class GroqTranscriber implements Transcriber {
   private groq: Groq;
   constructor(apiKey: string) {
     this.groq = new Groq({ apiKey });
@@ -28,4 +31,35 @@ export class Transcriber {
       await rm(path, { force: true });
     }
   }
+}
+
+/** Local: a Parakeet sidecar. Transcribes in the source language; the enricher
+ *  translates to English downstream. */
+export class ParakeetTranscriber implements Transcriber {
+  constructor(private url: string) {}
+
+  async transcribe(bytes: Uint8Array, ext: string): Promise<string> {
+    // ponytail: expects a whisper.cpp / sherpa-onnx-style HTTP endpoint —
+    // POST multipart `file`, returns {text} (json) or the transcript (plain text).
+    const form = new FormData();
+    form.append("file", new Blob([bytes]), `audio.${ext}`);
+    const res = await fetch(this.url, { method: "POST", body: form });
+    if (!res.ok) throw new Error(`parakeet ${res.status}: ${await res.text()}`);
+    const text = res.headers.get("content-type")?.includes("json")
+      ? (await res.json() as { text?: string }).text
+      : await res.text();
+    return String(text ?? "").trim();
+  }
+}
+
+export interface TranscriberConfig {
+  mode: string;          // "local" | "remote" (validated in config)
+  groqApiKey: string;
+  parakeetUrl: string;
+}
+
+export function createTranscriber(cfg: TranscriberConfig): Transcriber {
+  return cfg.mode === "local"
+    ? new ParakeetTranscriber(cfg.parakeetUrl)
+    : new GroqTranscriber(cfg.groqApiKey);
 }

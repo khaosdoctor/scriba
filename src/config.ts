@@ -11,6 +11,13 @@ function num(name: string, fallback: number): number {
   return v ? Number(v) : fallback;
 }
 
+// Transcription backend: "remote" (Groq) or "local" (Parakeet sidecar).
+// Validate up front so a misconfigured mode fails at boot, not on the first voice note.
+const transcriberMode = opt("TRANSCRIBER", "remote");
+if (transcriberMode !== "local" && transcriberMode !== "remote") {
+  throw new Error(`TRANSCRIBER must be "local" or "remote", got: ${transcriberMode}`);
+}
+
 export const config = {
   telegram: {
     token: req("TELEGRAM_BOT_TOKEN"),
@@ -19,7 +26,12 @@ export const config = {
     allowedUserId: Number(req("ALLOWED_TELEGRAM_USER_ID")),
     port: num("PORT", 8080),
   },
-  groq: { apiKey: req("GROQ_API_KEY") },
+  transcription: {
+    mode: transcriberMode,
+    // Each mode requires only its own config.
+    groqApiKey: transcriberMode === "remote" ? req("GROQ_API_KEY") : "",
+    parakeetUrl: transcriberMode === "local" ? req("PARAKEET_URL") : "",
+  },
   obsidian: {
     url: opt("OBSIDIAN_API_URL", "https://127.0.0.1:27124").replace(/\/$/, ""),
     key: req("OBSIDIAN_API_KEY"),
