@@ -1,4 +1,4 @@
-# ponytail: single stage, runs TypeScript directly on Node 24 (no build step).
+# ponytail: single stage, runs TypeScript via tsx (no build step).
 # Build tools stay in the image only for better-sqlite3's native addon.
 FROM node:24-bookworm-slim
 
@@ -22,4 +22,4 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "fetch('http://localhost:'+(process.env.PORT||8080)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "src/index.ts"]
+CMD ["node", "--import", "tsx", "src/index.ts"]
