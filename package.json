@@ -1,0 +1,30 @@
+{
+  "name": "scriba",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Friction-free Telegram journaling bot that writes enriched jots to an Obsidian vault",
+  "type": "module",
+  "license": "Elastic-2.0",
+  "author": "Lucas Santos",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "start": "node src/index.ts",
+    "dev": "node --watch src/index.ts",
+    "migrate": "knex migrate:latest",
+    "test": "node --test 'src/*.test.ts'",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.1.0",
+    "better-sqlite3": "^11.8.0",
+    "grammy": "^1.30.0",
+    "groq-sdk": "^0.9.0",
+    "knex": "^3.1.0",
+    "undici": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.0"
+  }
+}
