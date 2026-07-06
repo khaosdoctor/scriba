@@ -1,4 +1,5 @@
 import { readdir, readFile, stat } from "node:fs/promises";
+import { watch, type FSWatcher } from "node:fs";
 import { join, basename, extname } from "node:path";
 import type { AliasEntry } from "./core.ts";
 
@@ -6,19 +7,37 @@ interface FileEntry { mtimeMs: number; aliases: AliasEntry[]; }
 
 /**
  * Title+alias index for wikilink candidates. Reads the vault from a read-only
- * filesystem mount. Like Obsidian's metadata cache, it re-reads only files whose
- * mtime changed since the last scan — enumeration is cheap, parsing is incremental —
- * so it stays fast on a large vault. If no vault path is set the index is empty.
+ * filesystem mount. Like Obsidian's metadata cache it re-reads only files whose mtime
+ * changed (enumeration cheap, parsing incremental), and it watches the vault via the
+ * native recursive fs.watch (inotify on Linux) to refresh on change. A slow periodic
+ * rebuild is kept as a safety net for events the watcher may drop.
  */
 export class LinkIndex {
   private byFile = new Map<string, FileEntry>();
   private flat: AliasEntry[] = [];
   private timer: NodeJS.Timeout | null = null;
+  private debounce: NodeJS.Timeout | null = null;
+  private watcher: FSWatcher | null = null;
 
   constructor(private vaultPath: string | null) {}
 
   list(): AliasEntry[] {
     return this.flat;
+  }
+
+  /** Initial scan, then watch for changes with a slow periodic rebuild as backstop. */
+  start(periodicMs = 30 * 60_000): void {
+    if (!this.vaultPath) return;
+    void this.rebuild();
+    this.startWatch();
+    this.timer = setInterval(() => void this.rebuild(), periodicMs);
+    this.timer.unref();
+  }
+
+  stop(): void {
+    if (this.timer) clearInterval(this.timer);
+    if (this.debounce) clearTimeout(this.debounce);
+    this.watcher?.close();
   }
 
   /** Re-scan the vault, re-reading only changed/added files and dropping deleted ones. */
@@ -44,14 +63,23 @@ export class LinkIndex {
     return this.byFile.size;
   }
 
-  startRefresh(ms = 10 * 60_000): void {
-    void this.rebuild();
-    this.timer = setInterval(() => void this.rebuild(), ms);
-    this.timer.unref();
+  private startWatch(): void {
+    if (!this.vaultPath) return;
+    try {
+      this.watcher = watch(this.vaultPath, { recursive: true }, (_event, file) => {
+        const f = file ? String(file) : "";
+        // Ignore dotdirs (e.g. .obsidian writes constantly) and non-markdown churn.
+        if (f && (f.split(/[/\\]/).some((seg) => seg.startsWith(".")) || !f.endsWith(".md"))) return;
+        this.scheduleRebuild();
+      });
+      this.watcher.on("error", () => { /* periodic rebuild is the backstop */ });
+    } catch { /* watch unsupported here → rely on the periodic rebuild */ }
   }
 
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
+  private scheduleRebuild(): void {
+    if (this.debounce) clearTimeout(this.debounce);
+    this.debounce = setTimeout(() => void this.rebuild(), 1500); // coalesce bursts
+    this.debounce.unref();
   }
 
   private parseFile(path: string, text: string): AliasEntry[] {

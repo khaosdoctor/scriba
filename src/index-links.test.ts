@@ -38,6 +38,28 @@ test("rebuild indexes titles + inline and block aliases, skips non-md/dotfiles",
   }
 });
 
+const poll = async (cond: () => boolean, tries = 40, ms = 100) => {
+  for (let i = 0; i < tries; i++) { if (cond()) return; await new Promise((r) => setTimeout(r, ms)); }
+};
+
+test("start() scans initially and reflects later changes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "scriba-watch-"));
+  const idx = new LinkIndex(dir);
+  try {
+    await writeFile(join(dir, "Seed.md"), "seed");
+    idx.start(300); // short periodic backstop → deterministic regardless of watch timing
+    await poll(() => idx.list().some((e) => e.note === "Seed"));
+    assert.ok(idx.list().some((e) => e.note === "Seed"));
+
+    await writeFile(join(dir, "New.md"), "new");
+    await poll(() => idx.list().some((e) => e.note === "New"));
+    assert.ok(idx.list().some((e) => e.note === "New"));
+  } finally {
+    idx.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("rebuild is incremental: reflects adds, edits, and deletes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "scriba-inc-"));
   try {

@@ -18,7 +18,7 @@ async function main(): Promise<void> {
   const transcriber = createTranscriber(config.transcription);
   const enricher = new Enricher();
   const links = new LinkIndex(config.vaultPath);
-  links.startRefresh();
+  links.start();
 
   const bot = new ScribaBot(repo, obsidian, enricher);
   const processor = new JotProcessor(repo, obsidian, transcriber, enricher, links, bot);
