@@ -92,10 +92,14 @@ export class Enricher {
     return { text, usage };
   }
 
+  // The agent returns free-form text: usually clean JSON, occasionally wrapped in a
+  // ```json fence or a stray sentence. Try the clean parse first; fall back to the
+  // outermost {...} span only if that fails.
   private extractJson(s: string): { text?: string; ambiguous?: Candidate[] } | null {
-    const start = s.indexOf("{");
-    const end = s.lastIndexOf("}");
-    if (start < 0 || end <= start) return null;
-    try { return JSON.parse(s.slice(start, end + 1)); } catch { return null; }
+    const cleaned = s.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    try { return JSON.parse(cleaned); } catch { /* fall through */ }
+    const a = cleaned.indexOf("{"), b = cleaned.lastIndexOf("}");
+    if (a >= 0 && b > a) { try { return JSON.parse(cleaned.slice(a, b + 1)); } catch { /* give up */ } }
+    return null;
   }
 }

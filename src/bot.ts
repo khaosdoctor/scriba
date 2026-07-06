@@ -59,6 +59,11 @@ export class ScribaBot implements BotServices {
     await this.bot.api.sendMessage(config.telegram.allowedUserId, `Link "${surface}" → [[${note}]]?`, { reply_markup: kb });
   }
 
+  async askRetry(jotId: string, text: string): Promise<void> {
+    const kb = new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`);
+    await this.bot.api.sendMessage(config.telegram.allowedUserId, text, { reply_markup: kb });
+  }
+
   async downloadFile(fileId: string): Promise<DownloadedFile> {
     const file = await this.bot.api.getFile(fileId);
     if (!file.file_path) throw new Error(`no file_path for ${fileId}`);
@@ -75,7 +80,7 @@ export class ScribaBot implements BotServices {
     if (!edits.length) return;
     const jot = await this.repo.getJot(jotId);
     if (!jot) return;
-    for (const instruction of edits) await this.applyEdit(jot, instruction);
+    await this.applyEdits(jot, edits);
     await this.notify(`✏️ Applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""}.`);
   }
 
@@ -134,18 +139,21 @@ export class ScribaBot implements BotServices {
     if (!jot) return void ctx.reply("Jot not found.");
     const instruction: string = ctx.message.text;
 
-    // Still in flight → queue the edit; onJotDone applies it once the line is written.
-    if (jot.status !== "done") {
+    // Editable only once a line exists (done or abandoned); otherwise it still needs
+    // processing, so queue the edit and let onJotDone apply it after.
+    const editable = jot.status === "done" || jot.status === "abandoned";
+    if (!editable) {
       await this.repo.queueEdit(jotId, instruction);
       return void ctx.reply("⏳ still processing — I'll apply that edit once it's done.");
     }
-    await ctx.reply(await this.applyEdit(jot, instruction));
+    await ctx.reply(await this.applyEdits(jot, [instruction]));
   }
 
-  /** Apply one edit instruction to a jot's line. Returns a short status for the user. */
-  private async applyEdit(jot: Jot, instruction: string): Promise<string> {
+  /** Apply one or more edit instructions to a jot's line, merged into a single write
+   *  (and a single agent call for the freeform ones). Returns a short status. */
+  private async applyEdits(jot: Jot, instructions: string[]): Promise<string> {
     const note = await this.obsidian.readNote(jot.note_path); // live read
-    if (instruction.trim().toLowerCase() === "delete") {
+    if (instructions.some((i) => i.trim().toLowerCase() === "delete")) {
       const out = deleteAnchorLine(note, jot.anchor);
       if (out) await this.obsidian.writeNote(jot.note_path, out);
       await this.repo.updateJot(jot.id, { status: "done" });
@@ -154,12 +162,17 @@ export class ScribaBot implements BotServices {
     const line = anchorLine(note, jot.anchor);
     if (!line) return "Couldn't find that line in the note.";
 
-    const literal = parseLiteralEdit(instruction);
-    const current = this.lineText(line, jot);
-    const edited = literal
-      ? current.replaceAll(literal.old, literal.new)
-      : await this.enricher.editText(current, instruction);
-    const out = replaceAnchorLine(note, jot.anchor, journalLine(jot.time, edited, jot.anchor));
+    let text = this.lineText(line, jot);
+    const freeform: string[] = [];
+    for (const ins of instructions) {
+      const lit = parseLiteralEdit(ins);
+      if (lit) text = text.replaceAll(lit.old, lit.new); // deterministic, free
+      else freeform.push(ins);
+    }
+    // Merge all freeform edits into one agent call rather than one per instruction.
+    if (freeform.length) text = await this.enricher.editText(text, freeform.join("; then "));
+
+    const out = replaceAnchorLine(note, jot.anchor, journalLine(jot.time, text, jot.anchor));
     if (out) await this.obsidian.writeNote(jot.note_path, out);
     return "✏️ updated";
   }
@@ -172,8 +185,22 @@ export class ScribaBot implements BotServices {
   }
 
   private async handleButton(ctx: any): Promise<void> {
-    const [ns, verd, pid] = String(ctx.callbackQuery.data).split(":");
-    if (ns !== "lk" || !pid) return void ctx.answerCallbackQuery();
+    const [ns, ...rest] = String(ctx.callbackQuery.data).split(":");
+    if (ns === "rt") return this.handleRetry(ctx, rest[0]);
+    if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
+    await ctx.answerCallbackQuery();
+  }
+
+  private async handleRetry(ctx: any, jotId?: string): Promise<void> {
+    if (!jotId || !(await this.repo.getJot(jotId))) return void ctx.answerCallbackQuery({ text: "gone" });
+    await this.repo.updateJot(jotId, { status: "pending", attempts: 0, error: null });
+    this.queue.add(jotId);
+    await ctx.answerCallbackQuery({ text: "retrying" });
+    await ctx.editMessageText("🔄 retrying…");
+  }
+
+  private async handleLink(ctx: any, verd?: string, pid?: string): Promise<void> {
+    if (!pid) return void ctx.answerCallbackQuery();
     const rec = await this.repo.takePendingLink(pid);
     if (!rec) return void ctx.answerCallbackQuery({ text: "expired" });
 

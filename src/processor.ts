@@ -12,6 +12,7 @@ export interface DownloadedFile { bytes: Uint8Array; ext: string; mime: string; 
 export interface BotServices {
   notify: (text: string) => Promise<void>;
   askLink: (pendingId: string, surface: string, note: string) => Promise<void>;
+  askRetry: (jotId: string, text: string) => Promise<void>; // notify + a force-retry button
   downloadFile: (fileId: string) => Promise<DownloadedFile>;
   onJotDone: (jotId: string) => Promise<void>; // apply edits queued while processing
 }
@@ -95,7 +96,8 @@ export class JotProcessor {
       await this.writeLine(jot, this.composeLine(jot, source));
     } catch { /* the note write itself is failing — nothing more we can do */ }
     await this.repo.updateJot(jot.id, { status: "abandoned", attempts, error: msg });
-    await this.bot.notify(`⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n${msg.slice(0, 200)}`);
+    await this.bot.onJotDone(jot.id); // apply edits queued while it was failing
+    await this.bot.askRetry(jot.id, `⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n${msg.slice(0, 200)}`);
   }
 
   private async ensureMedia(jot: Jot): Promise<Jot> {
