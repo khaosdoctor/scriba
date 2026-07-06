@@ -37,3 +37,28 @@ test("rebuild indexes titles + inline and block aliases, skips non-md/dotfiles",
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("rebuild is incremental: reflects adds, edits, and deletes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "scriba-inc-"));
+  try {
+    await writeFile(join(dir, "A.md"), "---\naliases: [aa]\n---\n");
+    const idx = new LinkIndex(dir);
+    assert.equal(await idx.rebuild(), 1);
+    assert.ok(idx.list().some((e) => e.alias === "aa"));
+
+    await writeFile(join(dir, "B.md"), "body");                 // add
+    assert.equal(await idx.rebuild(), 2);
+    assert.ok(idx.list().some((e) => e.note === "B"));
+
+    await writeFile(join(dir, "A.md"), "---\naliases: [bb]\n---\n"); // edit
+    await idx.rebuild();
+    assert.ok(idx.list().some((e) => e.alias === "bb"));
+    assert.ok(!idx.list().some((e) => e.alias === "aa"));
+
+    await rm(join(dir, "B.md"));                                 // delete
+    assert.equal(await idx.rebuild(), 1);
+    assert.ok(!idx.list().some((e) => e.note === "B"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
