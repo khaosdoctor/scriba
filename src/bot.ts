@@ -86,6 +86,13 @@ export class ScribaBot implements BotServices {
 
   // --- handlers ---
   private registerHandlers(): void {
+    // Surface handler errors back to the user instead of dying silently.
+    this.bot.catch(async (err) => {
+      const msg = err.error instanceof Error ? err.error.message : String(err.error);
+      console.error("bot handler error:", err.error);
+      await err.ctx.reply(`⚠️ Couldn't save that: ${msg}`).catch(() => {});
+    });
+
     // single-user allowlist — everyone else is ignored
     this.bot.use(async (ctx, next) => {
       if (ctx.from?.id === config.telegram.allowedUserId) await next();
@@ -113,6 +120,9 @@ export class ScribaBot implements BotServices {
   }
 
   private async intake(ctx: any, kind: JotKind, src: { rawText?: string; fileId?: string }): Promise<void> {
+    // Acknowledge receipt immediately (reactions don't clutter the chat). If this fails
+    // the intake still proceeds — it's only feedback.
+    await ctx.react("👀").catch(() => {});
     const epochMs = ctx.message.date * 1000;
     const id = makeJotId();
     const date = plainDate(epochMs);

@@ -1,5 +1,10 @@
 import { fetch, Agent } from "undici";
 
+/** Local REST API v3 heading path: each ancestor segment URL-encoded, joined by `::`. */
+export function headingTarget(...segments: string[]): string {
+  return segments.map(encodeURIComponent).join("::");
+}
+
 export interface ObsidianConfig {
   url: string;
   key: string;
@@ -67,13 +72,18 @@ export class ObsidianClient {
   /** Append a bullet under the ## Journal heading. */
   async appendJournalLine(date: string, line: string): Promise<void> {
     const path = this.dailyPath(date);
+    // Local REST API v3 targets a heading by its FULL ancestor path, URL-encoded and
+    // delimited by `::` — the leaf name alone returns 40080 invalid-target. The daily
+    // note's H1 is the date (template `# {{date}}`), so Journal is `<date>::Journal`.
+    const target = headingTarget(date, this.cfg.journalHeading);
     const res = await fetch(`${this.cfg.url}/vault/${this.encode(path)}`, {
       method: "PATCH",
       headers: this.headers({
         "Content-Type": "text/markdown",
         "Operation": "append",
         "Target-Type": "heading",
-        "Target": this.cfg.journalHeading,
+        "Target": target,
+        "Target-Delimiter": "::",
       }),
       body: `\n${line}`, dispatcher: this.dispatcher,
     });
