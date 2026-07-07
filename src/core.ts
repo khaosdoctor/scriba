@@ -85,10 +85,9 @@ export function tokenize(text: string): string[] {
 }
 
 /**
- * Propose link candidates from an alias index, cheaply and without any model call.
- * Drops junk (short/stopword aliases) and anything the user already rejected.
- * Whatever survives is handed to the agent, which makes the real call in context.
- * `stopwords` are lowercased words; `rejected` keys are `${lowercased-surface} ${note}`.
+ * Propose link candidates from an alias index — no model call. Drops junk (short or
+ * stopword aliases) and anything the user rejected; survivors go to the agent.
+ * `stopwords` are lowercased; `rejected` keys are `${lowercased-surface} ${note}`.
  */
 export function candidates(
   text: string,
