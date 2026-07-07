@@ -86,6 +86,7 @@ export class ObsidianClient {
     const path = await this.ensureDailyNote(date);
     const note = await this.readNote(path);
     await this.writeNote(path, setFrontmatterNumber(note, "overallRating", rating));
+    log.info({ date, rating, path }, "overallRating frontmatter set");
   }
 
   /** Read a note's current content (live — the user may have edited it in Obsidian). */

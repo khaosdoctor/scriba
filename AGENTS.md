@@ -43,6 +43,14 @@ deployed on the homelab (Coolify). Single user.
 - Migrations are knex files under `migrations/`; the app runs `migrate.latest()` at boot.
 - Run TypeScript via tsx — do NOT rely on Node's strip-only mode (it can't do parameter
   properties, which the classes use).
+- **Log thoroughly.** Every command, handler, and side-effecting method logs via the
+  `logger("<scope>")` from `src/log.ts` — no bare `console`. Log the entry point and each
+  branch that matters: `info` for normal milestones (command invoked, action taken),
+  `warn` for rejected/invalid input, `error` (with `{ err }`) for failures, `debug` for
+  raw payloads. A new command or feature without logs on its happy path AND its rejection
+  paths is incomplete.
+- **Slash commands are discoverable.** Any new `bot.command(...)` also gets an entry in
+  `setMyCommands` (in `ScribaBot.start`) so it shows in Telegram's `/` menu.
 
 ## Local checks
 

@@ -37,7 +37,11 @@ export class RatingCommand {
     // Rate any day on demand: `/rate` → today, `/rate 2026-07-05` → that day.
     this.bot.command("rate", async (ctx) => {
       const arg = ctx.match.trim();
-      if (arg && !DATE_RE.test(arg)) return void ctx.reply("Usage: /rate or /rate YYYY-MM-DD");
+      log.info({ arg: arg || "(today)" }, "/rate command");
+      if (arg && !DATE_RE.test(arg)) {
+        log.warn({ arg }, "/rate rejected: bad date");
+        return void ctx.reply("Usage: /rate or /rate YYYY-MM-DD");
+      }
       await this.prompt(arg || plainDate());
     });
   }
@@ -57,21 +61,26 @@ export class RatingCommand {
    *  buttons with a confirmation so the day can't be rated twice. */
   async handleTap(ctx: any, date?: string, n?: string): Promise<void> {
     const rating = Number(n);
+    log.debug({ date, n }, "rating button tapped");
     if (!date || !DATE_RE.test(date) || !Number.isInteger(rating) || rating < 1 || rating > 10) {
+      log.warn({ date, n }, "rating tap rejected: bad payload");
       return void ctx.answerCallbackQuery({ text: "bad rating" });
     }
     const { recorded, current } = await this.repo.recordRating(date, rating);
     if (!recorded) {
+      log.info({ date, attempted: rating, current }, "rating tap ignored: day already rated");
       await ctx.answerCallbackQuery({ text: `already rated ${current}/10` });
       return void ctx.editMessageText(`📊 ${date} already rated ${current}/10.`);
     }
-    log.info({ date, rating }, "setting daily rating");
+    log.info({ date, rating }, "recorded rating, writing frontmatter");
     try {
       await this.obsidian.setDailyRating(date, rating);
     } catch (e) {
+      log.error({ err: e, date, rating }, "frontmatter write failed, releasing rating for retry");
       await this.repo.clearRating(date); // let the user try again
       throw e;
     }
+    log.info({ date, rating }, "daily rating saved");
     await ctx.answerCallbackQuery({ text: `saved ${rating}/10` });
     await ctx.editMessageText(`📊 ${date} rated ${rating}/10`);
   }
