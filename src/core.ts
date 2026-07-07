@@ -3,6 +3,7 @@
  * Stopwords and rejections are injected (they live in the DB), not hardcoded here.
  */
 import { randomBytes } from "node:crypto";
+import type { JotKind } from "./db.ts";
 
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -10,6 +11,14 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** Fixed 8-char hex id, also used as the Obsidian block anchor. */
 export function makeJotId(): string {
   return randomBytes(4).toString("hex");
+}
+
+/** One-line confirmation of what landed in the note. Attach-only jots carry no text. */
+export function donePreview(kind: JotKind, textPart: string): string {
+  const text = textPart.trim();
+  if (text) return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+  if (kind === "image" || kind === "video") return `${kind} saved to the note`;
+  return "saved";
 }
 
 /** Journal bullet in the vault's house style: `- _HH:MM:SS ::_ <text> ^anchor` */

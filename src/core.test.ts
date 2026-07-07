@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   makeJotId, journalLine, placeholderLine, replaceAnchorLine, deleteAnchorLine,
   anchorLine, candidates, parseLiteralEdit, tokenize,
-  insertJournalLine,
+  insertJournalLine, donePreview,
 } from "./core.ts";
 
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
@@ -90,4 +90,12 @@ test("literal edit parser handles sed and natural forms, rejects freeform", () =
 
 test("tokenize keeps accented letters", () => {
   assert.deepEqual(tokenize("Não é fácil"), ["não", "é", "fácil"]);
+});
+
+test("donePreview shows enriched text, truncates long, labels attach-only", () => {
+  assert.equal(donePreview("text", "  went for a run  "), "went for a run");
+  assert.equal(donePreview("audio", "x".repeat(250)), `${"x".repeat(200)}…`);
+  assert.equal(donePreview("image", ""), "image saved to the note");
+  assert.equal(donePreview("video", "  "), "video saved to the note");
+  assert.equal(donePreview("text", ""), "saved");
 });

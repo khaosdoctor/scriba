@@ -4,7 +4,7 @@ import type { ObsidianClient } from "./obsidian.ts";
 import type { Transcriber } from "./transcribe.ts";
 import type { Enricher } from "./enrich.ts";
 import type { LinkIndex } from "./index-links.ts";
-import { candidates, journalLine, replaceAnchorLine, makeJotId } from "./core.ts";
+import { candidates, journalLine, replaceAnchorLine, makeJotId, donePreview } from "./core.ts";
 import { logger } from "./log.ts";
 
 const log = logger("processor");
@@ -18,7 +18,8 @@ export interface BotServices {
   askRetry: (jotId: string, text: string) => Promise<void>; // notify + a force-retry button
   downloadFile: (fileId: string) => Promise<DownloadedFile>;
   onJotDone: (jotId: string) => Promise<void>; // apply edits queued while processing
-  react: (jotId: string, state: "done" | "failed") => Promise<void>; // swap the intake reaction on the jot's message
+  react: (jotId: string, state: "done" | "failed" | "retrying") => Promise<void>; // swap the intake reaction on the jot's message
+  typing: () => Promise<void>; // "typing…" chat action while a jot is being processed
 }
 
 /** Errors worth retrying (transient infra); anything else is treated as unrecoverable. */
@@ -61,6 +62,7 @@ export class JotProcessor {
     if (!(await this.repo.claim(id))) return log.debug({ id }, "processJot: claim lost, another worker has it");
     const t0 = Date.now();
     log.info({ id, kind: loaded.kind, attempts: loaded.attempts }, "processing jot");
+    await this.bot.typing(); // best-effort "typing…" so the user sees work is underway
     try {
       const jot = await this.ensureMedia(loaded);
       const source =
@@ -100,6 +102,7 @@ export class JotProcessor {
       await this.writeLine(jot, this.composeLine(jot, textPart));
       await this.repo.updateJot(jot.id, { status: "done", error: null });
       await this.bot.react(jot.id, "done");
+      await this.bot.notify(`✅ ${donePreview(jot.kind, textPart)}`);
       await this.bot.onJotDone(jot.id); // apply anything queued while we were working
       log.info({ id, ms: Date.now() - t0 }, "jot done");
     } catch (err) {
@@ -115,6 +118,7 @@ export class JotProcessor {
     if (recoverable && attempts < MAX_ATTEMPTS) {
       log.warn({ id: jot.id, attempts, max: MAX_ATTEMPTS, err }, "jot failed (transient) — will retry");
       await this.repo.updateJot(jot.id, { status: "failed", attempts, error: msg });
+      await this.bot.react(jot.id, "retrying");
       return;
     }
     // Unrecoverable, or out of tries: post whatever we have un-enriched, then stop.

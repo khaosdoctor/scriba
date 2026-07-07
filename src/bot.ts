@@ -70,12 +70,17 @@ export class ScribaBot implements BotServices {
 
   /** Swap the intake reaction on a jot's message to reflect its outcome.
    *  Telegram only allows a fixed emoji set for reactions, so ⏳/✅/❌ aren't
-   *  available — ✍ (received), 👌 (done), 😱 (failed) are the closest matches. */
-  async react(jotId: string, state: "done" | "failed"): Promise<void> {
+   *  available — ✍ (received), 👌 (done), 🤔 (retrying), 😱 (failed) are the closest. */
+  async react(jotId: string, state: "done" | "failed" | "retrying"): Promise<void> {
     const messageId = await this.repo.messageForJot(jotId);
     if (!messageId) return;
-    const emoji = state === "done" ? "👌" : "😱";
+    const emoji = state === "done" ? "👌" : state === "retrying" ? "🤔" : "😱";
     await this.bot.api.setMessageReaction(config.telegram.allowedUserId, messageId, [{ type: "emoji", emoji }]).catch(() => {});
+  }
+
+  /** Best-effort "typing…" chat action. Telegram clears it after ~5s on its own. */
+  async typing(): Promise<void> {
+    await this.bot.api.sendChatAction(config.telegram.allowedUserId, "typing").catch(() => {});
   }
 
   async downloadFile(fileId: string): Promise<DownloadedFile> {
