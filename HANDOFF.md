@@ -129,11 +129,11 @@ becomes a `pending_link` + a Yes/No Telegram button (`lk:y|n:<pid>`). "No" → s
 `rejections` (never proposed again). "Yes" → insert the link into the line. Tokens: candidate
 filtering is free; only the enrich call costs tokens.
 
-**Link index (index-links.ts)** — reads the vault from a read-only FS mount (`VAULT_PATH`).
+**Link index (index-links.ts)** — reads the vault from a read-only FS mount (`SCRIBA_VAULT_HOST_PATH`).
 `rebuild()` walks the tree but re-reads only files whose `mtime` changed (incremental).
 `start()` also sets a native recursive `fs.watch` (inotify on Linux; verified working on
 Node 26) → debounced rebuild on `.md` changes (ignores dotdirs/non-md), plus a 30-min
-periodic rebuild as a backstop for dropped events. Empty if `VAULT_PATH` unset.
+periodic rebuild as a backstop for dropped events. Empty if `SCRIBA_VAULT_HOST_PATH` unset.
 
 **Transcription (transcribe.ts)** — `TRANSCRIBER=local` (default) → `ParakeetTranscriber`
 POSTs multipart `file` to an OpenAI-compatible endpoint (default the bundled sidecar
@@ -170,7 +170,7 @@ can't reach tools). Asks for a JSON object; `extractJson` parses directly, toler
 | `TRANSCRIBER` | no | `local` (default, Parakeet sidecar) or `remote` (Groq) — validated |
 | `GROQ_API_KEY` | if remote | |
 | `PARAKEET_URL` | no | local default → bundled sidecar |
-| `VAULT_PATH` | no | read-only vault mount for the link index; empty ⇒ no link proposals |
+| `SCRIBA_VAULT_HOST_PATH` | no | host vault path, mounted read-only at `/vault` for the link index; empty ⇒ no link proposals |
 | `DB_PATH` | no | default `/data/scriba.db` |
 | `DAILY_NOTES_DIR` / `DAILY_NOTE_TEMPLATE` / `JOURNAL_HEADING` / `ASSETS_DIR` | no | vault layout (defaults match the Default vault) |
 | `SUMMARY_TIME` | no | default `23:30` |
@@ -188,8 +188,8 @@ can't reach tools). Asks for a JSON object; `extractJson` parses directly, toler
   profile.
   - Remote transcription: `docker compose up -d` (+ `TRANSCRIBER=remote`).
   - Local transcription: `docker compose --profile local up -d` (+ `TRANSCRIBER=local`).
-- Volumes: persist `DB_PATH` (`./data`); mount the vault read-only at `VAULT_PATH` for the
-  link index.
+- Volumes: persist `DB_PATH` (`./data`); mount the vault read-only at `/vault` (host source
+  `SCRIBA_VAULT_HOST_PATH`) for the link index.
 - Dockerfile runs `node --import tsx src/index.ts`; migrations run at boot.
 - Homelab pattern (see the `homelab` repo, bookaneer): Coolify, external `coolify` network,
   `64xxx:PORT` mapping, `restart: unless-stopped`, healthcheck. A homelab deploy compose is

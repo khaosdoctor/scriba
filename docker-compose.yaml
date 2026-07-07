@@ -8,8 +8,8 @@ services:
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
     volumes:
-      - ./data:/data                       # DB_PATH (default /data/scriba.db)
-      # - /path/to/vault:/vault:ro         # set VAULT_PATH=/vault for the link index
+      - ./data:/data
+      - ${SCRIBA_VAULT_HOST_PATH:-./vault}:/vault:ro
 
   # Local transcription sidecar (default: TRANSCRIBER=local). Parakeet TDT 0.6B (ONNX, CPU),
   # OpenAI-compatible /v1/audio/transcriptions. scriba reaches it at the default PARAKEET_URL

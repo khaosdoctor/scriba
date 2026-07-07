@@ -96,7 +96,7 @@ npm run dev             # watch
 run just `docker compose up -d scriba`.
 
 Provide the `.env.example` vars, a volume for `DB_PATH`, and (optional) a read-only vault
-mount at `VAULT_PATH` for the link index. Migrations run at boot. The bot uses long
+mount at `/vault` (host source `SCRIBA_VAULT_HOST_PATH`) for the link index. Migrations run at boot. The bot uses long
 polling, so no public URL or webhook is needed — the exposed port is only for the health check.
 
 ## License

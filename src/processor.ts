@@ -73,7 +73,7 @@ export class JotProcessor {
         // Prefer the local filesystem index (exact title+alias match). When it's empty —
         // no vault mount, or the mount is unreadable — fall back to REST title search.
         const index = this.links.list();
-        if (!index.length) log.warn({ id }, "enricher: link index empty (VAULT_PATH unset or unreadable) — no wikilinks suggested");
+        if (!index.length) log.warn({ id }, "enricher: link index empty (SCRIBA_VAULT_HOST_PATH unset or unreadable) — no wikilinks suggested");
         const cands = candidates(source, index, stopwords, rejections);
         log.info(
           { id, indexSize: index.length, count: cands.length, stopwords: stopwords.size, rejections: rejections.size,

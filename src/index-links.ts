@@ -30,7 +30,7 @@ export class LinkIndex {
 
   /** Initial scan, then watch for changes with a slow periodic rebuild as backstop. */
   start(periodicMs = 30 * 60_000): void {
-    if (!this.vaultPath) return log.info("no VAULT_PATH — link index disabled, using REST fallback");
+    if (!this.vaultPath) return log.warn("no SCRIBA_VAULT_HOST_PATH — link index disabled, no wikilinks will be suggested");
     log.info({ vaultPath: this.vaultPath, periodicMs }, "link index starting");
     void this.rebuild();
     this.startWatch();

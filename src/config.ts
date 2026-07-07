@@ -40,7 +40,9 @@ export const config = {
     journalHeading: opt("JOURNAL_HEADING", "Journal"),
     assetsDir: opt("ASSETS_DIR", "assets"),
   },
-  vaultPath: process.env.VAULT_PATH || null,
+  // SCRIBA_VAULT_HOST_PATH is the host source; compose mounts it read-only at /vault,
+  // so the container always reads the vault there. Unset ⇒ link index disabled.
+  vaultPath: process.env.SCRIBA_VAULT_HOST_PATH ? "/vault" : null,
   dbPath: opt("DB_PATH", "/data/scriba.db"),
   summaryTime: opt("SUMMARY_TIME", "23:30"),
   flush: {
