@@ -13,7 +13,7 @@ function num(name: string, fallback: number): number {
 
 // Transcription backend: "remote" (Groq) or "local" (Parakeet sidecar).
 // Validate up front so a misconfigured mode fails at boot, not on the first voice note.
-const transcriberMode = opt("TRANSCRIBER", "remote");
+const transcriberMode = opt("TRANSCRIBER", "local");
 if (transcriberMode !== "local" && transcriberMode !== "remote") {
   throw new Error(`TRANSCRIBER must be "local" or "remote", got: ${transcriberMode}`);
 }

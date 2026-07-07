@@ -44,9 +44,11 @@ test("local mode respects an explicit PARAKEET_URL", async () => {
   assert.equal(config.transcription.parakeetUrl, "http://custom/asr");
 });
 
-test("default mode is remote", async () => {
-  const { config } = await load({ GROQ_API_KEY: "gk" });
-  assert.equal(config.transcription.mode, "remote");
+test("default mode is local (needs no groq, defaults the sidecar url)", async () => {
+  const { config } = await load({});
+  assert.equal(config.transcription.mode, "local");
+  assert.equal(config.transcription.groqApiKey, "");
+  assert.match(config.transcription.parakeetUrl, /parakeet:5092/);
 });
 
 test("invalid TRANSCRIBER throws", async () => {

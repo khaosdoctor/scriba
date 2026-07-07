@@ -21,8 +21,9 @@ deployed on the homelab (Coolify). Single user.
 - **No tokens for control flow.** Batch timing, retry classification, candidate filtering,
   language routing must not call the model. The agent is only for enrichment, translation,
   image captioning, and freeform edits.
-- **Vault is English.** Non-English text/voice is translated on the way in (Groq
-  translations for voice, the enricher for text).
+- **Vault is English.** Voice is transcribed by the local Parakeet sidecar (default) or
+  Groq (`TRANSCRIBER=remote`); non-English is translated in (Groq `/translations`, or the
+  enricher for local voice + all text).
 - **Four jot kinds.** `text`/`audio` carry enrichable text (audio is transcribed).
   `image`/`video` are attach-only (saved + embedded, caption as display); a captionless
   image gets a vision caption. Video is never transcribed.

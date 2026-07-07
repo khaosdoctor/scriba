@@ -76,8 +76,8 @@ wired in `src/index.ts`; all SQL lives in `Repository` (`db.ts`); pure logic in 
 
 - `CLAUDE_CODE_OAUTH_TOKEN` — Claude subscription, no API key (`claude setup-token`).
 - `OBSIDIAN_API_KEY` — Obsidian Local REST API.
-- Transcription: `TRANSCRIBER=remote` (Groq, `GROQ_API_KEY`) or `local` (Parakeet
-  sidecar, `PARAKEET_URL`).
+- Transcription: `TRANSCRIBER=local` (Parakeet sidecar, `PARAKEET_URL` — default) or
+  `remote` (Groq, `GROQ_API_KEY`). Text enrichment always uses Claude.
 
 ## Develop
 
@@ -91,12 +91,9 @@ npm run dev             # watch
 
 ## Deploy
 
-`docker compose up -d` (remote transcription via Groq), or with the bundled Parakeet
-sidecar for local transcription:
-
-```sh
-docker compose --profile local up -d   # also set TRANSCRIBER=local in .env
-```
+`docker compose up -d` starts scriba plus the local Parakeet transcription sidecar
+(the default). For remote transcription via Groq instead, set `TRANSCRIBER=remote` and
+run just `docker compose up -d scriba`.
 
 Provide the `.env.example` vars, a volume for `DB_PATH`, and (optional) a read-only vault
 mount at `VAULT_PATH` for the link index. Migrations run at boot. The bot uses long

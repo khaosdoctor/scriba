@@ -135,11 +135,11 @@ filtering is free; only the enrich call costs tokens.
 Node 26) → debounced rebuild on `.md` changes (ignores dotdirs/non-md), plus a 30-min
 periodic rebuild as a backstop for dropped events. Empty if `VAULT_PATH` unset.
 
-**Transcription (transcribe.ts)** — `TRANSCRIBER=remote` → Groq `whisper-large-v3`
-`/translations` (any language → English). `TRANSCRIBER=local` → `ParakeetTranscriber` POSTs
-multipart `file` to an OpenAI-compatible endpoint (default the bundled sidecar
-`http://parakeet:5092/v1/audio/transcriptions`). Local transcribes in source language; the
-enricher translates downstream.
+**Transcription (transcribe.ts)** — `TRANSCRIBER=local` (default) → `ParakeetTranscriber`
+POSTs multipart `file` to an OpenAI-compatible endpoint (default the bundled sidecar
+`http://parakeet:5092/v1/audio/transcriptions`); transcribes in the source language and the
+enricher translates downstream. `TRANSCRIBER=remote` → Groq `whisper-large-v3`
+`/translations` (any language → English). Text enrichment always uses Claude regardless.
 
 **Enrichment (enrich.ts)** — Claude Agent SDK `query()` on **subscription auth**
 (`CLAUDE_CODE_OAUTH_TOKEN`, no API key), `maxTurns:1`, `allowedTools:[]` (prompt injection
@@ -167,7 +167,7 @@ can't reach tools). Asks for a JSON object; `extractJson` parses directly, toler
 | `CLAUDE_CODE_OAUTH_TOKEN` | yes (env, read by the SDK) | `claude setup-token` |
 | `OBSIDIAN_API_KEY` | yes | Local REST API key |
 | `OBSIDIAN_API_URL` | no | default `https://127.0.0.1:27124` (self-signed; TLS verify skipped) |
-| `TRANSCRIBER` | no | `remote` (default) or `local` — validated |
+| `TRANSCRIBER` | no | `local` (default, Parakeet sidecar) or `remote` (Groq) — validated |
 | `GROQ_API_KEY` | if remote | |
 | `PARAKEET_URL` | no | local default → bundled sidecar |
 | `VAULT_PATH` | no | read-only vault mount for the link index; empty ⇒ no link proposals |
