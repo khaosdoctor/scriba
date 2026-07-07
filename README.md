@@ -11,11 +11,66 @@ entry into your daily note. Images and videos are saved and embedded.
 - Failed jots retry (capped at 10; unrecoverable errors post the jot un-enriched and ping you).
 - Nightly summary; silent on empty days.
 
+## Flow
+
+A jot is written to the note **twice**: an instant placeholder that fixes its order, then
+the enriched version in place. Enrichment happens asynchronously after a batch flush.
+
+```mermaid
+sequenceDiagram
+    actor U as You (Telegram)
+    participant B as ScribaBot
+    participant Q as FlushQueue
+    participant P as JotProcessor
+    participant T as Transcriber<br/>(Groq / Parakeet)
+    participant E as Enricher<br/>(Claude Agent)
+    participant O as Obsidian<br/>(Local REST API)
+
+    U->>B: message (text / voice / image / video)
+    B->>O: append placeholder "⏳ ^id" under ## Journal
+    B->>Q: enqueue jot id
+    Note over Q: flush on 30s idle · 8 msgs · 120s cap
+
+    Q->>P: processBatch(ids)
+    P->>P: claim jot (atomic: pending → processing)
+    opt audio
+        P->>T: transcribe → English
+        T-->>P: text
+    end
+    opt has text (text / audio)
+        P->>E: text + wikilink candidates
+        E-->>P: enriched text + ambiguous links
+    end
+    P->>O: replace "^id" line with the final entry
+    P->>B: onJotDone → apply any queued edits
+
+    opt ambiguous link
+        B->>U: "Link X → [[Note]]?" (Yes / No)
+        U->>B: choice
+        B->>O: apply link (Yes), or remember the "no" forever
+    end
+
+    Note over P,O: on failure: retry (transient, ≤10)<br/>else post un-enriched + 🔄 Retry button
+```
+
+Jot status machine:
+
+```mermaid
+flowchart LR
+    pending -->|claim| processing
+    processing -->|success| done
+    processing -->|transient error, attempts &lt; 10| failed
+    failed -->|retry sweep| processing
+    processing -->|cap hit or unrecoverable| abandoned
+    abandoned -->|🔄 Retry button| pending
+```
+
 ## Stack
 
-Node 24 (runs TS directly, no build). grammy · better-sqlite3 + knex · groq-sdk ·
-`@anthropic-ai/claude-agent-sdk`. One class per block, wired in `src/index.ts`; all SQL
-lives in `Repository` (`db.ts`); pure logic in `core.ts` (tested in `core.test.ts`).
+Node 24, TypeScript run via **tsx** (`node --import tsx`, no build step). grammy ·
+better-sqlite3 + knex · groq-sdk · `@anthropic-ai/claude-agent-sdk`. One class per block,
+wired in `src/index.ts`; all SQL lives in `Repository` (`db.ts`); pure logic in `core.ts`
+(tested in `core.test.ts`).
 
 ## Auth
 
