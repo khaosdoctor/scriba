@@ -79,6 +79,46 @@ export function candidates(
   return out;
 }
 
+/** Distinct surface terms worth a title lookup: >=3 chars, not a stopword. */
+export function candidateTerms(text: string, stopwords: Set<string>): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tokenize(text)) {
+    if (t.length < 3 || stopwords.has(t) || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * Fallback candidate proposal when no local vault index is available: search each
+ * surface term over REST (title matches only) instead of scanning an in-memory alias
+ * list. `search` maps a term to matching note names. Single tokens only — multi-word
+ * aliases need the filesystem index. Caps calls to keep one jot from fanning out.
+ */
+export async function candidatesViaSearch(
+  text: string,
+  search: (term: string) => Promise<string[]>,
+  stopwords: Set<string>,
+  rejected: Set<string>,
+  maxTerms = 25,
+): Promise<Candidate[]> {
+  const out: Candidate[] = [];
+  const seen = new Set<string>();
+  for (const surface of candidateTerms(text, stopwords).slice(0, maxTerms)) {
+    let notes: string[];
+    try { notes = await search(surface); } catch { continue; }
+    for (const note of notes) {
+      const key = `${surface} ${note}`;
+      if (rejected.has(key) || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ surface, note });
+    }
+  }
+  return out;
+}
+
 /**
  * Parse a literal edit instruction into an {old,new} swap, or null if freeform
  * (freeform goes to the agent). Supports `s/old/new/` and `replace X with Y`.

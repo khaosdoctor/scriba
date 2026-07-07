@@ -104,4 +104,21 @@ export class ObsidianClient {
     await this.putFile(vaultPath, bytes, contentType);
     return vaultPath;
   }
+
+  /** Note names whose *filename* matches `query` (title hits only, not body text) via
+   *  the Local REST API simple search. Fallback wikilink-candidate source when the vault
+   *  isn't mounted locally. Returns [] on any error — link suggestions are best-effort. */
+  async searchTitles(query: string): Promise<string[]> {
+    const url = `${this.cfg.url}/search/simple/?query=${encodeURIComponent(query)}&contextLength=0`;
+    const res = await fetch(url, { method: "POST", headers: this.headers(), dispatcher: this.dispatcher });
+    if (!res.ok) return [];
+    const hits = (await res.json()) as Array<{ filename: string; matches?: Array<{ match?: { source?: string } }> }>;
+    const out: string[] = [];
+    for (const h of hits) {
+      if (!h.filename?.endsWith(".md")) continue;
+      if (!h.matches?.some((m) => m.match?.source === "filename")) continue;
+      out.push(h.filename.split("/").pop()!.replace(/\.md$/, ""));
+    }
+    return out;
+  }
 }

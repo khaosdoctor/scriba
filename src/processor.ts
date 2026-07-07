@@ -4,7 +4,7 @@ import type { ObsidianClient } from "./obsidian.ts";
 import type { Transcriber } from "./transcribe.ts";
 import type { Enricher } from "./enrich.ts";
 import type { LinkIndex } from "./index-links.ts";
-import { candidates, journalLine, replaceAnchorLine, makeJotId } from "./core.ts";
+import { candidates, candidatesViaSearch, journalLine, replaceAnchorLine, makeJotId } from "./core.ts";
 
 export interface DownloadedFile { bytes: Uint8Array; ext: string; mime: string; }
 
@@ -60,7 +60,12 @@ export class JotProcessor {
       let textPart = source;
       if (source.trim()) {
         const [stopwords, rejections] = await Promise.all([this.repo.stopwords(), this.repo.rejections()]);
-        const cands = candidates(source, this.links.list(), stopwords, rejections);
+        // Prefer the local filesystem index (exact title+alias match). When it's empty —
+        // no vault mount, or the mount is unreadable — fall back to REST title search.
+        const index = this.links.list();
+        const cands = index.length
+          ? candidates(source, index, stopwords, rejections)
+          : await candidatesViaSearch(source, (t) => this.obsidian.searchTitles(t), stopwords, rejections);
         const res = await this.enricher.enrich({ text: source, candidates: cands });
         textPart = res.text;
         for (const a of res.ambiguous) {
