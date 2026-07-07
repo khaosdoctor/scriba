@@ -7,7 +7,7 @@ WORKDIR /app
 # Toolchain for better-sqlite3's node-gyp build — builder stage only.
 RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --no-audit --no-fund
 
 FROM node:24-alpine
 WORKDIR /app
