@@ -61,10 +61,12 @@ deployed on the homelab (Coolify). Single user.
 ## Local checks
 
 ```sh
-npm install       # needs a Node where better-sqlite3 builds; the DB test self-skips otherwise
-npm test          # node --import tsx --test
+npm install       # under Node 24 (pinned via mise.toml) better-sqlite3's addon builds
+npm test          # node --import tsx --test — full suite incl. the DB roundtrip
 npm run typecheck # tsc --noEmit
 ```
 
-> The maintainer's local Node (26) can't build better-sqlite3's native addon; the DB
-> roundtrip test self-skips there and runs in Docker/Node 24. Everything else runs locally.
+> `mise.toml` pins Node 24 (the deploy runtime), so the native addon builds and the whole
+> suite runs locally. If an `allow-scripts` gate blocks the addon during install, run
+> `npm rebuild better-sqlite3` once. The DB roundtrip test still self-skips on any Node
+> where the addon can't build (e.g. an un-pinned Node 26).
