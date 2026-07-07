@@ -27,10 +27,10 @@ const envSchema = z
     JOURNAL_HEADING: z.string().default("Journal"),
     ASSETS_DIR: z.string().default("internal/assets/journal"),
 
-    // Where the app READS the vault. In the container it is always /vault (compose
-    // bind-mounts SCRIBA_VAULT_HOST_PATH there read-only). Locally, point it at a real
-    // vault dir for testing. Empty ⇒ link index disabled.
-    VAULT_PATH: z.string().default("/vault"),
+    // Where the app READS the vault. Set SCRIBA_VAULT_HOST_PATH to point at a real
+    // vault dir (local run); unset ⇒ /vault, the containerized bind-mount. Empty ⇒
+    // link index disabled.
+    SCRIBA_VAULT_HOST_PATH: z.string().default("/vault"),
     DB_PATH: z.string().default("/data/scriba.db"),
     SUMMARY_TIME: z.string().default("23:30"),
 
@@ -71,7 +71,7 @@ export const config = {
     journalHeading: env.JOURNAL_HEADING,
     assetsDir: env.ASSETS_DIR,
   },
-  vaultPath: env.VAULT_PATH,
+  vaultPath: env.SCRIBA_VAULT_HOST_PATH,
   dbPath: env.DB_PATH,
   summaryTime: env.SUMMARY_TIME,
   flush: {

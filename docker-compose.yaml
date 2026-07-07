@@ -5,6 +5,8 @@ services:
     env_file: .env
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-trace}
+      # Host mount lands at /vault; the app always reads /vault inside the container.
+      SCRIBA_VAULT_HOST_PATH: /vault
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
     volumes:
