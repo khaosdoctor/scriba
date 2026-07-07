@@ -6,6 +6,10 @@
 	"type": "module",
 	"license": "Elastic-2.0",
 	"author": "Lucas Santos",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/khaosdoctor/scriba.git"
+	},
 	"engines": {
 		"node": ">=24"
 	},
