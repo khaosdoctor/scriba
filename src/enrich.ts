@@ -1,6 +1,8 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import type { Candidate } from "./core.ts";
 import { logger } from "./log.ts";
+
+export type QueryFn = typeof sdkQuery;
 
 const log = logger("enrich");
 
@@ -28,7 +30,7 @@ const fence = (s: string): string => s.replaceAll('"""', "");
 /** Enrichment via the Claude Agent SDK on subscription auth (CLAUDE_CODE_OAUTH_TOKEN
  *  in the environment) — no API key. One call per jot. */
 export class Enricher {
-  constructor(private model = process.env.AGENT_MODEL) {}
+  constructor(private model = process.env.AGENT_MODEL, private query: QueryFn = sdkQuery) {}
 
   async enrich(input: EnrichInput): Promise<EnrichResult> {
     const cands = input.candidates.length
@@ -79,7 +81,7 @@ export class Enricher {
   private async run(prompt: unknown, systemPrompt?: string): Promise<{ text: string; usage: { input: number; output: number } }> {
     let text = "";
     const usage = { input: 0, output: 0 };
-    const stream = query({
+    const stream = this.query({
       prompt: prompt as any,
       options: {
         maxTurns: 1,
