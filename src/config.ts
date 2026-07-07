@@ -42,6 +42,16 @@ const envSchema = z
 		FLUSH_IDLE_MS: z.coerce.number().default(30_000),
 		FLUSH_MAX_BATCH: z.coerce.number().default(8),
 		FLUSH_MAX_WAIT_MS: z.coerce.number().default(120_000),
+
+		// Enrichment runs on the Claude Agent SDK (subscription auth). Haiku is the default:
+		// cheap, plenty of headroom, and the task (translate + insert wikilinks) is simple.
+		// When subscription usage is exhausted, enrichment falls back to a free Groq model
+		// (reusing GROQ_API_KEY). No key ⇒ no fallback: jots post un-enriched instead.
+		// gpt-oss-120b is Groq's strongest open-weight model for structured JSON in/out.
+		// Text-only: image captioning can't fall back (Groq has no production vision model),
+		// so a captionless image posts embedded-but-uncaptioned when usage is out.
+		AGENT_MODEL: z.string().default("claude-haiku-4-5"),
+		ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
 	})
 	// Remote transcription needs a Groq key; local needs none.
 	.refine((e) => e.TRANSCRIBER !== "remote" || !!e.GROQ_API_KEY, {
@@ -77,6 +87,12 @@ export const config = {
 		journalHeading: env.JOURNAL_HEADING,
 		habitsHeading: env.HABITS_HEADING,
 		assetsDir: env.ASSETS_DIR,
+	},
+	enrich: {
+		model: env.AGENT_MODEL,
+		fallbackModel: env.ENRICH_FALLBACK_MODEL,
+		// Reuses the transcription Groq key; empty ⇒ fallback disabled.
+		groqApiKey: env.GROQ_API_KEY ?? "",
 	},
 	vaultPath: env.SCRIBA_VAULT_HOST_PATH,
 	dbPath: env.DB_PATH,

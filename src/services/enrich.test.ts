@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Enricher, type QueryFn } from "./enrich.ts";
+import { Enricher, type GroqChatFn, type QueryFn } from "./enrich.ts";
 
 type Msg =
 	| {
@@ -267,4 +267,102 @@ test("editText keeps the current text when the edit comes back empty", async () 
 		"do nothing",
 	);
 	assert.equal(out, "keep me");
+});
+
+/** A query fn that throws while streaming — simulates the subscription SDK out of usage. */
+function failQuery(message = "usage limit reached"): QueryFn {
+	return (() => {
+		async function* gen() {
+			if (message) throw new Error(message);
+			yield undefined as never;
+		}
+		return gen();
+	}) as unknown as QueryFn;
+}
+
+function fakeGroq(text: string) {
+	const calls: { apiKey: string; model: string; messages: unknown[] }[] = [];
+	const fn: GroqChatFn = async (apiKey, model, messages) => {
+		calls.push({ apiKey, model, messages });
+		return { text, usage: { input: 1, output: 2 } };
+	};
+	return { fn, calls };
+}
+
+test("enrich falls back to Groq when the subscription SDK is out of usage", async () => {
+	const groq = fakeGroq('{"text":"linked via [[Foo]]","ambiguous":[]}');
+	const enricher = new Enricher(
+		"claude-haiku-4-5",
+		failQuery(),
+		{ apiKey: "gsk_test", model: "llama-3.3-70b-versatile" },
+		groq.fn,
+	);
+	const res = await enricher.enrich({ text: "hi Foo", candidates: [] });
+	assert.equal(res.text, "linked via [[Foo]]");
+	assert.equal(res.usage.output, 2);
+	assert.equal(groq.calls.length, 1);
+	assert.equal(groq.calls[0]!.model, "llama-3.3-70b-versatile");
+	assert.equal(groq.calls[0]!.apiKey, "gsk_test");
+});
+
+test("enrich rethrows when the SDK fails and no Groq fallback is configured", async () => {
+	const enricher = new Enricher("claude-haiku-4-5", failQuery("boom"));
+	await assert.rejects(
+		() => enricher.enrich({ text: "hi", candidates: [] }),
+		/boom/,
+	);
+});
+
+test("editText falls back to Groq when the SDK is out of usage", async () => {
+	const groq = fakeGroq("edited on the free model");
+	const enricher = new Enricher(
+		"claude-haiku-4-5",
+		failQuery(),
+		{ apiKey: "gsk_test", model: "openai/gpt-oss-120b" },
+		groq.fn,
+	);
+	const out = await enricher.editText("original", "make it better");
+	assert.equal(out, "edited on the free model");
+	assert.equal(groq.calls.length, 1);
+});
+
+/** A query fn that throws its first `failFirst` calls, then streams `text`. */
+function flakyQuery(failFirst: number, text: string): QueryFn {
+	let n = 0;
+	return (() => {
+		const fail = n < failFirst;
+		n++;
+		async function* gen() {
+			if (fail) throw new Error("usage out");
+			yield {
+				type: "assistant",
+				message: { content: [{ type: "text", text }] },
+			};
+		}
+		return gen();
+	}) as unknown as QueryFn;
+}
+
+test("warns once when switching to the fallback and once when usage recovers", async () => {
+	const groq = fakeGroq('{"text":"free","ambiguous":[]}');
+	const enricher = new Enricher(
+		"claude-haiku-4-5",
+		flakyQuery(2, '{"text":"ok","ambiguous":[]}'),
+		{ apiKey: "k", model: "openai/gpt-oss-120b" },
+		groq.fn,
+	);
+	const switches: { to: string; model: string }[] = [];
+	enricher.setSwitchNotifier((to, model) => {
+		switches.push({ to, model });
+	});
+	await enricher.enrich({ text: "a", candidates: [] }); // fail → switch to fallback
+	await enricher.enrich({ text: "b", candidates: [] }); // fail → already on fallback, no switch
+	await enricher.enrich({ text: "c", candidates: [] }); // SDK ok → switch back to primary
+	assert.deepEqual(
+		switches.map((s) => s.to),
+		["fallback", "primary"],
+	);
+	assert.equal(switches[0]!.model, "openai/gpt-oss-120b");
+	assert.equal(switches[1]!.model, "claude-haiku-4-5");
+	assert.equal(groq.calls.length, 2); // fallback used for the two failing calls only
 });

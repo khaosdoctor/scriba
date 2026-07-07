@@ -66,7 +66,22 @@ async function main(): Promise<void> {
 			config.transcription.mode as TranscriberMode,
 		);
 	}
-	const enricher = new Enricher();
+	const enricher = new Enricher(
+		config.enrich.model,
+		undefined,
+		config.enrich.groqApiKey
+			? { apiKey: config.enrich.groqApiKey, model: config.enrich.fallbackModel }
+			: undefined,
+	);
+	log.info(
+		{
+			model: config.enrich.model,
+			fallback: config.enrich.groqApiKey ? config.enrich.fallbackModel : "none",
+		},
+		config.enrich.groqApiKey
+			? "enricher ready with Groq fallback"
+			: "enricher ready — no GROQ_API_KEY, jots post un-enriched when usage is exhausted",
+	);
 	const links = new LinkIndex(config.vaultPath);
 	links.start();
 
@@ -90,6 +105,15 @@ async function main(): Promise<void> {
 		bot,
 	);
 	bot.setProcessor(processor);
+	// Warn in Telegram when enrichment switches models (usage out ⇄ recovered). Fires
+	// once per transition, not per jot. Late-wired here because the bot exists now.
+	enricher.setSwitchNotifier((to, model) =>
+		bot.notify(
+			to === "fallback"
+				? `⚠️ Claude usage is exhausted — enrichment switched to the free fallback model (${model}). Quality may drop until your usage resets.`
+				: `✅ Claude usage is back — enrichment switched back to ${model}.`,
+		),
+	);
 	const queue = new FlushQueue({
 		idleMs: config.flush.idleMs,
 		maxBatch: config.flush.maxBatch,
