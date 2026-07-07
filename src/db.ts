@@ -1,4 +1,7 @@
 import knexLib, { type Knex } from "knex";
+import { logger } from "./log.ts";
+
+const log = logger("db");
 
 export type JotKind = "text" | "audio" | "image" | "video";
 export type JotStatus =
@@ -49,19 +52,22 @@ export class Repository {
         },
       },
     });
-    await k.migrate.latest();
+    const [batch, done] = await k.migrate.latest();
+    if (done.length) log.info({ batch, count: done.length }, "migrations applied");
     return new Repository(k);
   }
 
   // --- jots ---
   async insertJot(j: Jot): Promise<void> {
     await this.k("jots").insert(j);
+    log.debug({ id: j.id, kind: j.kind, note: j.note_path }, "jot inserted");
   }
   async getJot(id: string): Promise<Jot | undefined> {
     return this.k<Jot>("jots").where({ id }).first();
   }
   async updateJot(id: string, patch: Partial<Jot>): Promise<void> {
     await this.k("jots").where({ id }).update({ ...patch, updated_at: Date.now() });
+    log.debug({ id, ...patch }, "jot updated");
   }
   /**
    * Atomically claim a jot for processing. Returns true only for the caller that won
@@ -71,11 +77,13 @@ export class Repository {
   async claim(id: string): Promise<boolean> {
     const n = await this.k("jots").where({ id }).whereIn("status", ["pending", "failed"])
       .update({ status: "processing", updated_at: Date.now() });
-    return n > 0;
+    const won = n > 0;
+    log.debug({ id, won }, "claim attempt");
+    return won;
   }
   /** Crash recovery: any jot stuck in `processing` from a previous run goes back to pending. */
-  async resetProcessing(): Promise<void> {
-    await this.k("jots").where({ status: "processing" })
+  async resetProcessing(): Promise<number> {
+    return this.k("jots").where({ status: "processing" })
       .update({ status: "pending", updated_at: Date.now() });
   }
   /** Jots eligible for (re)processing: fresh, or failed but under the retry cap. */

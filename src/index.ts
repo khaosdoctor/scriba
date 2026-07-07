@@ -1,5 +1,6 @@
 import http from "node:http";
 import { config } from "./config.ts";
+import { logger } from "./log.ts";
 import { Repository } from "./db.ts";
 import { ObsidianClient } from "./obsidian.ts";
 import { createTranscriber } from "./transcribe.ts";
@@ -10,9 +11,18 @@ import { FlushQueue } from "./queue.ts";
 import { ScribaBot } from "./bot.ts";
 import { Scheduler } from "./scheduler.ts";
 
+const log = logger("main");
+
 async function main(): Promise<void> {
+  log.info({
+    dbPath: config.dbPath, transcriber: config.transcription.mode,
+    vaultIndex: config.vaultPath ?? "(none — REST fallback)", port: config.telegram.port,
+    logLevel: process.env.LOG_LEVEL ?? "debug",
+  }, "scriba starting");
   const repo = await Repository.open(config.dbPath);
-  await repo.resetProcessing(); // crash recovery: unstick jots claimed by a dead run
+  log.debug("repository open, migrations applied");
+  const unstuck = await repo.resetProcessing(); // crash recovery: unstick jots claimed by a dead run
+  log.info({ requeued: unstuck }, "crash recovery done");
 
   const obsidian = new ObsidianClient(config.obsidian);
   const transcriber = createTranscriber(config.transcription);
@@ -40,24 +50,26 @@ async function main(): Promise<void> {
     if (req.url === "/health") { res.writeHead(200).end("ok"); return; }
     res.writeHead(404).end();
   });
-  server.listen(config.telegram.port, () => console.log(`scriba health on :${config.telegram.port}`));
+  server.listen(config.telegram.port, () => log.info({ port: config.telegram.port }, "health endpoint listening"));
 
   await bot.start(); // begins long polling
-  console.log("scriba ready");
+  log.info("scriba ready");
 
-  const shutdown = async () => {
+  const shutdown = async (signal: string) => {
+    log.info({ signal }, "shutting down");
     await bot.stop();
     server.close();
     scheduler.stop();
     links.stop();
     await repo.close();
+    log.info("shutdown complete");
     process.exit(0);
   };
-  process.on("SIGTERM", shutdown);
-  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
 }
 
 main().catch((err) => {
-  console.error("fatal:", err);
+  log.error({ err }, "fatal");
   process.exit(1);
 });

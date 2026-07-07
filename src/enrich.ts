@@ -1,5 +1,8 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import type { Candidate } from "./core.ts";
+import { logger } from "./log.ts";
+
+const log = logger("enrich");
 
 export interface EnrichInput {
   text: string;
@@ -32,10 +35,12 @@ export class Enricher {
       ? input.candidates.map((c) => `- "${c.surface}" -> [[${c.note}]]`).join("\n")
       : "(none)";
     const prompt = `Candidate links:\n${cands}\n\nJournal text:\n"""${fence(input.text)}"""`;
+    log.debug({ candidates: input.candidates.length, chars: input.text.length }, "enrich: calling agent");
     const { text, usage } = await this.run(prompt, SYSTEM);
 
     const parsed = this.extractJson(text);
     if (!parsed?.text) throw new Error(`enrichment returned no usable JSON: ${text.slice(0, 200)}`);
+    log.debug({ usage, ambiguous: parsed.ambiguous?.length ?? 0 }, "enrich: agent responded");
     return { text: parsed.text, ambiguous: parsed.ambiguous ?? [], usage };
   }
 
@@ -56,13 +61,16 @@ export class Enricher {
         session_id: "",
       };
     })();
+    log.debug({ mediaType, bytes: bytes.length }, "describeImage: calling vision");
     const { text } = await this.run(prompt as any);
+    log.debug({ caption: text.trim() }, "describeImage: got caption");
     return text.trim();
   }
 
   /** Apply a freeform edit instruction to an existing journal line's text. */
   async editText(current: string, instruction: string): Promise<string> {
     const prompt = `Current journal text:\n"""${fence(current)}"""\n\nEdit instruction: ${fence(instruction)}\n\nReturn ONLY the edited text, nothing else. Preserve voice and any [[wikilinks]] unless the edit changes them.`;
+    log.debug({ instruction }, "editText: calling agent");
     const { text } = await this.run(prompt);
     return text.trim() || current;
   }

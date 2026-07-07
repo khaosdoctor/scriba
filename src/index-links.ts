@@ -2,6 +2,9 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import { watch, type FSWatcher } from "node:fs";
 import { join, basename, extname } from "node:path";
 import type { AliasEntry } from "./core.ts";
+import { logger } from "./log.ts";
+
+const log = logger("links");
 
 interface FileEntry { mtimeMs: number; aliases: AliasEntry[]; }
 
@@ -27,7 +30,8 @@ export class LinkIndex {
 
   /** Initial scan, then watch for changes with a slow periodic rebuild as backstop. */
   start(periodicMs = 30 * 60_000): void {
-    if (!this.vaultPath) return;
+    if (!this.vaultPath) return log.info("no VAULT_PATH — link index disabled, using REST fallback");
+    log.info({ vaultPath: this.vaultPath, periodicMs }, "link index starting");
     void this.rebuild();
     this.startWatch();
     this.timer = setInterval(() => void this.rebuild(), periodicMs);
@@ -60,6 +64,7 @@ export class LinkIndex {
     }
 
     this.flat = [...this.byFile.values()].flatMap((e) => e.aliases);
+    log.debug({ files: this.byFile.size, aliases: this.flat.length }, "vault index rebuilt");
     return this.byFile.size;
   }
 

@@ -5,6 +5,9 @@ import type { Transcriber } from "./transcribe.ts";
 import type { Enricher } from "./enrich.ts";
 import type { LinkIndex } from "./index-links.ts";
 import { candidates, candidatesViaSearch, journalLine, replaceAnchorLine, makeJotId } from "./core.ts";
+import { logger } from "./log.ts";
+
+const log = logger("processor");
 
 export interface DownloadedFile { bytes: Uint8Array; ext: string; mime: string; }
 
@@ -37,19 +40,26 @@ export class JotProcessor {
   async processBatch(ids: string[]): Promise<void> {
     // ponytail: one agent call per jot. Batching coalesces arrivals + retries;
     // true bulk-in-one-prompt enrichment is a future token optimisation.
+    log.info({ count: ids.length, ids }, "processing batch");
     for (const id of ids) await this.processJot(id);
+    log.info({ count: ids.length }, "batch complete");
   }
 
   /** Forever-retry for failed jots (capped) + crash recovery for pending. */
   async retrySweep(): Promise<void> {
-    for (const jot of await this.repo.pendingJots()) await this.processJot(jot.id);
+    const pending = await this.repo.pendingJots();
+    if (!pending.length) return log.debug("retry sweep: nothing pending");
+    log.info({ count: pending.length, ids: pending.map((j) => j.id) }, "retry sweep");
+    for (const jot of pending) await this.processJot(jot.id);
   }
 
   async processJot(id: string): Promise<void> {
     const loaded = await this.repo.getJot(id);
-    if (!loaded) return;
+    if (!loaded) return log.warn({ id }, "processJot: jot not found, skipping");
     // Atomic claim — only the winner proceeds, so flush + sweeps can't double-process.
-    if (!(await this.repo.claim(id))) return;
+    if (!(await this.repo.claim(id))) return log.debug({ id }, "processJot: claim lost, another worker has it");
+    const t0 = Date.now();
+    log.info({ id, kind: loaded.kind, attempts: loaded.attempts }, "processing jot");
     try {
       const jot = await this.ensureMedia(loaded);
       const source =
@@ -63,21 +73,29 @@ export class JotProcessor {
         // Prefer the local filesystem index (exact title+alias match). When it's empty —
         // no vault mount, or the mount is unreadable — fall back to REST title search.
         const index = this.links.list();
+        const via = index.length ? "local-index" : "rest-search";
         const cands = index.length
           ? candidates(source, index, stopwords, rejections)
           : await candidatesViaSearch(source, (t) => this.obsidian.searchTitles(t), stopwords, rejections);
+        log.debug({ id, via, indexSize: index.length, candidates: cands.length }, "link candidates gathered");
+        log.debug({ id, chars: source.length }, "calling enricher");
         const res = await this.enricher.enrich({ text: source, candidates: cands });
         textPart = res.text;
+        log.info({ id, ambiguous: res.ambiguous.length, usage: res.usage }, "enrichment done");
         for (const a of res.ambiguous) {
           const pid = makeJotId();
           await this.repo.addPendingLink(pid, jot.id, a.surface, a.note);
           await this.bot.askLink(pid, a.surface, a.note);
+          log.debug({ id, pid, surface: a.surface, note: a.note }, "asked to confirm link");
         }
+      } else {
+        log.debug({ id, kind: jot.kind }, "no enrichable text (attach-only or empty)");
       }
 
       await this.writeLine(jot, this.composeLine(jot, textPart));
       await this.repo.updateJot(jot.id, { status: "done", error: null });
       await this.bot.onJotDone(jot.id); // apply anything queued while we were working
+      log.info({ id, ms: Date.now() - t0 }, "jot done");
     } catch (err) {
       await this.fail(loaded, err);
     }
@@ -87,12 +105,15 @@ export class JotProcessor {
   private async fail(jot: Jot, err: unknown): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     const attempts = (jot.attempts ?? 0) + 1;
-    if (isRecoverable(err) && attempts < MAX_ATTEMPTS) {
+    const recoverable = isRecoverable(err);
+    if (recoverable && attempts < MAX_ATTEMPTS) {
+      log.warn({ id: jot.id, attempts, max: MAX_ATTEMPTS, err }, "jot failed (transient) — will retry");
       await this.repo.updateJot(jot.id, { status: "failed", attempts, error: msg });
       return;
     }
     // Unrecoverable, or out of tries: post whatever we have un-enriched, then stop.
-    const reason = isRecoverable(err) ? `no luck after ${attempts} tries` : "unrecoverable error";
+    const reason = recoverable ? `no luck after ${attempts} tries` : "unrecoverable error";
+    log.error({ id: jot.id, attempts, recoverable, err }, "jot abandoned — posting un-enriched");
     const source =
       jot.kind === "audio" ? (jot.transcript ?? "🎤 (voice note — transcription failed)") :
       jot.kind === "text" ? (jot.raw_text ?? "") :
@@ -109,19 +130,26 @@ export class JotProcessor {
     if (jot.kind === "text" || !jot.file_id) return jot;
     if (jot.asset_path && (jot.kind !== "audio" || jot.transcript)) return jot;
 
+    log.debug({ id: jot.id, fileId: jot.file_id }, "downloading media from telegram");
     const file = await this.bot.downloadFile(jot.file_id);
+    log.debug({ id: jot.id, ext: file.ext, mime: file.mime, bytes: file.bytes.length }, "media downloaded");
     const patch: Partial<Jot> = {};
     if (!jot.asset_path) {
       const date = basename(jot.note_path, ".md");
       const name = `${date}_${jot.time.replaceAll(":", "")}_${jot.id}.${file.ext}`;
       patch.asset_path = await this.obsidian.saveAsset(name, file.bytes, file.mime);
+      log.info({ id: jot.id, asset: patch.asset_path }, "asset saved to vault");
     }
     if (jot.kind === "audio" && !jot.transcript) {
+      log.debug({ id: jot.id }, "transcribing audio");
       patch.transcript = await this.transcriber.transcribe(file.bytes, file.ext);
+      log.info({ id: jot.id, chars: patch.transcript.length }, "audio transcribed");
     }
     // Captionless image → generate one with vision (used as the embed display).
     if (jot.kind === "image" && !jot.raw_text) {
+      log.debug({ id: jot.id }, "captioning image with vision");
       patch.raw_text = await this.enricher.describeImage(file.bytes, file.mime);
+      log.info({ id: jot.id, caption: patch.raw_text }, "image captioned");
     }
     await this.repo.updateJot(jot.id, patch);
     return { ...jot, ...patch };
@@ -140,7 +168,12 @@ export class JotProcessor {
   private async writeLine(jot: Jot, line: string): Promise<void> {
     const note = await this.obsidian.readNote(jot.note_path); // live — user may have edited
     const replaced = replaceAnchorLine(note, jot.anchor, line);
-    if (replaced) await this.obsidian.writeNote(jot.note_path, replaced);
-    else await this.obsidian.appendJournalLine(basename(jot.note_path, ".md"), line);
+    if (replaced) {
+      await this.obsidian.writeNote(jot.note_path, replaced);
+      log.debug({ id: jot.id, anchor: jot.anchor }, "line replaced in place");
+      return;
+    }
+    log.warn({ id: jot.id, anchor: jot.anchor }, "anchor missing — appending line instead");
+    await this.obsidian.appendJournalLine(basename(jot.note_path, ".md"), line);
   }
 }

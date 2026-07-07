@@ -3,6 +3,10 @@
  * Flushes when ANY fires: idle gap since the last message, batch size cap, or a hard
  * max-wait since the oldest queued item (so a slow trickle still lands).
  */
+import { logger } from "./log.ts";
+
+const log = logger("queue");
+
 export interface FlushOpts {
   idleMs: number;
   maxBatch: number;
@@ -26,7 +30,10 @@ export class FlushQueue {
 
   private arm(): void {
     if (this.ids.length === 0) return;
-    if (this.ids.length >= this.opts.maxBatch) { void this.flush(); return; }
+    if (this.ids.length >= this.opts.maxBatch) {
+      log.debug({ size: this.ids.length }, "flush: batch cap hit");
+      void this.flush(); return;
+    }
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(() => void this.flush(), this.opts.idleMs);
     if (!this.maxTimer) this.maxTimer = setTimeout(() => void this.flush(), this.opts.maxWaitMs);
@@ -44,6 +51,7 @@ export class FlushQueue {
     this.ids = [];
     this.clearTimers();
     this.draining = true;
+    log.debug({ size: batch.length }, "flushing batch");
     try {
       await this.opts.onFlush(batch);
     } finally {

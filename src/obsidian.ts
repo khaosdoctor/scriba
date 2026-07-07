@@ -1,4 +1,7 @@
 import { fetch, Agent } from "undici";
+import { logger } from "./log.ts";
+
+const log = logger("obsidian");
 
 /** Local REST API v3 heading path: each ancestor segment URL-encoded, joined by `::`. */
 export function headingTarget(...segments: string[]): string {
@@ -35,6 +38,7 @@ export class ObsidianClient {
     const res = await fetch(`${this.cfg.url}/vault/${this.encode(vaultPath)}`, {
       headers: this.headers(), dispatcher: this.dispatcher,
     });
+    log.debug({ method: "GET", path: vaultPath, status: res.status }, "obsidian request");
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`obsidian GET ${vaultPath}: ${res.status}`);
     return res.text();
@@ -44,6 +48,7 @@ export class ObsidianClient {
       method: "PUT", headers: this.headers({ "Content-Type": contentType }),
       body: body as any, dispatcher: this.dispatcher,
     });
+    log.debug({ method: "PUT", path: vaultPath, status: res.status }, "obsidian request");
     if (!res.ok) throw new Error(`obsidian PUT ${vaultPath}: ${res.status} ${await res.text()}`);
   }
 
@@ -63,6 +68,7 @@ export class ObsidianClient {
   private async doEnsureDailyNote(date: string): Promise<string> {
     const path = this.dailyPath(date);
     if (await this.getFile(path) !== null) return path;
+    log.info({ date, path }, "creating daily note from template");
     // ponytail: fill {{date}} only; richer template automations are out of scope.
     const tpl = (await this.getFile(`${this.cfg.dailyTemplate}.md`)) ?? "## Journal\n";
     await this.putFile(path, tpl.replaceAll("{{date}}", date), "text/markdown");
@@ -85,8 +91,9 @@ export class ObsidianClient {
         "Target": target,
         "Target-Delimiter": "::",
       }),
-      body: `\n${line}`, dispatcher: this.dispatcher,
+      body: `\n${line}\n`, dispatcher: this.dispatcher,
     });
+    log.debug({ method: "PATCH", path, target, status: res.status }, "append journal line");
     if (!res.ok) throw new Error(`obsidian PATCH ${path}: ${res.status} ${await res.text()}`);
   }
 
@@ -111,7 +118,7 @@ export class ObsidianClient {
   async searchTitles(query: string): Promise<string[]> {
     const url = `${this.cfg.url}/search/simple/?query=${encodeURIComponent(query)}&contextLength=0`;
     const res = await fetch(url, { method: "POST", headers: this.headers(), dispatcher: this.dispatcher });
-    if (!res.ok) return [];
+    if (!res.ok) { log.debug({ query, status: res.status }, "title search failed (best-effort)"); return []; }
     const hits = (await res.json()) as Array<{ filename: string; matches?: Array<{ match?: { source?: string } }> }>;
     const out: string[] = [];
     for (const h of hits) {

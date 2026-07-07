@@ -4,6 +4,9 @@ import { createReadStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
+import { logger } from "./log.ts";
+
+const log = logger("transcribe");
 
 /** Voice note bytes → English text. Two implementations, chosen by config. */
 export interface Transcriber {
@@ -20,13 +23,16 @@ export class GroqTranscriber implements Transcriber {
   async transcribe(bytes: Uint8Array, ext: string): Promise<string> {
     const path = join(tmpdir(), `scriba-${randomBytes(6).toString("hex")}.${ext}`);
     await writeFile(path, bytes);
+    log.debug({ backend: "groq", ext, bytes: bytes.length }, "transcribing (translations)");
     try {
       const res = await this.groq.audio.translations.create({
         file: createReadStream(path),
         model: "whisper-large-v3",
         response_format: "text",
       });
-      return (typeof res === "string" ? res : (res as { text: string }).text).trim();
+      const out = (typeof res === "string" ? res : (res as { text: string }).text).trim();
+      log.debug({ backend: "groq", chars: out.length }, "transcription complete");
+      return out;
     } finally {
       await rm(path, { force: true });
     }
@@ -44,12 +50,15 @@ export class ParakeetTranscriber implements Transcriber {
     const form = new FormData();
     form.append("file", new Blob([bytes]), `audio.${ext}`);
     form.append("response_format", "text");
+    log.debug({ backend: "parakeet", url: this.url, ext, bytes: bytes.length }, "transcribing");
     const res = await fetch(this.url, { method: "POST", body: form });
     if (!res.ok) throw new Error(`parakeet ${res.status}: ${await res.text()}`);
     const text = res.headers.get("content-type")?.includes("json")
       ? (await res.json() as { text?: string }).text
       : await res.text();
-    return String(text ?? "").trim();
+    const out = String(text ?? "").trim();
+    log.debug({ backend: "parakeet", chars: out.length }, "transcription complete");
+    return out;
   }
 }
 
@@ -60,6 +69,7 @@ export interface TranscriberConfig {
 }
 
 export function createTranscriber(cfg: TranscriberConfig): Transcriber {
+  log.info({ mode: cfg.mode }, "transcriber selected");
   return cfg.mode === "local"
     ? new ParakeetTranscriber(cfg.parakeetUrl)
     : new GroqTranscriber(cfg.groqApiKey);

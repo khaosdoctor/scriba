@@ -9,6 +9,9 @@ import type { FlushQueue } from "./queue.ts";
 import type { BotServices, DownloadedFile } from "./processor.ts";
 import { makeJotId, placeholderLine, journalLine, anchorLine, replaceAnchorLine, deleteAnchorLine, parseLiteralEdit } from "./core.ts";
 import { plainDate, plainTime } from "./time.ts";
+import { logger } from "./log.ts";
+
+const log = logger("bot");
 
 const MIME: Record<string, string> = {
   oga: "audio/ogg", ogg: "audio/ogg", opus: "audio/ogg",
@@ -42,7 +45,7 @@ export class ScribaBot implements BotServices {
   async start(): Promise<void> {
     void this.bot.start({
       allowed_updates: ["message", "callback_query"],
-      onStart: (me) => console.log(`scriba polling as @${me.username}`),
+      onStart: (me) => log.info({ username: me.username }, "telegram long polling started"),
     });
   }
   async stop(): Promise<void> {
@@ -51,15 +54,18 @@ export class ScribaBot implements BotServices {
 
   // --- BotServices ---
   async notify(text: string): Promise<void> {
+    log.debug({ text }, "notify user");
     await this.bot.api.sendMessage(config.telegram.allowedUserId, text);
   }
 
   async askLink(pendingId: string, surface: string, note: string): Promise<void> {
+    log.debug({ pendingId, surface, note }, "asking user to confirm link");
     const kb = new InlineKeyboard().text("Yes", `lk:y:${pendingId}`).text("No", `lk:n:${pendingId}`);
     await this.bot.api.sendMessage(config.telegram.allowedUserId, `Link "${surface}" → [[${note}]]?`, { reply_markup: kb });
   }
 
   async askRetry(jotId: string, text: string): Promise<void> {
+    log.debug({ jotId }, "offering retry button");
     const kb = new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`);
     await this.bot.api.sendMessage(config.telegram.allowedUserId, text, { reply_markup: kb });
   }
@@ -71,6 +77,7 @@ export class ScribaBot implements BotServices {
     if (!res.ok) throw new Error(`telegram file download: ${res.status}`);
     const bytes = new Uint8Array(await res.arrayBuffer());
     const ext = (extname(file.file_path).slice(1) || "bin").toLowerCase();
+    log.debug({ fileId, ext, bytes: bytes.length }, "downloaded telegram file");
     return { bytes, ext, mime: MIME[ext] ?? "application/octet-stream" };
   }
 
@@ -80,6 +87,7 @@ export class ScribaBot implements BotServices {
     if (!edits.length) return;
     const jot = await this.repo.getJot(jotId);
     if (!jot) return;
+    log.info({ jotId, count: edits.length }, "applying edits queued during processing");
     await this.applyEdits(jot, edits);
     await this.notify(`✏️ Applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""}.`);
   }
@@ -89,7 +97,7 @@ export class ScribaBot implements BotServices {
     // Surface handler errors back to the user instead of dying silently.
     this.bot.catch(async (err) => {
       const msg = err.error instanceof Error ? err.error.message : String(err.error);
-      console.error("bot handler error:", err.error);
+      log.error({ err: err.error }, "bot handler error");
       await err.ctx.reply(`⚠️ Couldn't save that: ${msg}`).catch(() => {});
     });
 
@@ -127,8 +135,10 @@ export class ScribaBot implements BotServices {
     const id = makeJotId();
     const date = plainDate(epochMs);
     const time = plainTime(epochMs);
+    log.info({ id, kind, date, time, hasFile: !!src.fileId, hasText: !!src.rawText }, "jot received");
     const notePath = await this.obsidian.ensureDailyNote(date);
     await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
+    log.debug({ id, notePath }, "placeholder line written");
 
     const now = Date.now();
     const jot: Jot = {
@@ -140,6 +150,7 @@ export class ScribaBot implements BotServices {
     await this.repo.insertJot(jot);
     await this.repo.mapMessage(ctx.message.message_id, id);
     this.queue.add(id);
+    log.debug({ id }, "jot queued for flush");
   }
 
   private async handleEdit(ctx: any): Promise<void> {
@@ -153,9 +164,11 @@ export class ScribaBot implements BotServices {
     // processing, so queue the edit and let onJotDone apply it after.
     const editable = jot.status === "done" || jot.status === "abandoned";
     if (!editable) {
+      log.info({ jotId, status: jot.status }, "edit queued (jot still processing)");
       await this.repo.queueEdit(jotId, instruction);
       return void ctx.reply("⏳ still processing — I'll apply that edit once it's done.");
     }
+    log.info({ jotId, instruction }, "applying edit");
     await ctx.reply(await this.applyEdits(jot, [instruction]));
   }
 
@@ -196,6 +209,7 @@ export class ScribaBot implements BotServices {
 
   private async handleButton(ctx: any): Promise<void> {
     const [ns, ...rest] = String(ctx.callbackQuery.data).split(":");
+    log.debug({ data: ctx.callbackQuery.data }, "button pressed");
     if (ns === "rt") return this.handleRetry(ctx, rest[0]);
     if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
     await ctx.answerCallbackQuery();
@@ -203,6 +217,7 @@ export class ScribaBot implements BotServices {
 
   private async handleRetry(ctx: any, jotId?: string): Promise<void> {
     if (!jotId || !(await this.repo.getJot(jotId))) return void ctx.answerCallbackQuery({ text: "gone" });
+    log.info({ jotId }, "manual retry requested");
     await this.repo.updateJot(jotId, { status: "pending", attempts: 0, error: null });
     this.queue.add(jotId);
     await ctx.answerCallbackQuery({ text: "retrying" });
@@ -215,6 +230,7 @@ export class ScribaBot implements BotServices {
     if (!rec) return void ctx.answerCallbackQuery({ text: "expired" });
 
     if (verd === "n") {
+      log.info({ surface: rec.surface, note: rec.note }, "link rejected — learning it");
       await this.repo.reject(rec.surface, rec.note);
       await ctx.answerCallbackQuery({ text: "won't link again" });
       return void ctx.editMessageText(`✋ "${rec.surface}" ✗ [[${rec.note}]] (won't ask again)`);
@@ -231,6 +247,7 @@ export class ScribaBot implements BotServices {
         if (out) { await this.obsidian.writeNote(jot.note_path, out); applied = true; }
       }
     }
+    log.info({ surface: rec.surface, note: rec.note, applied }, "link confirmation handled");
     await ctx.answerCallbackQuery({ text: applied ? "linked" : "no change" });
     await ctx.editMessageText(applied ? `🔗 "${rec.surface}" → [[${rec.note}]]` : `"${rec.surface}": nothing to link`);
   }
