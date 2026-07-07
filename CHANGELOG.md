@@ -1,3 +1,10 @@
+## [1.4.4](https://github.com/khaosdoctor/scriba/compare/v1.4.3...v1.4.4) (2026-07-07)
+
+
+### Performance Improvements
+
+* **ci:** speed up image build and publish ([ad065e2](https://github.com/khaosdoctor/scriba/commit/ad065e2abc676f565fbefba548bc2b09ffaadfa3))
+
 ## [1.4.3](https://github.com/khaosdoctor/scriba/compare/v1.4.2...v1.4.3) (2026-07-07)
 
 
@@ -28,11 +35,4 @@
 * add Telegram admin commands and runtime transcriber switch ([6082dcc](https://github.com/khaosdoctor/scriba/commit/6082dcc065b8eb2ae51e7d271c922cc028231b9b))
 * register the / command menu (start, rate) ([0d017cf](https://github.com/khaosdoctor/scriba/commit/0d017cf622387290cf564197b0e5180b2422b494))
 * thorough rating-command logging; document logging + command-menu conventions ([9561ed8](https://github.com/khaosdoctor/scriba/commit/9561ed865817eea6bee30c1ab70eebd19be190c6))
-
-## [1.2.0](https://github.com/khaosdoctor/scriba/compare/v1.1.0...v1.2.0) (2026-07-07)
-
-
-### Features
-
-* nightly day-rating prompt with write-once gate ([21ab165](https://github.com/khaosdoctor/scriba/commit/21ab1653872fcea7b8302f3305fc86fc8aaf7b2b))
 
