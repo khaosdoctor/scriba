@@ -21,17 +21,27 @@ Remaining before scriba runs in production:
 3. Live-verify (see below), then LAST: merge homelab PR #1 — that triggers the deploy.
 
    Note: package likely `private` by default. Coolify pull on multivac needs a ghcr
-   pull token/secret, OR toggle package visibility to public. Confirm before deploy.
+   ghcr package is private, but the Coolify GitHub app handles the pull — no
+   visibility toggle or pull secret needed. (Confirmed with Lucas.)
+
+## Compose fix (2026-07-07) — homelab PR #1
+- [x] Coolify ignores compose `profiles` (coollabsio/coolify#6395), so the parakeet
+      sidecar behind `profiles: [local]` would never start. Removed the profile gate;
+      parakeet now self-idles via its entrypoint when `TRANSCRIBER=remote` (skips
+      `/app/parakeet`, model never loads, `exec sleep infinity`). Default flipped to
+      `local` to match scriba's code default + `.env.example`. Compose validates,
+      both branches tested against the real image. Pushed to `feat/add-scriba-service`
+      (commit 5ef0051), NOT merged (merge is the deploy trigger — do last).
 
 ## Deploy blockers
-- [ ] Set env: `TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `OBSIDIAN_API_KEY`,
-      `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`), and `GROQ_API_KEY` (remote mode only).
-      Lucas creates the bot(s); `.env.example` already holds the placeholder set.
+- [ ] Set env: `SCRIBA_TELEGRAM_BOT_TOKEN`, `SCRIBA_ALLOWED_TELEGRAM_USER_ID`,
+      `SCRIBA_OBSIDIAN_API_KEY`, `SCRIBA_CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`),
+      `SCRIBA_VAULT_HOST_PATH`. Local transcription is now the default — `SCRIBA_GROQ_API_KEY`
+      needed ONLY if you set `SCRIBA_TRANSCRIBER=remote`. Lucas creates the bot(s);
+      `.env.example` holds the placeholder set.
 - [ ] Merge the homelab compose PR — khaosdoctor/homelab#1 (`feat/add-scriba-service`).
       DO LAST — merging triggers the Coolify deploy.
-- [ ] Publish `ghcr.io/khaosdoctor/scriba:latest` via CI — the homelab compose
-      (`homelab/services/scriba/docker-compose.yaml`) references it by image tag.
-      CI is written; needs the branch pushed/merged + package-visibility check.
+- [x] Publish `ghcr.io/khaosdoctor/scriba:latest` via CI — DONE (run 28866980458, no 403).
 - [ ] Confirm the container reaches the VFB Obsidian REST API on the host
       (`host.docker.internal:27124`, `extra_hosts: host-gateway`) and set `SCRIBA_VAULT_HOST_PATH`
       to the Default vault's path on multivac for the read-only link-index mount.
