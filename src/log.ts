@@ -11,10 +11,12 @@ import pretty from "pino-pretty";
 
 // Pretty via the synchronous stream API, NOT the `transport` worker-thread option:
 // the worker doesn't inherit the tsx loader and dies silently, so no logs appear.
+// `sync: true` writes straight to fd 1 like console.log — async SonicBoom buffering
+// gets swallowed in containers (Coolify/docker) and the logs never surface.
 const level = process.env.LOG_LEVEL ?? "debug";
 const root = process.env.LOG_JSON === "1"
-  ? pino({ level })
-  : pino({ level }, pretty({ translateTime: "SYS:HH:MM:ss.l", ignore: "pid,hostname,ns", messageFormat: "[{ns}] {msg}" }));
+  ? pino({ level }, pino.destination({ dest: 1, sync: true }))
+  : pino({ level }, pretty({ sync: true, translateTime: "SYS:HH:MM:ss.l", ignore: "pid,hostname,ns", messageFormat: "[{ns}] {msg}" }));
 
 export type Logger = pino.Logger;
 

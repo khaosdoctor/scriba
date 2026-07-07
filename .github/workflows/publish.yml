@@ -52,8 +52,11 @@ jobs:
       # Coolify sits behind Cloudflare Access, so send a CF Access service token too.
       - name: trigger coolify redeploy
         run: |
-          curl --fail --silent --show-error \
+          code=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" \
             "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=true" \
             --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
             --header "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
-            --header "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}"
+            --header "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}")
+          echo "coolify deploy responded HTTP $code"
+          # A CF Access bounce (302 to login) or any non-2xx means the deploy never reached Coolify.
+          [ "$code" = "200" ] || { echo "redeploy did not reach Coolify (check CF Access service token / secrets)"; exit 1; }
