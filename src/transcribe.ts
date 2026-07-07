@@ -1,9 +1,4 @@
-import Groq from "groq-sdk";
-import { writeFile, rm } from "node:fs/promises";
-import { createReadStream } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import Groq, { toFile } from "groq-sdk";
 import { logger } from "./log.ts";
 
 const log = logger("transcribe");
@@ -21,21 +16,17 @@ export class GroqTranscriber implements Transcriber {
   }
 
   async transcribe(bytes: Uint8Array, ext: string): Promise<string> {
-    const path = join(tmpdir(), `scriba-${randomBytes(6).toString("hex")}.${ext}`);
-    await writeFile(path, bytes);
+    // Groq validates by extension; Telegram voice is .oga, which isn't in its list.
+    const groqExt = ext === "oga" ? "ogg" : ext;
     log.debug({ backend: "groq", ext, bytes: bytes.length }, "transcribing (translations)");
-    try {
-      const res = await this.groq.audio.translations.create({
-        file: createReadStream(path),
-        model: "whisper-large-v3",
-        response_format: "text",
-      });
-      const out = (typeof res === "string" ? res : (res as { text: string }).text).trim();
-      log.debug({ backend: "groq", chars: out.length }, "transcription complete");
-      return out;
-    } finally {
-      await rm(path, { force: true });
-    }
+    const res = await this.groq.audio.translations.create({
+      file: await toFile(bytes, `audio.${groqExt}`),
+      model: "whisper-large-v3",
+      response_format: "text",
+    });
+    const out = (typeof res === "string" ? res : (res as { text: string }).text).trim();
+    log.debug({ backend: "groq", chars: out.length }, "transcription complete");
+    return out;
   }
 }
 
