@@ -1,3 +1,10 @@
+## [1.6.0](https://github.com/khaosdoctor/scriba/compare/v1.5.0...v1.6.0) (2026-07-07)
+
+
+### Features
+
+* **enrich:** fall back to a free Groq model when subscription usage runs out ([ad570d2](https://github.com/khaosdoctor/scriba/commit/ad570d223e1222d0c4307bd1c1ca4f26d536a0b8))
+
 ## [1.5.0](https://github.com/khaosdoctor/scriba/compare/v1.4.5...v1.5.0) (2026-07-07)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * **ci:** quote release workflow if-expression to fix YAML parse ([92f93c9](https://github.com/khaosdoctor/scriba/commit/92f93c9565fa63cde069d605e507faabf892bad0))
-
-## [1.4.2](https://github.com/khaosdoctor/scriba/compare/v1.4.0...v1.4.2) (2026-07-07)
-
-
-### Features
-
-* live per-jot status message edited in place through processing ([cf3db48](https://github.com/khaosdoctor/scriba/commit/cf3db4846caa6c2bb9aa3acfe27608c6a63cccc5))
 
