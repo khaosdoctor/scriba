@@ -5,8 +5,8 @@ name: publish image
 on:
   workflow_call:
     inputs:
-      tag:
-        description: "The release tag (e.g. v1.2.3) to fetch before deploying"
+      version:
+        description: "The release version (e.g. 1.2.3) for docker tagging"
         required: false
         type: string
   workflow_dispatch:
@@ -39,7 +39,12 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - id: version
-        run: echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
 
       - id: meta
         uses: docker/metadata-action@v5
@@ -64,13 +69,6 @@ jobs:
           # and add a metadata pass + extra manifest per build. Skip both.
           provenance: false
           sbom: false
-
-      # Ensure the new tag is fetched locally before triggering Coolify.
-      # release.yml passes the tag (e.g. v1.2.3) via inputs.tag
-      - name: fetch release tag
-        if: ${{ inputs.tag != '' }}
-        run: |
-          git fetch --depth=1 origin "refs/tags/${{ inputs.tag }}:refs/tags/${{ inputs.tag }}"
 
       # Trigger Coolify only after the image is published. force=true makes Coolify
       # pull the freshly-pushed :latest instead of reusing its locally-cached image.
