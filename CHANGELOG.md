@@ -1,3 +1,10 @@
+## [1.4.5](https://github.com/khaosdoctor/scriba/compare/v1.4.4...v1.4.5) (2026-07-07)
+
+
+### Bug Fixes
+
+* **ci:** unblock image build and drop doubled v in release message ([6a802f1](https://github.com/khaosdoctor/scriba/commit/6a802f1d8e3611c774e875aa84d3ddf0fd77688b))
+
 ## [1.4.4](https://github.com/khaosdoctor/scriba/compare/v1.4.3...v1.4.4) (2026-07-07)
 
 
@@ -26,13 +33,4 @@
 
 * nightly habit review prompt with per-habit flow ([e1b59ce](https://github.com/khaosdoctor/scriba/commit/e1b59ce25cd434f2fc83811b39fbc698e4d7f512))
 * strip secrets in pino core via redact ([827017c](https://github.com/khaosdoctor/scriba/commit/827017c029ba0fa6f9036bbf3d5b231871333a3b))
-
-## [1.3.0](https://github.com/khaosdoctor/scriba/compare/v1.2.0...v1.3.0) (2026-07-07)
-
-
-### Features
-
-* add Telegram admin commands and runtime transcriber switch ([6082dcc](https://github.com/khaosdoctor/scriba/commit/6082dcc065b8eb2ae51e7d271c922cc028231b9b))
-* register the / command menu (start, rate) ([0d017cf](https://github.com/khaosdoctor/scriba/commit/0d017cf622387290cf564197b0e5180b2422b494))
-* thorough rating-command logging; document logging + command-menu conventions ([9561ed8](https://github.com/khaosdoctor/scriba/commit/9561ed865817eea6bee30c1ab70eebd19be190c6))
 
