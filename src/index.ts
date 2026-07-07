@@ -1,4 +1,5 @@
 import http from "node:http";
+import { readFileSync } from "node:fs";
 import { config } from "./config.ts";
 import { logger } from "./log.ts";
 import { Repository } from "./db.ts";
@@ -13,7 +14,11 @@ import { Scheduler } from "./scheduler.ts";
 
 const log = logger("main");
 
+const { version } = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+const sha = process.env.GIT_SHA ?? "unknown";
+
 async function main(): Promise<void> {
+  log.info({ version, sha }, "scriba boot");
   log.info({
     dbPath: config.dbPath, transcriber: config.transcription.mode,
     vaultIndex: config.vaultPath ?? "(none — REST fallback)", port: config.telegram.port,

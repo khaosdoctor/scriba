@@ -17,6 +17,9 @@ COPY migrations ./migrations
 COPY src ./src
 
 ENV NODE_ENV=production
+# Build-time commit sha, logged at boot. Placed late so it never busts the npm-install layer.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
