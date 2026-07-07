@@ -7,13 +7,14 @@
  * merge object as `err` — pino's std serializer expands them: `log.error({ err }, "…")`.
  */
 import pino from "pino";
+import pretty from "pino-pretty";
 
-const root = pino({
-  level: process.env.LOG_LEVEL ?? "debug",
-  ...(process.env.LOG_JSON === "1"
-    ? {}
-    : { transport: { target: "pino-pretty", options: { translateTime: "SYS:HH:MM:ss.l", ignore: "pid,hostname,ns", messageFormat: "[{ns}] {msg}" } } }),
-});
+// Pretty via the synchronous stream API, NOT the `transport` worker-thread option:
+// the worker doesn't inherit the tsx loader and dies silently, so no logs appear.
+const level = process.env.LOG_LEVEL ?? "debug";
+const root = process.env.LOG_JSON === "1"
+  ? pino({ level })
+  : pino({ level }, pretty({ translateTime: "SYS:HH:MM:ss.l", ignore: "pid,hostname,ns", messageFormat: "[{ns}] {msg}" }));
 
 export type Logger = pino.Logger;
 

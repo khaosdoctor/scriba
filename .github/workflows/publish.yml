@@ -46,3 +46,14 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Trigger Coolify only after the image is published. force=true makes Coolify
+      # pull the freshly-pushed :latest instead of reusing its locally-cached image.
+      # Coolify sits behind Cloudflare Access, so send a CF Access service token too.
+      - name: trigger coolify redeploy
+        run: |
+          curl --fail --silent --show-error \
+            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=true" \
+            --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+            --header "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
+            --header "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}"
