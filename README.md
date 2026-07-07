@@ -68,7 +68,8 @@ flowchart LR
 ## Stack
 
 Node 24, TypeScript run via **tsx** (`node --import tsx`, no build step). grammy ·
-better-sqlite3 + knex · groq-sdk · `@anthropic-ai/claude-agent-sdk`. One class per block,
+better-sqlite3 + knex · groq-sdk · `@anthropic-ai/claude-agent-sdk` · zod (boot-time env
+validation). One class per block,
 wired in `src/index.ts`; all SQL lives in `Repository` (`db.ts`); pure logic in `core.ts`
 (tested in `core.test.ts`).
 

@@ -20,9 +20,8 @@ const MIME: Record<string, string> = {
   mp4: "video/mp4", mov: "video/quicktime", webm: "video/webm",
 };
 
-/** All Telegram wiring lives here. Long polling — no inbound webhook. Implements
- *  BotServices so the processor can notify, ask link questions, download files,
- *  and trigger queued edits once a jot finishes. */
+/** All Telegram wiring. Long polling, no webhook. Implements BotServices so the
+ *  processor can notify, ask link questions, download files, and apply queued edits. */
 export class ScribaBot implements BotServices {
   private bot: Bot;
   private queue!: FlushQueue;
@@ -128,8 +127,7 @@ export class ScribaBot implements BotServices {
   }
 
   private async intake(ctx: any, kind: JotKind, src: { rawText?: string; fileId?: string }): Promise<void> {
-    // Acknowledge receipt immediately (reactions don't clutter the chat). If this fails
-    // the intake still proceeds — it's only feedback.
+    // Ack receipt with a reaction — best-effort feedback, intake proceeds if it fails.
     await ctx.react("👀").catch(() => {});
     const epochMs = ctx.message.date * 1000;
     const id = makeJotId();

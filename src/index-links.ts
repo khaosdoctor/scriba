@@ -9,11 +9,9 @@ const log = logger("links");
 interface FileEntry { mtimeMs: number; aliases: AliasEntry[]; }
 
 /**
- * Title+alias index for wikilink candidates. Reads the vault from a read-only
- * filesystem mount. Like Obsidian's metadata cache it re-reads only files whose mtime
- * changed (enumeration cheap, parsing incremental), and it watches the vault via the
- * native recursive fs.watch (inotify on Linux) to refresh on change. A slow periodic
- * rebuild is kept as a safety net for events the watcher may drop.
+ * Title+alias index for wikilink candidates, read from a read-only vault mount.
+ * Re-reads only files whose mtime changed and watches the vault (recursive fs.watch)
+ * to refresh on change. A slow periodic rebuild backstops dropped watch events.
  */
 export class LinkIndex {
   private byFile = new Map<string, FileEntry>();

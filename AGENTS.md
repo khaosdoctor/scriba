@@ -1,7 +1,6 @@
 # AGENTS.md
 
 Operating manual for AI agents working on scriba. `CLAUDE.md` symlinks to this file.
-For the full state-of-the-world writeup, read [HANDOFF.md](./HANDOFF.md).
 
 ## What this is
 
@@ -13,7 +12,7 @@ deployed on the homelab (Coolify). Single user.
 
 - **Persistence is boundaried.** ALL SQL/knex lives in `Repository` (`src/db.ts`). Do not
   write queries anywhere else — add a `Repository` method instead.
-- **OOP.** Each system block is a class (see the table in HANDOFF.md). Collaborators are
+- **OOP.** Each system block is a class. Collaborators are
   injected via constructors; wiring happens only in `src/index.ts`.
 - **Pure logic in `core.ts`.** Deterministic, token-free helpers (formatting, anchor
   replacement, candidate filtering, edit parsing) live there with tests in `core.test.ts`.
@@ -28,7 +27,7 @@ deployed on the homelab (Coolify). Single user.
   `image`/`video` are attach-only (saved + embedded, caption as display); a captionless
   image gets a vision caption. Video is never transcribed.
 
-## Data / flow (essentials — full detail in HANDOFF.md)
+## Data / flow
 
 - 8-char hex jot `id`, also the Obsidian block anchor `^<id>`.
 - A placeholder line is written the instant a jot arrives; ordering is fixed at arrival and
