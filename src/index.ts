@@ -52,7 +52,7 @@ async function main(): Promise<void> {
   });
   server.listen(config.telegram.port, () => log.info({ port: config.telegram.port }, "health endpoint listening"));
 
-  await bot.start(); // begins long polling
+  await bot.start();
   log.info("scriba ready");
 
   const shutdown = async (signal: string) => {

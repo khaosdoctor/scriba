@@ -1,5 +1,3 @@
-/** Initial schema for scriba. */
-
 // Common words whose note-aliases would otherwise mislink (Norway aliased "no", etc).
 // Seeded once; editable in the DB afterwards. EN + PT-BR.
 const SEED_STOPWORDS = [

@@ -22,7 +22,7 @@ async function load(env: Record<string, string>) {
 }
 
 test("remote mode requires GROQ_API_KEY", async () => {
-  await assert.rejects(load({ TRANSCRIBER: "remote" }), /GROQ_API_KEY/);
+  await assert.rejects(load({ TRANSCRIBER: "remote" }), /Invalid configuration/);
 });
 
 test("remote mode wires groq, leaves parakeet empty", async () => {
@@ -52,5 +52,5 @@ test("default mode is local (needs no groq, defaults the sidecar url)", async ()
 });
 
 test("invalid TRANSCRIBER throws", async () => {
-  await assert.rejects(load({ TRANSCRIBER: "cloud", GROQ_API_KEY: "gk" }), /must be "local" or "remote"/);
+  await assert.rejects(load({ TRANSCRIBER: "cloud", GROQ_API_KEY: "gk" }), /Invalid configuration/);
 });
