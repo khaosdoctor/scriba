@@ -7,19 +7,21 @@ Remaining before scriba runs in production:
 ## Session progress (2026-07-07)
 - [x] CI to build + push the image — `.github/workflows/publish.yml`, on push to `main`
       + manual dispatch. Tags: `latest`, package.json `version`, and `sha-<short>`.
-      Committed on branch `ci/publish-image` (UNSIGNED — 1Password couldn't prompt in the
-      non-interactive session; amend/re-sign interactively if signing is enforced).
-      NOT pushed yet.
+      Merged to `main` and **CI ran green (run 28866980458) — NO package-create 403**;
+      `ghcr.io/khaosdoctor/scriba:latest` published. (Local verify blocked only by the gh
+      token lacking `read:packages`; CI's build-push success is authoritative.)
 - [x] Local Docker build — native better-sqlite3 addon compiles clean on Node 24.
 - [x] Local boot — `scriba ready` + health on `:8080`; migrations run, native sqlite opens.
       Dies only at Telegram `deleteWebhook 401` on a fake token (expected; needs a real bot).
 - [x] Full test suite green in the Node 24 container — 28/28, the DB roundtrip un-skipped.
 
 ## Next up (order agreed)
-1. Push `ci/publish-image` + open/merge so CI runs. First run may 403 on package create
-   (private repo / org package settings) — Lucas to toggle package visibility if so.
+1. [DONE] CI merged to main + image published (no 403).
 2. Create the Telegram bot(s); fill env from `.env.example` placeholders.
 3. Live-verify (see below), then LAST: merge homelab PR #1 — that triggers the deploy.
+
+   Note: package likely `private` by default. Coolify pull on multivac needs a ghcr
+   pull token/secret, OR toggle package visibility to public. Confirm before deploy.
 
 ## Deploy blockers
 - [ ] Set env: `TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `OBSIDIAN_API_KEY`,
