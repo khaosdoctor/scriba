@@ -1,3 +1,10 @@
+## [1.5.0](https://github.com/khaosdoctor/scriba/compare/v1.4.5...v1.5.0) (2026-07-07)
+
+
+### Features
+
+* reorganize src into domain folders and extract shared helpers ([fe2e3f1](https://github.com/khaosdoctor/scriba/commit/fe2e3f15c7970d2c5109479271858643f789d0a9))
+
 ## [1.4.5](https://github.com/khaosdoctor/scriba/compare/v1.4.4...v1.4.5) (2026-07-07)
 
 
@@ -25,12 +32,4 @@
 ### Features
 
 * live per-jot status message edited in place through processing ([cf3db48](https://github.com/khaosdoctor/scriba/commit/cf3db4846caa6c2bb9aa3acfe27608c6a63cccc5))
-
-## [1.4.0](https://github.com/khaosdoctor/scriba/compare/v1.3.0...v1.4.0) (2026-07-07)
-
-
-### Features
-
-* nightly habit review prompt with per-habit flow ([e1b59ce](https://github.com/khaosdoctor/scriba/commit/e1b59ce25cd434f2fc83811b39fbc698e4d7f512))
-* strip secrets in pino core via redact ([827017c](https://github.com/khaosdoctor/scriba/commit/827017c029ba0fa6f9036bbf3d5b231871333a3b))
 
