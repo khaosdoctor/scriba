@@ -4,6 +4,9 @@
  */
 import { randomBytes } from "node:crypto";
 
+// ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /** Fixed 8-char hex id, also used as the Obsidian block anchor. */
 export function makeJotId(): string {
   return randomBytes(4).toString("hex");
@@ -24,7 +27,7 @@ export function placeholderLine(time: string, anchor: string): string {
  *  it holds only the empty template bullet. Falls back to a heading-less append. */
 export function insertJournalLine(note: string, heading: string, line: string): string {
   const lines = note.split("\n");
-  const esc = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc = escapeRe(heading);
   const headingRe = new RegExp(`^#{1,6}\\s+${esc}\\s*$`);
   const headingIdx = lines.findIndex((l) => headingRe.test(l));
   if (headingIdx === -1) return `${note.replace(/\n*$/, "")}\n${line}\n`;
@@ -55,7 +58,7 @@ export function insertJournalLine(note: string, heading: string, line: string): 
 }
 
 const anchorRe = (anchor: string) =>
-  new RegExp(`^.*\\^${anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
+  new RegExp(`^.*\\^${escapeRe(anchor)}\\s*$`, "m");
 
 /** Replace the whole line carrying `^anchor` with `newLine`. Returns null if not found. */
 export function replaceAnchorLine(note: string, anchor: string, newLine: string): string | null {

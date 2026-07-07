@@ -1,6 +1,5 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { extname } from "node:path";
-import { fetch } from "undici";
 import { config } from "./config.ts";
 import type { Repository, Jot, JotKind } from "./db.ts";
 import type { ObsidianClient } from "./obsidian.ts";
@@ -173,7 +172,7 @@ export class ScribaBot implements BotServices {
   /** Apply one or more edit instructions to a jot's line, merged into a single write
    *  (and a single agent call for the freeform ones). Returns a short status. */
   private async applyEdits(jot: Jot, instructions: string[]): Promise<string> {
-    const note = await this.obsidian.readNote(jot.note_path); // live read
+    const note = await this.obsidian.readNote(jot.note_path);
     if (instructions.some((i) => i.trim().toLowerCase() === "delete")) {
       const out = deleteAnchorLine(note, jot.anchor);
       if (out) await this.obsidian.writeNote(jot.note_path, out);

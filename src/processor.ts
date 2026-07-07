@@ -1,5 +1,5 @@
 import { basename } from "node:path";
-import { Repository, MAX_ATTEMPTS, type Jot } from "./db.ts";
+import { MAX_ATTEMPTS, type Jot, type Repository } from "./db.ts";
 import type { ObsidianClient } from "./obsidian.ts";
 import type { Transcriber } from "./transcribe.ts";
 import type { Enricher } from "./enrich.ts";
@@ -70,8 +70,6 @@ export class JotProcessor {
       let textPart = source;
       if (source.trim()) {
         const [stopwords, rejections] = await Promise.all([this.repo.stopwords(), this.repo.rejections()]);
-        // Prefer the local filesystem index (exact title+alias match). When it's empty —
-        // no vault mount, or the mount is unreadable — fall back to REST title search.
         const index = this.links.list();
         if (!index.length) log.warn({ id }, "enricher: link index empty (SCRIBA_VAULT_HOST_PATH unset or unreadable) — no wikilinks suggested");
         const cands = candidates(source, index, stopwords, rejections);

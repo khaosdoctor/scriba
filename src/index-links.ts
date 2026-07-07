@@ -28,7 +28,10 @@ export class LinkIndex {
 
   /** Initial scan, then watch for changes with a slow periodic rebuild as backstop. */
   start(periodicMs = 30 * 60_000): void {
-    if (!this.vaultPath) return log.warn("no SCRIBA_VAULT_HOST_PATH — link index disabled, no wikilinks will be suggested");
+    if (!this.vaultPath) {
+      log.warn("no SCRIBA_VAULT_HOST_PATH — link index disabled, no wikilinks will be suggested");
+      return;
+    }
     log.info({ vaultPath: this.vaultPath, periodicMs }, "link index starting");
     void this.rebuild();
     this.startWatch();
@@ -94,8 +97,8 @@ export class LinkIndex {
   }
 
   private async walk(dir: string, acc: string[]): Promise<void> {
-    let entries;
-    try { entries = await readdir(dir, { withFileTypes: true }); } catch { return; }
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => null);
+    if (!entries) return;
     for (const e of entries) {
       if (e.name.startsWith(".")) continue;
       const p = join(dir, e.name);
