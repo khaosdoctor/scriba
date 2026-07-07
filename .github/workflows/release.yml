@@ -58,3 +58,5 @@ jobs:
     if: ${{ needs.release.outputs.skipped == 'false' }}
     uses: ./.github/workflows/publish.yml
     secrets: inherit
+    with:
+      tag: ${{ needs.release.outputs.tag }}
