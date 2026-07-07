@@ -12,6 +12,7 @@ import { commands, type Deps } from "./commands/index.ts";
 import { makeJotId, placeholderLine, journalLine, anchorLine, replaceAnchorLine, deleteAnchorLine, parseLiteralEdit } from "./core.ts";
 import { plainDate, plainTime } from "./time.ts";
 import { RatingCommand, RATING_NS } from "./commands/rating.ts";
+import { HabitsCommand, HABITS_NS, parseHabitRef } from "./commands/habits/index.ts";
 import { logger } from "./log.ts";
 
 const log = logger("bot");
@@ -29,6 +30,7 @@ export class ScribaBot implements BotServices {
   private bot: Bot;
   private queue!: FlushQueue;
   private rating: RatingCommand;
+  private habits: HabitsCommand;
   private processor!: JotProcessor;
 
   constructor(
@@ -43,6 +45,7 @@ export class ScribaBot implements BotServices {
   ) {
     this.bot = new Bot(config.telegram.token);
     this.rating = new RatingCommand(this.bot, repo, obsidian);
+    this.habits = new HabitsCommand(this.bot, obsidian);
     this.registerHandlers();
   }
 
@@ -69,6 +72,7 @@ export class ScribaBot implements BotServices {
     await this.bot.api.setMyCommands([
       { command: "start", description: "What scriba does" },
       { command: "rate", description: "Rate a day 1–10 (today, or /rate YYYY-MM-DD)" },
+      { command: "habits", description: "Review habits (yesterday, or /habits YYYY-MM-DD)" },
       ...commands.map((c) => ({ command: c.name, description: c.description })),
     ]).catch((e) => log.warn({ err: e }, "setMyCommands failed"));
     void this.bot.start({
@@ -89,6 +93,11 @@ export class ScribaBot implements BotServices {
   /** Nightly rating prompt (the scheduler calls this). Delegates to the rating command. */
   async promptRating(date: string): Promise<void> {
     await this.rating.prompt(date);
+  }
+
+  /** Nightly habit review prompt (the scheduler calls this). Delegates to the habits command. */
+  async promptHabits(date: string): Promise<void> {
+    await this.habits.prompt(date);
   }
 
   async askLink(pendingId: string, surface: string, note: string): Promise<void> {
@@ -156,6 +165,7 @@ export class ScribaBot implements BotServices {
 
     this.bot.command("start", (ctx) => ctx.reply("scriba ready. Send text or a voice note to journal. /help for admin commands."));
     this.rating.register();
+    this.habits.register();
 
     // Admin commands (single-user, so the allowlist above is the only auth needed).
     for (const cmd of commands) {
@@ -167,7 +177,11 @@ export class ScribaBot implements BotServices {
 
     this.bot.on("message:text", async (ctx) => {
       if (ctx.message.text.startsWith("/")) return;
-      if (ctx.message.reply_to_message) return this.handleEdit(ctx);
+      if (ctx.message.reply_to_message) {
+        // A reply to a habit value question routes to the habit flow, not a jot edit.
+        if (parseHabitRef(ctx.message.reply_to_message.text ?? "")) return this.habits.handleReply(ctx);
+        return this.handleEdit(ctx);
+      }
       await this.intake(ctx, "text", { rawText: ctx.message.text });
     });
 
@@ -270,6 +284,7 @@ export class ScribaBot implements BotServices {
     if (ns === "rt") return this.handleRetry(ctx, rest[0]);
     if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
     if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
+    if (ns === HABITS_NS) return this.habits.handleTap(ctx, rest[0], rest[1], rest[2]);
     await ctx.answerCallbackQuery();
   }
 

@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   });
   bot.setQueue(queue);
 
-  const scheduler = new Scheduler(repo, processor, (t) => bot.notify(t), (d) => bot.promptRating(d));
+  const scheduler = new Scheduler(repo, processor, (t) => bot.notify(t), (d) => bot.promptRating(d), (d) => bot.promptHabits(d));
   scheduler.start();
 
   void processor.retrySweep(); // pick up anything left over from a previous run

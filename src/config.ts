@@ -25,6 +25,7 @@ const envSchema = z
     DAILY_NOTES_DIR: z.string().default("notes/daily notes"),
     DAILY_NOTE_TEMPLATE: z.string().default("internal/templates/Daily Note"),
     JOURNAL_HEADING: z.string().default("Journal"),
+    HABITS_HEADING: z.string().default("Habits"),
     ASSETS_DIR: z.string().default("internal/assets/journal"),
 
     // Where the app READS the vault. Set SCRIBA_VAULT_HOST_PATH to point at a real
@@ -34,6 +35,7 @@ const envSchema = z
     DB_PATH: z.string().default("/data/scriba.db"),
     SUMMARY_TIME: z.string().default("23:30"),
     RATING_TIME: z.string().default("00:00"), // nightly "how was your day?" 1–10 prompt
+    HABITS_TIME: z.string().default("00:00"), // nightly "did you do yesterday's habits?" prompt
 
     FLUSH_IDLE_MS: z.coerce.number().default(30_000),
     FLUSH_MAX_BATCH: z.coerce.number().default(8),
@@ -71,12 +73,14 @@ export const config = {
     dailyDir: env.DAILY_NOTES_DIR,
     dailyTemplate: env.DAILY_NOTE_TEMPLATE,
     journalHeading: env.JOURNAL_HEADING,
+    habitsHeading: env.HABITS_HEADING,
     assetsDir: env.ASSETS_DIR,
   },
   vaultPath: env.SCRIBA_VAULT_HOST_PATH,
   dbPath: env.DB_PATH,
   summaryTime: env.SUMMARY_TIME,
   ratingTime: env.RATING_TIME,
+  habitsTime: env.HABITS_TIME,
   flush: {
     idleMs: env.FLUSH_IDLE_MS,
     maxBatch: env.FLUSH_MAX_BATCH,

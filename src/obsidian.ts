@@ -10,6 +10,7 @@ export interface ObsidianConfig {
   dailyDir: string;
   dailyTemplate: string;
   journalHeading: string;
+  habitsHeading: string;
   assetsDir: string;
 }
 
@@ -87,6 +88,14 @@ export class ObsidianClient {
     const note = await this.readNote(path);
     await this.writeNote(path, setFrontmatterNumber(note, "overallRating", rating));
     log.info({ date, rating, path }, "overallRating frontmatter set");
+  }
+
+  /** Read a day's note by date, or null if that day was never journaled (no habits to
+   *  review). Unlike setDailyRating this never creates the note. */
+  async readDailyNote(date: string): Promise<{ path: string; content: string } | null> {
+    const path = this.dailyPath(date);
+    const content = await this.getFile(path);
+    return content === null ? null : { path, content };
   }
 
   /** Read a note's current content (live — the user may have edited it in Obsidian). */
