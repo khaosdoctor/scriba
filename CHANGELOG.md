@@ -1,3 +1,10 @@
+## [1.6.2](https://github.com/khaosdoctor/scriba/compare/v1.6.0...v1.6.2) (2026-07-07)
+
+
+### Bug Fixes
+
+* ignore internal/ directory when indexing vault for wikilinks ([897bb24](https://github.com/khaosdoctor/scriba/commit/897bb24e0c96615b09e862767a75c617bc141a20))
+
 ## [1.6.0](https://github.com/khaosdoctor/scriba/compare/v1.5.0...v1.6.0) (2026-07-07)
 
 
@@ -25,11 +32,4 @@
 ### Performance Improvements
 
 * **ci:** speed up image build and publish ([ad065e2](https://github.com/khaosdoctor/scriba/commit/ad065e2abc676f565fbefba548bc2b09ffaadfa3))
-
-## [1.4.3](https://github.com/khaosdoctor/scriba/compare/v1.4.2...v1.4.3) (2026-07-07)
-
-
-### Bug Fixes
-
-* **ci:** quote release workflow if-expression to fix YAML parse ([92f93c9](https://github.com/khaosdoctor/scriba/commit/92f93c9565fa63cde069d605e507faabf892bad0))
 
