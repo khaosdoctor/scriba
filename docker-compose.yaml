@@ -3,6 +3,8 @@ services:
     build: .
     restart: unless-stopped
     env_file: .env
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-trace}
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
     volumes:

@@ -19,6 +19,41 @@ export function placeholderLine(time: string, anchor: string): string {
   return journalLine(time, "⏳", anchor);
 }
 
+/** Insert a journal bullet under `heading`, keeping the vault's indentation:
+ *  immediately after the last bullet in that section, or replacing the list when
+ *  it holds only the empty template bullet. Falls back to a heading-less append. */
+export function insertJournalLine(note: string, heading: string, line: string): string {
+  const lines = note.split("\n");
+  const esc = heading.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const headingRe = new RegExp(`^#{1,6}\\s+${esc}\\s*$`);
+  const headingIdx = lines.findIndex((l) => headingRe.test(l));
+  if (headingIdx === -1) return `${note.replace(/\n*$/, "")}\n${line}\n`;
+
+  let end = lines.length;
+  for (let i = headingIdx + 1; i < lines.length; i++) {
+    if (/^#{1,6}\s/.test(lines[i]!)) { end = i; break; }
+  }
+
+  let lastBullet = -1;
+  const emptyBullets: number[] = [];
+  for (let i = headingIdx + 1; i < end; i++) {
+    if (/^\s*-\s*$/.test(lines[i]!)) emptyBullets.push(i);
+    else if (/^\s*-\s/.test(lines[i]!)) lastBullet = i;
+  }
+
+  if (lastBullet !== -1) {
+    lines.splice(lastBullet + 1, 0, line);
+    return lines.join("\n");
+  }
+  if (emptyBullets.length === 0) {
+    lines.splice(headingIdx + 1, 0, line);
+    return lines.join("\n");
+  }
+  lines[emptyBullets[0]!] = line;
+  for (const i of emptyBullets.slice(1).reverse()) lines.splice(i, 1);
+  return lines.join("\n");
+}
+
 const anchorRe = (anchor: string) =>
   new RegExp(`^.*\\^${anchor.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m");
 
@@ -110,6 +145,7 @@ export async function candidatesViaSearch(
     let notes: string[];
     try { notes = await search(surface); } catch { continue; }
     for (const note of notes) {
+      if (!titleMatchesTerm(surface, note)) continue;
       const key = `${surface} ${note}`;
       if (rejected.has(key) || seen.has(key)) continue;
       seen.add(key);
@@ -117,6 +153,12 @@ export async function candidatesViaSearch(
     }
   }
   return out;
+}
+
+/** REST title search matches substrings, so "test" hits "tests", "fastest", etc. Keep a
+ *  hit only when the surface is a whole word of the title. */
+export function titleMatchesTerm(surface: string, title: string): boolean {
+  return tokenize(title).includes(surface);
 }
 
 /**

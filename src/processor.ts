@@ -74,14 +74,27 @@ export class JotProcessor {
         // no vault mount, or the mount is unreadable — fall back to REST title search.
         const index = this.links.list();
         const via = index.length ? "local-index" : "rest-search";
+        log.info(
+          { id, via, indexSize: index.length, stopwords: stopwords.size, rejections: rejections.size },
+          via === "local-index"
+            ? `enricher: matching links against local file index (${index.length} aliases)`
+            : "enricher: no local file index (no VAULT_PATH) — matching links via REST title search",
+        );
         const cands = index.length
           ? candidates(source, index, stopwords, rejections)
           : await candidatesViaSearch(source, (t) => this.obsidian.searchTitles(t), stopwords, rejections);
-        log.debug({ id, via, indexSize: index.length, candidates: cands.length }, "link candidates gathered");
-        log.debug({ id, chars: source.length }, "calling enricher");
+        log.info(
+          { id, via, count: cands.length, candidates: cands.map((c) => `"${c.surface}" -> [[${c.note}]]`) },
+          `enricher: ${cands.length} link candidate(s) survived stopword/reject filter`,
+        );
+        log.info({ id, chars: source.length, candidates: cands.length }, "enricher: calling agent");
         const res = await this.enricher.enrich({ text: source, candidates: cands });
         textPart = res.text;
-        log.info({ id, ambiguous: res.ambiguous.length, usage: res.usage }, "enrichment done");
+        log.info(
+          { id, ambiguous: res.ambiguous.length,
+            ambiguousLinks: res.ambiguous.map((a) => `"${a.surface}" -> [[${a.note}]]`), usage: res.usage },
+          "enricher: done",
+        );
         for (const a of res.ambiguous) {
           const pid = makeJotId();
           await this.repo.addPendingLink(pid, jot.id, a.surface, a.note);

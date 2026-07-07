@@ -35,12 +35,12 @@ export class Enricher {
       ? input.candidates.map((c) => `- "${c.surface}" -> [[${c.note}]]`).join("\n")
       : "(none)";
     const prompt = `Candidate links:\n${cands}\n\nJournal text:\n"""${fence(input.text)}"""`;
-    log.debug({ candidates: input.candidates.length, chars: input.text.length }, "enrich: calling agent");
+    log.info({ candidates: input.candidates.length, chars: input.text.length, model: this.model ?? "default" }, "enrich: calling agent");
     const { text, usage } = await this.run(prompt, SYSTEM);
 
     const parsed = this.extractJson(text);
     if (!parsed?.text) throw new Error(`enrichment returned no usable JSON: ${text.slice(0, 200)}`);
-    log.debug({ usage, ambiguous: parsed.ambiguous?.length ?? 0 }, "enrich: agent responded");
+    log.info({ usage, ambiguous: parsed.ambiguous?.length ?? 0 }, "enrich: agent responded");
     return { text: parsed.text, ambiguous: parsed.ambiguous ?? [], usage };
   }
 

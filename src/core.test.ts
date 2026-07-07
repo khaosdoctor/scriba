@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   makeJotId, journalLine, placeholderLine, replaceAnchorLine, deleteAnchorLine,
   anchorLine, candidates, candidateTerms, candidatesViaSearch, parseLiteralEdit, tokenize,
+  insertJournalLine,
 } from "./core.ts";
 
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
@@ -15,6 +16,33 @@ test("ids are fixed 8-char hex", () => {
 test("journal + placeholder lines match the vault house style", () => {
   assert.equal(journalLine("23:13:18", "hi", "a1b2c3d4"), "- _23:13:18 ::_ hi ^a1b2c3d4");
   assert.equal(placeholderLine("09:00:00", "deadbeef"), "- _09:00:00 ::_ ⏳ ^deadbeef");
+});
+
+test("insertJournalLine replaces the empty template bullet on the first jot", () => {
+  const note = "# 2026-07-07\n\n## Journal\n- \n";
+  const out = insertJournalLine(note, "Journal", "- _19:56:31 ::_ ⏳ ^23c78f08");
+  assert.equal(out, "# 2026-07-07\n\n## Journal\n- _19:56:31 ::_ ⏳ ^23c78f08\n");
+});
+
+test("insertJournalLine appends right after the last bullet, no blank line", () => {
+  const note = "## Journal\n- _19:56:31 ::_ first ^aaaaaaaa\n";
+  const out = insertJournalLine(note, "Journal", "- _19:57:00 ::_ ⏳ ^bbbbbbbb");
+  assert.equal(out, "## Journal\n- _19:56:31 ::_ first ^aaaaaaaa\n- _19:57:00 ::_ ⏳ ^bbbbbbbb\n");
+});
+
+test("insertJournalLine stays within the section, before the next heading", () => {
+  const note = "## Journal\n- _10:00:00 ::_ a ^aaaaaaaa\n\n## Notes\n- keep\n";
+  const out = insertJournalLine(note, "Journal", "- _10:01:00 ::_ ⏳ ^bbbbbbbb");
+  assert.equal(
+    out,
+    "## Journal\n- _10:00:00 ::_ a ^aaaaaaaa\n- _10:01:00 ::_ ⏳ ^bbbbbbbb\n\n## Notes\n- keep\n",
+  );
+});
+
+test("insertJournalLine inserts right after the heading when the section is empty", () => {
+  const note = "## Journal\n";
+  const out = insertJournalLine(note, "Journal", "- _10:00:00 ::_ ⏳ ^aaaaaaaa");
+  assert.equal(out, "## Journal\n- _10:00:00 ::_ ⏳ ^aaaaaaaa\n");
 });
 
 test("replace/delete/read find the line by anchor and leave others intact", () => {
@@ -69,9 +97,15 @@ test("candidatesViaSearch searches each term, honours rejections, dedupes", asyn
 });
 
 test("candidatesViaSearch swallows a failing search and continues", async () => {
-  const search = async (t: string) => { if (t === "boom") throw new Error("rest down"); return ["Ok"]; };
+  const search = async (t: string) => { if (t === "boom") throw new Error("rest down"); return ["Fine"]; };
   const got = await candidatesViaSearch("boom fine", search, STOP, new Set());
-  assert.deepEqual(got, [{ surface: "fine", note: "Ok" }]);
+  assert.deepEqual(got, [{ surface: "fine", note: "Fine" }]);
+});
+
+test("candidatesViaSearch drops substring title hits, keeps whole-word matches", async () => {
+  const search = async (_t: string) => ["Test Leads", "The problem with E2E tests", "fastest boat"];
+  const got = await candidatesViaSearch("test", search, STOP, new Set());
+  assert.deepEqual(got, [{ surface: "test", note: "Test Leads" }]); // "tests"/"fastest" are substrings, not words
 });
 
 test("literal edit parser handles sed and natural forms, rejects freeform", () => {

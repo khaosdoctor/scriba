@@ -1,12 +1,8 @@
 import { fetch, Agent } from "undici";
 import { logger } from "./log.ts";
+import { insertJournalLine } from "./core.ts";
 
 const log = logger("obsidian");
-
-/** Local REST API v3 heading path: each ancestor segment URL-encoded, joined by `::`. */
-export function headingTarget(...segments: string[]): string {
-  return segments.map(encodeURIComponent).join("::");
-}
 
 export interface ObsidianConfig {
   url: string;
@@ -75,26 +71,13 @@ export class ObsidianClient {
     return path;
   }
 
-  /** Append a bullet under the ## Journal heading. */
+  /** Insert a bullet under the ## Journal heading. Read-modify-write (not the REST
+   *  heading-append) so the line lands right after the last bullet — or replaces the
+   *  empty template bullet — instead of trailing a blank line below it. */
   async appendJournalLine(date: string, line: string): Promise<void> {
     const path = this.dailyPath(date);
-    // Local REST API v3 targets a heading by its FULL ancestor path, URL-encoded and
-    // delimited by `::` — the leaf name alone returns 40080 invalid-target. The daily
-    // note's H1 is the date (template `# {{date}}`), so Journal is `<date>::Journal`.
-    const target = headingTarget(date, this.cfg.journalHeading);
-    const res = await fetch(`${this.cfg.url}/vault/${this.encode(path)}`, {
-      method: "PATCH",
-      headers: this.headers({
-        "Content-Type": "text/markdown",
-        "Operation": "append",
-        "Target-Type": "heading",
-        "Target": target,
-        "Target-Delimiter": "::",
-      }),
-      body: `\n${line}\n`, dispatcher: this.dispatcher,
-    });
-    log.debug({ method: "PATCH", path, target, status: res.status }, "append journal line");
-    if (!res.ok) throw new Error(`obsidian PATCH ${path}: ${res.status} ${await res.text()}`);
+    const note = await this.readNote(path);
+    await this.writeNote(path, insertJournalLine(note, this.cfg.journalHeading, line));
   }
 
   /** Read a note's current content (live — the user may have edited it in Obsidian). */
