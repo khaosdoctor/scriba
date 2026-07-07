@@ -1,0 +1,60 @@
+name: release
+
+# On push to main: reads conventional commits since the last v* tag, bumps
+# package.json, prepends the new section to CHANGELOG.md, commits it, tags
+# vX.Y.Z, and publishes a GitHub Release. Pushes with no bump-worthy commits
+# (docs/chore/style only) are skipped. Releasing is now automatic — no more
+# manual `chore: release` commits.
+#
+# The image is built exactly once per release: publish.yml no longer runs on
+# push to main; this workflow calls it only when a release is actually cut
+# (skipped == false). The `if` guard skips this workflow's own release commits
+# so it can't loop.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore: release v') }}
+    runs-on: ubuntu-latest
+    outputs:
+      skipped: ${{ steps.changelog.outputs.skipped }}
+      tag: ${{ steps.changelog.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: changelog
+        uses: TriPSs/conventional-changelog-action@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          version-file: "./package.json"
+          preset: "conventionalcommits"
+          output-file: "CHANGELOG.md"
+          tag-prefix: "v"
+          git-message: "chore: release v{version}"
+          skip-on-empty: "true"
+
+      - uses: softprops/action-gh-release@v2
+        if: ${{ steps.changelog.outputs.skipped == 'false' }}
+        with:
+          tag_name: ${{ steps.changelog.outputs.tag }}
+          body: ${{ steps.changelog.outputs.clean_changelog }}
+
+  publish:
+    needs: release
+    if: ${{ needs.release.outputs.skipped == 'false' }}
+    uses: ./.github/workflows/publish.yml
+    secrets: inherit

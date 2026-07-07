@@ -1,8 +1,9 @@
 name: publish image
 
+# Called by release.yml after a release is cut, so exactly one image is built
+# per release. Still runnable manually via the Actions tab.
 on:
-  push:
-    branches: [main]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
