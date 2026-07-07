@@ -12,12 +12,15 @@ import {
 	formatStats,
 	formatStatus,
 	insertJournalLine,
+	isRecoverable,
 	journalLine,
 	makeJotId,
 	parseLiteralEdit,
 	placeholderLine,
+	pluralize,
 	replaceAnchorLine,
 	setFrontmatterNumber,
+	stripJournalLine,
 	tokenize,
 } from "./core.ts";
 import type { Jot, StatsRow } from "./db.ts";
@@ -199,6 +202,12 @@ test("doneMessage blockquotes the time and escapes content", () => {
 	);
 });
 
+test("pluralize suffixes -s for everything but 1", () => {
+	assert.equal(pluralize(1, "jot"), "1 jot");
+	assert.equal(pluralize(0, "jot"), "0 jots");
+	assert.equal(pluralize(3, "jot"), "3 jots");
+});
+
 test("formatDuration picks the two coarsest units", () => {
 	assert.equal(formatDuration(45_000), "45s");
 	assert.equal(formatDuration(90_000), "1m 30s");
@@ -254,6 +263,26 @@ test("formatStatus shows a disabled link index", () => {
 		uptimeMs: 0,
 	});
 	assert.match(out, /Link index: disabled/);
+});
+
+test("isRecoverable flags transient infra errors, not terminal ones", () => {
+	assert.equal(
+		isRecoverable(new Error("connect ETIMEDOUT 10.0.0.1:443")),
+		true,
+	);
+	assert.equal(
+		isRecoverable(new Error("Request failed with status 503")),
+		true,
+	);
+	assert.equal(isRecoverable(new Error("429 Too Many Requests")), true);
+	assert.equal(isRecoverable(new Error("invalid path")), false);
+});
+
+test("stripJournalLine strips the time prefix and anchor suffix", () => {
+	assert.equal(
+		stripJournalLine("- _23:13:18 ::_ hi ^a1b2c3d4", "23:13:18", "a1b2c3d4"),
+		"hi",
+	);
 });
 
 test("formatJotDetail truncates long text and includes errors", () => {

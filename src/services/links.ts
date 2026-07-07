@@ -1,8 +1,8 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
-import type { AliasEntry } from "./core.ts";
-import { logger } from "./log.ts";
+import type { AliasEntry } from "../core.ts";
+import { logger } from "../log.ts";
 
 const log = logger("links");
 

@@ -1,6 +1,6 @@
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
-import type { Candidate } from "./core.ts";
-import { logger } from "./log.ts";
+import type { Candidate } from "../core.ts";
+import { logger } from "../log.ts";
 
 export type QueryFn = typeof sdkQuery;
 

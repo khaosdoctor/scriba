@@ -1,12 +1,6 @@
 import { extname } from "node:path";
 import { Bot, InlineKeyboard } from "grammy";
-import {
-	HABITS_NS,
-	HabitsCommand,
-	parseHabitRef,
-} from "./commands/habits/index.ts";
 import { commands, type Deps } from "./commands/index.ts";
-import { RATING_NS, RatingCommand } from "./commands/rating.ts";
 import { config } from "./config.ts";
 import {
 	anchorLine,
@@ -16,16 +10,27 @@ import {
 	parseLiteralEdit,
 	placeholderLine,
 	replaceAnchorLine,
+	stripJournalLine,
 } from "./core.ts";
 import type { Jot, JotKind, Repository } from "./db.ts";
-import type { Enricher } from "./enrich.ts";
-import type { LinkIndex } from "./index-links.ts";
+import {
+	HABITS_NS,
+	HabitsCommand,
+	parseHabitRef,
+} from "./flows/habits/index.ts";
+import { RATING_NS, RatingCommand } from "./flows/rating.ts";
 import { logger } from "./log.ts";
-import type { ObsidianClient } from "./obsidian.ts";
-import type { BotServices, DownloadedFile, JotProcessor } from "./processor.ts";
-import type { FlushQueue } from "./queue.ts";
+import type {
+	BotServices,
+	DownloadedFile,
+	JotProcessor,
+} from "./runtime/processor.ts";
+import type { FlushQueue } from "./runtime/queue.ts";
+import type { Enricher } from "./services/enrich.ts";
+import type { LinkIndex } from "./services/links.ts";
+import type { ObsidianClient } from "./services/obsidian.ts";
+import type { TranscriberSwitch } from "./services/transcribe.ts";
 import { plainDate, plainTime } from "./time.ts";
-import type { TranscriberSwitch } from "./transcribe.ts";
 
 const log = logger("bot");
 
@@ -405,7 +410,7 @@ export class ScribaBot implements BotServices {
 		const line = anchorLine(note, jot.anchor);
 		if (!line) return "Couldn't find that line in the note.";
 
-		let text = this.lineText(line, jot);
+		let text = stripJournalLine(line, jot.time, jot.anchor);
 		const freeform: string[] = [];
 		for (const ins of instructions) {
 			const lit = parseLiteralEdit(ins);
@@ -426,13 +431,6 @@ export class ScribaBot implements BotServices {
 		return "✏️ updated";
 	}
 
-	/** Strip the `- _time ::_ ` prefix and ` ^anchor` suffix to get just the content. */
-	private lineText(line: string, jot: Jot): string {
-		return line
-			.replace(new RegExp(`^- _${jot.time} ::_ `), "")
-			.replace(new RegExp(`\\s*\\^${jot.anchor}\\s*$`), "");
-	}
-
 	private async handleButton(ctx: any): Promise<void> {
 		const [ns, ...rest] = String(ctx.callbackQuery.data).split(":");
 		log.debug({ data: ctx.callbackQuery.data }, "button pressed");
@@ -448,11 +446,7 @@ export class ScribaBot implements BotServices {
 		if (!jotId || !(await this.repo.getJot(jotId)))
 			return void ctx.answerCallbackQuery({ text: "gone" });
 		log.info({ jotId }, "manual retry requested");
-		await this.repo.updateJot(jotId, {
-			status: "pending",
-			attempts: 0,
-			error: null,
-		});
+		await this.repo.resetForRetry(jotId);
 		this.queue.add(jotId);
 		await ctx.answerCallbackQuery({ text: "retrying" });
 		await ctx.editMessageText("🔄 retrying…");

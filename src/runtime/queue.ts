@@ -3,7 +3,7 @@
  * Flushes when ANY fires: idle gap since the last message, batch size cap, or a hard
  * max-wait since the oldest queued item (so a slow trickle still lands).
  */
-import { logger } from "./log.ts";
+import { logger } from "../log.ts";
 
 const log = logger("queue");
 

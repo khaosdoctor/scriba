@@ -1,8 +1,8 @@
 import { type Bot, InlineKeyboard } from "grammy";
 import { config } from "../../config.ts";
 import { logger } from "../../log.ts";
-import type { ObsidianClient } from "../../obsidian.ts";
-import { previousDate } from "../../time.ts";
+import type { ObsidianClient } from "../../services/obsidian.ts";
+import { DATE_RE, previousDate } from "../../time.ts";
 import { completeHabitLine, parseHabitRef, parseHabits } from "./parse.ts";
 
 export { parseHabitRef } from "./parse.ts"; // bot.ts routes habit replies via this
@@ -11,7 +11,6 @@ const log = logger("habits");
 
 /** callback_query namespace this command owns (see ScribaBot.handleButton). */
 export const HABITS_NS = "hb";
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** The daily habit review: the /habits slash command, the nightly prompt, and the
  *  one-habit-at-a-time flow. Habits are the checklist under the `## Habits` heading of a

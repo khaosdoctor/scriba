@@ -2,14 +2,13 @@ import { type Bot, InlineKeyboard } from "grammy";
 import { config } from "../config.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
-import type { ObsidianClient } from "../obsidian.ts";
-import { plainDate } from "../time.ts";
+import type { ObsidianClient } from "../services/obsidian.ts";
+import { DATE_RE, plainDate } from "../time.ts";
 
 const log = logger("rating");
 
 /** callback_query namespace this command owns (see ScribaBot.handleButton). */
 export const RATING_NS = "rate";
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** Build the 1–10 rating keyboard for a given day; the date rides in the callback data
  *  so a tap works even days later and always lands on the right note. */

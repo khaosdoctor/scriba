@@ -1,5 +1,5 @@
 import Groq, { toFile } from "groq-sdk";
-import { logger } from "./log.ts";
+import { logger } from "../log.ts";
 
 const log = logger("transcribe");
 

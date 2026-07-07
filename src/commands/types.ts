@@ -1,9 +1,9 @@
 import type { Context } from "grammy";
 import type { Repository } from "../db.ts";
-import type { LinkIndex } from "../index-links.ts";
-import type { JotProcessor } from "../processor.ts";
-import type { FlushQueue } from "../queue.ts";
-import type { TranscriberSwitch } from "../transcribe.ts";
+import type { JotProcessor } from "../runtime/processor.ts";
+import type { FlushQueue } from "../runtime/queue.ts";
+import type { LinkIndex } from "../services/links.ts";
+import type { TranscriberSwitch } from "../services/transcribe.ts";
 
 /** Everything the admin commands act on. The bot assembles this per invocation. */
 export interface Deps {

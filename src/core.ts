@@ -7,11 +7,28 @@ import type { Jot, JotKind, JotStatus, StatsRow } from "./db.ts";
 import { plainDate } from "./time.ts";
 
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Fixed 8-char hex id, also used as the Obsidian block anchor. */
 export function makeJotId(): string {
 	return randomBytes(4).toString("hex");
+}
+
+/** Errors worth retrying (transient infra); anything else is treated as unrecoverable. */
+export function isRecoverable(err: unknown): boolean {
+	const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
+	return /timeout|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
+		m,
+	);
+}
+
+/** Pick the enrichable source text for a jot's kind: the transcript for audio (falling
+ *  back to `audioFallback` when there isn't one), the raw text for text, otherwise ""
+ *  (image/video are attach-only). */
+export function enrichableSource(jot: Jot, audioFallback = ""): string {
+	if (jot.kind === "audio") return jot.transcript ?? audioFallback;
+	if (jot.kind === "text") return jot.raw_text ?? "";
+	return "";
 }
 
 /** One-line confirmation of what landed in the note. Attach-only jots carry no text. */
@@ -55,6 +72,18 @@ export function journalLine(
 /** Placeholder written the instant a jot arrives — fixes ordering, filled in later. */
 export function placeholderLine(time: string, anchor: string): string {
 	return journalLine(time, "⏳", anchor);
+}
+
+/** Strip the `- _time ::_ ` prefix and ` ^anchor` suffix off a journal line, leaving
+ *  just its content (for literal edits). */
+export function stripJournalLine(
+	line: string,
+	time: string,
+	anchor: string,
+): string {
+	return line
+		.replace(new RegExp(`^- _${escapeRe(time)} ::_ `), "")
+		.replace(new RegExp(`\\s*\\^${escapeRe(anchor)}\\s*$`), "");
 }
 
 /** Insert a journal bullet under `heading`, keeping the vault's indentation:
@@ -220,6 +249,11 @@ export function parseLiteralEdit(
 }
 
 // --- Telegram admin-command formatting (pure; the commands do I/O, this shapes text) ---
+
+/** `<n> <word>` with a naive plural "s" suffix for anything but 1. */
+export function pluralize(n: number, word: string): string {
+	return `${n} ${word}${n === 1 ? "" : "s"}`;
+}
 
 /** Coarse human duration: "3d 4h", "5m 2s", "12s". */
 export function formatDuration(ms: number): string {

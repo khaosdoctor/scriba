@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { LinkIndex } from "./index-links.ts";
+import { LinkIndex } from "./links.ts";
 
 test("empty vault path yields no candidates", async () => {
 	const idx = new LinkIndex(null);

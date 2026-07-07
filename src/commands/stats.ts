@@ -1,4 +1,5 @@
 import { formatStats } from "../core.ts";
+import { startOfToday } from "../time.ts";
 import type { Command } from "./types.ts";
 
 const DAY = 86_400_000;
@@ -17,11 +18,9 @@ export const stats: Command = {
 				await d.repo.windowStats(now - 7 * DAY, now + 1000),
 			);
 		if (range === "today") {
-			const start = new Date();
-			start.setHours(0, 0, 0, 0);
 			return formatStats(
 				"today",
-				await d.repo.windowStats(start.getTime(), now + 1000),
+				await d.repo.windowStats(startOfToday(), now + 1000),
 			);
 		}
 		return "usage: /stats [today|week|all]";

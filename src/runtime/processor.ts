@@ -2,17 +2,19 @@ import { basename } from "node:path";
 import {
 	candidates,
 	doneMessage,
+	enrichableSource,
 	escapeHtml,
+	isRecoverable,
 	journalLine,
 	makeJotId,
 	replaceAnchorLine,
-} from "./core.ts";
-import { type Jot, MAX_ATTEMPTS, type Repository } from "./db.ts";
-import type { Enricher } from "./enrich.ts";
-import type { LinkIndex } from "./index-links.ts";
-import { logger } from "./log.ts";
-import type { ObsidianClient } from "./obsidian.ts";
-import type { Transcriber } from "./transcribe.ts";
+} from "../core.ts";
+import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
+import { logger } from "../log.ts";
+import type { Enricher } from "../services/enrich.ts";
+import type { LinkIndex } from "../services/links.ts";
+import type { ObsidianClient } from "../services/obsidian.ts";
+import type { Transcriber } from "../services/transcribe.ts";
 
 const log = logger("processor");
 
@@ -49,14 +51,6 @@ export interface BotServices {
 		state: "done" | "failed" | "retrying",
 	) => Promise<void>; // swap the intake reaction on the jot's message
 	typing: () => Promise<void>; // "typing…" chat action while a jot is being processed
-}
-
-/** Errors worth retrying (transient infra); anything else is treated as unrecoverable. */
-function isRecoverable(err: unknown): boolean {
-	const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
-	return /timeout|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
-		m,
-	);
 }
 
 /** Turns a queued jot into an enriched, written journal line. Audio + text only. */
@@ -111,12 +105,7 @@ export class JotProcessor {
 					`🎤 <i>${escapeHtml(jot.transcript.trim())}</i>\n\n✨ Weaving it into your journal…`,
 				);
 			}
-			const source =
-				jot.kind === "audio"
-					? (jot.transcript ?? "")
-					: jot.kind === "text"
-						? (jot.raw_text ?? "")
-						: ""; // image/video are attach-only
+			const source = enrichableSource(jot); // image/video are attach-only
 
 			let textPart = source;
 			if (source.trim()) {
@@ -215,12 +204,10 @@ export class JotProcessor {
 			{ id: jot.id, attempts, recoverable, err },
 			"jot abandoned — posting un-enriched",
 		);
-		const source =
-			jot.kind === "audio"
-				? (jot.transcript ?? "🎤 (voice note — transcription failed)")
-				: jot.kind === "text"
-					? (jot.raw_text ?? "")
-					: "";
+		const source = enrichableSource(
+			jot,
+			"🎤 (voice note — transcription failed)",
+		);
 		try {
 			await this.writeLine(jot, this.composeLine(jot, source));
 		} catch {

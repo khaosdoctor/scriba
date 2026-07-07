@@ -1,4 +1,4 @@
-import type { TranscriberMode } from "../transcribe.ts";
+import type { TranscriberMode } from "../services/transcribe.ts";
 import type { Command } from "./types.ts";
 
 export const transcriber: Command = {

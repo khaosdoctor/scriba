@@ -1,6 +1,6 @@
 import { Agent, fetch } from "undici";
-import { insertJournalLine, setFrontmatterNumber } from "./core.ts";
-import { logger } from "./log.ts";
+import { insertJournalLine, setFrontmatterNumber } from "../core.ts";
+import { logger } from "../log.ts";
 
 const log = logger("obsidian");
 

@@ -11,7 +11,7 @@
  * never treated as the habit's own value.
  */
 
-const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+import { escapeRe } from "../../core.ts";
 
 /** One inline `[key:: value]` field. */
 export interface HabitField {

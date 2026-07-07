@@ -1,3 +1,4 @@
+import { pluralize } from "../core.ts";
 import type { Command } from "./types.ts";
 
 export const retry: Command = {
@@ -9,17 +10,13 @@ export const retry: Command = {
 		if (arg && arg !== "all") {
 			const j = await d.repo.getJot(arg);
 			if (!j) return `no jot ${arg}`;
-			await d.repo.updateJot(arg, {
-				status: "pending",
-				attempts: 0,
-				error: null,
-			});
+			await d.repo.resetForRetry(arg);
 			d.queue.add(arg);
 			return `🔄 retrying ${arg}`;
 		}
 		// No arg: all failed. `all`: failed + abandoned. Sweep picks them up once reset.
 		const n = await d.repo.resetFailed(arg === "all");
 		if (n) void d.processor.retrySweep();
-		return `🔄 requeued ${n} jot${n === 1 ? "" : "s"}${arg === "all" ? " (incl. abandoned)" : ""}`;
+		return `🔄 requeued ${pluralize(n, "jot")}${arg === "all" ? " (incl. abandoned)" : ""}`;
 	},
 };

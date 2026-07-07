@@ -312,6 +312,12 @@ export class Repository {
 		});
 	}
 
+	/** Reset one jot to be retried from scratch (clears attempts + error). The caller
+	 *  re-queues it (the queue lives outside the persistence boundary). */
+	async resetForRetry(id: string): Promise<void> {
+		await this.updateJot(id, { status: "pending", attempts: 0, error: null });
+	}
+
 	// --- stopwords: writes (reads via stopwords() above) ---
 	async addStopword(word: string): Promise<void> {
 		await this.k("stopwords")

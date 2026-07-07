@@ -3,6 +3,8 @@ import { logger } from "./log.ts";
 
 const log = logger("config");
 
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM");
+
 // Whole environment is one schema: coercion, defaults, and cross-field checks
 // all live here so a misconfigured deploy fails at boot with a readable message.
 const envSchema = z
@@ -33,9 +35,9 @@ const envSchema = z
 		// link index disabled.
 		SCRIBA_VAULT_HOST_PATH: z.string().default("/vault"),
 		DB_PATH: z.string().default("/data/scriba.db"),
-		SUMMARY_TIME: z.string().default("23:30"),
-		RATING_TIME: z.string().default("00:00"), // nightly "how was your day?" 1–10 prompt
-		HABITS_TIME: z.string().default("00:00"), // nightly "did you do yesterday's habits?" prompt
+		SUMMARY_TIME: hhmm.default("23:30"),
+		RATING_TIME: hhmm.default("00:00"), // nightly "how was your day?" 1–10 prompt
+		HABITS_TIME: hhmm.default("00:00"), // nightly "did you do yesterday's habits?" prompt
 
 		FLUSH_IDLE_MS: z.coerce.number().default(30_000),
 		FLUSH_MAX_BATCH: z.coerce.number().default(8),

@@ -3,14 +3,17 @@ import http from "node:http";
 import { ScribaBot } from "./bot.ts";
 import { config } from "./config.ts";
 import { Repository } from "./db.ts";
-import { Enricher } from "./enrich.ts";
-import { LinkIndex } from "./index-links.ts";
 import { logger } from "./log.ts";
-import { ObsidianClient } from "./obsidian.ts";
-import { JotProcessor } from "./processor.ts";
-import { FlushQueue } from "./queue.ts";
-import { Scheduler } from "./scheduler.ts";
-import { type TranscriberMode, TranscriberSwitch } from "./transcribe.ts";
+import { JotProcessor } from "./runtime/processor.ts";
+import { FlushQueue } from "./runtime/queue.ts";
+import { Scheduler } from "./runtime/scheduler.ts";
+import { Enricher } from "./services/enrich.ts";
+import { LinkIndex } from "./services/links.ts";
+import { ObsidianClient } from "./services/obsidian.ts";
+import {
+	type TranscriberMode,
+	TranscriberSwitch,
+} from "./services/transcribe.ts";
 
 const log = logger("main");
 
@@ -32,11 +35,15 @@ async function main(): Promise<void> {
 		},
 		"scriba starting",
 	);
+	// 1. config + open DB
 	const repo = await Repository.open(config.dbPath);
 	log.debug("repository open, migrations applied");
+
+	// 2. crash recovery
 	const unstuck = await repo.resetProcessing(); // crash recovery: unstick jots claimed by a dead run
 	log.info({ requeued: unstuck }, "crash recovery done");
 
+	// 3. build services
 	const obsidian = new ObsidianClient(config.obsidian);
 	// A /transcriber choice persisted in the DB overrides the TRANSCRIBER env default;
 	// fall back to the env mode if the saved one can't be built (e.g. its creds are gone).
@@ -63,6 +70,7 @@ async function main(): Promise<void> {
 	const links = new LinkIndex(config.vaultPath);
 	links.start();
 
+	// 4. wire bot ⇄ processor ⇄ queue
 	const bot = new ScribaBot(
 		repo,
 		obsidian,
@@ -90,6 +98,7 @@ async function main(): Promise<void> {
 	});
 	bot.setQueue(queue);
 
+	// 5. scheduler + retry sweep
 	const scheduler = new Scheduler(
 		repo,
 		processor,
@@ -101,6 +110,7 @@ async function main(): Promise<void> {
 
 	void processor.retrySweep(); // pick up anything left over from a previous run
 
+	// 6. health server
 	// Long polling needs no inbound webhook; this server exists only for a health check.
 	const server = http.createServer((req, res) => {
 		if (req.url === "/health") {
@@ -113,9 +123,11 @@ async function main(): Promise<void> {
 		log.info({ port: config.telegram.port }, "health endpoint listening"),
 	);
 
+	// 7. start polling
 	await bot.start();
 	log.info("scriba ready");
 
+	// 8. shutdown
 	const shutdown = async (signal: string) => {
 		log.info({ signal }, "shutting down");
 		await bot.stop();
