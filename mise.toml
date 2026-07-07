@@ -1,0 +1,4 @@
+[tools]
+# Node 24 matches the deploy runtime (package.json engines: >=24) and, unlike Node 26,
+# can build better-sqlite3's native addon — so `npm install` and the DB test work locally.
+node = "24"
