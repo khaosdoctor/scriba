@@ -4,7 +4,7 @@ import { config } from "./config.ts";
 import { logger } from "./log.ts";
 import { Repository } from "./db.ts";
 import { ObsidianClient } from "./obsidian.ts";
-import { createTranscriber } from "./transcribe.ts";
+import { TranscriberSwitch, type TranscriberMode } from "./transcribe.ts";
 import { Enricher } from "./enrich.ts";
 import { LinkIndex } from "./index-links.ts";
 import { JotProcessor } from "./processor.ts";
@@ -18,6 +18,7 @@ const { version } = JSON.parse(readFileSync(new URL("../package.json", import.me
 const sha = process.env.GIT_SHA ?? "unknown";
 
 async function main(): Promise<void> {
+  const startedAt = Date.now();
   log.info({ version, sha }, "scriba boot");
   log.info({
     dbPath: config.dbPath, transcriber: config.transcription.mode,
@@ -30,13 +31,23 @@ async function main(): Promise<void> {
   log.info({ requeued: unstuck }, "crash recovery done");
 
   const obsidian = new ObsidianClient(config.obsidian);
-  const transcriber = createTranscriber(config.transcription);
+  // A /transcriber choice persisted in the DB overrides the TRANSCRIBER env default;
+  // fall back to the env mode if the saved one can't be built (e.g. its creds are gone).
+  const savedMode = (await repo.getSetting("transcriber")) as TranscriberMode | undefined;
+  let transcriber: TranscriberSwitch;
+  try {
+    transcriber = new TranscriberSwitch(config.transcription, savedMode ?? (config.transcription.mode as TranscriberMode));
+  } catch (e) {
+    log.warn({ err: e, savedMode }, "saved transcriber mode unusable — falling back to env default");
+    transcriber = new TranscriberSwitch(config.transcription, config.transcription.mode as TranscriberMode);
+  }
   const enricher = new Enricher();
   const links = new LinkIndex(config.vaultPath);
   links.start();
 
-  const bot = new ScribaBot(repo, obsidian, enricher);
+  const bot = new ScribaBot(repo, obsidian, enricher, transcriber, links, version, sha, startedAt);
   const processor = new JotProcessor(repo, obsidian, transcriber, enricher, links, bot);
+  bot.setProcessor(processor);
   const queue = new FlushQueue({
     idleMs: config.flush.idleMs,
     maxBatch: config.flush.maxBatch,

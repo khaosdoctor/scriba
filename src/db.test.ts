@@ -73,6 +73,44 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
     const stats = await repo.dayStats(0, Date.now() + 1000);
     assert.equal(stats.jots, 3);          // aaaa(done) + bbbb(pending) + cccc(failed)
     assert.equal(stats.failed, 1);        // only cccccccc is still failed/abandoned
+
+    // windowStats: full kind/outcome breakdown over the window
+    const win = await repo.windowStats(0, Date.now() + 1000);
+    assert.equal(win.total, 3);
+    assert.equal(win.text, 3);            // all sample jots are kind "text"
+    assert.equal(win.done, 1);            // aaaa
+    assert.equal(win.failed, 1);          // cccc
+
+    // statusCounts: live table counts
+    const counts = await repo.statusCounts();
+    assert.equal(counts.done, 1);
+    assert.equal(counts.pending, 1);      // bbbb was reset to pending above
+    assert.equal(counts.failed, 1);
+
+    // failedJots + resetFailed: cccccccc is failed-at-cap; reset makes it pending
+    assert.deepEqual((await repo.failedJots()).map((j) => j.id), ["cccccccc"]);
+    assert.equal(await repo.resetFailed(false), 1);
+    assert.equal((await repo.getJot("cccccccc"))?.status, "pending");
+    assert.equal((await repo.getJot("cccccccc"))?.attempts, 0);
+
+    // stopwords: add is idempotent, del reports how many rows went
+    await repo.addStopword("Foo");
+    await repo.addStopword("foo");        // dup ignored
+    assert.ok((await repo.stopwords()).has("foo"));
+    assert.equal(await repo.delStopword("FOO"), 1);
+    assert.ok(!(await repo.stopwords()).has("foo"));
+
+    // rejections: list + undo (reject stores surface lowercased)
+    assert.deepEqual(await repo.rejectionList(), [{ surface: "no", note: "Norway" }]);
+    assert.equal(await repo.unreject("No", "Norway"), 1);
+    assert.equal((await repo.rejectionList()).length, 0);
+
+    // settings: upsert + read
+    assert.equal(await repo.getSetting("transcriber"), undefined);
+    await repo.setSetting("transcriber", "remote");
+    assert.equal(await repo.getSetting("transcriber"), "remote");
+    await repo.setSetting("transcriber", "local"); // merge on conflict
+    assert.equal(await repo.getSetting("transcriber"), "local");
   } finally {
     await repo.close();
     await rm(dbPath, { force: true });

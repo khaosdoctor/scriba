@@ -25,17 +25,17 @@ test("remote mode requires GROQ_API_KEY", async () => {
   await assert.rejects(load({ TRANSCRIBER: "remote" }), /Invalid configuration/);
 });
 
-test("remote mode wires groq, leaves parakeet empty", async () => {
+test("remote mode wires groq and still exposes the parakeet url (for runtime switch)", async () => {
   const { config } = await load({ TRANSCRIBER: "remote", GROQ_API_KEY: "gk" });
   assert.equal(config.transcription.mode, "remote");
   assert.equal(config.transcription.groqApiKey, "gk");
-  assert.equal(config.transcription.parakeetUrl, "");
+  assert.match(config.transcription.parakeetUrl, /parakeet:5092/); // available for /transcriber local
 });
 
 test("local mode needs no groq and defaults the sidecar url", async () => {
   const { config } = await load({ TRANSCRIBER: "local" });
   assert.equal(config.transcription.mode, "local");
-  assert.equal(config.transcription.groqApiKey, "");
+  assert.equal(config.transcription.groqApiKey, ""); // no key set → empty, /transcriber remote will refuse
   assert.match(config.transcription.parakeetUrl, /parakeet:5092/);
 });
 

@@ -3,7 +3,8 @@
  * Stopwords and rejections are injected (they live in the DB), not hardcoded here.
  */
 import { randomBytes } from "node:crypto";
-import type { JotKind } from "./db.ts";
+import { plainDate } from "./time.ts";
+import type { Jot, JotKind, JotStatus, StatsRow } from "./db.ts";
 
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -159,4 +160,73 @@ export function parseLiteralEdit(msg: string): { old: string; new: string } | nu
     return { old: repl[1], new: repl[2] };
   }
   return null;
+}
+
+// --- Telegram admin-command formatting (pure; the commands do I/O, this shapes text) ---
+
+/** Coarse human duration: "3d 4h", "5m 2s", "12s". */
+export function formatDuration(ms: number): string {
+  const s = Math.floor(ms / 1000);
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (d) return `${d}d ${h}h`;
+  if (h) return `${h}h ${m}m`;
+  if (m) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+
+/** /stats body for a labelled window. */
+export function formatStats(label: string, s: StatsRow): string {
+  const tail = [
+    s.inflight ? `in-flight ${s.inflight}` : "",
+    s.failed ? `failed ${s.failed}` : "",
+    s.abandoned ? `abandoned ${s.abandoned}` : "",
+  ].filter(Boolean);
+  return [
+    `📊 ${label}`,
+    `Jots: ${s.total}`,
+    `  text ${s.text} · voice ${s.audio} · image ${s.image} · video ${s.video}`,
+    `Done ${s.done}${tail.length ? ` · ${tail.join(" · ")}` : ""}`,
+  ].join("\n");
+}
+
+export interface StatusView {
+  counts: Record<JotStatus, number>;
+  queueDepth: number;
+  transcriber: string;
+  links: { enabled: boolean; files: number; aliases: number };
+  version: string;
+  sha: string;
+  uptimeMs: number;
+}
+
+/** /status body: health at a glance. */
+export function formatStatus(v: StatusView): string {
+  const c = v.counts;
+  const links = v.links.enabled ? `${v.links.files} files / ${v.links.aliases} aliases` : "disabled";
+  return [
+    `🩺 scriba ${v.version} (${v.sha.slice(0, 7)})`,
+    `Uptime: ${formatDuration(v.uptimeMs)}`,
+    `Jots: ${c.done} done · ${c.pending + c.processing} in-flight · ${c.failed} failed · ${c.abandoned} abandoned`,
+    `Queue depth: ${v.queueDepth}`,
+    `Transcriber: ${v.transcriber}`,
+    `Link index: ${links}`,
+  ].join("\n");
+}
+
+/** /jot body: full record for one jot. */
+export function formatJotDetail(j: Jot): string {
+  const text = j.transcript ?? j.raw_text ?? "(none)";
+  const lines = [
+    `🧾 ${j.id} [${j.kind}] — ${j.status}`,
+    `Received: ${plainDate(j.received_at)} ${j.time}`,
+    `Attempts: ${j.attempts}`,
+    `Note: ${j.note_path} ^${j.anchor}`,
+  ];
+  if (j.asset_path) lines.push(`Asset: ${j.asset_path}`);
+  if (j.error) lines.push(`Error: ${j.error}`);
+  lines.push(`Text: ${text.length > 300 ? `${text.slice(0, 300)}…` : text}`);
+  return lines.join("\n");
 }

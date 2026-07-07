@@ -4,7 +4,9 @@ import {
   makeJotId, journalLine, placeholderLine, replaceAnchorLine, deleteAnchorLine,
   anchorLine, candidates, parseLiteralEdit, tokenize,
   insertJournalLine, donePreview, setFrontmatterNumber,
+  formatDuration, formatStats, formatStatus, formatJotDetail,
 } from "./core.ts";
+import type { Jot, StatsRow } from "./db.ts";
 
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
 
@@ -121,4 +123,58 @@ test("donePreview shows enriched text, truncates long, labels attach-only", () =
   assert.equal(donePreview("image", ""), "image saved to the note");
   assert.equal(donePreview("video", "  "), "video saved to the note");
   assert.equal(donePreview("text", ""), "saved");
+});
+
+test("formatDuration picks the two coarsest units", () => {
+  assert.equal(formatDuration(45_000), "45s");
+  assert.equal(formatDuration(90_000), "1m 30s");
+  assert.equal(formatDuration(3 * 3600_000 + 20 * 60_000), "3h 20m");
+  assert.equal(formatDuration(2 * 86400_000 + 5 * 3600_000), "2d 5h");
+});
+
+test("formatStats hides zero outcome tails", () => {
+  const base: StatsRow = { total: 4, text: 3, audio: 1, image: 0, video: 0, done: 4, failed: 0, abandoned: 0, inflight: 0 };
+  const clean = formatStats("today", base);
+  assert.match(clean, /Jots: 4/);
+  assert.match(clean, /voice 1/);
+  assert.equal(clean.includes("failed"), false); // no failures → no tail
+  const withFail = formatStats("today", { ...base, failed: 2, inflight: 1 });
+  assert.match(withFail, /in-flight 1 · failed 2/);
+});
+
+test("formatStatus summarises health", () => {
+  const out = formatStatus({
+    counts: { pending: 1, processing: 1, done: 10, failed: 2, abandoned: 0 },
+    queueDepth: 3, transcriber: "local",
+    links: { enabled: true, files: 5, aliases: 9 },
+    version: "1.2.3", sha: "abcdef1234", uptimeMs: 90_000,
+  });
+  assert.match(out, /scriba 1\.2\.3 \(abcdef1\)/);
+  assert.match(out, /10 done · 2 in-flight · 2 failed/); // pending+processing = in-flight
+  assert.match(out, /Queue depth: 3/);
+  assert.match(out, /Transcriber: local/);
+  assert.match(out, /5 files \/ 9 aliases/);
+});
+
+test("formatStatus shows a disabled link index", () => {
+  const out = formatStatus({
+    counts: { pending: 0, processing: 0, done: 0, failed: 0, abandoned: 0 },
+    queueDepth: 0, transcriber: "remote",
+    links: { enabled: false, files: 0, aliases: 0 },
+    version: "1", sha: "0000000", uptimeMs: 0,
+  });
+  assert.match(out, /Link index: disabled/);
+});
+
+test("formatJotDetail truncates long text and includes errors", () => {
+  const jot: Jot = {
+    id: "deadbeef", kind: "audio", note_path: "notes/x.md", anchor: "deadbeef", time: "10:00:00",
+    raw_text: null, transcript: "x".repeat(400), asset_path: null, file_id: null,
+    status: "failed", attempts: 3, error: "boom", received_at: Date.now(), updated_at: Date.now(),
+  };
+  const out = formatJotDetail(jot);
+  assert.match(out, /deadbeef \[audio\] — failed/);
+  assert.match(out, /Attempts: 3/);
+  assert.match(out, /Error: boom/);
+  assert.ok(out.includes("…")); // transcript truncated
 });

@@ -17,6 +17,10 @@ deployed on the homelab (Coolify). Single user.
 - **Pure logic in `core.ts`.** Deterministic, token-free helpers (formatting, anchor
   replacement, candidate filtering, edit parsing) live there with tests in `core.test.ts`.
   No network or side effects in `core.ts`.
+- **Admin commands are one-per-file in `src/commands/`.** Each exports a `Command`
+  (`{ name, description, run }`); the registry in `src/commands/index.ts` is looped over in
+  `bot.ts`. Command bodies stay thin: parse args, call `Repository`/services, and format via
+  `core.ts`. Runtime settings that must survive a restart go in the `settings` key/value table.
 - **No tokens for control flow.** Batch timing, retry classification, candidate filtering,
   language routing must not call the model. The agent is only for enrichment, translation,
   image captioning, and freeform edits.

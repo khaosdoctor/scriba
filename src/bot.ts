@@ -5,7 +5,10 @@ import type { Repository, Jot, JotKind } from "./db.ts";
 import type { ObsidianClient } from "./obsidian.ts";
 import type { Enricher } from "./enrich.ts";
 import type { FlushQueue } from "./queue.ts";
-import type { BotServices, DownloadedFile } from "./processor.ts";
+import type { BotServices, DownloadedFile, JotProcessor } from "./processor.ts";
+import type { TranscriberSwitch } from "./transcribe.ts";
+import type { LinkIndex } from "./index-links.ts";
+import { commands, type Deps } from "./commands/index.ts";
 import { makeJotId, placeholderLine, journalLine, anchorLine, replaceAnchorLine, deleteAnchorLine, parseLiteralEdit } from "./core.ts";
 import { plainDate, plainTime } from "./time.ts";
 import { RatingCommand, RATING_NS } from "./commands/rating.ts";
@@ -26,20 +29,38 @@ export class ScribaBot implements BotServices {
   private bot: Bot;
   private queue!: FlushQueue;
   private rating: RatingCommand;
+  private processor!: JotProcessor;
 
   constructor(
     private repo: Repository,
     private obsidian: ObsidianClient,
     private enricher: Enricher,
+    private transcriber: TranscriberSwitch,
+    private links: LinkIndex,
+    private version: string,
+    private sha: string,
+    private startedAt: number,
   ) {
     this.bot = new Bot(config.telegram.token);
     this.rating = new RatingCommand(this.bot, repo, obsidian);
     this.registerHandlers();
   }
 
-  /** Break the wiring cycle: queue is created after the processor, which needs this bot. */
+  /** Break the wiring cycle: queue + processor are created after this bot (which they need). */
   setQueue(queue: FlushQueue): void {
     this.queue = queue;
+  }
+  setProcessor(processor: JotProcessor): void {
+    this.processor = processor;
+  }
+
+  /** Assemble what the admin commands act on. */
+  private deps(): Deps {
+    return {
+      repo: this.repo, queue: this.queue, processor: this.processor,
+      transcriber: this.transcriber, links: this.links,
+      version: this.version, sha: this.sha, startedAt: this.startedAt,
+    };
   }
 
   /** Start long polling. Returns immediately; polling runs in the background. */
@@ -48,6 +69,7 @@ export class ScribaBot implements BotServices {
     await this.bot.api.setMyCommands([
       { command: "start", description: "What scriba does" },
       { command: "rate", description: "Rate a day 1–10 (today, or /rate YYYY-MM-DD)" },
+      ...commands.map((c) => ({ command: c.name, description: c.description })),
     ]).catch((e) => log.warn({ err: e }, "setMyCommands failed"));
     void this.bot.start({
       allowed_updates: ["message", "callback_query"],
@@ -132,8 +154,16 @@ export class ScribaBot implements BotServices {
       if (ctx.from?.id === config.telegram.allowedUserId) await next();
     });
 
-    this.bot.command("start", (ctx) => ctx.reply("scriba ready. Send text or a voice note to journal."));
+    this.bot.command("start", (ctx) => ctx.reply("scriba ready. Send text or a voice note to journal. /help for admin commands."));
     this.rating.register();
+
+    // Admin commands (single-user, so the allowlist above is the only auth needed).
+    for (const cmd of commands) {
+      this.bot.command(cmd.name, async (ctx) => {
+        const out = await cmd.run(ctx, String(ctx.match ?? ""), this.deps());
+        if (typeof out === "string") await ctx.reply(out);
+      });
+    }
 
     this.bot.on("message:text", async (ctx) => {
       if (ctx.message.text.startsWith("/")) return;

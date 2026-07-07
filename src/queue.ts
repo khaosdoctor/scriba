@@ -22,6 +22,11 @@ export class FlushQueue {
 
   constructor(private opts: FlushOpts) {}
 
+  /** How many jots are waiting to be flushed — for /status. */
+  get depth(): number {
+    return this.ids.length;
+  }
+
   add(id: string): void {
     this.ids.push(id);
     // While a flush is running, just accumulate — arm() runs again when it finishes.

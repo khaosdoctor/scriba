@@ -26,6 +26,11 @@ export class LinkIndex {
     return this.flat;
   }
 
+  /** Index health for /status: whether it's enabled and how much it holds. */
+  stats(): { enabled: boolean; files: number; aliases: number } {
+    return { enabled: !!this.vaultPath, files: this.byFile.size, aliases: this.flat.length };
+  }
+
   /** Initial scan, then watch for changes with a slow periodic rebuild as backstop. */
   start(periodicMs = 30 * 60_000): void {
     if (!this.vaultPath) {

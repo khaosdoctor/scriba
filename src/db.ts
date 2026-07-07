@@ -13,6 +13,13 @@ export type JotStatus =
 
 export const MAX_ATTEMPTS = 10;
 
+/** Jot counts over a window, broken down by kind and outcome — for the /stats command. */
+export interface StatsRow {
+  total: number;
+  text: number; audio: number; image: number; video: number;
+  done: number; failed: number; abandoned: number; inflight: number;
+}
+
 export interface Jot {
   id: string;
   kind: JotKind;
@@ -177,6 +184,80 @@ export class Repository {
         this.k.raw("SUM(CASE WHEN status IN ('failed','abandoned') THEN 1 ELSE 0 END) as failed"),
       ).first();
     return { jots: Number(row?.jots ?? 0), audio: Number(row?.audio ?? 0), failed: Number(row?.failed ?? 0) };
+  }
+
+  /** Jot counts by kind + outcome over a [from,to) epoch-ms window, for /stats. */
+  async windowStats(from: number, to: number): Promise<StatsRow> {
+    const row = await this.k("jots")
+      .where("received_at", ">=", from).andWhere("received_at", "<", to)
+      .select(
+        this.k.raw("COUNT(*) as total"),
+        this.k.raw("SUM(CASE WHEN kind='text' THEN 1 ELSE 0 END) as text"),
+        this.k.raw("SUM(CASE WHEN kind='audio' THEN 1 ELSE 0 END) as audio"),
+        this.k.raw("SUM(CASE WHEN kind='image' THEN 1 ELSE 0 END) as image"),
+        this.k.raw("SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) as video"),
+        this.k.raw("SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) as done"),
+        this.k.raw("SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed"),
+        this.k.raw("SUM(CASE WHEN status='abandoned' THEN 1 ELSE 0 END) as abandoned"),
+        this.k.raw("SUM(CASE WHEN status IN ('pending','processing') THEN 1 ELSE 0 END) as inflight"),
+      ).first();
+    const n = (v: unknown) => Number(v ?? 0);
+    return {
+      total: n(row?.total),
+      text: n(row?.text), audio: n(row?.audio), image: n(row?.image), video: n(row?.video),
+      done: n(row?.done), failed: n(row?.failed), abandoned: n(row?.abandoned), inflight: n(row?.inflight),
+    };
+  }
+
+  /** Live jot counts per status (whole table), for /status. */
+  async statusCounts(): Promise<Record<JotStatus, number>> {
+    const rows = await this.k("jots").select("status").count("* as n").groupBy("status");
+    const out: Record<JotStatus, number> = {
+      pending: 0, processing: 0, done: 0, failed: 0, abandoned: 0,
+    };
+    for (const r of rows) out[r.status as JotStatus] = Number(r.n);
+    return out;
+  }
+
+  /** Most recently touched failed/abandoned jots, for /failed. */
+  async failedJots(limit = 10): Promise<Jot[]> {
+    return this.k<Jot>("jots")
+      .whereIn("status", ["failed", "abandoned"])
+      .orderBy("updated_at", "desc").limit(limit);
+  }
+
+  /** Requeue failed (and optionally abandoned) jots: reset to pending, clear attempts.
+   *  Returns how many were reset. */
+  async resetFailed(includeAbandoned: boolean): Promise<number> {
+    const statuses = includeAbandoned ? ["failed", "abandoned"] : ["failed"];
+    return this.k("jots").whereIn("status", statuses)
+      .update({ status: "pending", attempts: 0, error: null, updated_at: Date.now() });
+  }
+
+  // --- stopwords: writes (reads via stopwords() above) ---
+  async addStopword(word: string): Promise<void> {
+    await this.k("stopwords").insert({ word: word.toLowerCase() }).onConflict("word").ignore();
+  }
+  async delStopword(word: string): Promise<number> {
+    return this.k("stopwords").where({ word: word.toLowerCase() }).del();
+  }
+
+  // --- rejections: list + undo (set-shaped read via rejections() above) ---
+  async rejectionList(): Promise<{ surface: string; note: string }[]> {
+    return this.k("rejections").select("surface", "note").orderBy("surface");
+  }
+  async unreject(surface: string, note: string): Promise<number> {
+    return this.k("rejections").where({ surface: surface.toLowerCase(), note }).del();
+  }
+
+  // --- runtime settings (key/value; survives restart) ---
+  async getSetting(key: string): Promise<string | undefined> {
+    const r = await this.k("settings").where({ key }).first();
+    return r?.value;
+  }
+  async setSetting(key: string, value: string): Promise<void> {
+    await this.k("settings").insert({ key, value, updated_at: Date.now() })
+      .onConflict("key").merge();
   }
 
   async close(): Promise<void> {

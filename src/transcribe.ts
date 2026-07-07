@@ -59,9 +59,48 @@ export interface TranscriberConfig {
   parakeetUrl: string;
 }
 
+export type TranscriberMode = "local" | "remote";
+
+function build(mode: TranscriberMode, cfg: TranscriberConfig): Transcriber {
+  if (mode === "local") {
+    if (!cfg.parakeetUrl) throw new Error("no PARAKEET_URL configured");
+    return new ParakeetTranscriber(cfg.parakeetUrl);
+  }
+  if (!cfg.groqApiKey) throw new Error("GROQ_API_KEY not set — remote transcription unavailable");
+  return new GroqTranscriber(cfg.groqApiKey);
+}
+
 export function createTranscriber(cfg: TranscriberConfig): Transcriber {
   log.info({ mode: cfg.mode }, "transcriber selected");
-  return cfg.mode === "local"
-    ? new ParakeetTranscriber(cfg.parakeetUrl)
-    : new GroqTranscriber(cfg.groqApiKey);
+  return build(cfg.mode as TranscriberMode, cfg);
+}
+
+/** A Transcriber whose backend can be swapped at runtime by /transcriber. Delegates
+ *  every call to the current backend; setMode rebuilds it (and throws, leaving the old
+ *  one in place, if the target backend's creds are missing). */
+export class TranscriberSwitch implements Transcriber {
+  private current: Transcriber;
+  private modeVal: TranscriberMode;
+
+  constructor(private cfg: TranscriberConfig, mode: TranscriberMode = cfg.mode as TranscriberMode) {
+    this.modeVal = mode;
+    this.current = build(mode, cfg);
+    log.info({ mode }, "transcriber switch initialised");
+  }
+
+  get mode(): TranscriberMode {
+    return this.modeVal;
+  }
+
+  /** Swap backend. Throws (mode unchanged) if the target's creds aren't configured. */
+  setMode(mode: TranscriberMode): void {
+    if (mode === this.modeVal) return;
+    this.current = build(mode, this.cfg); // throws before we mutate modeVal
+    this.modeVal = mode;
+    log.info({ mode }, "transcriber switched");
+  }
+
+  transcribe(bytes: Uint8Array, ext: string): Promise<string> {
+    return this.current.transcribe(bytes, ext);
+  }
 }

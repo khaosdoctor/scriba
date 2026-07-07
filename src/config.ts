@@ -60,9 +60,10 @@ export const config = {
   },
   transcription: {
     mode: env.TRANSCRIBER,
-    // Each mode carries only its own config.
-    groqApiKey: env.TRANSCRIBER === "remote" ? env.GROQ_API_KEY! : "",
-    parakeetUrl: env.TRANSCRIBER === "local" ? env.PARAKEET_URL : "",
+    // Both creds are exposed regardless of the boot mode so /transcriber can switch at
+    // runtime; a missing cred surfaces when you try to switch, not by being blanked here.
+    groqApiKey: env.GROQ_API_KEY ?? "",
+    parakeetUrl: env.PARAKEET_URL,
   },
   obsidian: {
     url: env.OBSIDIAN_API_URL,

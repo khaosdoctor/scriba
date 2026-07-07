@@ -11,6 +11,27 @@ entry into your daily note. Images and videos are saved and embedded.
 - Failed jots retry (capped at 10; unrecoverable errors post the jot un-enriched and ping you).
 - Nightly summary; silent on empty days.
 
+## Admin commands
+
+Single-user, so every command is behind the same allowlist as journaling — no extra auth.
+Send `/help` for the live list. Each command is one file under `src/commands/`.
+
+| Command | Does |
+| --- | --- |
+| `/stats [today\|week\|all]` | jot counts by kind + outcome for the window (default today) |
+| `/status` | health snapshot: counts, queue depth, transcriber, link index, uptime, version |
+| `/failed` | recent failed/abandoned jots, each with a retry button |
+| `/jot <id>` | full record for one jot |
+| `/flush` | drain the flush queue now |
+| `/retry [id\|all]` | requeue failed jots (`all` also revives abandoned) |
+| `/sweep` | run the retry sweep now |
+| `/unstick` | reset jots wedged in `processing` |
+| `/stopword add\|del\|list [word]` | manage stopwords (take effect immediately) |
+| `/rejections` | list learned link-rejections |
+| `/unreject <surface> <note>` | undo a link-rejection |
+| `/transcriber [local\|remote]` | show or switch the transcription backend at runtime (persisted) |
+| `/version` | version + commit sha |
+
 ## Flow
 
 A jot is written to the note **twice**: an instant placeholder that fixes its order, then

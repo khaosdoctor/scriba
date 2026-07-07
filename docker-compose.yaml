@@ -7,6 +7,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-trace}
       # Host mount lands at /vault; the app always reads /vault inside the container.
       SCRIBA_VAULT_HOST_PATH: /vault
+      # Both transcriber backends must be reachable so /transcriber can switch on the fly:
+      # the parakeet sidecar is always up (below), and the Groq key is passed through here
+      # so /transcriber remote works even when TRANSCRIBER defaults to local.
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
     ports:
       - "${PORT:-8080}:${PORT:-8080}"
     volumes:
