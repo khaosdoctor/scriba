@@ -44,6 +44,11 @@ export class ScribaBot implements BotServices {
 
   /** Start long polling. Returns immediately; polling runs in the background. */
   async start(): Promise<void> {
+    // Populate the `/` command menu Telegram shows in the compose box.
+    await this.bot.api.setMyCommands([
+      { command: "start", description: "What scriba does" },
+      { command: "rate", description: "Rate a day 1–10 (today, or /rate YYYY-MM-DD)" },
+    ]).catch((e) => log.warn({ err: e }, "setMyCommands failed"));
     void this.bot.start({
       allowed_updates: ["message", "callback_query"],
       onStart: (me) => log.info({ username: me.username }, "telegram long polling started"),
