@@ -1,6 +1,6 @@
 {
   "name": "scriba",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "private": true,
   "description": "Friction-free Telegram journaling bot that writes enriched jots to an Obsidian vault",
   "type": "module",
