@@ -3,10 +3,33 @@ import assert from "node:assert/strict";
 import {
   makeJotId, journalLine, placeholderLine, replaceAnchorLine, deleteAnchorLine,
   anchorLine, candidates, parseLiteralEdit, tokenize,
-  insertJournalLine, donePreview,
+  insertJournalLine, donePreview, setFrontmatterNumber,
 } from "./core.ts";
 
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
+
+test("setFrontmatterNumber replaces an existing field in place", () => {
+  const note = "---\noverallRating: 5\ntags: [daily]\n---\n\n## Journal\n";
+  assert.equal(
+    setFrontmatterNumber(note, "overallRating", 8),
+    "---\noverallRating: 8\ntags: [daily]\n---\n\n## Journal\n",
+  );
+});
+
+test("setFrontmatterNumber inserts a missing field before the closing fence", () => {
+  const note = "---\ntags: [daily]\n---\n\nbody\n";
+  assert.equal(
+    setFrontmatterNumber(note, "overallRating", 7),
+    "---\ntags: [daily]\noverallRating: 7\n---\n\nbody\n",
+  );
+});
+
+test("setFrontmatterNumber creates frontmatter when the note has none", () => {
+  assert.equal(
+    setFrontmatterNumber("# hi\n", "overallRating", 3),
+    "---\noverallRating: 3\n---\n\n# hi\n",
+  );
+});
 
 test("ids are fixed 8-char hex", () => {
   const id = makeJotId();

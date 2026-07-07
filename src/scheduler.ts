@@ -1,7 +1,7 @@
 import type { Repository } from "./db.ts";
 import type { JotProcessor } from "./processor.ts";
 import { config } from "./config.ts";
-import { plainDate, msUntilNext } from "./time.ts";
+import { plainDate, previousDate, msUntilNext } from "./time.ts";
 import { logger } from "./log.ts";
 
 const log = logger("scheduler");
@@ -14,12 +14,17 @@ export class Scheduler {
     private repo: Repository,
     private processor: JotProcessor,
     private notify: (text: string) => Promise<void>,
+    private askRating: (date: string) => Promise<void>,
     private retryMs = 5 * 60_000,
   ) {}
 
   start(): void {
     this.scheduleSummary();
-    log.info({ retryMs: this.retryMs, summaryTime: config.summaryTime }, "scheduler started");
+    this.scheduleRating();
+    log.info(
+      { retryMs: this.retryMs, summaryTime: config.summaryTime, ratingTime: config.ratingTime },
+      "scheduler started",
+    );
     let sweeping = false; // don't let a slow sweep overlap the next tick
     const retry = setInterval(async () => {
       if (sweeping) return;
@@ -42,6 +47,18 @@ export class Scheduler {
     const t = setTimeout(async () => {
       try { await this.sendSummary(); } catch (e) { log.error({ err: e }, "summary failed"); }
       this.scheduleSummary(); // re-arm for tomorrow
+    }, wait);
+    t.unref();
+    this.timers.push(t);
+  }
+
+  private scheduleRating(): void {
+    const wait = msUntilNext(config.ratingTime);
+    log.debug({ inMs: wait, at: config.ratingTime }, "next daily rating prompt scheduled");
+    const t = setTimeout(async () => {
+      // Fires at 00:00 → the day that just ended is yesterday.
+      try { await this.askRating(previousDate()); } catch (e) { log.error({ err: e }, "rating prompt failed"); }
+      this.scheduleRating(); // re-arm for tomorrow
     }, wait);
     t.unref();
     this.timers.push(t);

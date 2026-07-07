@@ -1,6 +1,6 @@
 import { fetch, Agent } from "undici";
 import { logger } from "./log.ts";
-import { insertJournalLine } from "./core.ts";
+import { insertJournalLine, setFrontmatterNumber } from "./core.ts";
 
 const log = logger("obsidian");
 
@@ -78,6 +78,14 @@ export class ObsidianClient {
     const path = this.dailyPath(date);
     const note = await this.readNote(path);
     await this.writeNote(path, insertJournalLine(note, this.cfg.journalHeading, line));
+  }
+
+  /** Set the `overallRating` frontmatter of a day's note (creating the note if the day
+   *  was never journaled). Read-modify-write so a live edit in Obsidian isn't clobbered. */
+  async setDailyRating(date: string, rating: number): Promise<void> {
+    const path = await this.ensureDailyNote(date);
+    const note = await this.readNote(path);
+    await this.writeNote(path, setFrontmatterNumber(note, "overallRating", rating));
   }
 
   /** Read a note's current content (live — the user may have edited it in Obsidian). */

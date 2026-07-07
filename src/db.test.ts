@@ -64,6 +64,12 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
     assert.deepEqual(await repo.takeQueuedEdits("aaaaaaaa"), ["s/a/b/", "delete"]);
     assert.deepEqual(await repo.takeQueuedEdits("aaaaaaaa"), []); // cleared
 
+    // rating gate: first record wins, second is rejected with the existing value
+    assert.deepEqual(await repo.recordRating("2026-07-06", 8), { recorded: true, current: 8 });
+    assert.deepEqual(await repo.recordRating("2026-07-06", 3), { recorded: false, current: 8 });
+    await repo.clearRating("2026-07-06");
+    assert.deepEqual(await repo.recordRating("2026-07-06", 3), { recorded: true, current: 3 });
+
     const stats = await repo.dayStats(0, Date.now() + 1000);
     assert.equal(stats.jots, 3);          // aaaa(done) + bbbb(pending) + cccc(failed)
     assert.equal(stats.failed, 1);        // only cccccccc is still failed/abandoned

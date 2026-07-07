@@ -8,6 +8,7 @@ import type { FlushQueue } from "./queue.ts";
 import type { BotServices, DownloadedFile } from "./processor.ts";
 import { makeJotId, placeholderLine, journalLine, anchorLine, replaceAnchorLine, deleteAnchorLine, parseLiteralEdit } from "./core.ts";
 import { plainDate, plainTime } from "./time.ts";
+import { RatingCommand, RATING_NS } from "./commands/rating.ts";
 import { logger } from "./log.ts";
 
 const log = logger("bot");
@@ -24,6 +25,7 @@ const MIME: Record<string, string> = {
 export class ScribaBot implements BotServices {
   private bot: Bot;
   private queue!: FlushQueue;
+  private rating: RatingCommand;
 
   constructor(
     private repo: Repository,
@@ -31,6 +33,7 @@ export class ScribaBot implements BotServices {
     private enricher: Enricher,
   ) {
     this.bot = new Bot(config.telegram.token);
+    this.rating = new RatingCommand(this.bot, repo, obsidian);
     this.registerHandlers();
   }
 
@@ -54,6 +57,11 @@ export class ScribaBot implements BotServices {
   async notify(text: string): Promise<void> {
     log.debug({ text }, "notify user");
     await this.bot.api.sendMessage(config.telegram.allowedUserId, text);
+  }
+
+  /** Nightly rating prompt (the scheduler calls this). Delegates to the rating command. */
+  async promptRating(date: string): Promise<void> {
+    await this.rating.prompt(date);
   }
 
   async askLink(pendingId: string, surface: string, note: string): Promise<void> {
@@ -120,6 +128,7 @@ export class ScribaBot implements BotServices {
     });
 
     this.bot.command("start", (ctx) => ctx.reply("scriba ready. Send text or a voice note to journal."));
+    this.rating.register();
 
     this.bot.on("message:text", async (ctx) => {
       if (ctx.message.text.startsWith("/")) return;
@@ -225,6 +234,7 @@ export class ScribaBot implements BotServices {
     log.debug({ data: ctx.callbackQuery.data }, "button pressed");
     if (ns === "rt") return this.handleRetry(ctx, rest[0]);
     if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
+    if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
     await ctx.answerCallbackQuery();
   }
 

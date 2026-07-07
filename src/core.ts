@@ -66,6 +66,25 @@ export function insertJournalLine(note: string, heading: string, line: string): 
   return lines.join("\n");
 }
 
+/** Set a numeric YAML frontmatter field, replacing it in place or inserting it into
+ *  (or creating) the `---` block at the top of the note. Always returns a note that
+ *  carries `key: value`. */
+export function setFrontmatterNumber(note: string, key: string, value: number): string {
+  const lines = note.split("\n");
+  if (lines[0] !== "---") return `---\n${key}: ${value}\n---\n\n${note}`;
+  let close = -1;
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i] === "---") { close = i; break; }
+  }
+  if (close === -1) return `---\n${key}: ${value}\n---\n\n${note}`; // no closing fence: wrap
+  const keyRe = new RegExp(`^${escapeRe(key)}\\s*:`);
+  for (let i = 1; i < close; i++) {
+    if (keyRe.test(lines[i]!)) { lines[i] = `${key}: ${value}`; return lines.join("\n"); }
+  }
+  lines.splice(close, 0, `${key}: ${value}`); // key absent: add it before the closing fence
+  return lines.join("\n");
+}
+
 const anchorRe = (anchor: string) =>
   new RegExp(`^.*\\^${escapeRe(anchor)}\\s*$`, "m");
 

@@ -33,6 +33,7 @@ const envSchema = z
     SCRIBA_VAULT_HOST_PATH: z.string().default("/vault"),
     DB_PATH: z.string().default("/data/scriba.db"),
     SUMMARY_TIME: z.string().default("23:30"),
+    RATING_TIME: z.string().default("00:00"), // nightly "how was your day?" 1–10 prompt
 
     FLUSH_IDLE_MS: z.coerce.number().default(30_000),
     FLUSH_MAX_BATCH: z.coerce.number().default(8),
@@ -74,6 +75,7 @@ export const config = {
   vaultPath: env.SCRIBA_VAULT_HOST_PATH,
   dbPath: env.DB_PATH,
   summaryTime: env.SUMMARY_TIME,
+  ratingTime: env.RATING_TIME,
   flush: {
     idleMs: env.FLUSH_IDLE_MS,
     maxBatch: env.FLUSH_MAX_BATCH,
