@@ -1,23 +1,42 @@
 # TODO
 
-Code is feature-complete and green (typecheck clean, 27/28 tests, 1 native-sqlite skip),
-pushed to `main`. Not yet verified live. Remaining before scriba runs in production:
+Code is feature-complete and green (typecheck clean; 28/28 tests pass in the Node 24
+container, 27/28 locally with 1 native-sqlite self-skip). Not yet verified live.
+Remaining before scriba runs in production:
+
+## Session progress (2026-07-07)
+- [x] CI to build + push the image — `.github/workflows/publish.yml`, on push to `main`
+      + manual dispatch. Tags: `latest`, package.json `version`, and `sha-<short>`.
+      Committed on branch `ci/publish-image` (UNSIGNED — 1Password couldn't prompt in the
+      non-interactive session; amend/re-sign interactively if signing is enforced).
+      NOT pushed yet.
+- [x] Local Docker build — native better-sqlite3 addon compiles clean on Node 24.
+- [x] Local boot — `scriba ready` + health on `:8080`; migrations run, native sqlite opens.
+      Dies only at Telegram `deleteWebhook 401` on a fake token (expected; needs a real bot).
+- [x] Full test suite green in the Node 24 container — 28/28, the DB roundtrip un-skipped.
+
+## Next up (order agreed)
+1. Push `ci/publish-image` + open/merge so CI runs. First run may 403 on package create
+   (private repo / org package settings) — Lucas to toggle package visibility if so.
+2. Create the Telegram bot(s); fill env from `.env.example` placeholders.
+3. Live-verify (see below), then LAST: merge homelab PR #1 — that triggers the deploy.
 
 ## Deploy blockers
 - [ ] Set env: `TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `OBSIDIAN_API_KEY`,
       `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`), and `GROQ_API_KEY` (remote mode only).
-- [ ] Write the homelab deploy compose in the `homelab` repo (bookaneer pattern: coolify
-      network, `64xxx:PORT`, DB volume, read-only vault mount for `VAULT_PATH`).
-- [ ] Build the Docker image and confirm it boots (also the only place better-sqlite3 +
-      the DB test actually run — Node 24, not the local Node 26).
+      Lucas creates the bot(s); `.env.example` already holds the placeholder set.
 - [ ] Merge the homelab compose PR — khaosdoctor/homelab#1 (`feat/add-scriba-service`).
+      DO LAST — merging triggers the Coolify deploy.
 - [ ] Publish `ghcr.io/khaosdoctor/scriba:latest` via CI — the homelab compose
       (`homelab/services/scriba/docker-compose.yaml`) references it by image tag.
+      CI is written; needs the branch pushed/merged + package-visibility check.
 - [ ] Confirm the container reaches the VFB Obsidian REST API on the host
       (`host.docker.internal:27124`, `extra_hosts: host-gateway`) and set `SCRIBA_VAULT_HOST_PATH`
       to the Default vault's path on multivac for the read-only link-index mount.
 
 ## Live verification (never run end-to-end)
+Plan: bot+allowlist after bots exist; Obsidian REST via a busybox in multivac (or local
+over tailscale); enrichment via a subagent smoke test; voice tested manually.
 - [ ] Long-polling bot connects and the single-user allowlist works.
 - [ ] Obsidian Local REST API reachable from the container; daily-note create + journal
       append + asset upload + anchor replace all work against the VFB (`multivac:27124`).
