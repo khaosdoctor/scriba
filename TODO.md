@@ -10,6 +10,7 @@ pushed to `main`. Not yet verified live. Remaining before scriba runs in product
       network, `64xxx:PORT`, DB volume, read-only vault mount for `VAULT_PATH`).
 - [ ] Build the Docker image and confirm it boots (also the only place better-sqlite3 +
       the DB test actually run — Node 24, not the local Node 26).
+- [ ] Merge the homelab compose PR — khaosdoctor/homelab#1 (`feat/add-scriba-service`).
 - [ ] Publish `ghcr.io/khaosdoctor/scriba:latest` via CI — the homelab compose
       (`homelab/services/scriba/docker-compose.yaml`) references it by image tag.
 - [ ] Confirm the container reaches the VFB Obsidian REST API on the host
