@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   makeJotId, journalLine, placeholderLine, replaceAnchorLine, deleteAnchorLine,
-  anchorLine, candidates, candidateTerms, candidatesViaSearch, parseLiteralEdit, tokenize,
+  anchorLine, candidates, parseLiteralEdit, tokenize,
   insertJournalLine,
 } from "./core.ts";
 
@@ -79,33 +79,6 @@ test("candidates drop stopwords/short aliases and honour rejections", () => {
   const rejected = new Set(["lev Lev"]); // user previously said no to Lev
   const got2 = candidates(text, index, STOP, rejected);
   assert.ok(!got2.some((c) => c.note === "Lev"));
-});
-
-test("candidateTerms keeps distinct >=3-char non-stopwords", () => {
-  assert.deepEqual(candidateTerms("I said no to Norway and Norway again", STOP), ["said", "norway", "and", "again"]);
-});
-
-test("candidatesViaSearch searches each term, honours rejections, dedupes", async () => {
-  const vault: Record<string, string[]> = { norway: ["Norway"], therapy: ["Therapy Topics", "Therapy Topics"] };
-  const search = async (t: string) => vault[t] ?? [];
-  const got = await candidatesViaSearch("visiting Norway for therapy", search, STOP, new Set());
-  assert.deepEqual(got, [{ surface: "norway", note: "Norway" }, { surface: "therapy", note: "Therapy Topics" }]);
-
-  const rejected = new Set(["norway Norway"]);
-  const got2 = await candidatesViaSearch("visiting Norway for therapy", search, STOP, rejected);
-  assert.deepEqual(got2.map((c) => c.note), ["Therapy Topics"]);
-});
-
-test("candidatesViaSearch swallows a failing search and continues", async () => {
-  const search = async (t: string) => { if (t === "boom") throw new Error("rest down"); return ["Fine"]; };
-  const got = await candidatesViaSearch("boom fine", search, STOP, new Set());
-  assert.deepEqual(got, [{ surface: "fine", note: "Fine" }]);
-});
-
-test("candidatesViaSearch drops substring title hits, keeps whole-word matches", async () => {
-  const search = async (_t: string) => ["Test Leads", "The problem with E2E tests", "fastest boat"];
-  const got = await candidatesViaSearch("test", search, STOP, new Set());
-  assert.deepEqual(got, [{ surface: "test", note: "Test Leads" }]); // "tests"/"fastest" are substrings, not words
 });
 
 test("literal edit parser handles sed and natural forms, rejects freeform", () => {

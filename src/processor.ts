@@ -4,7 +4,7 @@ import type { ObsidianClient } from "./obsidian.ts";
 import type { Transcriber } from "./transcribe.ts";
 import type { Enricher } from "./enrich.ts";
 import type { LinkIndex } from "./index-links.ts";
-import { candidates, candidatesViaSearch, journalLine, replaceAnchorLine, makeJotId } from "./core.ts";
+import { candidates, journalLine, replaceAnchorLine, makeJotId } from "./core.ts";
 import { logger } from "./log.ts";
 
 const log = logger("processor");
@@ -73,19 +73,12 @@ export class JotProcessor {
         // Prefer the local filesystem index (exact title+alias match). When it's empty —
         // no vault mount, or the mount is unreadable — fall back to REST title search.
         const index = this.links.list();
-        const via = index.length ? "local-index" : "rest-search";
+        if (!index.length) log.warn({ id }, "enricher: link index empty (VAULT_PATH unset or unreadable) — no wikilinks suggested");
+        const cands = candidates(source, index, stopwords, rejections);
         log.info(
-          { id, via, indexSize: index.length, stopwords: stopwords.size, rejections: rejections.size },
-          via === "local-index"
-            ? `enricher: matching links against local file index (${index.length} aliases)`
-            : "enricher: no local file index (no VAULT_PATH) — matching links via REST title search",
-        );
-        const cands = index.length
-          ? candidates(source, index, stopwords, rejections)
-          : await candidatesViaSearch(source, (t) => this.obsidian.searchTitles(t), stopwords, rejections);
-        log.info(
-          { id, via, count: cands.length, candidates: cands.map((c) => `"${c.surface}" -> [[${c.note}]]`) },
-          `enricher: ${cands.length} link candidate(s) survived stopword/reject filter`,
+          { id, indexSize: index.length, count: cands.length, stopwords: stopwords.size, rejections: rejections.size,
+            candidates: cands.map((c) => `"${c.surface}" -> [[${c.note}]]`) },
+          `enricher: ${cands.length} link candidate(s) from local index of ${index.length} aliases`,
         );
         log.info({ id, chars: source.length, candidates: cands.length }, "enricher: calling agent");
         const res = await this.enricher.enrich({ text: source, candidates: cands });
