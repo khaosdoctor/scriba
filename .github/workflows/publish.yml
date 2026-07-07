@@ -51,12 +51,20 @@ jobs:
       # pull the freshly-pushed :latest instead of reusing its locally-cached image.
       # Coolify sits behind Cloudflare Access, so send a CF Access service token too.
       - name: trigger coolify redeploy
+        env:
+          CFID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CFSECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          CURL: ${{ secrets.COOLIFY_URL }}
         run: |
-          code=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" \
+          echo "id len: ${#CFID}  secret len: ${#CFSECRET}  url len: ${#CURL}"
+          code=$(curl --silent --show-error --dump-header - --write-out "\nHTTP_CODE=%{http_code}\n" \
             "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=true" \
             --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
             --header "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
-            --header "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}")
+            --header "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}" \
+            | grep -aiE "^cf-|^HTTP/|not authorized|team|HTTP_CODE|error|message|forbidden")
+          echo "$code"
+          code=$(echo "$code" | grep -aoE "HTTP_CODE=[0-9]+" | cut -d= -f2)
           echo "coolify deploy responded HTTP $code"
           # A CF Access bounce (302 to login) or any non-2xx means the deploy never reached Coolify.
           [ "$code" = "200" ] || { echo "redeploy did not reach Coolify (check CF Access service token / secrets)"; exit 1; }
