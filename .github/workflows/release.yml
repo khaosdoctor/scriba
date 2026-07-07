@@ -54,7 +54,7 @@ jobs:
           tag_name: ${{ steps.changelog.outputs.tag }}
           body: ${{ steps.changelog.outputs.clean_changelog }}
 
-publish:
+  publish:
     needs: release
     if: ${{ needs.release.outputs.skipped == 'false' }}
     uses: ./.github/workflows/publish.yml
