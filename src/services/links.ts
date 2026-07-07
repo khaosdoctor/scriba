@@ -146,7 +146,7 @@ export class LinkIndex {
 		);
 		if (!entries) return;
 		for (const e of entries) {
-			if (e.name.startsWith(".")) continue;
+			if (e.name.startsWith(".") || e.name === "internal") continue;
 			const p = join(dir, e.name);
 			if (e.isDirectory()) await this.walk(p, acc);
 			else if (extname(e.name) === ".md") acc.push(p);
