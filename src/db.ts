@@ -103,6 +103,10 @@ export class Repository {
     const r = await this.k("msg_map").where({ tg_message_id: tgMessageId }).first();
     return r?.jot_id;
   }
+  async messageForJot(jotId: string): Promise<number | undefined> {
+    const r = await this.k("msg_map").where({ jot_id: jotId }).first();
+    return r?.tg_message_id;
+  }
 
   // --- learned link rejections ---
   async rejections(): Promise<Set<string>> {

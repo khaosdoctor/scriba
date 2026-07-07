@@ -18,6 +18,7 @@ export interface BotServices {
   askRetry: (jotId: string, text: string) => Promise<void>; // notify + a force-retry button
   downloadFile: (fileId: string) => Promise<DownloadedFile>;
   onJotDone: (jotId: string) => Promise<void>; // apply edits queued while processing
+  react: (jotId: string, state: "done" | "failed") => Promise<void>; // swap the intake reaction on the jot's message
 }
 
 /** Errors worth retrying (transient infra); anything else is treated as unrecoverable. */
@@ -98,6 +99,7 @@ export class JotProcessor {
 
       await this.writeLine(jot, this.composeLine(jot, textPart));
       await this.repo.updateJot(jot.id, { status: "done", error: null });
+      await this.bot.react(jot.id, "done");
       await this.bot.onJotDone(jot.id); // apply anything queued while we were working
       log.info({ id, ms: Date.now() - t0 }, "jot done");
     } catch (err) {
@@ -126,19 +128,21 @@ export class JotProcessor {
       await this.writeLine(jot, this.composeLine(jot, source));
     } catch { /* the note write itself is failing — nothing more we can do */ }
     await this.repo.updateJot(jot.id, { status: "abandoned", attempts, error: msg });
+    await this.bot.react(jot.id, "failed");
     await this.bot.onJotDone(jot.id); // apply edits queued while it was failing
     await this.bot.askRetry(jot.id, `⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n${msg.slice(0, 200)}`);
   }
 
   private async ensureMedia(jot: Jot): Promise<Jot> {
     if (jot.kind === "text" || !jot.file_id) return jot;
-    if (jot.asset_path && (jot.kind !== "audio" || jot.transcript)) return jot;
+    if (jot.kind === "audio" && jot.transcript) return jot; // audio is transcription-only, never attached
+    if (jot.asset_path) return jot;
 
     log.debug({ id: jot.id, fileId: jot.file_id }, "downloading media from telegram");
     const file = await this.bot.downloadFile(jot.file_id);
     log.debug({ id: jot.id, ext: file.ext, mime: file.mime, bytes: file.bytes.length }, "media downloaded");
     const patch: Partial<Jot> = {};
-    if (!jot.asset_path) {
+    if (jot.kind === "image" || jot.kind === "video") {
       const date = basename(jot.note_path, ".md");
       const name = `${date}_${jot.time.replaceAll(":", "")}_${jot.id}.${file.ext}`;
       patch.asset_path = await this.obsidian.saveAsset(name, file.bytes, file.mime);

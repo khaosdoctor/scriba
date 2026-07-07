@@ -68,6 +68,16 @@ export class ScribaBot implements BotServices {
     await this.bot.api.sendMessage(config.telegram.allowedUserId, text, { reply_markup: kb });
   }
 
+  /** Swap the intake reaction on a jot's message to reflect its outcome.
+   *  Telegram only allows a fixed emoji set for reactions, so ⏳/✅/❌ aren't
+   *  available — ✍ (received), 👌 (done), 😱 (failed) are the closest matches. */
+  async react(jotId: string, state: "done" | "failed"): Promise<void> {
+    const messageId = await this.repo.messageForJot(jotId);
+    if (!messageId) return;
+    const emoji = state === "done" ? "👌" : "😱";
+    await this.bot.api.setMessageReaction(config.telegram.allowedUserId, messageId, [{ type: "emoji", emoji }]).catch(() => {});
+  }
+
   async downloadFile(fileId: string): Promise<DownloadedFile> {
     const file = await this.bot.api.getFile(fileId);
     if (!file.file_path) throw new Error(`no file_path for ${fileId}`);
@@ -126,8 +136,9 @@ export class ScribaBot implements BotServices {
   }
 
   private async intake(ctx: any, kind: JotKind, src: { rawText?: string; fileId?: string }): Promise<void> {
-    // Ack receipt with a reaction — best-effort feedback, intake proceeds if it fails.
-    await ctx.react("👀").catch(() => {});
+    // Ack receipt with a reaction (✍ = received/awaiting) — best-effort, intake
+    // proceeds if it fails. Swapped to 👌/😱 by react() once processing settles.
+    await ctx.react("✍").catch(() => {});
     const epochMs = ctx.message.date * 1000;
     const id = makeJotId();
     const date = plainDate(epochMs);

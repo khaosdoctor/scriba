@@ -47,6 +47,8 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 
     await repo.mapMessage(42, "aaaaaaaa");
     assert.equal(await repo.jotForMessage(42), "aaaaaaaa");
+    assert.equal(await repo.messageForJot("aaaaaaaa"), 42); // reverse lookup for outcome reactions
+    assert.equal(await repo.messageForJot("nope"), undefined);
 
     await repo.reject("No", "Norway");
     assert.ok((await repo.rejections()).has("no Norway")); // stored lowercased
