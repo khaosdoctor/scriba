@@ -44,7 +44,7 @@ jobs:
           preset: "conventionalcommits"
           output-file: "CHANGELOG.md"
           tag-prefix: "v"
-          git-message: "chore: release v{version}"
+          git-message: "chore: release {version}"
           skip-on-empty: "true"
 
       - uses: softprops/action-gh-release@v2
