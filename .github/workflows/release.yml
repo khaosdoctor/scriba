@@ -30,6 +30,7 @@ jobs:
     outputs:
       skipped: ${{ steps.changelog.outputs.skipped }}
       tag: ${{ steps.changelog.outputs.tag }}
+      version: ${{ steps.changelog.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,10 +54,10 @@ jobs:
           tag_name: ${{ steps.changelog.outputs.tag }}
           body: ${{ steps.changelog.outputs.clean_changelog }}
 
-  publish:
+publish:
     needs: release
     if: ${{ needs.release.outputs.skipped == 'false' }}
     uses: ./.github/workflows/publish.yml
     secrets: inherit
     with:
-      version: ${{ steps.changelog.outputs.version }}
+      version: ${{ needs.release.outputs.version }}
