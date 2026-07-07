@@ -22,6 +22,17 @@ export function donePreview(kind: JotKind, textPart: string): string {
   return "saved";
 }
 
+/** Escape the five characters that matter for Telegram's HTML parse mode. */
+export function escapeHtml(s: string): string {
+  return s.replace(/[<>&"']/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+/** Final in-chat confirmation once a jot lands: the saved line blockquoted with its
+ *  time so it stands out. HTML parse mode — content is escaped. */
+export function doneMessage(time: string, kind: JotKind, textPart: string): string {
+  return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>`;
+}
+
 /** Journal bullet in the vault's house style: `- _HH:MM:SS ::_ <text> ^anchor` */
 export function journalLine(time: string, text: string, anchor: string): string {
   return `- _${time} ::_ ${text} ^${anchor}`;

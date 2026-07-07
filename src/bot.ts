@@ -32,6 +32,10 @@ export class ScribaBot implements BotServices {
   private rating: RatingCommand;
   private habits: HabitsCommand;
   private processor!: JotProcessor;
+  // jotId -> the live status message we edit in place through the jot's lifecycle.
+  // ponytail: in-memory. On restart the map is empty and status() just posts a fresh
+  // message; nothing is lost. Persist it only if that ever proves annoying.
+  private statusMsgs = new Map<string, number>();
 
   constructor(
     private repo: Repository,
@@ -106,10 +110,26 @@ export class ScribaBot implements BotServices {
     await this.bot.api.sendMessage(config.telegram.allowedUserId, `Link "${surface}" → [[${note}]]?`, { reply_markup: kb });
   }
 
-  async askRetry(jotId: string, text: string): Promise<void> {
-    log.debug({ jotId }, "offering retry button");
-    const kb = new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`);
-    await this.bot.api.sendMessage(config.telegram.allowedUserId, text, { reply_markup: kb });
+  /** Create-or-edit the one live status message for a jot. First call sends it and
+   *  remembers the message id; later calls edit that same message in place, so the
+   *  chat reads as a clean audit trail instead of a stream of notifications.
+   *  `retry: true` attaches a force-retry button; otherwise any button is cleared. */
+  async status(jotId: string, html: string, opts?: { retry?: boolean }): Promise<void> {
+    const reply_markup = opts?.retry ? new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`) : new InlineKeyboard();
+    const chat = config.telegram.allowedUserId;
+    const existing = this.statusMsgs.get(jotId);
+    if (existing) {
+      try {
+        await this.bot.api.editMessageText(chat, existing, html, { parse_mode: "HTML", reply_markup });
+        log.debug({ jotId, messageId: existing }, "status edited");
+        return;
+      } catch (err) {
+        log.warn({ jotId, messageId: existing, err }, "status edit failed — sending a fresh one");
+      }
+    }
+    const msg = await this.bot.api.sendMessage(chat, html, { parse_mode: "HTML", reply_markup });
+    this.statusMsgs.set(jotId, msg.message_id);
+    log.debug({ jotId, messageId: msg.message_id }, "status message sent");
   }
 
   /** Swap the intake reaction on a jot's message to reflect its outcome.

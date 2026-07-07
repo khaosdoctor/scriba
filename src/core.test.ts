@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   makeJotId, journalLine, placeholderLine, replaceAnchorLine, deleteAnchorLine,
   anchorLine, candidates, parseLiteralEdit, tokenize,
-  insertJournalLine, donePreview, setFrontmatterNumber,
+  insertJournalLine, donePreview, doneMessage, escapeHtml, setFrontmatterNumber,
   formatDuration, formatStats, formatStatus, formatJotDetail,
 } from "./core.ts";
 import type { Jot, StatsRow } from "./db.ts";
@@ -123,6 +123,17 @@ test("donePreview shows enriched text, truncates long, labels attach-only", () =
   assert.equal(donePreview("image", ""), "image saved to the note");
   assert.equal(donePreview("video", "  "), "video saved to the note");
   assert.equal(donePreview("text", ""), "saved");
+});
+
+test("escapeHtml neutralises Telegram HTML metacharacters", () => {
+  assert.equal(escapeHtml(`a <b> & "c" 'd'`), "a &lt;b&gt; &amp; &quot;c&quot; &#39;d&#39;");
+});
+
+test("doneMessage blockquotes the time and escapes content", () => {
+  assert.equal(
+    doneMessage("14:32:00", "text", "ran <5k> today"),
+    "✅ Saved to your journal\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>",
+  );
 });
 
 test("formatDuration picks the two coarsest units", () => {

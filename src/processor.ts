@@ -4,18 +4,29 @@ import type { ObsidianClient } from "./obsidian.ts";
 import type { Transcriber } from "./transcribe.ts";
 import type { Enricher } from "./enrich.ts";
 import type { LinkIndex } from "./index-links.ts";
-import { candidates, journalLine, replaceAnchorLine, makeJotId, donePreview } from "./core.ts";
+import { candidates, journalLine, replaceAnchorLine, makeJotId, doneMessage, escapeHtml } from "./core.ts";
 import { logger } from "./log.ts";
 
 const log = logger("processor");
+
+/** First status line shown per jot kind while it's being worked on. */
+const STARTING: Record<Jot["kind"], string> = {
+  audio: "🎤 Transcribing your voice note…",
+  text: "✨ Weaving it into your journal…",
+  image: "🖼️ Saving your image…",
+  video: "🎬 Saving your video…",
+};
 
 export interface DownloadedFile { bytes: Uint8Array; ext: string; mime: string; }
 
 /** What the processor needs from the bot: user-facing I/O it can't do itself. */
 export interface BotServices {
   notify: (text: string) => Promise<void>;
+  // Create-or-edit the one live status message for a jot (HTML parse mode). Edited in
+  // place through the jot's lifecycle so the chat stays a clean audit trail, not spam.
+  // `retry: true` attaches a force-retry button (used when a jot is given up on).
+  status: (jotId: string, html: string, opts?: { retry?: boolean }) => Promise<void>;
   askLink: (pendingId: string, surface: string, note: string) => Promise<void>;
-  askRetry: (jotId: string, text: string) => Promise<void>; // notify + a force-retry button
   downloadFile: (fileId: string) => Promise<DownloadedFile>;
   onJotDone: (jotId: string) => Promise<void>; // apply edits queued while processing
   react: (jotId: string, state: "done" | "failed" | "retrying") => Promise<void>; // swap the intake reaction on the jot's message
@@ -63,8 +74,13 @@ export class JotProcessor {
     const t0 = Date.now();
     log.info({ id, kind: loaded.kind, attempts: loaded.attempts }, "processing jot");
     await this.bot.typing(); // best-effort "typing…" so the user sees work is underway
+    await this.bot.status(id, STARTING[loaded.kind]); // live status message, edited in place from here on
     try {
       const jot = await this.ensureMedia(loaded);
+      // Voice notes: show the transcript the moment it exists, then the enriching step.
+      if (jot.kind === "audio" && jot.transcript?.trim()) {
+        await this.bot.status(id, `🎤 <i>${escapeHtml(jot.transcript.trim())}</i>\n\n✨ Weaving it into your journal…`);
+      }
       const source =
         jot.kind === "audio" ? (jot.transcript ?? "") :
         jot.kind === "text" ? (jot.raw_text ?? "") :
@@ -102,7 +118,7 @@ export class JotProcessor {
       await this.writeLine(jot, this.composeLine(jot, textPart));
       await this.repo.updateJot(jot.id, { status: "done", error: null });
       await this.bot.react(jot.id, "done");
-      await this.bot.notify(`✅ ${donePreview(jot.kind, textPart)}`);
+      await this.bot.status(jot.id, doneMessage(jot.time, jot.kind, textPart));
       await this.bot.onJotDone(jot.id); // apply anything queued while we were working
       log.info({ id, ms: Date.now() - t0 }, "jot done");
     } catch (err) {
@@ -134,7 +150,11 @@ export class JotProcessor {
     await this.repo.updateJot(jot.id, { status: "abandoned", attempts, error: msg });
     await this.bot.react(jot.id, "failed");
     await this.bot.onJotDone(jot.id); // apply edits queued while it was failing
-    await this.bot.askRetry(jot.id, `⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n${msg.slice(0, 200)}`);
+    await this.bot.status(
+      jot.id,
+      `⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n<code>${escapeHtml(msg.slice(0, 200))}</code>`,
+      { retry: true },
+    );
   }
 
   private async ensureMedia(jot: Jot): Promise<Jot> {
