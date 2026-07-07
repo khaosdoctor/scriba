@@ -11,10 +11,6 @@ services:
       - ./data:/data
       - ${SCRIBA_VAULT_HOST_PATH:-./vault}:/vault:ro
 
-  # Local transcription sidecar (default: TRANSCRIBER=local). Parakeet TDT 0.6B (ONNX, CPU),
-  # OpenAI-compatible /v1/audio/transcriptions. scriba reaches it at the default PARAKEET_URL
-  # http://parakeet:5092/v1/audio/transcriptions. For remote (Groq) instead, set
-  # TRANSCRIBER=remote and run just `docker compose up scriba` to skip this service.
   parakeet:
     image: ghcr.io/achetronic/parakeet:latest
     restart: unless-stopped
