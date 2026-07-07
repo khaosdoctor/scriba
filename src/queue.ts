@@ -8,60 +8,71 @@ import { logger } from "./log.ts";
 const log = logger("queue");
 
 export interface FlushOpts {
-  idleMs: number;
-  maxBatch: number;
-  maxWaitMs: number;
-  onFlush: (ids: string[]) => Promise<void>;
+	idleMs: number;
+	maxBatch: number;
+	maxWaitMs: number;
+	onFlush: (ids: string[]) => Promise<void>;
 }
 
 export class FlushQueue {
-  private ids: string[] = [];
-  private idleTimer: NodeJS.Timeout | null = null;
-  private maxTimer: NodeJS.Timeout | null = null;
-  private draining = false;
+	private ids: string[] = [];
+	private idleTimer: NodeJS.Timeout | null = null;
+	private maxTimer: NodeJS.Timeout | null = null;
+	private draining = false;
 
-  constructor(private opts: FlushOpts) {}
+	constructor(private opts: FlushOpts) {}
 
-  /** How many jots are waiting to be flushed — for /status. */
-  get depth(): number {
-    return this.ids.length;
-  }
+	/** How many jots are waiting to be flushed — for /status. */
+	get depth(): number {
+		return this.ids.length;
+	}
 
-  add(id: string): void {
-    this.ids.push(id);
-    // While a flush is running, just accumulate — arm() runs again when it finishes.
-    if (!this.draining) this.arm();
-  }
+	add(id: string): void {
+		this.ids.push(id);
+		// While a flush is running, just accumulate — arm() runs again when it finishes.
+		if (!this.draining) this.arm();
+	}
 
-  private arm(): void {
-    if (this.ids.length === 0) return;
-    if (this.ids.length >= this.opts.maxBatch) {
-      log.debug({ size: this.ids.length }, "flush: batch cap hit");
-      void this.flush(); return;
-    }
-    if (this.idleTimer) clearTimeout(this.idleTimer);
-    this.idleTimer = setTimeout(() => void this.flush(), this.opts.idleMs);
-    if (!this.maxTimer) this.maxTimer = setTimeout(() => void this.flush(), this.opts.maxWaitMs);
-  }
+	private arm(): void {
+		if (this.ids.length === 0) return;
+		if (this.ids.length >= this.opts.maxBatch) {
+			log.debug({ size: this.ids.length }, "flush: batch cap hit");
+			void this.flush();
+			return;
+		}
+		if (this.idleTimer) clearTimeout(this.idleTimer);
+		this.idleTimer = setTimeout(() => void this.flush(), this.opts.idleMs);
+		if (!this.maxTimer)
+			this.maxTimer = setTimeout(() => void this.flush(), this.opts.maxWaitMs);
+	}
 
-  private clearTimers(): void {
-    if (this.idleTimer) { clearTimeout(this.idleTimer); this.idleTimer = null; }
-    if (this.maxTimer) { clearTimeout(this.maxTimer); this.maxTimer = null; }
-  }
+	private clearTimers(): void {
+		if (this.idleTimer) {
+			clearTimeout(this.idleTimer);
+			this.idleTimer = null;
+		}
+		if (this.maxTimer) {
+			clearTimeout(this.maxTimer);
+			this.maxTimer = null;
+		}
+	}
 
-  async flush(): Promise<void> {
-    if (this.draining) return;
-    if (this.ids.length === 0) { this.clearTimers(); return; }
-    const batch = this.ids;
-    this.ids = [];
-    this.clearTimers();
-    this.draining = true;
-    log.debug({ size: batch.length }, "flushing batch");
-    try {
-      await this.opts.onFlush(batch);
-    } finally {
-      this.draining = false;
-      this.arm(); // handle anything that arrived mid-flush
-    }
-  }
+	async flush(): Promise<void> {
+		if (this.draining) return;
+		if (this.ids.length === 0) {
+			this.clearTimers();
+			return;
+		}
+		const batch = this.ids;
+		this.ids = [];
+		this.clearTimers();
+		this.draining = true;
+		log.debug({ size: batch.length }, "flushing batch");
+		try {
+			await this.opts.onFlush(batch);
+		} finally {
+			this.draining = false;
+			this.arm(); // handle anything that arrived mid-flush
+		}
+	}
 }

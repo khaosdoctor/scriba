@@ -1,211 +1,316 @@
 import { basename } from "node:path";
-import { MAX_ATTEMPTS, type Jot, type Repository } from "./db.ts";
-import type { ObsidianClient } from "./obsidian.ts";
-import type { Transcriber } from "./transcribe.ts";
+import {
+	candidates,
+	doneMessage,
+	escapeHtml,
+	journalLine,
+	makeJotId,
+	replaceAnchorLine,
+} from "./core.ts";
+import { type Jot, MAX_ATTEMPTS, type Repository } from "./db.ts";
 import type { Enricher } from "./enrich.ts";
 import type { LinkIndex } from "./index-links.ts";
-import { candidates, journalLine, replaceAnchorLine, makeJotId, doneMessage, escapeHtml } from "./core.ts";
 import { logger } from "./log.ts";
+import type { ObsidianClient } from "./obsidian.ts";
+import type { Transcriber } from "./transcribe.ts";
 
 const log = logger("processor");
 
 /** First status line shown per jot kind while it's being worked on. */
 const STARTING: Record<Jot["kind"], string> = {
-  audio: "🎤 Transcribing your voice note…",
-  text: "✨ Weaving it into your journal…",
-  image: "🖼️ Saving your image…",
-  video: "🎬 Saving your video…",
+	audio: "🎤 Transcribing your voice note…",
+	text: "✨ Weaving it into your journal…",
+	image: "🖼️ Saving your image…",
+	video: "🎬 Saving your video…",
 };
 
-export interface DownloadedFile { bytes: Uint8Array; ext: string; mime: string; }
+export interface DownloadedFile {
+	bytes: Uint8Array;
+	ext: string;
+	mime: string;
+}
 
 /** What the processor needs from the bot: user-facing I/O it can't do itself. */
 export interface BotServices {
-  notify: (text: string) => Promise<void>;
-  // Create-or-edit the one live status message for a jot (HTML parse mode). Edited in
-  // place through the jot's lifecycle so the chat stays a clean audit trail, not spam.
-  // `retry: true` attaches a force-retry button (used when a jot is given up on).
-  status: (jotId: string, html: string, opts?: { retry?: boolean }) => Promise<void>;
-  askLink: (pendingId: string, surface: string, note: string) => Promise<void>;
-  downloadFile: (fileId: string) => Promise<DownloadedFile>;
-  onJotDone: (jotId: string) => Promise<void>; // apply edits queued while processing
-  react: (jotId: string, state: "done" | "failed" | "retrying") => Promise<void>; // swap the intake reaction on the jot's message
-  typing: () => Promise<void>; // "typing…" chat action while a jot is being processed
+	notify: (text: string) => Promise<void>;
+	// Create-or-edit the one live status message for a jot (HTML parse mode). Edited in
+	// place through the jot's lifecycle so the chat stays a clean audit trail, not spam.
+	// `retry: true` attaches a force-retry button (used when a jot is given up on).
+	status: (
+		jotId: string,
+		html: string,
+		opts?: { retry?: boolean },
+	) => Promise<void>;
+	askLink: (pendingId: string, surface: string, note: string) => Promise<void>;
+	downloadFile: (fileId: string) => Promise<DownloadedFile>;
+	onJotDone: (jotId: string) => Promise<void>; // apply edits queued while processing
+	react: (
+		jotId: string,
+		state: "done" | "failed" | "retrying",
+	) => Promise<void>; // swap the intake reaction on the jot's message
+	typing: () => Promise<void>; // "typing…" chat action while a jot is being processed
 }
 
 /** Errors worth retrying (transient infra); anything else is treated as unrecoverable. */
 function isRecoverable(err: unknown): boolean {
-  const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return /timeout|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(m);
+	const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
+	return /timeout|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
+		m,
+	);
 }
 
 /** Turns a queued jot into an enriched, written journal line. Audio + text only. */
 export class JotProcessor {
-  constructor(
-    private repo: Repository,
-    private obsidian: ObsidianClient,
-    private transcriber: Transcriber,
-    private enricher: Enricher,
-    private links: LinkIndex,
-    private bot: BotServices,
-  ) {}
+	constructor(
+		private repo: Repository,
+		private obsidian: ObsidianClient,
+		private transcriber: Transcriber,
+		private enricher: Enricher,
+		private links: LinkIndex,
+		private bot: BotServices,
+	) {}
 
-  async processBatch(ids: string[]): Promise<void> {
-    // ponytail: one agent call per jot. Batching coalesces arrivals + retries;
-    // true bulk-in-one-prompt enrichment is a future token optimisation.
-    log.info({ count: ids.length, ids }, "processing batch");
-    for (const id of ids) await this.processJot(id);
-    log.info({ count: ids.length }, "batch complete");
-  }
+	async processBatch(ids: string[]): Promise<void> {
+		// ponytail: one agent call per jot. Batching coalesces arrivals + retries;
+		// true bulk-in-one-prompt enrichment is a future token optimisation.
+		log.info({ count: ids.length, ids }, "processing batch");
+		for (const id of ids) await this.processJot(id);
+		log.info({ count: ids.length }, "batch complete");
+	}
 
-  /** Forever-retry for failed jots (capped) + crash recovery for pending. */
-  async retrySweep(): Promise<void> {
-    const pending = await this.repo.pendingJots();
-    if (!pending.length) return log.debug("retry sweep: nothing pending");
-    log.info({ count: pending.length, ids: pending.map((j) => j.id) }, "retry sweep");
-    for (const jot of pending) await this.processJot(jot.id);
-  }
+	/** Forever-retry for failed jots (capped) + crash recovery for pending. */
+	async retrySweep(): Promise<void> {
+		const pending = await this.repo.pendingJots();
+		if (!pending.length) return log.debug("retry sweep: nothing pending");
+		log.info(
+			{ count: pending.length, ids: pending.map((j) => j.id) },
+			"retry sweep",
+		);
+		for (const jot of pending) await this.processJot(jot.id);
+	}
 
-  async processJot(id: string): Promise<void> {
-    const loaded = await this.repo.getJot(id);
-    if (!loaded) return log.warn({ id }, "processJot: jot not found, skipping");
-    // Atomic claim — only the winner proceeds, so flush + sweeps can't double-process.
-    if (!(await this.repo.claim(id))) return log.debug({ id }, "processJot: claim lost, another worker has it");
-    const t0 = Date.now();
-    log.info({ id, kind: loaded.kind, attempts: loaded.attempts }, "processing jot");
-    await this.bot.typing(); // best-effort "typing…" so the user sees work is underway
-    await this.bot.status(id, STARTING[loaded.kind]); // live status message, edited in place from here on
-    try {
-      const jot = await this.ensureMedia(loaded);
-      // Voice notes: show the transcript the moment it exists, then the enriching step.
-      if (jot.kind === "audio" && jot.transcript?.trim()) {
-        await this.bot.status(id, `🎤 <i>${escapeHtml(jot.transcript.trim())}</i>\n\n✨ Weaving it into your journal…`);
-      }
-      const source =
-        jot.kind === "audio" ? (jot.transcript ?? "") :
-        jot.kind === "text" ? (jot.raw_text ?? "") :
-        ""; // image/video are attach-only
+	async processJot(id: string): Promise<void> {
+		const loaded = await this.repo.getJot(id);
+		if (!loaded) return log.warn({ id }, "processJot: jot not found, skipping");
+		// Atomic claim — only the winner proceeds, so flush + sweeps can't double-process.
+		if (!(await this.repo.claim(id)))
+			return log.debug({ id }, "processJot: claim lost, another worker has it");
+		const t0 = Date.now();
+		log.info(
+			{ id, kind: loaded.kind, attempts: loaded.attempts },
+			"processing jot",
+		);
+		await this.bot.typing(); // best-effort "typing…" so the user sees work is underway
+		await this.bot.status(id, STARTING[loaded.kind]); // live status message, edited in place from here on
+		try {
+			const jot = await this.ensureMedia(loaded);
+			// Voice notes: show the transcript the moment it exists, then the enriching step.
+			if (jot.kind === "audio" && jot.transcript?.trim()) {
+				await this.bot.status(
+					id,
+					`🎤 <i>${escapeHtml(jot.transcript.trim())}</i>\n\n✨ Weaving it into your journal…`,
+				);
+			}
+			const source =
+				jot.kind === "audio"
+					? (jot.transcript ?? "")
+					: jot.kind === "text"
+						? (jot.raw_text ?? "")
+						: ""; // image/video are attach-only
 
-      let textPart = source;
-      if (source.trim()) {
-        const [stopwords, rejections] = await Promise.all([this.repo.stopwords(), this.repo.rejections()]);
-        const index = this.links.list();
-        if (!index.length) log.warn({ id }, "enricher: link index empty (SCRIBA_VAULT_HOST_PATH unset or unreadable) — no wikilinks suggested");
-        const cands = candidates(source, index, stopwords, rejections);
-        log.info(
-          { id, indexSize: index.length, count: cands.length, stopwords: stopwords.size, rejections: rejections.size,
-            candidates: cands.map((c) => `"${c.surface}" -> [[${c.note}]]`) },
-          `enricher: ${cands.length} link candidate(s) from local index of ${index.length} aliases`,
-        );
-        log.info({ id, chars: source.length, candidates: cands.length }, "enricher: calling agent");
-        const res = await this.enricher.enrich({ text: source, candidates: cands });
-        textPart = res.text;
-        log.info(
-          { id, ambiguous: res.ambiguous.length,
-            ambiguousLinks: res.ambiguous.map((a) => `"${a.surface}" -> [[${a.note}]]`), usage: res.usage },
-          "enricher: done",
-        );
-        for (const a of res.ambiguous) {
-          const pid = makeJotId();
-          await this.repo.addPendingLink(pid, jot.id, a.surface, a.note);
-          await this.bot.askLink(pid, a.surface, a.note);
-          log.debug({ id, pid, surface: a.surface, note: a.note }, "asked to confirm link");
-        }
-      } else {
-        log.debug({ id, kind: jot.kind }, "no enrichable text (attach-only or empty)");
-      }
+			let textPart = source;
+			if (source.trim()) {
+				const [stopwords, rejections] = await Promise.all([
+					this.repo.stopwords(),
+					this.repo.rejections(),
+				]);
+				const index = this.links.list();
+				if (!index.length)
+					log.warn(
+						{ id },
+						"enricher: link index empty (SCRIBA_VAULT_HOST_PATH unset or unreadable) — no wikilinks suggested",
+					);
+				const cands = candidates(source, index, stopwords, rejections);
+				log.info(
+					{
+						id,
+						indexSize: index.length,
+						count: cands.length,
+						stopwords: stopwords.size,
+						rejections: rejections.size,
+						candidates: cands.map((c) => `"${c.surface}" -> [[${c.note}]]`),
+					},
+					`enricher: ${cands.length} link candidate(s) from local index of ${index.length} aliases`,
+				);
+				log.info(
+					{ id, chars: source.length, candidates: cands.length },
+					"enricher: calling agent",
+				);
+				const res = await this.enricher.enrich({
+					text: source,
+					candidates: cands,
+				});
+				textPart = res.text;
+				log.info(
+					{
+						id,
+						ambiguous: res.ambiguous.length,
+						ambiguousLinks: res.ambiguous.map(
+							(a) => `"${a.surface}" -> [[${a.note}]]`,
+						),
+						usage: res.usage,
+					},
+					"enricher: done",
+				);
+				for (const a of res.ambiguous) {
+					const pid = makeJotId();
+					await this.repo.addPendingLink(pid, jot.id, a.surface, a.note);
+					await this.bot.askLink(pid, a.surface, a.note);
+					log.debug(
+						{ id, pid, surface: a.surface, note: a.note },
+						"asked to confirm link",
+					);
+				}
+			} else {
+				log.debug(
+					{ id, kind: jot.kind },
+					"no enrichable text (attach-only or empty)",
+				);
+			}
 
-      await this.writeLine(jot, this.composeLine(jot, textPart));
-      await this.repo.updateJot(jot.id, { status: "done", error: null });
-      await this.bot.react(jot.id, "done");
-      await this.bot.status(jot.id, doneMessage(jot.time, jot.kind, textPart));
-      await this.bot.onJotDone(jot.id); // apply anything queued while we were working
-      log.info({ id, ms: Date.now() - t0 }, "jot done");
-    } catch (err) {
-      await this.fail(loaded, err);
-    }
-  }
+			await this.writeLine(jot, this.composeLine(jot, textPart));
+			await this.repo.updateJot(jot.id, { status: "done", error: null });
+			await this.bot.react(jot.id, "done");
+			await this.bot.status(jot.id, doneMessage(jot.time, jot.kind, textPart));
+			await this.bot.onJotDone(jot.id); // apply anything queued while we were working
+			log.info({ id, ms: Date.now() - t0 }, "jot done");
+		} catch (err) {
+			await this.fail(loaded, err);
+		}
+	}
 
-  /** Record a failure: retry if transient and under the cap, else give up gracefully. */
-  private async fail(jot: Jot, err: unknown): Promise<void> {
-    const msg = err instanceof Error ? err.message : String(err);
-    const attempts = (jot.attempts ?? 0) + 1;
-    const recoverable = isRecoverable(err);
-    if (recoverable && attempts < MAX_ATTEMPTS) {
-      log.warn({ id: jot.id, attempts, max: MAX_ATTEMPTS, err }, "jot failed (transient) — will retry");
-      await this.repo.updateJot(jot.id, { status: "failed", attempts, error: msg });
-      await this.bot.react(jot.id, "retrying");
-      return;
-    }
-    // Unrecoverable, or out of tries: post whatever we have un-enriched, then stop.
-    const reason = recoverable ? `no luck after ${attempts} tries` : "unrecoverable error";
-    log.error({ id: jot.id, attempts, recoverable, err }, "jot abandoned — posting un-enriched");
-    const source =
-      jot.kind === "audio" ? (jot.transcript ?? "🎤 (voice note — transcription failed)") :
-      jot.kind === "text" ? (jot.raw_text ?? "") :
-      "";
-    try {
-      await this.writeLine(jot, this.composeLine(jot, source));
-    } catch { /* the note write itself is failing — nothing more we can do */ }
-    await this.repo.updateJot(jot.id, { status: "abandoned", attempts, error: msg });
-    await this.bot.react(jot.id, "failed");
-    await this.bot.onJotDone(jot.id); // apply edits queued while it was failing
-    await this.bot.status(
-      jot.id,
-      `⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n<code>${escapeHtml(msg.slice(0, 200))}</code>`,
-      { retry: true },
-    );
-  }
+	/** Record a failure: retry if transient and under the cap, else give up gracefully. */
+	private async fail(jot: Jot, err: unknown): Promise<void> {
+		const msg = err instanceof Error ? err.message : String(err);
+		const attempts = (jot.attempts ?? 0) + 1;
+		const recoverable = isRecoverable(err);
+		if (recoverable && attempts < MAX_ATTEMPTS) {
+			log.warn(
+				{ id: jot.id, attempts, max: MAX_ATTEMPTS, err },
+				"jot failed (transient) — will retry",
+			);
+			await this.repo.updateJot(jot.id, {
+				status: "failed",
+				attempts,
+				error: msg,
+			});
+			await this.bot.react(jot.id, "retrying");
+			return;
+		}
+		// Unrecoverable, or out of tries: post whatever we have un-enriched, then stop.
+		const reason = recoverable
+			? `no luck after ${attempts} tries`
+			: "unrecoverable error";
+		log.error(
+			{ id: jot.id, attempts, recoverable, err },
+			"jot abandoned — posting un-enriched",
+		);
+		const source =
+			jot.kind === "audio"
+				? (jot.transcript ?? "🎤 (voice note — transcription failed)")
+				: jot.kind === "text"
+					? (jot.raw_text ?? "")
+					: "";
+		try {
+			await this.writeLine(jot, this.composeLine(jot, source));
+		} catch {
+			/* the note write itself is failing — nothing more we can do */
+		}
+		await this.repo.updateJot(jot.id, {
+			status: "abandoned",
+			attempts,
+			error: msg,
+		});
+		await this.bot.react(jot.id, "failed");
+		await this.bot.onJotDone(jot.id); // apply edits queued while it was failing
+		await this.bot.status(
+			jot.id,
+			`⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n<code>${escapeHtml(msg.slice(0, 200))}</code>`,
+			{ retry: true },
+		);
+	}
 
-  private async ensureMedia(jot: Jot): Promise<Jot> {
-    if (jot.kind === "text" || !jot.file_id) return jot;
-    if (jot.kind === "audio" && jot.transcript) return jot; // audio is transcription-only, never attached
-    if (jot.asset_path) return jot;
+	private async ensureMedia(jot: Jot): Promise<Jot> {
+		if (jot.kind === "text" || !jot.file_id) return jot;
+		if (jot.kind === "audio" && jot.transcript) return jot; // audio is transcription-only, never attached
+		if (jot.asset_path) return jot;
 
-    log.debug({ id: jot.id, fileId: jot.file_id }, "downloading media from telegram");
-    const file = await this.bot.downloadFile(jot.file_id);
-    log.debug({ id: jot.id, ext: file.ext, mime: file.mime, bytes: file.bytes.length }, "media downloaded");
-    const patch: Partial<Jot> = {};
-    if (jot.kind === "image" || jot.kind === "video") {
-      const date = basename(jot.note_path, ".md");
-      const name = `${date}_${jot.time.replaceAll(":", "")}_${jot.id}.${file.ext}`;
-      patch.asset_path = await this.obsidian.saveAsset(name, file.bytes, file.mime);
-      log.info({ id: jot.id, asset: patch.asset_path }, "asset saved to vault");
-    }
-    if (jot.kind === "audio" && !jot.transcript) {
-      log.debug({ id: jot.id }, "transcribing audio");
-      patch.transcript = await this.transcriber.transcribe(file.bytes, file.ext);
-      log.info({ id: jot.id, chars: patch.transcript.length }, "audio transcribed");
-    }
-    // Captionless image → generate one with vision (used as the embed display).
-    if (jot.kind === "image" && !jot.raw_text) {
-      log.debug({ id: jot.id }, "captioning image with vision");
-      patch.raw_text = await this.enricher.describeImage(file.bytes, file.mime);
-      log.info({ id: jot.id, caption: patch.raw_text }, "image captioned");
-    }
-    await this.repo.updateJot(jot.id, patch);
-    return { ...jot, ...patch };
-  }
+		log.debug(
+			{ id: jot.id, fileId: jot.file_id },
+			"downloading media from telegram",
+		);
+		const file = await this.bot.downloadFile(jot.file_id);
+		log.debug(
+			{ id: jot.id, ext: file.ext, mime: file.mime, bytes: file.bytes.length },
+			"media downloaded",
+		);
+		const patch: Partial<Jot> = {};
+		if (jot.kind === "image" || jot.kind === "video") {
+			const date = basename(jot.note_path, ".md");
+			const name = `${date}_${jot.time.replaceAll(":", "")}_${jot.id}.${file.ext}`;
+			patch.asset_path = await this.obsidian.saveAsset(
+				name,
+				file.bytes,
+				file.mime,
+			);
+			log.info({ id: jot.id, asset: patch.asset_path }, "asset saved to vault");
+		}
+		if (jot.kind === "audio" && !jot.transcript) {
+			log.debug({ id: jot.id }, "transcribing audio");
+			patch.transcript = await this.transcriber.transcribe(
+				file.bytes,
+				file.ext,
+			);
+			log.info(
+				{ id: jot.id, chars: patch.transcript.length },
+				"audio transcribed",
+			);
+		}
+		// Captionless image → generate one with vision (used as the embed display).
+		if (jot.kind === "image" && !jot.raw_text) {
+			log.debug({ id: jot.id }, "captioning image with vision");
+			patch.raw_text = await this.enricher.describeImage(file.bytes, file.mime);
+			log.info({ id: jot.id, caption: patch.raw_text }, "image captioned");
+		}
+		await this.repo.updateJot(jot.id, patch);
+		return { ...jot, ...patch };
+	}
 
-  private composeLine(jot: Jot, textPart: string): string {
-    let embed = "";
-    if (jot.asset_path) {
-      const caption = (jot.kind === "image" || jot.kind === "video") && jot.raw_text;
-      embed = caption ? `![[${jot.asset_path}|${jot.raw_text}]]` : `![[${jot.asset_path}]]`;
-    }
-    const content = [textPart, embed].filter(Boolean).join(" ") || "…";
-    return journalLine(jot.time, content, jot.anchor);
-  }
+	private composeLine(jot: Jot, textPart: string): string {
+		let embed = "";
+		if (jot.asset_path) {
+			const caption =
+				(jot.kind === "image" || jot.kind === "video") && jot.raw_text;
+			embed = caption
+				? `![[${jot.asset_path}|${jot.raw_text}]]`
+				: `![[${jot.asset_path}]]`;
+		}
+		const content = [textPart, embed].filter(Boolean).join(" ") || "…";
+		return journalLine(jot.time, content, jot.anchor);
+	}
 
-  private async writeLine(jot: Jot, line: string): Promise<void> {
-    const note = await this.obsidian.readNote(jot.note_path); // live — user may have edited
-    const replaced = replaceAnchorLine(note, jot.anchor, line);
-    if (replaced) {
-      await this.obsidian.writeNote(jot.note_path, replaced);
-      log.debug({ id: jot.id, anchor: jot.anchor }, "line replaced in place");
-      return;
-    }
-    log.warn({ id: jot.id, anchor: jot.anchor }, "anchor missing — appending line instead");
-    await this.obsidian.appendJournalLine(basename(jot.note_path, ".md"), line);
-  }
+	private async writeLine(jot: Jot, line: string): Promise<void> {
+		const note = await this.obsidian.readNote(jot.note_path); // live — user may have edited
+		const replaced = replaceAnchorLine(note, jot.anchor, line);
+		if (replaced) {
+			await this.obsidian.writeNote(jot.note_path, replaced);
+			log.debug({ id: jot.id, anchor: jot.anchor }, "line replaced in place");
+			return;
+		}
+		log.warn(
+			{ id: jot.id, anchor: jot.anchor },
+			"anchor missing — appending line instead",
+		);
+		await this.obsidian.appendJournalLine(basename(jot.note_path, ".md"), line);
+	}
 }

@@ -17,13 +17,19 @@ const level = process.env.LOG_LEVEL ?? "debug";
 // Secrets stripped in pino core so they never reach any stream, any call site. Wildcards
 // match the config secrets (telegram.token, obsidian.key, transcription.groqApiKey).
 const redact = { paths: ["*.token", "*.key", "*.groqApiKey"], censor: "***" };
-const stream = process.env.LOG_JSON === "1"
-  ? pino.destination({ dest: 1, sync: true })
-  : pretty({ sync: true, translateTime: "SYS:HH:MM:ss.l", ignore: "pid,hostname,ns", messageFormat: "[{ns}] {msg}" });
+const stream =
+	process.env.LOG_JSON === "1"
+		? pino.destination({ dest: 1, sync: true })
+		: pretty({
+				sync: true,
+				translateTime: "SYS:HH:MM:ss.l",
+				ignore: "pid,hostname,ns",
+				messageFormat: "[{ns}] {msg}",
+			});
 const root = pino({ level, redact }, stream);
 
 export type Logger = pino.Logger;
 
 export function logger(ns: string): Logger {
-  return root.child({ ns });
+	return root.child({ ns });
 }
