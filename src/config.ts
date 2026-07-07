@@ -84,16 +84,5 @@ export const config = {
   },
 } as const;
 
-// Log resolved config once at boot; secrets redacted.
-log.info(
-  {
-    ...config,
-    telegram: { ...config.telegram, token: "***" },
-    obsidian: { ...config.obsidian, key: "***" },
-    transcription: {
-      ...config.transcription,
-      groqApiKey: config.transcription.groqApiKey ? "***" : "",
-    },
-  },
-  "config loaded",
-);
+// Log resolved config once at boot; secrets stripped by the logger's redact paths.
+log.info(config, "config loaded");

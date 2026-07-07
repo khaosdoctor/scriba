@@ -52,7 +52,9 @@ deployed on the homelab (Coolify). Single user.
   branch that matters: `info` for normal milestones (command invoked, action taken),
   `warn` for rejected/invalid input, `error` (with `{ err }`) for failures, `debug` for
   raw payloads. A new command or feature without logs on its happy path AND its rejection
-  paths is incomplete.
+  paths is incomplete. Secrets are stripped in pino core via `redact` in `src/log.ts`
+  (`*.token`/`*.key`/`*.groqApiKey`); log config objects freely, but add a path there if
+  you introduce a secret with a different field name.
 - **Slash commands are discoverable.** Any new `bot.command(...)` also gets an entry in
   `setMyCommands` (in `ScribaBot.start`) so it shows in Telegram's `/` menu.
 
