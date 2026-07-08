@@ -80,6 +80,9 @@ export class ScribaBot implements BotServices {
 	// ponytail: in-memory. On restart the map is empty and status() just posts a fresh
 	// message; nothing is lost. Persist it only if that ever proves annoying.
 	private statusMsgs = new Map<string, number>();
+	// Message id of the last root menu, so opening a fresh /menu retires the old one
+	// instead of leaving stale, still-tappable keyboards piling up in the chat.
+	private lastMenuMsgId?: number;
 
 	constructor(
 		private repo: Repository,
@@ -287,6 +290,14 @@ export class ScribaBot implements BotServices {
 			const msg =
 				err.error instanceof Error ? err.error.message : String(err.error);
 			log.error({ err: err.error }, "bot handler error");
+			// A failed menu/button tap: stop the button's spinner with a toast and stop here.
+			// Otherwise it spins forever and bot.catch posts jot-intake copy that doesn't fit.
+			if (err.ctx.callbackQuery) {
+				await err.ctx
+					.answerCallbackQuery({ text: `⚠️ ${msg}`.slice(0, 200) })
+					.catch(() => {});
+				return;
+			}
 			// If the failing message already has a jot row (intake persists it before the
 			// network write that usually throws here), offer a retry button wired to the same
 			// `rt:` handler the give-up path uses. No jot → plain error (e.g. a command failure).
@@ -759,9 +770,16 @@ export class ScribaBot implements BotServices {
 	/** /menu — send a fresh root menu. Later taps edit that message in place. */
 	private async sendMenu(ctx: any): Promise<void> {
 		log.info("menu opened");
-		await ctx.reply("🗂 scriba control menu", {
+		// Retire the previous menu so old, stale keyboards don't linger tappable in chat.
+		if (this.lastMenuMsgId) {
+			await ctx.api
+				.deleteMessage(ctx.chat.id, this.lastMenuMsgId)
+				.catch(() => {});
+		}
+		const sent = await ctx.reply("🗂 scriba control menu", {
 			reply_markup: this.rootMenu(),
 		});
+		this.lastMenuMsgId = sent.message_id;
 	}
 
 	private rootMenu(): InlineKeyboard {
@@ -778,7 +796,10 @@ export class ScribaBot implements BotServices {
 			.row()
 			.text(`🎙 Transcriber: ${this.transcriber.mode}`, "menu:tx")
 			.row()
-			.text("🛠 Maintenance", "menu:maint");
+			.text("🔗 Link rules", "menu:links")
+			.text("🛠 Maintenance", "menu:maint")
+			.row()
+			.text("✖ Close", "menu:close");
 	}
 
 	private maintMenu(): InlineKeyboard {
@@ -788,6 +809,18 @@ export class ScribaBot implements BotServices {
 			.row()
 			.text("🔧 Unstick", "menu:unstick")
 			.text("🔄 Retry all", "menu:retryall")
+			.row()
+			.text("‹ Back", "menu:root");
+	}
+
+	/** Link-learning controls (rejections + stopwords) — kept off the crowded root. */
+	private linksMenu(): InlineKeyboard {
+		return new InlineKeyboard()
+			.text("🚫 Rejected links", "menu:rejections")
+			.row()
+			.text("↩️ Undo rejection", "menu:unreject")
+			.row()
+			.text("🔇 Stopwords", "menu:stopwords")
 			.row()
 			.text("‹ Back", "menu:root");
 	}
@@ -814,10 +847,15 @@ export class ScribaBot implements BotServices {
 					reply_markup: this.rootMenu(),
 				});
 			case "rate":
-				await ctx.answerCallbackQuery();
+				// New prompt message lands below; toast tells the user the tap registered.
+				await ctx.answerCallbackQuery({
+					text: "Opening rating prompt below ↓",
+				});
 				return this.rating.prompt(plainDate());
 			case "habits":
-				await ctx.answerCallbackQuery();
+				await ctx.answerCallbackQuery({
+					text: "Opening habits review below ↓",
+				});
 				return this.habits.prompt(plainDate(Date.now() - 86_400_000));
 			case "jots":
 				return this.menuJots(ctx);
@@ -844,11 +882,26 @@ export class ScribaBot implements BotServices {
 				return void ctx.editMessageText("🛠 Maintenance", {
 					reply_markup: this.maintMenu(),
 				});
+			case "links":
+				await ctx.answerCallbackQuery();
+				return void ctx.editMessageText("🔗 Link rules", {
+					reply_markup: this.linksMenu(),
+				});
+			case "rejections":
+				return this.menuInfo(ctx, "rejections", "", "menu:links");
+			case "stopwords":
+				return this.menuInfo(ctx, "stopword", "list", "menu:links");
+			case "unreject":
+				return this.menuUnreject(ctx);
+			case "close":
+				return this.menuClose(ctx);
 			case "flush":
 			case "sweep":
 			case "unstick":
 				return this.menuMaint(ctx, action);
 			case "retryall":
+				return this.menuRetryAllConfirm(ctx);
+			case "retryally":
 				return this.menuMaint(ctx, "retry", "all");
 			default:
 				log.warn({ action }, "unknown menu action");
@@ -895,6 +948,40 @@ export class ScribaBot implements BotServices {
 		await ctx.editMessageText("🗂 scriba control menu", {
 			reply_markup: this.rootMenu(),
 		});
+	}
+
+	/** Retry-all re-queues every failed jot (network + enrichment) — confirm first. */
+	private async menuRetryAllConfirm(ctx: any): Promise<void> {
+		log.info("menu: retry-all confirm");
+		await ctx.answerCallbackQuery();
+		const kb = new InlineKeyboard()
+			.text("✅ Yes, retry all", "menu:retryally")
+			.row()
+			.text("‹ Cancel", "menu:maint");
+		await ctx.editMessageText("Requeue every failed jot?", {
+			reply_markup: kb,
+		});
+	}
+
+	/** Open the interactive unreject picker (the command sends its own message). */
+	private async menuUnreject(ctx: any): Promise<void> {
+		log.info("menu: unreject opened");
+		await ctx.answerCallbackQuery();
+		await this.runCmd(ctx, "unreject", "");
+	}
+
+	/** Close the menu — the control panel is transient, not part of the journal. */
+	private async menuClose(ctx: any): Promise<void> {
+		log.info("menu closed");
+		await ctx.answerCallbackQuery();
+		this.lastMenuMsgId = undefined;
+		try {
+			await ctx.deleteMessage();
+		} catch (e) {
+			// Delete can fail (already gone, >48h old); leave a tidy closed state instead.
+			log.warn({ err: e }, "menu close: delete failed, editing instead");
+			await ctx.editMessageText("🗂 Menu closed.", { reply_markup: undefined });
+		}
 	}
 
 	/** Run a no-arg maintenance command and show its result over the maintenance menu. */
