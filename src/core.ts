@@ -37,6 +37,25 @@ export function enrichableSource(jot: Jot, audioFallback = ""): string {
 	return "";
 }
 
+/** Rolling-gap test for squashing: a new jot folds into the previous still-open one
+ *  when it arrived within `windowMs` of it. A `windowMs` of 0 disables squashing. */
+export function withinSquashWindow(
+	prevReceivedAt: number,
+	nowReceivedAt: number,
+	windowMs: number,
+): boolean {
+	return windowMs > 0 && nowReceivedAt - prevReceivedAt <= windowMs;
+}
+
+/** Join a squash group's source texts into one blob for a single enrichment pass.
+ *  Blank parts are dropped so an empty caption or failed transcript adds no noise. */
+export function combineEnrichSource(parts: string[]): string {
+	return parts
+		.map((p) => p.trim())
+		.filter(Boolean)
+		.join("\n");
+}
+
 /** One-line confirmation of what landed in the note. Attach-only jots carry no text. */
 export function donePreview(kind: JotKind, textPart: string): string {
 	const text = textPart.trim();
@@ -130,8 +149,15 @@ export function doneMessage(
 	kind: JotKind,
 	textPart: string,
 	id: string,
+	squashedTotal = 0,
 ): string {
-	return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>`;
+	// squashedTotal is the number of jots folded into this one line (leader + followers);
+	// 0 means no squash. When set, note it so the single confirmation explains the merge.
+	const squash =
+		squashedTotal > 1
+			? `\n🧵 ${squashedTotal} jots squashed into one entry`
+			: "";
+	return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squash}`;
 }
 
 /** Journal bullet in the vault's house style: `- _HH:MM:SS ::_ <text> ^anchor` */

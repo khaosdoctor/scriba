@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
 	anchorLine,
 	candidates,
+	combineEnrichSource,
 	deleteAnchorLine,
 	distinctSurfaces,
 	doneMessage,
@@ -26,10 +27,27 @@ import {
 	setFrontmatterNumber,
 	stripJournalLine,
 	tokenize,
+	withinSquashWindow,
 } from "./core.ts";
 import type { Jot, StatsRow } from "./db.ts";
 
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
+
+test("withinSquashWindow: rolling gap folds jots within the window, splits past it", () => {
+	assert.equal(withinSquashWindow(1000, 12000, 15000), true); // 11s gap ≤ 15s
+	assert.equal(withinSquashWindow(1000, 16001, 15000), false); // 15.001s gap > 15s
+	assert.equal(withinSquashWindow(1000, 16000, 15000), true); // exactly 15s
+	assert.equal(withinSquashWindow(1000, 2000, 0), false); // window 0 disables
+});
+
+test("combineEnrichSource joins parts, dropping blanks", () => {
+	assert.equal(
+		combineEnrichSource(["first", "  ", "second", ""]),
+		"first\nsecond",
+	);
+	assert.equal(combineEnrichSource([]), "");
+	assert.equal(combineEnrichSource([" solo "]), "solo");
+});
 
 test("setFrontmatterNumber replaces an existing field in place", () => {
 	const note = "---\noverallRating: 5\ntags: [daily]\n---\n\n## Journal\n";
@@ -203,6 +221,18 @@ test("doneMessage blockquotes the time and escapes content", () => {
 	assert.equal(
 		doneMessage("14:32:00", "text", "ran <5k> today", "a1b2c3d4"),
 		"✅ Saved to your journal\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>\n🔖 <code>a1b2c3d4</code>",
+	);
+});
+
+test("doneMessage notes a squash only when more than one jot merged", () => {
+	// 0/1 = no merge, no extra line; 2+ appends the squash count.
+	assert.ok(!doneMessage("14:32:00", "text", "x", "a1b2c3d4").includes("🧵"));
+	assert.ok(
+		!doneMessage("14:32:00", "text", "x", "a1b2c3d4", 1).includes("🧵"),
+	);
+	assert.match(
+		doneMessage("14:32:00", "text", "x", "a1b2c3d4", 3),
+		/🧵 3 jots squashed into one entry$/,
 	);
 });
 

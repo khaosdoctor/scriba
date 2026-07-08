@@ -1,6 +1,7 @@
 import { basename } from "node:path";
 import {
 	candidates,
+	combineEnrichSource,
 	doneMessage,
 	enrichableSource,
 	escapeHtml,
@@ -43,6 +44,9 @@ export interface BotServices {
 		html: string,
 		opts?: { retry?: boolean },
 	) => Promise<void>;
+	// Delete a jot's live status message if one exists (used to collapse stray
+	// per-follower messages into the leader's single confirmation on a squash).
+	deleteStatus: (jotId: string) => Promise<void>;
 	askLink: (pendingId: string, surface: string, note: string) => Promise<void>;
 	downloadFile: (fileId: string) => Promise<DownloadedFile>;
 	onJotDone: (jotId: string) => Promise<void>; // apply edits queued while processing
@@ -86,6 +90,25 @@ export class JotProcessor {
 	async processJot(id: string): Promise<void> {
 		const loaded = await this.repo.getJot(id);
 		if (!loaded) return log.warn({ id }, "processJot: jot not found, skipping");
+		// A squashed follower shares its leader's anchor and is folded into the leader's
+		// line, so the leader processes it. Defer — unless the leader is gone (deleted), in
+		// which case fall through and process this jot standalone (its write appends).
+		if (loaded.anchor !== loaded.id) {
+			const leader = await this.repo.getJot(loaded.anchor);
+			if (leader && leader.status !== "deleted") {
+				// Group already finished but this follower lingered (e.g. a crash between the
+				// leader's write and marking its followers): reconcile so it doesn't stay pending.
+				if (
+					(leader.status === "done" || leader.status === "abandoned") &&
+					loaded.status !== "done"
+				)
+					await this.repo.updateJot(loaded.id, { status: "done", error: null });
+				return log.debug(
+					{ id, leader: loaded.anchor },
+					"processJot: squashed follower, deferred to leader",
+				);
+			}
+		}
 		// Atomic claim — only the winner proceeds, so flush + sweeps can't double-process.
 		if (!(await this.repo.claim(id)))
 			return log.debug({ id }, "processJot: claim lost, another worker has it");
@@ -105,7 +128,21 @@ export class JotProcessor {
 					`🎤 <i>${escapeHtml(jot.transcript.trim())}</i>\n\n✨ Weaving it into your journal…`,
 				);
 			}
-			const source = enrichableSource(jot); // image/video are attach-only
+			// Fold in any squashed followers (jots sharing this leader's anchor): transcribe
+			// their audio, then enrich the whole burst as one entry. Attach-only leaders
+			// (image/video) never have followers — only text/voice squash.
+			const followers: Jot[] = [];
+			for (const f of await this.repo.groupFollowers(jot.id))
+				followers.push(await this.ensureMedia(f));
+			const merged = followers.length > 0;
+			const source = combineEnrichSource(
+				[jot, ...followers].map((j) => enrichableSource(j)),
+			); // image/video are attach-only
+			if (merged)
+				log.info(
+					{ id, followers: followers.map((f) => f.id) },
+					`squash: enriching ${followers.length + 1} jots as one line`,
+				);
 
 			let textPart = source;
 			if (source.trim()) {
@@ -138,6 +175,7 @@ export class JotProcessor {
 				const res = await this.enricher.enrich({
 					text: source,
 					candidates: cands,
+					merge: merged,
 				});
 				textPart = res.text;
 				log.info(
@@ -169,6 +207,10 @@ export class JotProcessor {
 
 			await this.writeLine(jot, this.composeLine(jot, textPart));
 			await this.repo.updateJot(jot.id, { status: "done", error: null });
+			// Followers rode into the leader's line — mark them done too so they're not
+			// reprocessed or counted as in-flight.
+			for (const f of followers)
+				await this.repo.updateJot(f.id, { status: "done", error: null });
 			// Post-`done` steps are best-effort UI + the queued-edit drain. A transient throw
 			// here must NOT route to fail(): that would demote an already-committed `done` jot
 			// to `failed`, causing wasted re-enrichment and duplicate link prompts on retry.
@@ -176,9 +218,24 @@ export class JotProcessor {
 				await this.bot.react(jot.id, "done");
 				await this.bot.status(
 					jot.id,
-					doneMessage(jot.time, jot.kind, textPart, jot.id),
+					doneMessage(
+						jot.time,
+						jot.kind,
+						textPart,
+						jot.id,
+						merged ? followers.length + 1 : 0,
+					),
 				);
 				await this.bot.onJotDone(jot.id); // apply anything queued while we were working
+				// Each follower's own message gets the done reaction + its queued edits drained;
+				// the leader carries the single status message for the whole group. Any stray
+				// status message a follower picked up (e.g. processed standalone before squash
+				// caught it, then reconciled) is deleted so the burst ends with one bot message.
+				for (const f of followers) {
+					await this.bot.react(f.id, "done");
+					await this.bot.deleteStatus(f.id);
+					await this.bot.onJotDone(f.id);
+				}
 			} catch (err) {
 				log.error({ id, err }, "post-done side effect failed — jot stays done");
 			}
@@ -214,25 +271,38 @@ export class JotProcessor {
 			{ id: jot.id, attempts, recoverable, err },
 			"jot abandoned — posting un-enriched",
 		);
-		const source = enrichableSource(
-			jot,
-			"🎤 (voice note — transcription failed)",
+		// Fold squashed followers into the un-enriched line too, so nothing is dropped and
+		// no follower is left stranded in `pending`.
+		const followers = await this.repo.groupFollowers(jot.id);
+		const source = combineEnrichSource(
+			[jot, ...followers].map((j) =>
+				enrichableSource(j, "🎤 (voice note — transcription failed)"),
+			),
 		);
 		try {
 			await this.writeLine(jot, this.composeLine(jot, source));
 		} catch {
 			/* the note write itself is failing — nothing more we can do */
 		}
-		await this.repo.updateJot(jot.id, {
-			status: "abandoned",
-			attempts,
-			error: msg,
-		});
-		await this.bot.react(jot.id, "failed");
-		await this.bot.onJotDone(jot.id); // apply edits queued while it was failing
+		for (const j of [jot, ...followers]) {
+			await this.repo.updateJot(j.id, {
+				status: "abandoned",
+				attempts,
+				error: msg,
+			});
+			await this.bot.react(j.id, "failed");
+			// Followers folded into the leader's line — drop any stray status message so the
+			// leader carries the single "gave up" confirmation for the whole burst.
+			if (j.id !== jot.id) await this.bot.deleteStatus(j.id);
+			await this.bot.onJotDone(j.id); // apply edits queued while it was failing
+		}
+		const squash =
+			followers.length > 0
+				? `\n🧵 ${followers.length + 1} jots squashed into one entry`
+				: "";
 		await this.bot.status(
 			jot.id,
-			`⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n<code>${escapeHtml(msg.slice(0, 200))}</code>`,
+			`⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n<code>${escapeHtml(msg.slice(0, 200))}</code>${squash}`,
 			{ retry: true },
 		);
 	}

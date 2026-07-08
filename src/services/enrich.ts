@@ -43,6 +43,9 @@ const log = logger("enrich");
 export interface EnrichInput {
 	text: string;
 	candidates: Candidate[];
+	// The text is several quick messages sent moments apart (a squashed burst): weave
+	// them into one flowing, well-punctuated entry rather than keeping them verbatim.
+	merge?: boolean;
 }
 export interface EnrichResult {
 	text: string; // journal text with confident links applied inline
@@ -104,7 +107,12 @@ export class Enricher {
 					.map((c) => `- "${c.surface}" -> [[${c.note}]]`)
 					.join("\n")
 			: "(none)";
-		const prompt = `Candidate links:\n${cands}\n\nJournal text:\n"""${fence(input.text)}"""`;
+		// A squashed burst overrides the "keep English verbatim" rule: the fragments were
+		// dashed off in seconds and need joining into one clean entry with real punctuation.
+		const mergeNote = input.merge
+			? "\n\nThis entry arrived as several quick messages sent moments apart (each line below is one). Weave them into ONE coherent journal entry with correct punctuation and natural flow. Keep every point — do not summarise, drop, or reorder content."
+			: "";
+		const prompt = `Candidate links:\n${cands}${mergeNote}\n\nJournal text:\n"""${fence(input.text)}"""`;
 		log.info(
 			{
 				candidates: input.candidates.length,

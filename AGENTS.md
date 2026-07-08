@@ -36,6 +36,12 @@ deployed on the homelab (Coolify). Single user.
 - 8-char hex jot `id`, also the Obsidian block anchor `^<id>`.
 - A placeholder line is written the instant a jot arrives; ordering is fixed at arrival and
   never reshuffled. Processing replaces the line in place by its anchor.
+- **Squash bursts.** A text/voice jot arriving within `SQUASH_WINDOW_MS` (default 15s,
+  rolling gap from the previous still-pending text/voice jot in the same note) folds into
+  that jot's line: it reuses the leader's `anchor`, writes no placeholder of its own, and
+  the processor enriches the whole run into one line (leader + followers share an anchor).
+  The rolling-gap decision is token-free (`withinSquashWindow` in `core.ts`). Attach-only
+  kinds (image/video) never squash. `SQUASH_WINDOW_MS=0` disables it.
 - Jot status: `pending → processing → done` (or `failed` → retry, or `abandoned` on
   give-up). `processing` is claimed atomically so flush + sweeps never double-process.
 - Stopwords and learned link-rejections live in the DB, not in code.

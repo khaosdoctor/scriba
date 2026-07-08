@@ -17,6 +17,7 @@ import {
 	placeholderLine,
 	replaceAnchorLine,
 	stripJournalLine,
+	withinSquashWindow,
 } from "./core.ts";
 import type { Jot, JotKind, JotStatus, Repository } from "./db.ts";
 import {
@@ -229,6 +230,24 @@ export class ScribaBot implements BotServices {
 		// just like a reply to the original message (e.g. the transcribed audio note).
 		await this.repo.mapMessage(msg.message_id, jotId);
 		log.debug({ jotId, messageId: msg.message_id }, "status message sent");
+	}
+
+	/** Delete a jot's live status message, if it has one. Best-effort: used on a squash
+	 *  to collapse any stray per-follower message into the leader's single confirmation. */
+	async deleteStatus(jotId: string): Promise<void> {
+		const messageId = this.statusMsgs.get(jotId);
+		if (!messageId) return;
+		this.statusMsgs.delete(jotId);
+		await this.repo.unmapMessage(messageId); // no stale reply-map to a gone message
+		try {
+			await this.bot.api.deleteMessage(
+				config.telegram.allowedUserId,
+				messageId,
+			);
+			log.info({ jotId, messageId }, "deleted stray status message (squash)");
+		} catch (err) {
+			log.warn({ jotId, messageId, err }, "failed to delete status message");
+		}
 	}
 
 	/** Swap the intake reaction on a jot's message to reflect its outcome.
@@ -473,12 +492,34 @@ export class ScribaBot implements BotServices {
 		// the note on flush, so a failed placeholder self-heals.
 		const notePath = this.obsidian.dailyPath(date);
 
+		// Squash a rapid burst: a text/voice jot arriving within the squash window of the
+		// previous still-pending text/voice jot in this note folds into that jot's line —
+		// it shares the leader's anchor and skips its own placeholder, so the processor
+		// (which groups by anchor) enriches them into one line. Ordering never changes: the
+		// leader's placeholder is already in place. Attach-only kinds never squash.
+		let anchor = id;
+		let squashed = false;
+		if (kind === "text" || kind === "audio") {
+			const prev = await this.repo.lastPendingEnrichableJot(notePath);
+			if (
+				prev &&
+				withinSquashWindow(prev.received_at, epochMs, config.squash.windowMs)
+			) {
+				anchor = prev.anchor;
+				squashed = true;
+				log.info(
+					{ id, into: anchor, gapMs: epochMs - prev.received_at },
+					"jot squashed into open run",
+				);
+			}
+		}
+
 		const now = Date.now();
 		const jot: Jot = {
 			id,
 			kind,
 			note_path: notePath,
-			anchor: id,
+			anchor,
 			time,
 			raw_text: src.rawText ?? null,
 			transcript: null,
@@ -499,9 +540,15 @@ export class ScribaBot implements BotServices {
 		// placeholder write throws (Obsidian down): bot.catch finds this jot by message id and
 		// offers a retry button. Queueing stays last so ordering matches the normal path.
 		await this.repo.mapMessage(ctx.message.message_id, id);
-		await this.obsidian.ensureDailyNote(date);
-		await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
-		log.debug({ id, notePath }, "placeholder line written");
+		// A squashed follower reuses the leader's placeholder — writing its own would add a
+		// second line the processor would then have to reconcile away.
+		if (squashed) {
+			log.debug({ id, anchor }, "squashed — reusing leader placeholder");
+		} else {
+			await this.obsidian.ensureDailyNote(date);
+			await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
+			log.debug({ id, notePath }, "placeholder line written");
+		}
 		this.queue.add(id);
 		log.debug({ id }, "jot queued for flush");
 	}

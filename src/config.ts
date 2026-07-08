@@ -49,6 +49,10 @@ const envSchema = z
 		FLUSH_MAX_BATCH: z.coerce.number().default(8),
 		FLUSH_MAX_WAIT_MS: z.coerce.number().default(120_000),
 
+		// Rapid-fire text/voice jots within this window fold into one enriched journal
+		// line (rolling gap: measured from the previous jot, not the first). 0 disables.
+		SQUASH_WINDOW_MS: z.coerce.number().default(15_000),
+
 		// Enrichment runs on the Claude Agent SDK (subscription auth). Haiku is the default:
 		// cheap, plenty of headroom, and the task (translate + insert wikilinks) is simple.
 		// When subscription usage is exhausted, enrichment falls back to a free Groq model
@@ -110,6 +114,9 @@ export const config = {
 		idleMs: env.FLUSH_IDLE_MS,
 		maxBatch: env.FLUSH_MAX_BATCH,
 		maxWaitMs: env.FLUSH_MAX_WAIT_MS,
+	},
+	squash: {
+		windowMs: env.SQUASH_WINDOW_MS,
 	},
 } as const;
 

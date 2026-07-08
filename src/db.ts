@@ -106,6 +106,24 @@ export class Repository {
 			.where({ status: "processing" })
 			.update({ status: "pending", updated_at: Date.now() });
 	}
+	/** Most recent still-pending text/voice jot in a note — the open end of a squash run.
+	 *  A new enrichable jot arriving within the squash window folds into this one's line. */
+	async lastPendingEnrichableJot(notePath: string): Promise<Jot | undefined> {
+		return this.k<Jot>("jots")
+			.where({ note_path: notePath, status: "pending" })
+			.whereIn("kind", ["text", "audio"])
+			.orderBy("received_at", "desc")
+			.first();
+	}
+	/** Followers folded into a leader's line: other live jots sharing its anchor, oldest
+	 *  first. The leader (id === anchor) is excluded; deleted jots are skipped. */
+	async groupFollowers(leaderId: string): Promise<Jot[]> {
+		return this.k<Jot>("jots")
+			.where({ anchor: leaderId })
+			.whereNot({ id: leaderId })
+			.whereNot({ status: "deleted" })
+			.orderBy("received_at");
+	}
 	/** Jots eligible for (re)processing: fresh, or failed but under the retry cap. */
 	async pendingJots(): Promise<Jot[]> {
 		return this.k<Jot>("jots")
@@ -132,6 +150,10 @@ export class Repository {
 	async messageForJot(jotId: string): Promise<number | undefined> {
 		const r = await this.k("msg_map").where({ jot_id: jotId }).first();
 		return r?.tg_message_id;
+	}
+	/** Forget a telegram message → jot mapping (e.g. a status message we just deleted). */
+	async unmapMessage(tgMessageId: number): Promise<void> {
+		await this.k("msg_map").where({ tg_message_id: tgMessageId }).delete();
 	}
 
 	// --- learned link rejections ---

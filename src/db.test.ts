@@ -157,6 +157,38 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 		assert.equal(await repo.getSetting("transcriber"), "remote");
 		await repo.setSetting("transcriber", "local"); // merge on conflict
 		assert.equal(await repo.getSetting("transcriber"), "local");
+
+		// squash queries. lastPendingEnrichableJot: newest still-pending text/voice jot in
+		// a note, ignoring attach-only kinds. groupFollowers: same-anchor followers,
+		// oldest-first, leader + deleted excluded.
+		const NOTE = "notes/daily notes/2026-07-09.md";
+		await repo.insertJot({
+			...sampleJot("11111111"),
+			note_path: NOTE,
+			received_at: 1000,
+		}); // leader (text)
+		await repo.insertJot({
+			...sampleJot("22222222"),
+			note_path: NOTE,
+			kind: "audio",
+			anchor: "11111111",
+			received_at: 2000,
+		}); // follower shares leader's anchor
+		await repo.insertJot({
+			...sampleJot("33333333"),
+			note_path: NOTE,
+			kind: "image",
+			received_at: 9000,
+		}); // attach-only — never a run head
+		assert.equal((await repo.lastPendingEnrichableJot(NOTE))?.id, "22222222"); // newest pending enrichable; image skipped
+		assert.deepEqual(
+			(await repo.groupFollowers("11111111")).map((j) => j.id),
+			["22222222"],
+		);
+		await repo.updateJot("22222222", { status: "done" }); // no longer an open run head
+		assert.equal((await repo.lastPendingEnrichableJot(NOTE))?.id, "11111111");
+		await repo.markDeleted("22222222");
+		assert.deepEqual(await repo.groupFollowers("11111111"), []); // deleted drops out
 	} finally {
 		await repo.close();
 		await rm(dbPath, { force: true });
