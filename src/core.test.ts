@@ -200,8 +200,8 @@ test("escapeHtml neutralises Telegram HTML metacharacters", () => {
 
 test("doneMessage blockquotes the time and escapes content", () => {
 	assert.equal(
-		doneMessage("14:32:00", "text", "ran <5k> today"),
-		"✅ Saved to your journal\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>",
+		doneMessage("14:32:00", "text", "ran <5k> today", "a1b2c3d4"),
+		"✅ Saved to your journal\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>\n<code>a1b2c3d4</code>",
 	);
 });
 

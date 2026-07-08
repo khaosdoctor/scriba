@@ -176,7 +176,7 @@ export class JotProcessor {
 				await this.bot.react(jot.id, "done");
 				await this.bot.status(
 					jot.id,
-					doneMessage(jot.time, jot.kind, textPart),
+					doneMessage(jot.time, jot.kind, textPart, jot.id),
 				);
 				await this.bot.onJotDone(jot.id); // apply anything queued while we were working
 			} catch (err) {
