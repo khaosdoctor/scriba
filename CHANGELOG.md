@@ -1,3 +1,10 @@
+## [1.15.0](https://github.com/khaosdoctor/scriba/compare/v1.14.0...v1.15.0) (2026-07-08)
+
+
+### Features
+
+* merge rejected-links menu into interactive paginated list ([e8229c6](https://github.com/khaosdoctor/scriba/commit/e8229c695eb1b8a7dc6ce8cdd53d3c0090fee20f))
+
 ## [1.14.0](https://github.com/khaosdoctor/scriba/compare/v1.13.0...v1.14.0) (2026-07-08)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * add interactive /menu control panel over the slash commands ([bfce6ac](https://github.com/khaosdoctor/scriba/commit/bfce6ac75e710c13aac4465b52bc1322b8520d68))
-
-## [1.10.1](https://github.com/khaosdoctor/scriba/compare/v1.10.0...v1.10.1) (2026-07-08)
-
-
-### Bug Fixes
-
-* **obsidian:** allow skipping TLS verify for non-loopback host ([c9dcb42](https://github.com/khaosdoctor/scriba/commit/c9dcb42c9bc4f4af9e3f483e516ece6b05dd540b))
 
