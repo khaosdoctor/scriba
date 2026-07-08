@@ -6,6 +6,7 @@ import {
 	deleteAnchorLine,
 	doneMessage,
 	donePreview,
+	entitiesToMarkdown,
 	escapeHtml,
 	formatDuration,
 	formatJotDetail,
@@ -307,4 +308,97 @@ test("formatJotDetail truncates long text and includes errors", () => {
 	assert.match(out, /Attempts: 3/);
 	assert.match(out, /Error: boom/);
 	assert.ok(out.includes("…")); // transcript truncated
+});
+
+test("entitiesToMarkdown returns text unchanged when entities is undefined", () => {
+	assert.equal(entitiesToMarkdown("hello world", undefined), "hello world");
+});
+test("entitiesToMarkdown returns text unchanged when entities is empty", () => {
+	assert.equal(entitiesToMarkdown("hello world", []), "hello world");
+});
+test("entitiesToMarkdown wraps bold in **", () => {
+	assert.equal(
+		entitiesToMarkdown("hello world", [{ type: "bold", offset: 6, length: 5 }]),
+		"hello **world**",
+	);
+});
+test("entitiesToMarkdown wraps italic in _", () => {
+	assert.equal(
+		entitiesToMarkdown("hello world", [
+			{ type: "italic", offset: 6, length: 5 },
+		]),
+		"hello _world_",
+	);
+});
+test("entitiesToMarkdown wraps code in backticks", () => {
+	assert.equal(
+		entitiesToMarkdown("I added things to internal", [
+			{ type: "code", offset: 18, length: 8 },
+		]),
+		"I added things to `internal`",
+	);
+});
+test("entitiesToMarkdown wraps strike in ~~", () => {
+	assert.equal(
+		entitiesToMarkdown("hello world", [
+			{ type: "strikethrough", offset: 6, length: 5 },
+		]),
+		"hello ~~world~~",
+	);
+});
+test("entitiesToMarkdown wraps spoiler in ||", () => {
+	assert.equal(
+		entitiesToMarkdown("hello world", [
+			{ type: "spoiler", offset: 6, length: 5 },
+		]),
+		"hello ||world||",
+	);
+});
+test("entitiesToMarkdown wraps underline in __", () => {
+	assert.equal(
+		entitiesToMarkdown("hello world", [
+			{ type: "underline", offset: 6, length: 5 },
+		]),
+		"hello __world__",
+	);
+});
+test("entitiesToMarkdown wraps text_link in Markdown link", () => {
+	assert.equal(
+		entitiesToMarkdown("hello example", [
+			{ type: "text_link", offset: 6, length: 7, url: "https://example.com" },
+		]),
+		"hello [example](https://example.com)",
+	);
+});
+test("entitiesToMarkdown wraps pre with language", () => {
+	assert.equal(
+		entitiesToMarkdown("hello world", [
+			{ type: "pre", offset: 6, length: 5, language: "ts" },
+		]),
+		"hello ```ts\nworld\n```",
+	);
+});
+test("entitiesToMarkdown wraps pre without language", () => {
+	assert.equal(
+		entitiesToMarkdown("hello world", [{ type: "pre", offset: 6, length: 5 }]),
+		"hello ```\nworld\n```",
+	);
+});
+test("entitiesToMarkdown handles multiple entities sorted by offset", () => {
+	const text = "abcboldandcode";
+	assert.equal(
+		entitiesToMarkdown(text, [
+			{ type: "code", offset: 10, length: 4 },
+			{ type: "bold", offset: 3, length: 4 },
+		]),
+		"abc**bold**and`code`",
+	);
+});
+test("entitiesToMarkdown preserves text before the first entity and after the last", () => {
+	assert.equal(
+		entitiesToMarkdown("before code after", [
+			{ type: "code", offset: 7, length: 4 },
+		]),
+		"before `code` after",
+	);
 });
