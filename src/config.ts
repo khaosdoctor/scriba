@@ -24,6 +24,12 @@ const envSchema = z
 			.default("https://127.0.0.1:27124")
 			.transform((s) => s.replace(/\/$/, "")),
 		OBSIDIAN_API_KEY: z.string().min(1),
+		// Skip TLS verification for a non-loopback Obsidian URL (self-signed cert on a
+		// trusted LAN, e.g. the homelab deploy). Loopback always skips regardless.
+		OBSIDIAN_INSECURE_TLS: z
+			.enum(["true", "false"])
+			.default("false")
+			.transform((s) => s === "true"),
 		DAILY_NOTES_DIR: z.string().default("notes/daily notes"),
 		DAILY_NOTE_TEMPLATE: z.string().default("internal/templates/Daily Note"),
 		JOURNAL_HEADING: z.string().default("Journal"),
@@ -82,6 +88,7 @@ export const config = {
 	obsidian: {
 		url: env.OBSIDIAN_API_URL,
 		key: env.OBSIDIAN_API_KEY,
+		insecureTls: env.OBSIDIAN_INSECURE_TLS,
 		dailyDir: env.DAILY_NOTES_DIR,
 		dailyTemplate: env.DAILY_NOTE_TEMPLATE,
 		journalHeading: env.JOURNAL_HEADING,

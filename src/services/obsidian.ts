@@ -12,14 +12,16 @@ export interface ObsidianConfig {
 	journalHeading: string;
 	habitsHeading: string;
 	assetsDir: string;
+	insecureTls: boolean;
 }
 
 /** Thin client over the Obsidian Local REST API (the VFB headless instance). */
 export class ObsidianClient {
-	// Obsidian's Local REST API serves a self-signed cert, so TLS verification is skipped —
-	// but ONLY for a loopback target (the normal case). A non-loopback URL (a misconfig, or
-	// a remote instance) gets real verification so the bearer token can't be intercepted on
-	// an untrusted network segment.
+	// Obsidian's Local REST API serves a self-signed cert, so TLS verification is skipped
+	// for a loopback target (the normal case). A non-loopback URL (e.g. the homelab deploy
+	// reaching Obsidian over the LAN) gets real verification so the bearer token can't be
+	// intercepted on an untrusted segment — unless OBSIDIAN_INSECURE_TLS opts out for a
+	// trusted LAN with its own self-signed cert.
 	private dispatcher: Agent;
 
 	constructor(private cfg: ObsidianConfig) {
@@ -29,8 +31,11 @@ export class ObsidianClient {
 			host === "localhost" ||
 			host === "::1" ||
 			host === "[::1]";
+		const verifyTls = !loopback && !cfg.insecureTls;
+		if (!verifyTls)
+			log.warn({ host }, "TLS verification disabled for Obsidian");
 		this.dispatcher = new Agent({
-			connect: { rejectUnauthorized: !loopback },
+			connect: { rejectUnauthorized: verifyTls },
 		});
 	}
 

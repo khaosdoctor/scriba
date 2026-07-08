@@ -64,3 +64,10 @@ test("invalid TRANSCRIBER throws", async () => {
 		/Invalid configuration/,
 	);
 });
+
+test("OBSIDIAN_INSECURE_TLS defaults off and parses to boolean", async () => {
+	const { config } = await load({});
+	assert.equal(config.obsidian.insecureTls, false);
+	const on = await load({ OBSIDIAN_INSECURE_TLS: "true" });
+	assert.equal(on.config.obsidian.insecureTls, true);
+});
