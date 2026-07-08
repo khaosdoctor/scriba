@@ -206,6 +206,9 @@ export class ScribaBot implements BotServices {
 			reply_markup,
 		});
 		this.statusMsgs.set(jotId, msg.message_id);
+		// Map the bot's status message to the jot too, so a reply to it edits the jot
+		// just like a reply to the original message (e.g. the transcribed audio note).
+		await this.repo.mapMessage(msg.message_id, jotId);
 		log.debug({ jotId, messageId: msg.message_id }, "status message sent");
 	}
 
