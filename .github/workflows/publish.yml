@@ -75,7 +75,11 @@ jobs:
       # SCRIBA_TAG to the exact version so Docker sees a new tag and must pull it.
       - name: set SCRIBA_TAG on Coolify
         run: |
-          code=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" \
+          body=$(mktemp)
+          # Writing env vars needs the token's `write` ability; `deploy` alone is not enough
+          # (Coolify returns 403 with the list of missing permissions). Capture the body so
+          # that list is visible in the log instead of being sent to /dev/null.
+          code=$(curl --silent --show-error --output "$body" --write-out "%{http_code}" \
             -X PATCH \
             "${{ secrets.COOLIFY_URL }}/api/v1/applications/${{ secrets.COOLIFY_APP_UUID }}/envs/bulk" \
             --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
@@ -84,7 +88,11 @@ jobs:
             --header "Content-Type: application/json" \
             --data '{"data":[{"key":"SCRIBA_TAG","value":"${{ steps.version.outputs.value }}"}]}')
           echo "SCRIBA_TAG update responded HTTP $code"
-          [ "$code" = "201" ] || { echo "SCRIBA_TAG update did not reach Coolify (check CF Access service token / secrets)"; exit 1; }
+          case "$code" in
+            2*) echo "SCRIBA_TAG=${{ steps.version.outputs.value }} set on Coolify" ;;
+            403) echo "::error::Coolify returned 403 Forbidden updating env vars. The COOLIFY_TOKEN needs the 'write' ability (env-var writes require 'write'; 'deploy' alone is insufficient). Regenerate the token with 'write' + 'deploy' (or 'root'). Response body:"; cat "$body"; echo; exit 1 ;;
+            *)   echo "::error::SCRIBA_TAG update did not reach Coolify (HTTP $code); check CF Access service token / secrets. Response body:"; cat "$body"; echo; exit 1 ;;
+          esac
 
       # Trigger Coolify only after the image is published and SCRIBA_TAG is set.
       # Coolify sits behind Cloudflare Access, so send a CF Access service token too.
