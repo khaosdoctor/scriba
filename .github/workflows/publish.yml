@@ -10,6 +10,11 @@ on:
         required: false
         type: string
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Existing release version to rebuild (e.g. 1.2.3). Checks out its vX.Y.Z tag."
+        required: false
+        type: string
 
 concurrency:
   # Never cancel a half-finished publish — it may be mid-image-push or mid-Coolify-deploy.
@@ -25,6 +30,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # When release.yml calls us, github.sha is the PRE-bump commit — the release
+          # commit that bumped package.json lands on main *after* this workflow was queued.
+          # Check out the vX.Y.Z tag instead so the image contains the bumped version, not
+          # the commit before it. Manual dispatch (no version input) builds the ref's HEAD.
+          ref: ${{ inputs.version != '' && format('v{0}', inputs.version) || github.sha }}
           # Only package.json/knexfile/migrations/src get COPYed into the image; no git
           # history needed. Shallow + blobless keeps the fetch minimal.
           fetch-depth: 1
@@ -45,6 +55,8 @@ jobs:
           else
             echo "value=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
           fi
+          # Sha of the commit actually checked out (the tag), not the pre-bump trigger sha.
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - id: meta
         uses: docker/metadata-action@v5
@@ -62,7 +74,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            GIT_SHA=${{ github.sha }}
+            GIT_SHA=${{ steps.version.outputs.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           # Single-user homelab image — SLSA provenance/SBOM attestations are dead weight
