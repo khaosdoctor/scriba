@@ -1,3 +1,16 @@
+## [1.9.0](https://github.com/khaosdoctor/scriba/compare/v1.8.1...v1.9.0) (2026-07-08)
+
+
+### Features
+
+* reply to the bot's status message to edit or delete a jot ([ea0a26e](https://github.com/khaosdoctor/scriba/commit/ea0a26efc6a6ffbba4d46361866ac12f18f29cec))
+* show jot id in the saved-to-journal confirmation ([0f879b4](https://github.com/khaosdoctor/scriba/commit/0f879b4a499376295351eacec492f2ecfddc0a0d))
+
+
+### Bug Fixes
+
+* **ci:** build the release tag, not the pre-bump trigger sha ([180ff12](https://github.com/khaosdoctor/scriba/commit/180ff127e6c39e3bb54871a6df755de9ae0d1d7b))
+
 ## [1.8.1](https://github.com/khaosdoctor/scriba/compare/v1.8.0...v1.8.1) (2026-07-08)
 
 
@@ -25,11 +38,4 @@
 ### Bug Fixes
 
 * prevent entitiesToMarkdown from duplicating text on nested Telegram entities ([a95ac05](https://github.com/khaosdoctor/scriba/commit/a95ac053938e486fd8b0fd57f8b8b8e8171f938e))
-
-## [1.7.2](https://github.com/khaosdoctor/scriba/compare/v1.7.1...v1.7.2) (2026-07-08)
-
-
-### Bug Fixes
-
-* **ci:** set SCRIBA_TAG env var on Coolify to bypass cached :latest bug ([4e295ad](https://github.com/khaosdoctor/scriba/commit/4e295ad122265f5db70cb2888a9fe74c112174f8))
 
