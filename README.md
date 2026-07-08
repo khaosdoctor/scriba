@@ -14,6 +14,7 @@ write to one Obsidian vault.
 - **The vault is in English.** Anything you send in another language is translated on the way in.
 - **You have a Claude subscription** (an OAuth token, not an API key). Enrichment runs on it and falls back to a free Groq model when the subscription runs out.
 - **It runs as one always-on process.** Long polling, because it's simpler
+- **Deployed on Coolify** because the GH Actions here triggers a deploy due to Coolify's weird caching of Docker image tags. If you don't want that, just disable the actions
 
 ## What it does
 
