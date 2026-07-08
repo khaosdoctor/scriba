@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/khaosdoctor/scriba/compare/v1.7.0...v1.7.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* add tests for entitiesToMarkdown ([64e543c](https://github.com/khaosdoctor/scriba/commit/64e543cd159fd7aaeb3edc4f0f1482d1932ed31a))
+
 ## [1.7.0](https://github.com/khaosdoctor/scriba/compare/v1.6.2...v1.7.0) (2026-07-08)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * reorganize src into domain folders and extract shared helpers ([fe2e3f1](https://github.com/khaosdoctor/scriba/commit/fe2e3f15c7970d2c5109479271858643f789d0a9))
-
-## [1.4.5](https://github.com/khaosdoctor/scriba/compare/v1.4.4...v1.4.5) (2026-07-07)
-
-
-### Bug Fixes
-
-* **ci:** unblock image build and drop doubled v in release message ([6a802f1](https://github.com/khaosdoctor/scriba/commit/6a802f1d8e3611c774e875aa84d3ddf0fd77688b))
 
