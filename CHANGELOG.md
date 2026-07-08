@@ -1,3 +1,10 @@
+## [1.11.0](https://github.com/khaosdoctor/scriba/compare/v1.10.1...v1.11.0) (2026-07-08)
+
+
+### Features
+
+* add interactive /menu control panel over the slash commands ([bfce6ac](https://github.com/khaosdoctor/scriba/commit/bfce6ac75e710c13aac4465b52bc1322b8520d68))
+
 ## [1.10.1](https://github.com/khaosdoctor/scriba/compare/v1.10.0...v1.10.1) (2026-07-08)
 
 
@@ -31,11 +38,4 @@
 ### Bug Fixes
 
 * serialize note writes and stop losing work on transient errors ([94990cc](https://github.com/khaosdoctor/scriba/commit/94990cce8dc37a0c6da101b8a526d1731d582573))
-
-## [1.8.0](https://github.com/khaosdoctor/scriba/compare/v1.7.4...v1.8.0) (2026-07-08)
-
-
-### Features
-
-* delete a journaled message to remove its journal line ([a031464](https://github.com/khaosdoctor/scriba/commit/a0314648bdc6294b1a08f80af11b441c0097b42a))
 
