@@ -80,6 +80,8 @@ export class ScribaBot implements BotServices {
 	// ponytail: in-memory. On restart the map is empty and status() just posts a fresh
 	// message; nothing is lost. Persist it only if that ever proves annoying.
 	private statusMsgs = new Map<string, number>();
+	// Rejected-links menu page size (rows per page).
+	private static readonly REJECT_PAGE = 8;
 	// Message id of the last root menu, so opening a fresh /menu retires the old one
 	// instead of leaving stale, still-tappable keyboards piling up in the chat.
 	private lastMenuMsgId?: number;
@@ -818,8 +820,6 @@ export class ScribaBot implements BotServices {
 		return new InlineKeyboard()
 			.text("🚫 Rejected links", "menu:rejections")
 			.row()
-			.text("↩️ Undo rejection", "menu:unreject")
-			.row()
 			.text("🔇 Stopwords", "menu:stopwords")
 			.row()
 			.text("‹ Back", "menu:root");
@@ -888,11 +888,11 @@ export class ScribaBot implements BotServices {
 					reply_markup: this.linksMenu(),
 				});
 			case "rejections":
-				return this.menuInfo(ctx, "rejections", "", "menu:links");
+				return this.menuRejections(ctx, arg);
+			case "rj":
+				return this.menuRejectDelete(ctx, arg);
 			case "stopwords":
 				return this.menuInfo(ctx, "stopword", "list", "menu:links");
-			case "unreject":
-				return this.menuUnreject(ctx);
 			case "close":
 				return this.menuClose(ctx);
 			case "flush":
@@ -963,11 +963,64 @@ export class ScribaBot implements BotServices {
 		});
 	}
 
-	/** Open the interactive unreject picker (the command sends its own message). */
-	private async menuUnreject(ctx: any): Promise<void> {
-		log.info("menu: unreject opened");
+	/** Rejected links as tappable rows — one tap undoes that rejection, then re-renders.
+	 *  Rows index into the deterministically ordered rejection list by position (same
+	 *  pattern as /unreject); a stale tap whose index no longer resolves answers "expired"
+	 *  instead of undoing the wrong pair. Back cancels out without touching anything. */
+	private async menuRejections(ctx: any, arg?: string): Promise<void> {
 		await ctx.answerCallbackQuery();
-		await this.runCmd(ctx, "unreject", "");
+		return this.renderRejections(ctx, Number(arg) || 0);
+	}
+
+	/** Build and show one page of the rejection list (assumes the query is already answered).
+	 *  Rows carry the global list index so a tap resolves regardless of the current page;
+	 *  page is clamped so a delete that empties the last page falls back to a valid one. */
+	private async renderRejections(ctx: any, page = 0): Promise<void> {
+		const PAGE = ScribaBot.REJECT_PAGE;
+		const list = await this.repo.rejectionList();
+		if (!list.length)
+			return void ctx.editMessageText("No rejected links.", {
+				reply_markup: this.backTo("menu:links"),
+			});
+		const pages = Math.ceil(list.length / PAGE);
+		const p = Math.min(Math.max(page, 0), pages - 1);
+		const kb = new InlineKeyboard();
+		list.slice(p * PAGE, p * PAGE + PAGE).forEach((r, j) => {
+			const gi = p * PAGE + j;
+			kb.text(
+				`🗑 "${r.surface}" ✗ ${r.note}`.slice(0, 60),
+				`menu:rj:${gi}`,
+			).row();
+		});
+		if (pages > 1) {
+			if (p > 0) kb.text("‹ Prev", `menu:rejections:${p - 1}`);
+			if (p < pages - 1) kb.text("Next ›", `menu:rejections:${p + 1}`);
+			kb.row();
+		}
+		kb.text("‹ Back", "menu:links");
+		const header =
+			pages > 1
+				? `🚫 Tap to undo a rejection (page ${p + 1}/${pages}):`
+				: "🚫 Tap to undo a rejection:";
+		await ctx.editMessageText(header, { reply_markup: kb });
+	}
+
+	/** Undo the rejection at global index `arg`, then re-render its page (shrunk). */
+	private async menuRejectDelete(ctx: any, arg?: string): Promise<void> {
+		const list = await this.repo.rejectionList();
+		const gi = arg === undefined ? -1 : Number(arg);
+		const r = list[gi];
+		if (!r) {
+			log.warn({ arg }, "menu: reject index out of range");
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		const n = await this.repo.unreject(r.surface, r.note);
+		log.info(
+			{ surface: r.surface, note: r.note, removed: n },
+			"unreject via menu",
+		);
+		await ctx.answerCallbackQuery({ text: n ? "unrejected" : "already gone" });
+		return this.renderRejections(ctx, Math.floor(gi / ScribaBot.REJECT_PAGE));
 	}
 
 	/** Close the menu — the control panel is transient, not part of the journal. */
