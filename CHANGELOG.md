@@ -1,3 +1,10 @@
+## [1.13.0](https://github.com/khaosdoctor/scriba/compare/v1.12.0...v1.13.0) (2026-07-08)
+
+
+### Features
+
+* retry button on intake save errors ([c2bbdd1](https://github.com/khaosdoctor/scriba/commit/c2bbdd1c7b7d8860462d7053d97449c27f018b09))
+
 ## [1.12.0](https://github.com/khaosdoctor/scriba/compare/v1.11.0...v1.12.0) (2026-07-08)
 
 
@@ -25,17 +32,4 @@
 ### Features
 
 * interactive unreject menu with inline keyboard ([bc18e3a](https://github.com/khaosdoctor/scriba/commit/bc18e3a42cbfb211cb364f4350985ffd98a766c0))
-
-## [1.9.0](https://github.com/khaosdoctor/scriba/compare/v1.8.1...v1.9.0) (2026-07-08)
-
-
-### Features
-
-* reply to the bot's status message to edit or delete a jot ([ea0a26e](https://github.com/khaosdoctor/scriba/commit/ea0a26efc6a6ffbba4d46361866ac12f18f29cec))
-* show jot id in the saved-to-journal confirmation ([0f879b4](https://github.com/khaosdoctor/scriba/commit/0f879b4a499376295351eacec492f2ecfddc0a0d))
-
-
-### Bug Fixes
-
-* **ci:** build the release tag, not the pre-bump trigger sha ([180ff12](https://github.com/khaosdoctor/scriba/commit/180ff127e6c39e3bb54871a6df755de9ae0d1d7b))
 
