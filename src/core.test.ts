@@ -13,6 +13,7 @@ import {
 	formatStats,
 	formatStatus,
 	insertJournalLine,
+	isBlank,
 	isRecoverable,
 	journalLine,
 	makeJotId,
@@ -238,7 +239,14 @@ test("formatStats hides zero outcome tails", () => {
 
 test("formatStatus summarises health", () => {
 	const out = formatStatus({
-		counts: { pending: 1, processing: 1, done: 10, failed: 2, abandoned: 0 },
+		counts: {
+			pending: 1,
+			processing: 1,
+			done: 10,
+			failed: 2,
+			abandoned: 0,
+			deleted: 0,
+		},
 		queueDepth: 3,
 		transcriber: "local",
 		links: { enabled: true, files: 5, aliases: 9 },
@@ -255,7 +263,14 @@ test("formatStatus summarises health", () => {
 
 test("formatStatus shows a disabled link index", () => {
 	const out = formatStatus({
-		counts: { pending: 0, processing: 0, done: 0, failed: 0, abandoned: 0 },
+		counts: {
+			pending: 0,
+			processing: 0,
+			done: 0,
+			failed: 0,
+			abandoned: 0,
+			deleted: 0,
+		},
 		queueDepth: 0,
 		transcriber: "remote",
 		links: { enabled: false, files: 0, aliases: 0 },
@@ -284,6 +299,14 @@ test("stripJournalLine strips the time prefix and anchor suffix", () => {
 		stripJournalLine("- _23:13:18 ::_ hi ^a1b2c3d4", "23:13:18", "a1b2c3d4"),
 		"hi",
 	);
+});
+
+test("isBlank treats empty and whitespace-only edits as a delete gesture", () => {
+	assert.equal(isBlank(""), true);
+	assert.equal(isBlank("   "), true);
+	assert.equal(isBlank("\n\t "), true);
+	assert.equal(isBlank("x"), false);
+	assert.equal(isBlank("  hi  "), false);
 });
 
 test("formatJotDetail truncates long text and includes errors", () => {

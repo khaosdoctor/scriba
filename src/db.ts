@@ -9,7 +9,8 @@ export type JotStatus =
 	| "processing" // claimed by a worker (atomic) — in flight
 	| "done" // enriched + written
 	| "failed" // last attempt failed; retried until attempts hit the cap
-	| "abandoned"; // gave up (cap or unrecoverable); posted un-enriched
+	| "abandoned" // gave up (cap or unrecoverable); posted un-enriched
+	| "deleted"; // user removed the line (blank edit or /delete) — terminal, never requeued
 
 export const MAX_ATTEMPTS = 10;
 
@@ -287,6 +288,7 @@ export class Repository {
 			done: 0,
 			failed: 0,
 			abandoned: 0,
+			deleted: 0,
 		};
 		for (const r of rows) out[r.status as JotStatus] = Number(r.n);
 		return out;
@@ -316,6 +318,12 @@ export class Repository {
 	 *  re-queues it (the queue lives outside the persistence boundary). */
 	async resetForRetry(id: string): Promise<void> {
 		await this.updateJot(id, { status: "pending", attempts: 0, error: null });
+	}
+
+	/** Terminal state for a jot whose journal line the user removed. Distinct from
+	 *  `abandoned` so /retry --abandoned never resurrects a deliberate deletion. */
+	async markDeleted(id: string): Promise<void> {
+		await this.updateJot(id, { status: "deleted" });
 	}
 
 	// --- stopwords: writes (reads via stopwords() above) ---

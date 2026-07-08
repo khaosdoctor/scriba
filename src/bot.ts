@@ -6,6 +6,7 @@ import {
 	anchorLine,
 	deleteAnchorLine,
 	entitiesToMarkdown,
+	isBlank,
 	journalLine,
 	makeJotId,
 	parseLiteralEdit,
@@ -117,6 +118,10 @@ export class ScribaBot implements BotServices {
 				{
 					command: "habits",
 					description: "Review habits (yesterday, or /habits YYYY-MM-DD)",
+				},
+				{
+					command: "delete",
+					description: "Reply to a journal message with /delete to remove it",
 				},
 				...commands.map((c) => ({
 					command: c.name,
@@ -287,6 +292,11 @@ export class ScribaBot implements BotServices {
 			});
 		}
 
+		// Reply to a jot's message with /delete to remove its journal line. This is the
+		// explicit counterpart to clearing the message text (an actual Telegram delete is
+		// never delivered to bots, so there's nothing to hook).
+		this.bot.command("delete", (ctx) => this.handleDeleteCommand(ctx));
+
 		this.bot.on("message:text", async (ctx) => {
 			if (ctx.message.text.startsWith("/")) return;
 			if (ctx.message.reply_to_message) {
@@ -365,7 +375,10 @@ export class ScribaBot implements BotServices {
 	}
 
 	// Edit an existing jot in place if it's already processed, otherwise queue
-	// the edit for when processing finishes. label ("" | "caption ") tunes logs.
+	// the edit for when processing finishes. Clearing the message to empty/whitespace
+	// is the delete gesture (Telegram never delivers an actual message delete), so a
+	// blank edit removes the journal line instead of replacing it.
+	// label ("" | "caption ") tunes logs.
 	private async applyMessageEdit(
 		ctx: any,
 		markdown: string,
@@ -375,16 +388,26 @@ export class ScribaBot implements BotServices {
 		if (!jotId) return;
 		const jot = await this.repo.getJot(jotId);
 		if (!jot) return;
+		const blank = isBlank(markdown);
 		const editable = jot.status === "done" || jot.status === "abandoned";
 		if (!editable) {
+			// "delete" is the instruction applyEdits recognises when onJotDone drains the
+			// queue, so an in-flight jot is deleted the moment its line is first written.
 			log.info(
-				{ jotId, status: jot.status },
-				`${label}edit queued (jot still processing)`,
+				{ jotId, status: jot.status, blank },
+				`${label}${blank ? "delete" : "edit"} queued (jot still processing)`,
 			);
-			await this.repo.queueEdit(jotId, markdown);
+			await this.repo.queueEdit(jotId, blank ? "delete" : markdown);
 			return void ctx.reply(
-				"⏳ still processing — I'll apply that edit once it's done.",
+				blank
+					? "⏳ still processing — I'll remove it once it's done."
+					: "⏳ still processing — I'll apply that edit once it's done.",
 			);
+		}
+		if (blank) {
+			log.info({ jotId }, `${label}cleared — removing journal line`);
+			await ctx.reply("🗑️ got it — removing…");
+			return void ctx.reply(await this.deleteJot(jot));
 		}
 		log.info(
 			{ jotId, text: markdown },
@@ -470,8 +493,8 @@ export class ScribaBot implements BotServices {
 		if (instructions.some((i) => i.trim().toLowerCase() === "delete")) {
 			const out = deleteAnchorLine(note, jot.anchor);
 			if (out) await this.obsidian.writeNote(jot.note_path, out);
-			await this.repo.updateJot(jot.id, { status: "done" });
-			return "🗑️ deleted";
+			await this.repo.markDeleted(jot.id);
+			return "🗑️ removed that from your journal.";
 		}
 		const line = anchorLine(note, jot.anchor);
 		if (!line) return "Couldn't find that line in the note.";
@@ -508,6 +531,65 @@ export class ScribaBot implements BotServices {
 		if (!out) return "Couldn't find that line in the note.";
 		await this.obsidian.writeNote(jot.note_path, out);
 		return "✏️ updated";
+	}
+
+	/** Remove a jot's line from its daily note and mark it deleted (a terminal state, so a
+	 *  retry sweep never resurrects it). Shared by the blank-edit path and /delete. */
+	private async deleteJot(jot: Jot): Promise<string> {
+		const note = await this.obsidian.readNote(jot.note_path);
+		const out = deleteAnchorLine(note, jot.anchor);
+		if (out === null) {
+			// Line already gone (double delete, or removed by hand in Obsidian). Still mark
+			// it deleted so the record matches reality — the user's intent is satisfied.
+			log.warn(
+				{ jotId: jot.id, anchor: jot.anchor },
+				"delete: anchored line not found — marking deleted anyway",
+			);
+			await this.repo.markDeleted(jot.id);
+			return "🗑️ removed that from your journal.";
+		}
+		await this.obsidian.writeNote(jot.note_path, out);
+		await this.repo.markDeleted(jot.id);
+		log.info({ jotId: jot.id }, "journal line deleted");
+		return "🗑️ removed that from your journal.";
+	}
+
+	/** /delete: reply to a jot's message to remove its journal line. Mirrors the reply-edit
+	 *  flow — queues the delete if the jot is still processing. */
+	private async handleDeleteCommand(ctx: any): Promise<void> {
+		const reply = ctx.message?.reply_to_message;
+		if (!reply) {
+			log.warn("delete command without a reply target");
+			return void ctx.reply(
+				"Reply to a journal message with /delete to remove that line.",
+			);
+		}
+		const jotId = await this.repo.jotForMessage(reply.message_id);
+		if (!jotId) {
+			log.warn(
+				{ messageId: reply.message_id },
+				"delete: no jot for that message",
+			);
+			return void ctx.reply("Can't find a jot for that message.");
+		}
+		const jot = await this.repo.getJot(jotId);
+		if (!jot) {
+			log.warn({ jotId }, "delete: jot not found");
+			return void ctx.reply("Jot not found.");
+		}
+		const editable = jot.status === "done" || jot.status === "abandoned";
+		if (!editable) {
+			log.info(
+				{ jotId, status: jot.status },
+				"delete queued (jot still processing)",
+			);
+			await this.repo.queueEdit(jotId, "delete");
+			return void ctx.reply(
+				"⏳ still processing — I'll remove it once it's done.",
+			);
+		}
+		log.info({ jotId }, "delete command — removing journal line");
+		await ctx.reply(await this.deleteJot(jot));
 	}
 
 	private async handleButton(ctx: any): Promise<void> {

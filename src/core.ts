@@ -294,6 +294,15 @@ export function candidates(
 }
 
 /**
+ * True when an edited message's text/caption is empty or whitespace-only. Telegram
+ * delivers no update for an actual message delete, so clearing the text is the user's
+ * way of asking to remove the jot's journal line.
+ */
+export function isBlank(text: string): boolean {
+	return text.trim().length === 0;
+}
+
+/**
  * Parse a literal edit instruction into an {old,new} swap, or null if freeform
  * (freeform goes to the agent). Supports `s/old/new/` and `replace X with Y`.
  */
