@@ -126,6 +126,17 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 		assert.equal((await repo.getJot("cccccccc"))?.status, "pending");
 		assert.equal((await repo.getJot("cccccccc"))?.attempts, 0);
 
+		// recentJots (the /menu browser): newest first by received_at, deleted excluded
+		await repo.insertJot({
+			...sampleJot("dddddddd"),
+			received_at: Date.now() + 5000,
+		});
+		await repo.markDeleted("aaaaaaaa");
+		const recent = (await repo.recentJots()).map((j) => j.id);
+		assert.equal(recent[0], "dddddddd"); // highest received_at leads
+		assert.ok(!recent.includes("aaaaaaaa")); // deleted is excluded
+		assert.ok(recent.includes("bbbbbbbb") && recent.includes("cccccccc"));
+
 		// stopwords: add is idempotent, del reports how many rows went
 		await repo.addStopword("Foo");
 		await repo.addStopword("foo"); // dup ignored

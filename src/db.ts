@@ -282,6 +282,15 @@ export class Repository {
 			.limit(limit);
 	}
 
+	/** Most recent live jots (any status except deleted), newest first — for the /menu
+	 *  jots browser, which gives a read/edit surface the reply-to-message flow can't. */
+	async recentJots(limit = 10): Promise<Jot[]> {
+		return this.k<Jot>("jots")
+			.whereNot({ status: "deleted" })
+			.orderBy("received_at", "desc")
+			.limit(limit);
+	}
+
 	/** Requeue failed (and optionally abandoned) jots: reset to pending, clear attempts.
 	 *  Returns how many were reset. */
 	async resetFailed(includeAbandoned: boolean): Promise<number> {
