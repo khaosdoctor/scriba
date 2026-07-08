@@ -1,3 +1,10 @@
+## [1.10.0](https://github.com/khaosdoctor/scriba/compare/v1.9.0...v1.10.0) (2026-07-08)
+
+
+### Features
+
+* interactive unreject menu with inline keyboard ([bc18e3a](https://github.com/khaosdoctor/scriba/commit/bc18e3a42cbfb211cb364f4350985ffd98a766c0))
+
 ## [1.9.0](https://github.com/khaosdoctor/scriba/compare/v1.8.1...v1.9.0) (2026-07-08)
 
 
@@ -31,11 +38,4 @@
 ### Bug Fixes
 
 * deliver and acknowledge edited Telegram messages ([e80b0b4](https://github.com/khaosdoctor/scriba/commit/e80b0b4491ecbf0d4b91b9678eb647c3c577552f))
-
-## [1.7.3](https://github.com/khaosdoctor/scriba/compare/v1.7.2...v1.7.3) (2026-07-08)
-
-
-### Bug Fixes
-
-* prevent entitiesToMarkdown from duplicating text on nested Telegram entities ([a95ac05](https://github.com/khaosdoctor/scriba/commit/a95ac053938e486fd8b0fd57f8b8b8e8171f938e))
 
