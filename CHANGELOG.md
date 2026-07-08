@@ -1,3 +1,10 @@
+## [1.8.0](https://github.com/khaosdoctor/scriba/compare/v1.7.4...v1.8.0) (2026-07-08)
+
+
+### Features
+
+* delete a journaled message to remove its journal line ([a031464](https://github.com/khaosdoctor/scriba/commit/a0314648bdc6294b1a08f80af11b441c0097b42a))
+
 ## [1.7.4](https://github.com/khaosdoctor/scriba/compare/v1.7.3...v1.7.4) (2026-07-08)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * add tests for entitiesToMarkdown ([64e543c](https://github.com/khaosdoctor/scriba/commit/64e543cd159fd7aaeb3edc4f0f1482d1932ed31a))
-
-## [1.7.0](https://github.com/khaosdoctor/scriba/compare/v1.6.2...v1.7.0) (2026-07-08)
-
-
-### Features
-
-* handle edited Telegram messages and fix escapeHtml ([aae5ec6](https://github.com/khaosdoctor/scriba/commit/aae5ec6d9931eec09d16af9804bec1762c352a3c))
 
