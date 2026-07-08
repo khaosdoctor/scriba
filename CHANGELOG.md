@@ -1,3 +1,10 @@
+## [1.7.4](https://github.com/khaosdoctor/scriba/compare/v1.7.3...v1.7.4) (2026-07-08)
+
+
+### Bug Fixes
+
+* deliver and acknowledge edited Telegram messages ([e80b0b4](https://github.com/khaosdoctor/scriba/commit/e80b0b4491ecbf0d4b91b9678eb647c3c577552f))
+
 ## [1.7.3](https://github.com/khaosdoctor/scriba/compare/v1.7.2...v1.7.3) (2026-07-08)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * handle edited Telegram messages and fix escapeHtml ([aae5ec6](https://github.com/khaosdoctor/scriba/commit/aae5ec6d9931eec09d16af9804bec1762c352a3c))
-
-## [1.6.2](https://github.com/khaosdoctor/scriba/compare/v1.6.0...v1.6.2) (2026-07-07)
-
-
-### Bug Fixes
-
-* ignore internal/ directory when indexing vault for wikilinks ([897bb24](https://github.com/khaosdoctor/scriba/commit/897bb24e0c96615b09e862767a75c617bc141a20))
 
