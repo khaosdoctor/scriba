@@ -1,3 +1,10 @@
+## [1.7.0](https://github.com/khaosdoctor/scriba/compare/v1.6.2...v1.7.0) (2026-07-08)
+
+
+### Features
+
+* handle edited Telegram messages and fix escapeHtml ([aae5ec6](https://github.com/khaosdoctor/scriba/commit/aae5ec6d9931eec09d16af9804bec1762c352a3c))
+
 ## [1.6.2](https://github.com/khaosdoctor/scriba/compare/v1.6.0...v1.6.2) (2026-07-07)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * **ci:** unblock image build and drop doubled v in release message ([6a802f1](https://github.com/khaosdoctor/scriba/commit/6a802f1d8e3611c774e875aa84d3ddf0fd77688b))
-
-## [1.4.4](https://github.com/khaosdoctor/scriba/compare/v1.4.3...v1.4.4) (2026-07-07)
-
-
-### Performance Improvements
-
-* **ci:** speed up image build and publish ([ad065e2](https://github.com/khaosdoctor/scriba/commit/ad065e2abc676f565fbefba548bc2b09ffaadfa3))
 
