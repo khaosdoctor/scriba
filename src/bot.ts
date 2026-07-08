@@ -336,64 +336,61 @@ export class ScribaBot implements BotServices {
 
 		// Edited text messages — edit the jot in place if already processed,
 		// otherwise queue the edit for when processing finishes.
-		this.bot.on("edited_message:text", async (ctx) => {
+		this.bot.on("edited_message:text", (ctx) => {
 			if (ctx.editedMessage.text.startsWith("/")) return;
-			const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
-			if (!jotId) return;
-			const jot = await this.repo.getJot(jotId);
-			if (!jot) return;
-			const markdown = entitiesToMarkdown(
-				ctx.editedMessage.text,
-				ctx.editedMessage.entities,
+			return this.applyMessageEdit(
+				ctx,
+				entitiesToMarkdown(ctx.editedMessage.text, ctx.editedMessage.entities),
+				"",
 			);
-			const editable = jot.status === "done" || jot.status === "abandoned";
-			if (!editable) {
-				log.info(
-					{ jotId, status: jot.status },
-					"edit queued (jot still processing)",
-				);
-				await this.repo.queueEdit(jotId, markdown);
-				return void ctx.reply(
-					"⏳ still processing — I'll apply that edit once it's done.",
-				);
-			}
-			log.info({ jotId, text: markdown }, "applying edit to processed jot");
-			await ctx.reply(await this.replaceJotText(jot, markdown));
 		});
 
 		// Edited captions on media — treat same as text edits for the jot text.
-		this.bot.on("edited_message:caption", async (ctx) => {
-			const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
-			if (!jotId) return;
-			const jot = await this.repo.getJot(jotId);
-			if (!jot) return;
-			const markdown = entitiesToMarkdown(
-				ctx.editedMessage.caption ?? "",
-				ctx.editedMessage.caption_entities,
-			);
-			const editable = jot.status === "done" || jot.status === "abandoned";
-			if (!editable) {
-				log.info(
-					{ jotId, status: jot.status },
-					"caption edit queued (jot still processing)",
-				);
-				await this.repo.queueEdit(jotId, markdown);
-				return void ctx.reply(
-					"⏳ still processing — I'll apply that edit once it's done.",
-				);
-			}
-			log.info(
-				{ jotId, text: markdown },
-				"applying caption edit to processed jot",
-			);
-			await ctx.reply(await this.replaceJotText(jot, markdown));
-		});
+		this.bot.on("edited_message:caption", (ctx) =>
+			this.applyMessageEdit(
+				ctx,
+				entitiesToMarkdown(
+					ctx.editedMessage.caption ?? "",
+					ctx.editedMessage.caption_entities,
+				),
+				"caption ",
+			),
+		);
 
 		this.bot.on("callback_query:data", (ctx) => this.handleButton(ctx));
 
 		this.bot.on("message", (ctx) =>
 			ctx.reply("scriba handles text, voice, images, and video for now."),
 		);
+	}
+
+	// Edit an existing jot in place if it's already processed, otherwise queue
+	// the edit for when processing finishes. label ("" | "caption ") tunes logs.
+	private async applyMessageEdit(
+		ctx: any,
+		markdown: string,
+		label: string,
+	): Promise<void> {
+		const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
+		if (!jotId) return;
+		const jot = await this.repo.getJot(jotId);
+		if (!jot) return;
+		const editable = jot.status === "done" || jot.status === "abandoned";
+		if (!editable) {
+			log.info(
+				{ jotId, status: jot.status },
+				`${label}edit queued (jot still processing)`,
+			);
+			await this.repo.queueEdit(jotId, markdown);
+			return void ctx.reply(
+				"⏳ still processing — I'll apply that edit once it's done.",
+			);
+		}
+		log.info(
+			{ jotId, text: markdown },
+			`applying ${label}edit to processed jot`,
+		);
+		await ctx.reply(await this.replaceJotText(jot, markdown));
 	}
 
 	private async intake(

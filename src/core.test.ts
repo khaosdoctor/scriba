@@ -394,6 +394,17 @@ test("entitiesToMarkdown handles multiple entities sorted by offset", () => {
 		"abc**bold**and`code`",
 	);
 });
+test("entitiesToMarkdown skips nested entities instead of duplicating text", () => {
+	// bold spanning the whole string with a link nested inside it: keep the
+	// outer formatting, drop the inner one, never re-emit the covered text.
+	assert.equal(
+		entitiesToMarkdown("hello world", [
+			{ type: "bold", offset: 0, length: 11 },
+			{ type: "text_link", offset: 0, length: 5, url: "https://x.com" },
+		]),
+		"**hello world**",
+	);
+});
 test("entitiesToMarkdown preserves text before the first entity and after the last", () => {
 	assert.equal(
 		entitiesToMarkdown("before code after", [

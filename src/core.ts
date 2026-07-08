@@ -71,6 +71,10 @@ export function entitiesToMarkdown(
 	for (const e of sorted) {
 		const start = e.offset;
 		const end = e.offset + e.length;
+		// Flat serializer: skip entities nested in an already-emitted one
+		// (bold-link, bold+italic same span). Drops inner formatting but never
+		// duplicates text. Full nesting would need a boundary-marker tree.
+		if (start < last) continue;
 		out += text.slice(last, start);
 		const content = text.slice(start, end);
 		switch (e.type) {
