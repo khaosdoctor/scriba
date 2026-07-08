@@ -1,3 +1,10 @@
+## [1.10.1](https://github.com/khaosdoctor/scriba/compare/v1.10.0...v1.10.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* **obsidian:** allow skipping TLS verify for non-loopback host ([c9dcb42](https://github.com/khaosdoctor/scriba/commit/c9dcb42c9bc4f4af9e3f483e516ece6b05dd540b))
+
 ## [1.10.0](https://github.com/khaosdoctor/scriba/compare/v1.9.0...v1.10.0) (2026-07-08)
 
 
@@ -31,11 +38,4 @@
 ### Features
 
 * delete a journaled message to remove its journal line ([a031464](https://github.com/khaosdoctor/scriba/commit/a0314648bdc6294b1a08f80af11b441c0097b42a))
-
-## [1.7.4](https://github.com/khaosdoctor/scriba/compare/v1.7.3...v1.7.4) (2026-07-08)
-
-
-### Bug Fixes
-
-* deliver and acknowledge edited Telegram messages ([e80b0b4](https://github.com/khaosdoctor/scriba/commit/e80b0b4491ecbf0d4b91b9678eb647c3c577552f))
 
