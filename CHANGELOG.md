@@ -1,3 +1,10 @@
+## [1.16.0](https://github.com/khaosdoctor/scriba/compare/v1.15.0...v1.16.0) (2026-07-08)
+
+
+### Features
+
+* squash rapid-fire jots into one journal line ([5788863](https://github.com/khaosdoctor/scriba/commit/578886328cc1d34ec479d3a4c960e547d8e93dd4))
+
 ## [1.15.0](https://github.com/khaosdoctor/scriba/compare/v1.14.0...v1.15.0) (2026-07-08)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * mark the jot id with a bookmark emoji in the saved confirmation ([315b954](https://github.com/khaosdoctor/scriba/commit/315b954554818a554564b91448d04593d5cbbf9d))
-
-## [1.11.0](https://github.com/khaosdoctor/scriba/compare/v1.10.1...v1.11.0) (2026-07-08)
-
-
-### Features
-
-* add interactive /menu control panel over the slash commands ([bfce6ac](https://github.com/khaosdoctor/scriba/commit/bfce6ac75e710c13aac4465b52bc1322b8520d68))
 
