@@ -1,27 +1,71 @@
 # scriba
 
-Telegram to Obsidian journaling. Send text or a voice note; scriba writes an enriched
-entry into your daily note. Images and videos are saved and embedded.
+Journal to Obsidian from Telegram. Send a text or voice note and scriba writes it into
+today's daily note, cleaned up and linked. Images and videos are saved and embedded.
 
-- Placeholder written on arrival, filled in place, so ordering never reshuffles.
-- Voice transcribed locally by Parakeet (default) or remotely by Groq. Non-English text and
-  voice get translated to English on the way in.
-- Contextual `[[wikilinks]]`. Ambiguous ones are confirmed with buttons, and a "no" is
-  remembered so it won't ask again.
-- Reply to a jot to edit it (`s/old/new/`, `replace X with Y`, freeform, or `delete`).
-  Edits sent while a jot is still processing are queued and applied after.
-- Every jot gets a live status message in Telegram, edited in place as it moves through
-  processing, plus a reaction on your original message (✍ received, 👌 done, 🤔 retrying,
-  😱 failed).
-- Failed jots retry (capped at 10). Unrecoverable ones post the jot un-enriched and ping you
-  with a retry button.
-- Nightly it asks how the day was (rate 1 to 10, written once into the note's frontmatter),
-  walks yesterday's habit checklist, and posts a summary. Silent on empty days.
+> **This is a personal bot.** I built it for myself and run it on my own homelab. It makes a
+> lot of assumptions about how my vault and machines are wired, so it probably won't work for
+> you out of the box. It's public because the code might be useful, not because it's a
+> product. Read the assumptions before you try to run it.
 
-## Admin commands
+## What it assumes
 
-Single-user, so every command sits behind the same allowlist as journaling, no extra auth.
-Send `/help` for the live list. Each command is one file under `src/commands/`.
+- **One user.** A single Telegram user id is allowed in. Everyone else is ignored. No
+  multi-user, no sign-up.
+- **You run Obsidian with the Local REST API plugin**, reachable from wherever scriba runs.
+- **Your vault looks like mine.** Daily notes under `notes/daily notes`, a `## Journal`
+  heading to write under, a `## Habits` checklist, a daily-note template, an assets folder.
+  All configurable (see [Environment](#environment)), but the defaults match my vault.
+- **The vault is in English.** Anything you send in another language is translated on the
+  way in.
+- **You have a Claude subscription** (an OAuth token, not an API key). Enrichment runs on it
+  and falls back to a free Groq model when the subscription runs out.
+- **It runs as one always-on process.** Long polling, no webhook, meant for a homelab or any
+  box that stays up. Voice transcription defaults to a local sidecar that ships in the
+  compose file.
+
+## What it does
+
+- Writes a placeholder the instant a jot arrives, then fills it in place. Order is fixed on
+  arrival and never reshuffles.
+- Transcribes voice locally with Parakeet (default) or remotely with Groq.
+- Adds contextual `[[wikilinks]]`. Ambiguous ones you confirm with a button, and a "no" is
+  remembered so it stops asking.
+- Edit a jot by replying to it: `s/old/new/`, `replace X with Y`, freeform, or `delete`.
+  Edits sent mid-processing are queued and applied after.
+- Shows a live status message per jot, plus a reaction on your message: ✍ received,
+  👌 done, 🤔 retrying, 😱 failed.
+- Retries failed jots up to 10 times. If it gives up, it posts the jot un-enriched with a
+  retry button.
+- Every night it asks how the day was (1 to 10, written once into the note's frontmatter),
+  walks yesterday's habits, and posts a summary. Quiet on empty days.
+
+## Setup
+
+You need Node 24, an always-on host with Docker, Obsidian running the Local REST API plugin,
+a Telegram bot, and a Claude subscription.
+
+1. **Make a Telegram bot.** Talk to [@BotFather](https://t.me/BotFather), create one, copy
+   the token.
+2. **Find your Telegram user id.** Message [@userinfobot](https://t.me/userinfobot); it
+   replies with your numeric id. Only that id gets served.
+3. **Get a Claude token.** Run `claude setup-token` and copy the result.
+4. **Turn on the Obsidian Local REST API** plugin and copy its key. Note the URL it serves
+   on (default `https://127.0.0.1:27124`).
+5. **Configure.** `cp .env.example .env` and fill it in. At minimum set the four required
+   variables; see [Environment](#environment) for the rest.
+6. **Run it.** `docker compose up -d` starts scriba and the transcription sidecar. Migrations
+   run at boot.
+7. **Say hi.** Message your bot. It should write to today's note. If nothing shows up, check
+   `docker compose logs -f scriba`.
+
+Prefer Groq over the local sidecar? Set `TRANSCRIBER=remote`, add `GROQ_API_KEY`, and run
+just `docker compose up -d scriba`.
+
+## Commands
+
+Single user, so every command sits behind the same allowlist as journaling. No extra auth.
+Send `/help` for the live list.
 
 | Command | Does |
 | --- | --- |
@@ -43,13 +87,13 @@ Send `/help` for the live list. Each command is one file under `src/commands/`.
 | `/transcriber [local\|remote]` | show or switch the transcription backend at runtime (persisted) |
 | `/version` | version and commit sha |
 
-`/rate` and `/habits` are also fired nightly by the scheduler (`RATING_TIME`, `HABITS_TIME`),
-alongside the day summary post (`SUMMARY_TIME`).
+`/rate` and `/habits` also run nightly (`RATING_TIME`, `HABITS_TIME`), alongside the summary
+post (`SUMMARY_TIME`).
 
-## Flow
+## How a jot flows
 
-A jot is written to the note **twice**: an instant placeholder that fixes its order, then
-the enriched version in place. Enrichment happens asynchronously after a batch flush.
+A jot is written to the note **twice**: an instant placeholder that fixes its order, then the
+enriched version in place. Enrichment happens after a batch flush, off the hot path.
 
 ```mermaid
 sequenceDiagram
@@ -89,7 +133,7 @@ sequenceDiagram
     Note over P,O: on failure: retry (transient, ≤10)<br/>else post un-enriched + 🔄 Retry button
 ```
 
-Jot status machine:
+Status machine:
 
 ```mermaid
 flowchart LR
@@ -101,43 +145,31 @@ flowchart LR
     abandoned -->|🔄 Retry button| pending
 ```
 
+## Environment
+
+Every variable lives in [`.env.example`](./.env.example), each with a comment explaining it.
+Four are required (`TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`,
+`CLAUDE_CODE_OAUTH_TOKEN`, `OBSIDIAN_API_KEY`); the rest have working defaults.
+
 ## Stack
 
-Node 24, TypeScript run via **tsx** (`node --import tsx`, no build step). grammy ·
-better-sqlite3 + knex · groq-sdk · `@anthropic-ai/claude-agent-sdk` · zod (boot-time env
-validation). One class per block, wired in `src/index.ts`; all SQL lives in `Repository`
-(`db.ts`); pure logic in `core.ts` (tested in `core.test.ts`).
-
-## Auth
-
-- `CLAUDE_CODE_OAUTH_TOKEN`: Claude subscription, no API key (`claude setup-token`).
-- `OBSIDIAN_API_KEY`: Obsidian Local REST API.
-- Transcription: `TRANSCRIBER=local` (Parakeet sidecar, `PARAKEET_URL`, the default) or
-  `remote` (Groq, `GROQ_API_KEY`). Text enrichment uses Claude, falling back to a Groq model
-  (`ENRICH_FALLBACK_MODEL`) when the Claude subscription runs out of usage; with no Groq key,
-  jots post un-enriched instead.
+Node 24, TypeScript via **tsx** (`node --import tsx`, no build step). grammy, better-sqlite3
++ knex, groq-sdk, `@anthropic-ai/claude-agent-sdk`, zod for boot-time env validation. One
+class per block, wired in `src/index.ts`. All SQL lives in `Repository` (`db.ts`); pure logic
+lives in `core.ts` with tests in `core.test.ts`.
 
 ## Develop
 
+Run it without Docker:
+
 ```sh
-npm install            # needs Node 24 (better-sqlite3 native addon)
-cp .env.example .env    # fill in
-npm run migrate         # apply schema
-npm test                # core logic
-npm run dev             # watch
+npm install     # Node 24, builds the better-sqlite3 addon
+cp .env.example .env
+npm run migrate # apply schema
+npm run dev     # watch mode
+npm test        # core logic
 ```
-
-## Deploy
-
-`docker compose up -d` starts scriba plus the local Parakeet transcription sidecar
-(the default). For remote transcription via Groq instead, set `TRANSCRIBER=remote` and
-run just `docker compose up -d scriba`.
-
-Provide the `.env.example` vars, a volume for `DB_PATH`, and (optional) a read-only vault
-mount at `/vault` (host source `SCRIBA_VAULT_HOST_PATH`) for the link index. Migrations run
-at boot. The bot uses long polling, so no public URL or webhook is needed. The exposed port
-is only for the health check.
 
 ## License
 
-Elastic License 2.0, see [LICENSE](./LICENSE).
+Elastic License 2.0. See [LICENSE](./LICENSE).
