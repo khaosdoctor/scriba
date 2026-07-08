@@ -125,7 +125,7 @@ export class ScribaBot implements BotServices {
 			])
 			.catch((e) => log.warn({ err: e }, "setMyCommands failed"));
 		void this.bot.start({
-			allowed_updates: ["message", "callback_query"],
+			allowed_updates: ["message", "edited_message", "callback_query"],
 			onStart: (me) =>
 				log.info({ username: me.username }, "telegram long polling started"),
 		});
@@ -390,6 +390,7 @@ export class ScribaBot implements BotServices {
 			{ jotId, text: markdown },
 			`applying ${label}edit to processed jot`,
 		);
+		await ctx.reply("✍️ got your edit — applying…");
 		await ctx.reply(await this.replaceJotText(jot, markdown));
 	}
 
