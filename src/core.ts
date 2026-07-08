@@ -34,20 +34,83 @@ export function enrichableSource(jot: Jot, audioFallback = ""): string {
 /** One-line confirmation of what landed in the note. Attach-only jots carry no text. */
 export function donePreview(kind: JotKind, textPart: string): string {
 	const text = textPart.trim();
-	if (text) return text.length > 200 ? `${text.slice(0, 200)}…` : text;
+	if (text) return text.length > 200 ? `${text.slice(0, 200)}\u2026` : text;
 	if (kind === "image" || kind === "video") return `${kind} saved to the note`;
 	return "saved";
 }
 
-/** Escape the five characters that matter for Telegram's HTML parse mode. */
+/** Escape the five characters that matter for Telegram's HTML parse mode.*/
 export function escapeHtml(s: string): string {
-	return s.replace(
-		/[<>&"']/g,
-		(c) =>
-			({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;", "'": "&#39;" })[
-				c
-			]!,
-	);
+	return s
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
+}
+
+export interface TelegramMessageEntity {
+	type: string;
+	offset: number;
+	length: number;
+	url?: string;
+	language?: string;
+	user?: { id: number; first_name: string; is_bot: boolean; username?: string };
+	custom_emoji_id?: string;
+}
+
+/** Convert Telegram message entities to Markdown. Entities are in UTF-16 code units. */
+export function entitiesToMarkdown(
+	text: string,
+	entities: TelegramMessageEntity[] | undefined,
+): string {
+	if (!entities?.length) return text;
+	const sorted = [...entities].sort((a, b) => a.offset - b.offset);
+	let out = "";
+	let last = 0;
+	for (const e of sorted) {
+		const start = e.offset;
+		const end = e.offset + e.length;
+		out += text.slice(last, start);
+		const content = text.slice(start, end);
+		switch (e.type) {
+			case "bold":
+				out += `**${content}**`;
+				break;
+			case "italic":
+				out += `_${content}_`;
+				break;
+			case "underline":
+				out += `__${content}__`;
+				break;
+			case "strikethrough":
+				out += `~~${content}~~`;
+				break;
+			case "spoiler":
+				out += `||${content}||`;
+				break;
+			case "code":
+				out += `\`${content}\``;
+				break;
+			case "pre":
+				out += `\`\`\`${e.language ?? ""}\n${content}\n\`\`\``;
+				break;
+			case "text_link":
+				out += `[${content}](${e.url})`;
+				break;
+			case "text_mention":
+				out += `[@${content}](tg://user?id=${e.user?.id})`;
+				break;
+			case "custom_emoji":
+				out += content;
+				break;
+			default:
+				out += content;
+		}
+		last = end;
+	}
+	out += text.slice(last);
+	return out;
 }
 
 /** Final in-chat confirmation once a jot lands: the saved line blockquoted with its
@@ -320,6 +383,8 @@ export function formatJotDetail(j: Jot): string {
 	];
 	if (j.asset_path) lines.push(`Asset: ${j.asset_path}`);
 	if (j.error) lines.push(`Error: ${j.error}`);
-	lines.push(`Text: ${text.length > 300 ? `${text.slice(0, 300)}…` : text}`);
+	lines.push(
+		`Text: ${text.length > 300 ? `${text.slice(0, 300)}\u2026` : text}`,
+	);
 	return lines.join("\n");
 }

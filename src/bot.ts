@@ -5,6 +5,7 @@ import { config } from "./config.ts";
 import {
 	anchorLine,
 	deleteAnchorLine,
+	entitiesToMarkdown,
 	journalLine,
 	makeJotId,
 	parseLiteralEdit,
@@ -294,7 +295,11 @@ export class ScribaBot implements BotServices {
 					return this.habits.handleReply(ctx);
 				return this.handleEdit(ctx);
 			}
-			await this.intake(ctx, "text", { rawText: ctx.message.text });
+			const markdown = entitiesToMarkdown(
+				ctx.message.text,
+				ctx.message.entities,
+			);
+			await this.intake(ctx, "text", { rawText: markdown });
 		});
 
 		this.bot.on("message:voice", (ctx) =>
@@ -305,21 +310,84 @@ export class ScribaBot implements BotServices {
 		);
 
 		// Image/video are attachments: saved and embedded, caption kept, not transcribed.
-		this.bot.on("message:photo", (ctx) =>
+		this.bot.on("message:photo", (ctx) => {
+			const markdown = entitiesToMarkdown(
+				ctx.message.caption ?? "",
+				ctx.message.caption_entities,
+			);
 			this.intake(ctx, "image", {
 				fileId: ctx.message.photo.at(-1)!.file_id,
-				rawText: ctx.message.caption,
-			}),
-		);
-		this.bot.on("message:video", (ctx) =>
+				rawText: markdown,
+			});
+		});
+		this.bot.on("message:video", (ctx) => {
+			const markdown = entitiesToMarkdown(
+				ctx.message.caption ?? "",
+				ctx.message.caption_entities,
+			);
 			this.intake(ctx, "video", {
 				fileId: ctx.message.video.file_id,
-				rawText: ctx.message.caption,
-			}),
-		);
+				rawText: markdown,
+			});
+		});
 		this.bot.on("message:video_note", (ctx) =>
 			this.intake(ctx, "video", { fileId: ctx.message.video_note.file_id }),
 		);
+
+		// Edited text messages — edit the jot in place if already processed,
+		// otherwise queue the edit for when processing finishes.
+		this.bot.on("edited_message:text", async (ctx) => {
+			if (ctx.editedMessage.text.startsWith("/")) return;
+			const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
+			if (!jotId) return;
+			const jot = await this.repo.getJot(jotId);
+			if (!jot) return;
+			const markdown = entitiesToMarkdown(
+				ctx.editedMessage.text,
+				ctx.editedMessage.entities,
+			);
+			const editable = jot.status === "done" || jot.status === "abandoned";
+			if (!editable) {
+				log.info(
+					{ jotId, status: jot.status },
+					"edit queued (jot still processing)",
+				);
+				await this.repo.queueEdit(jotId, markdown);
+				return void ctx.reply(
+					"⏳ still processing — I'll apply that edit once it's done.",
+				);
+			}
+			log.info({ jotId, text: markdown }, "applying edit to processed jot");
+			await ctx.reply(await this.replaceJotText(jot, markdown));
+		});
+
+		// Edited captions on media — treat same as text edits for the jot text.
+		this.bot.on("edited_message:caption", async (ctx) => {
+			const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
+			if (!jotId) return;
+			const jot = await this.repo.getJot(jotId);
+			if (!jot) return;
+			const markdown = entitiesToMarkdown(
+				ctx.editedMessage.caption ?? "",
+				ctx.editedMessage.caption_entities,
+			);
+			const editable = jot.status === "done" || jot.status === "abandoned";
+			if (!editable) {
+				log.info(
+					{ jotId, status: jot.status },
+					"caption edit queued (jot still processing)",
+				);
+				await this.repo.queueEdit(jotId, markdown);
+				return void ctx.reply(
+					"⏳ still processing — I'll apply that edit once it's done.",
+				);
+			}
+			log.info(
+				{ jotId, text: markdown },
+				"applying caption edit to processed jot",
+			);
+			await ctx.reply(await this.replaceJotText(jot, markdown));
+		});
 
 		this.bot.on("callback_query:data", (ctx) => this.handleButton(ctx));
 
@@ -428,6 +496,19 @@ export class ScribaBot implements BotServices {
 			journalLine(jot.time, text, jot.anchor),
 		);
 		if (out) await this.obsidian.writeNote(jot.note_path, out);
+		return "✏️ updated";
+	}
+
+	/** Replace a jot's entire text content (for edited messages, not instructions). */
+	private async replaceJotText(jot: Jot, newText: string): Promise<string> {
+		const note = await this.obsidian.readNote(jot.note_path);
+		const out = replaceAnchorLine(
+			note,
+			jot.anchor,
+			journalLine(jot.time, newText, jot.anchor),
+		);
+		if (!out) return "Couldn't find that line in the note.";
+		await this.obsidian.writeNote(jot.note_path, out);
 		return "✏️ updated";
 	}
 
