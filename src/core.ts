@@ -408,3 +408,18 @@ export function formatJotDetail(j: Jot): string {
 	);
 	return lines.join("\n");
 }
+
+/** Unique surfaces from an ordered rejection list, preserving the list's order. Powers
+ *  the first step of the interactive /unreject menu. */
+export function distinctSurfaces<T extends { surface: string }>(
+	list: T[],
+): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const r of list) {
+		if (seen.has(r.surface)) continue;
+		seen.add(r.surface);
+		out.push(r.surface);
+	}
+	return out;
+}

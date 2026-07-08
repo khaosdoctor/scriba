@@ -1,10 +1,12 @@
 import { extname } from "node:path";
 import { Bot, InlineKeyboard } from "grammy";
 import { commands, type Deps } from "./commands/index.ts";
+import { UNREJECT_NS } from "./commands/unreject.ts";
 import { config } from "./config.ts";
 import {
 	anchorLine,
 	deleteAnchorLine,
+	distinctSurfaces,
 	entitiesToMarkdown,
 	isBlank,
 	isEditableJot,
@@ -597,6 +599,7 @@ export class ScribaBot implements BotServices {
 		log.debug({ data: ctx.callbackQuery.data }, "button pressed");
 		if (ns === "rt") return this.handleRetry(ctx, rest[0]);
 		if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
+		if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
 		if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
 		if (ns === HABITS_NS)
 			return this.habits.handleTap(ctx, rest[0], rest[1], rest[2]);
@@ -611,6 +614,55 @@ export class ScribaBot implements BotServices {
 		this.queue.add(jotId);
 		await ctx.answerCallbackQuery({ text: "retrying" });
 		await ctx.editMessageText("🔄 retrying…");
+	}
+
+	/** Interactive /unreject. `ur:s:<si>` shows the notes rejected for surface `si`;
+	 *  `ur:p:<si>:<ni>` undoes that surface→note rejection. Indices are positions in the
+	 *  deterministically ordered rejection list, re-derived on each tap so no state is
+	 *  held between messages. A shifted index (rejection changed meanwhile) answers
+	 *  "expired" rather than undoing the wrong pair. */
+	private async handleUnreject(ctx: any, rest: string[]): Promise<void> {
+		const [step, ...idx] = rest;
+		const list = await this.repo.rejectionList();
+		const surfaces = distinctSurfaces(list);
+		const surface = surfaces[Number(idx[0])];
+		if (surface === undefined) {
+			log.warn({ step, idx }, "unreject: surface index out of range");
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		const notes = list.filter((r) => r.surface === surface).map((r) => r.note);
+
+		if (step === "s") {
+			log.info({ surface, notes: notes.length }, "unreject: surface picked");
+			const kb = new InlineKeyboard();
+			notes.forEach((n, ni) => {
+				kb.text(n, `${UNREJECT_NS}:p:${idx[0]}:${ni}`).row();
+			});
+			await ctx.answerCallbackQuery();
+			return void ctx.editMessageText(`Unreject "${surface}" → which note?`, {
+				reply_markup: kb,
+			});
+		}
+
+		if (step === "p") {
+			const note = notes[Number(idx[1])];
+			if (note === undefined) {
+				log.warn({ surface, idx }, "unreject: note index out of range");
+				return void ctx.answerCallbackQuery({ text: "expired" });
+			}
+			const n = await this.repo.unreject(surface, note);
+			log.info({ surface, note, removed: n }, "unreject via menu");
+			await ctx.answerCallbackQuery({
+				text: n ? "unrejected" : "already gone",
+			});
+			return void ctx.editMessageText(
+				n
+					? `↩️ "${surface}" may link to [[${note}]] again`
+					: `no rejection for "${surface}" → [[${note}]]`,
+			);
+		}
+
+		await ctx.answerCallbackQuery();
 	}
 
 	private async handleLink(

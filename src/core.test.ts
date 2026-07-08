@@ -4,6 +4,7 @@ import {
 	anchorLine,
 	candidates,
 	deleteAnchorLine,
+	distinctSurfaces,
 	doneMessage,
 	donePreview,
 	entitiesToMarkdown,
@@ -444,5 +445,15 @@ test("entitiesToMarkdown preserves text before the first entity and after the la
 			{ type: "code", offset: 7, length: 4 },
 		]),
 		"before `code` after",
+	);
+});
+test("distinctSurfaces dedupes surfaces, preserving list order", () => {
+	assert.deepEqual(
+		distinctSurfaces([
+			{ surface: "gym", note: "Health" },
+			{ surface: "gym", note: "Fitness" },
+			{ surface: "mom", note: "Family" },
+		]),
+		["gym", "mom"],
 	);
 });

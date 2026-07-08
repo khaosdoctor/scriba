@@ -319,7 +319,11 @@ export class Repository {
 
 	// --- rejections: list + undo (set-shaped read via rejections() above) ---
 	async rejectionList(): Promise<{ surface: string; note: string }[]> {
-		return this.k("rejections").select("surface", "note").orderBy("surface");
+		// Ordered by (surface, note) so the interactive /unreject menu can index into
+		// this list by position and re-derive the same order on each button tap.
+		return this.k("rejections")
+			.select("surface", "note")
+			.orderBy(["surface", "note"]);
 	}
 	async unreject(surface: string, note: string): Promise<number> {
 		return this.k("rejections")
