@@ -287,7 +287,19 @@ export class ScribaBot implements BotServices {
 			const msg =
 				err.error instanceof Error ? err.error.message : String(err.error);
 			log.error({ err: err.error }, "bot handler error");
-			await err.ctx.reply(`⚠️ Couldn't save that: ${msg}`).catch(() => {});
+			// If the failing message already has a jot row (intake persists it before the
+			// network write that usually throws here), offer a retry button wired to the same
+			// `rt:` handler the give-up path uses. No jot → plain error (e.g. a command failure).
+			const messageId = err.ctx.message?.message_id;
+			const jotId = messageId
+				? await this.repo.jotForMessage(messageId).catch(() => undefined)
+				: undefined;
+			const reply_markup = jotId
+				? new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`)
+				: undefined;
+			await err.ctx
+				.reply(`⚠️ Couldn't save that: ${msg}`, { reply_markup })
+				.catch(() => {});
 		});
 
 		// single-user allowlist — everyone else is ignored
@@ -443,7 +455,10 @@ export class ScribaBot implements BotServices {
 			{ id, kind, date, time, hasFile: !!src.fileId, hasText: !!src.rawText },
 			"jot received",
 		);
-		const notePath = await this.obsidian.ensureDailyNote(date);
+		// dailyPath is pure (no REST call), so the row can be persisted even when Obsidian is
+		// down. ensureDailyNote + the placeholder write happen after, and writeLine recreates
+		// the note on flush, so a failed placeholder self-heals.
+		const notePath = this.obsidian.dailyPath(date);
 
 		const now = Date.now();
 		const jot: Jot = {
@@ -467,9 +482,13 @@ export class ScribaBot implements BotServices {
 		// appendJournalLine on a missing anchor. The reverse (a line with no row) would orphan
 		// a placeholder no sweep can find.
 		await this.repo.insertJot(jot);
+		// Map the message BEFORE the network write below so the jot is retryable even if the
+		// placeholder write throws (Obsidian down): bot.catch finds this jot by message id and
+		// offers a retry button. Queueing stays last so ordering matches the normal path.
+		await this.repo.mapMessage(ctx.message.message_id, id);
+		await this.obsidian.ensureDailyNote(date);
 		await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
 		log.debug({ id, notePath }, "placeholder line written");
-		await this.repo.mapMessage(ctx.message.message_id, id);
 		this.queue.add(id);
 		log.debug({ id }, "jot queued for flush");
 	}

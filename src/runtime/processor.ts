@@ -297,6 +297,9 @@ export class JotProcessor {
 	}
 
 	private async writeLine(jot: Jot, line: string): Promise<void> {
+		// Recreate the daily note if intake never got to it (Obsidian was down at arrival).
+		// Idempotent + cached, so it's ~one GET when the note already exists.
+		await this.obsidian.ensureDailyNote(basename(jot.note_path, ".md"));
 		// Read + replace + write under the per-note lock so a concurrent write (another jot,
 		// an edit, the retry sweep) can't clobber the line we just placed.
 		const replaced = await this.obsidian.withNoteLock(

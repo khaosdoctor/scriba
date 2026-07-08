@@ -45,7 +45,9 @@ export class ObsidianClient {
 	private headers(extra: Record<string, string> = {}) {
 		return { Authorization: `Bearer ${this.cfg.key}`, ...extra };
 	}
-	private dailyPath(date: string): string {
+	/** Pure path for a day's note — no network. Callers persist this before any REST call so
+	 *  a jot row exists even when Obsidian is unreachable at intake. */
+	dailyPath(date: string): string {
 		return `${this.cfg.dailyDir}/${date}.md`;
 	}
 
