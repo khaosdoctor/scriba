@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/khaosdoctor/scriba/compare/v1.8.0...v1.8.1) (2026-07-08)
+
+
+### Bug Fixes
+
+* serialize note writes and stop losing work on transient errors ([94990cc](https://github.com/khaosdoctor/scriba/commit/94990cce8dc37a0c6da101b8a526d1731d582573))
+
 ## [1.8.0](https://github.com/khaosdoctor/scriba/compare/v1.7.4...v1.8.0) (2026-07-08)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * **ci:** set SCRIBA_TAG env var on Coolify to bypass cached :latest bug ([4e295ad](https://github.com/khaosdoctor/scriba/commit/4e295ad122265f5db70cb2888a9fe74c112174f8))
-
-## [1.7.1](https://github.com/khaosdoctor/scriba/compare/v1.7.0...v1.7.1) (2026-07-08)
-
-
-### Bug Fixes
-
-* add tests for entitiesToMarkdown ([64e543c](https://github.com/khaosdoctor/scriba/commit/64e543cd159fd7aaeb3edc4f0f1482d1932ed31a))
 
