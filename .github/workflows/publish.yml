@@ -70,8 +70,23 @@ jobs:
           provenance: false
           sbom: false
 
-      # Trigger Coolify only after the image is published. force=true makes Coolify
-      # pull the freshly-pushed :latest instead of reusing its locally-cached image.
+      # Coolify has a known bug (issues #5318, #5587) where the deploy API reuses
+      # locally-cached images instead of pulling fresh ones. Workaround: set
+      # SCRIBA_TAG to the exact version so Docker sees a new tag and must pull it.
+      - name: set SCRIBA_TAG on Coolify
+        run: |
+          code=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" \
+            -X PATCH \
+            "${{ secrets.COOLIFY_URL }}/api/v1/applications/${{ secrets.COOLIFY_APP_UUID }}/envs/bulk" \
+            --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+            --header "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
+            --header "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}" \
+            --header "Content-Type: application/json" \
+            --data '{"data":[{"key":"SCRIBA_TAG","value":"${{ steps.version.outputs.value }}"}]}')
+          echo "SCRIBA_TAG update responded HTTP $code"
+          [ "$code" = "201" ] || { echo "SCRIBA_TAG update did not reach Coolify (check CF Access service token / secrets)"; exit 1; }
+
+      # Trigger Coolify only after the image is published and SCRIBA_TAG is set.
       # Coolify sits behind Cloudflare Access, so send a CF Access service token too.
       - name: trigger coolify redeploy
         run: |
