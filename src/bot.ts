@@ -7,6 +7,7 @@ import {
 	deleteAnchorLine,
 	entitiesToMarkdown,
 	isBlank,
+	isEditableJot,
 	journalLine,
 	makeJotId,
 	parseLiteralEdit,
@@ -247,7 +248,7 @@ export class ScribaBot implements BotServices {
 
 	/** Apply edits that were queued while this jot was still processing. */
 	async onJotDone(jotId: string): Promise<void> {
-		const edits = await this.repo.takeQueuedEdits(jotId);
+		const edits = await this.repo.queuedEdits(jotId);
 		if (!edits.length) return;
 		const jot = await this.repo.getJot(jotId);
 		if (!jot) return;
@@ -256,6 +257,7 @@ export class ScribaBot implements BotServices {
 			"applying edits queued during processing",
 		);
 		await this.applyEdits(jot, edits);
+		await this.repo.clearQueuedEdits(jotId); // clear only after apply succeeds, so a throw doesn't lose them
 		await this.notify(
 			`✏️ Applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""}.`,
 		);
@@ -320,26 +322,14 @@ export class ScribaBot implements BotServices {
 		);
 
 		// Image/video are attachments: saved and embedded, caption kept, not transcribed.
-		this.bot.on("message:photo", (ctx) => {
-			const markdown = entitiesToMarkdown(
-				ctx.message.caption ?? "",
-				ctx.message.caption_entities,
-			);
-			this.intake(ctx, "image", {
-				fileId: ctx.message.photo.at(-1)!.file_id,
-				rawText: markdown,
-			});
-		});
-		this.bot.on("message:video", (ctx) => {
-			const markdown = entitiesToMarkdown(
-				ctx.message.caption ?? "",
-				ctx.message.caption_entities,
-			);
-			this.intake(ctx, "video", {
-				fileId: ctx.message.video.file_id,
-				rawText: markdown,
-			});
-		});
+		// `return` the promise so a rejection reaches bot.catch (a fire-and-forget arrow
+		// would swallow it and leave the ✍ reaction stuck forever).
+		this.bot.on("message:photo", (ctx) =>
+			this.intakeMedia(ctx, "image", ctx.message.photo.at(-1)!.file_id),
+		);
+		this.bot.on("message:video", (ctx) =>
+			this.intakeMedia(ctx, "video", ctx.message.video.file_id),
+		);
 		this.bot.on("message:video_note", (ctx) =>
 			this.intake(ctx, "video", { fileId: ctx.message.video_note.file_id }),
 		);
@@ -351,7 +341,6 @@ export class ScribaBot implements BotServices {
 			return this.applyMessageEdit(
 				ctx,
 				entitiesToMarkdown(ctx.editedMessage.text, ctx.editedMessage.entities),
-				"",
 			);
 		});
 
@@ -363,7 +352,6 @@ export class ScribaBot implements BotServices {
 					ctx.editedMessage.caption ?? "",
 					ctx.editedMessage.caption_entities,
 				),
-				"caption ",
 			),
 		);
 
@@ -378,24 +366,18 @@ export class ScribaBot implements BotServices {
 	// the edit for when processing finishes. Clearing the message to empty/whitespace
 	// is the delete gesture (Telegram never delivers an actual message delete), so a
 	// blank edit removes the journal line instead of replacing it.
-	// label ("" | "caption ") tunes logs.
-	private async applyMessageEdit(
-		ctx: any,
-		markdown: string,
-		label: string,
-	): Promise<void> {
+	private async applyMessageEdit(ctx: any, markdown: string): Promise<void> {
 		const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
 		if (!jotId) return;
 		const jot = await this.repo.getJot(jotId);
 		if (!jot) return;
 		const blank = isBlank(markdown);
-		const editable = jot.status === "done" || jot.status === "abandoned";
-		if (!editable) {
+		if (!isEditableJot(jot.status)) {
 			// "delete" is the instruction applyEdits recognises when onJotDone drains the
 			// queue, so an in-flight jot is deleted the moment its line is first written.
 			log.info(
 				{ jotId, status: jot.status, blank },
-				`${label}${blank ? "delete" : "edit"} queued (jot still processing)`,
+				`${blank ? "delete" : "edit"} queued (jot still processing)`,
 			);
 			await this.repo.queueEdit(jotId, blank ? "delete" : markdown);
 			return void ctx.reply(
@@ -405,16 +387,23 @@ export class ScribaBot implements BotServices {
 			);
 		}
 		if (blank) {
-			log.info({ jotId }, `${label}cleared — removing journal line`);
+			log.info({ jotId }, "edited message cleared — removing journal line");
 			await ctx.reply("🗑️ got it — removing…");
 			return void ctx.reply(await this.deleteJot(jot));
 		}
-		log.info(
-			{ jotId, text: markdown },
-			`applying ${label}edit to processed jot`,
-		);
+		log.info({ jotId, text: markdown }, "applying edit to processed jot");
 		await ctx.reply("✍️ got your edit — applying…");
 		await ctx.reply(await this.replaceJotText(jot, markdown));
+	}
+
+	/** Attachment intake (image/video): keep the caption as display text, save + embed the
+	 *  file. Returns the intake promise so a rejection reaches bot.catch. */
+	private intakeMedia(ctx: any, kind: JotKind, fileId: string): Promise<void> {
+		const markdown = entitiesToMarkdown(
+			ctx.message.caption ?? "",
+			ctx.message.caption_entities,
+		);
+		return this.intake(ctx, kind, { fileId, rawText: markdown });
 	}
 
 	private async intake(
@@ -434,8 +423,6 @@ export class ScribaBot implements BotServices {
 			"jot received",
 		);
 		const notePath = await this.obsidian.ensureDailyNote(date);
-		await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
-		log.debug({ id, notePath }, "placeholder line written");
 
 		const now = Date.now();
 		const jot: Jot = {
@@ -454,7 +441,13 @@ export class ScribaBot implements BotServices {
 			received_at: epochMs,
 			updated_at: now,
 		};
+		// Insert the DB row (pending) BEFORE writing the placeholder line. A crash between the
+		// two then leaves a row with no line — which self-heals, since writeLine falls back to
+		// appendJournalLine on a missing anchor. The reverse (a line with no row) would orphan
+		// a placeholder no sweep can find.
 		await this.repo.insertJot(jot);
+		await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
+		log.debug({ id, notePath }, "placeholder line written");
 		await this.repo.mapMessage(ctx.message.message_id, id);
 		this.queue.add(id);
 		log.debug({ id }, "jot queued for flush");
@@ -471,8 +464,7 @@ export class ScribaBot implements BotServices {
 
 		// Editable only once a line exists (done or abandoned); otherwise it still needs
 		// processing, so queue the edit and let onJotDone apply it after.
-		const editable = jot.status === "done" || jot.status === "abandoned";
-		if (!editable) {
+		if (!isEditableJot(jot.status)) {
 			log.info(
 				{ jotId, status: jot.status },
 				"edit queued (jot still processing)",
@@ -489,55 +481,62 @@ export class ScribaBot implements BotServices {
 	/** Apply one or more edit instructions to a jot's line, merged into a single write
 	 *  (and a single agent call for the freeform ones). Returns a short status. */
 	private async applyEdits(jot: Jot, instructions: string[]): Promise<string> {
-		const note = await this.obsidian.readNote(jot.note_path);
-		if (instructions.some((i) => i.trim().toLowerCase() === "delete")) {
-			const out = deleteAnchorLine(note, jot.anchor);
+		// Delete short-circuits to deleteJot (which takes the note lock itself) BEFORE we
+		// acquire it here — locking here and then calling deleteJot would deadlock on the path.
+		if (instructions.some((i) => i.trim().toLowerCase() === "delete"))
+			return this.deleteJot(jot);
+		return this.obsidian.withNoteLock(jot.note_path, async () => {
+			const note = await this.obsidian.readNote(jot.note_path);
+			const line = anchorLine(note, jot.anchor);
+			if (!line) return "Couldn't find that line in the note.";
+
+			let text = stripJournalLine(line, jot.time, jot.anchor);
+			const freeform: string[] = [];
+			for (const ins of instructions) {
+				const lit = parseLiteralEdit(ins);
+				if (lit)
+					text = text.replaceAll(lit.old, lit.new); // deterministic, free
+				else freeform.push(ins);
+			}
+			// Merge all freeform edits into one agent call rather than one per instruction.
+			if (freeform.length)
+				text = await this.enricher.editText(text, freeform.join("; then "));
+
+			const out = replaceAnchorLine(
+				note,
+				jot.anchor,
+				journalLine(jot.time, text, jot.anchor),
+			);
 			if (out) await this.obsidian.writeNote(jot.note_path, out);
-			await this.repo.markDeleted(jot.id);
-			return "🗑️ removed that from your journal.";
-		}
-		const line = anchorLine(note, jot.anchor);
-		if (!line) return "Couldn't find that line in the note.";
-
-		let text = stripJournalLine(line, jot.time, jot.anchor);
-		const freeform: string[] = [];
-		for (const ins of instructions) {
-			const lit = parseLiteralEdit(ins);
-			if (lit)
-				text = text.replaceAll(lit.old, lit.new); // deterministic, free
-			else freeform.push(ins);
-		}
-		// Merge all freeform edits into one agent call rather than one per instruction.
-		if (freeform.length)
-			text = await this.enricher.editText(text, freeform.join("; then "));
-
-		const out = replaceAnchorLine(
-			note,
-			jot.anchor,
-			journalLine(jot.time, text, jot.anchor),
-		);
-		if (out) await this.obsidian.writeNote(jot.note_path, out);
-		return "✏️ updated";
+			return "✏️ updated";
+		});
 	}
 
 	/** Replace a jot's entire text content (for edited messages, not instructions). */
 	private async replaceJotText(jot: Jot, newText: string): Promise<string> {
-		const note = await this.obsidian.readNote(jot.note_path);
-		const out = replaceAnchorLine(
-			note,
-			jot.anchor,
-			journalLine(jot.time, newText, jot.anchor),
-		);
-		if (!out) return "Couldn't find that line in the note.";
-		await this.obsidian.writeNote(jot.note_path, out);
-		return "✏️ updated";
+		return this.obsidian.withNoteLock(jot.note_path, async () => {
+			const note = await this.obsidian.readNote(jot.note_path);
+			const out = replaceAnchorLine(
+				note,
+				jot.anchor,
+				journalLine(jot.time, newText, jot.anchor),
+			);
+			if (!out) return "Couldn't find that line in the note.";
+			await this.obsidian.writeNote(jot.note_path, out);
+			return "✏️ updated";
+		});
 	}
 
 	/** Remove a jot's line from its daily note and mark it deleted (a terminal state, so a
 	 *  retry sweep never resurrects it). Shared by the blank-edit path and /delete. */
 	private async deleteJot(jot: Jot): Promise<string> {
-		const note = await this.obsidian.readNote(jot.note_path);
-		const out = deleteAnchorLine(note, jot.anchor);
+		const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
+			const note = await this.obsidian.readNote(jot.note_path);
+			const removed = deleteAnchorLine(note, jot.anchor);
+			if (removed !== null)
+				await this.obsidian.writeNote(jot.note_path, removed);
+			return removed;
+		});
 		if (out === null) {
 			// Line already gone (double delete, or removed by hand in Obsidian). Still mark
 			// it deleted so the record matches reality — the user's intent is satisfied.
@@ -548,7 +547,6 @@ export class ScribaBot implements BotServices {
 			await this.repo.markDeleted(jot.id);
 			return "🗑️ removed that from your journal.";
 		}
-		await this.obsidian.writeNote(jot.note_path, out);
 		await this.repo.markDeleted(jot.id);
 		log.info({ jotId: jot.id }, "journal line deleted");
 		return "🗑️ removed that from your journal.";
@@ -577,8 +575,7 @@ export class ScribaBot implements BotServices {
 			log.warn({ jotId }, "delete: jot not found");
 			return void ctx.reply("Jot not found.");
 		}
-		const editable = jot.status === "done" || jot.status === "abandoned";
-		if (!editable) {
+		if (!isEditableJot(jot.status)) {
 			log.info(
 				{ jotId, status: jot.status },
 				"delete queued (jot still processing)",

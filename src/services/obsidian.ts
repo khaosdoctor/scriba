@@ -16,10 +16,23 @@ export interface ObsidianConfig {
 
 /** Thin client over the Obsidian Local REST API (the VFB headless instance). */
 export class ObsidianClient {
-	// Self-signed cert on the LAN — skip TLS verification.
-	private dispatcher = new Agent({ connect: { rejectUnauthorized: false } });
+	// Obsidian's Local REST API serves a self-signed cert, so TLS verification is skipped —
+	// but ONLY for a loopback target (the normal case). A non-loopback URL (a misconfig, or
+	// a remote instance) gets real verification so the bearer token can't be intercepted on
+	// an untrusted network segment.
+	private dispatcher: Agent;
 
-	constructor(private cfg: ObsidianConfig) {}
+	constructor(private cfg: ObsidianConfig) {
+		const host = new URL(cfg.url).hostname;
+		const loopback =
+			host === "127.0.0.1" ||
+			host === "localhost" ||
+			host === "::1" ||
+			host === "[::1]";
+		this.dispatcher = new Agent({
+			connect: { rejectUnauthorized: !loopback },
+		});
+	}
 
 	private encode(p: string): string {
 		return p.split("/").map(encodeURIComponent).join("/");
@@ -91,27 +104,49 @@ export class ObsidianClient {
 		return path;
 	}
 
+	// Serialize read-modify-write on a note so two concurrent stacks (intake, flush, retry
+	// sweep, boot sweep) can't both read v1 and have the later PUT clobber the earlier's
+	// line. Each op on a path chains onto the previous one for that path.
+	// ponytail: the chain map grows one entry per distinct note path (≈1/day). If it ever
+	// matters, prune settled tails — for a single-user bot it never will.
+	private writeChain = new Map<string, Promise<unknown>>();
+	async withNoteLock<T>(vaultPath: string, fn: () => Promise<T>): Promise<T> {
+		const prev = (this.writeChain.get(vaultPath) ?? Promise.resolve()).catch(
+			() => {},
+		);
+		const run = prev.then(fn);
+		this.writeChain.set(
+			vaultPath,
+			run.catch(() => {}),
+		);
+		return run;
+	}
+
 	/** Insert a bullet under the ## Journal heading. Read-modify-write (not the REST
 	 *  heading-append) so the line lands right after the last bullet — or replaces the
 	 *  empty template bullet — instead of trailing a blank line below it. */
 	async appendJournalLine(date: string, line: string): Promise<void> {
 		const path = this.dailyPath(date);
-		const note = await this.readNote(path);
-		await this.writeNote(
-			path,
-			insertJournalLine(note, this.cfg.journalHeading, line),
-		);
+		await this.withNoteLock(path, async () => {
+			const note = await this.readNote(path);
+			await this.writeNote(
+				path,
+				insertJournalLine(note, this.cfg.journalHeading, line),
+			);
+		});
 	}
 
 	/** Set the `overallRating` frontmatter of a day's note (creating the note if the day
 	 *  was never journaled). Read-modify-write so a live edit in Obsidian isn't clobbered. */
 	async setDailyRating(date: string, rating: number): Promise<void> {
 		const path = await this.ensureDailyNote(date);
-		const note = await this.readNote(path);
-		await this.writeNote(
-			path,
-			setFrontmatterNumber(note, "overallRating", rating),
-		);
+		await this.withNoteLock(path, async () => {
+			const note = await this.readNote(path);
+			await this.writeNote(
+				path,
+				setFrontmatterNumber(note, "overallRating", rating),
+			);
+		});
 		log.info({ date, rating, path }, "overallRating frontmatter set");
 	}
 

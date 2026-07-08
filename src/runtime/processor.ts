@@ -169,9 +169,19 @@ export class JotProcessor {
 
 			await this.writeLine(jot, this.composeLine(jot, textPart));
 			await this.repo.updateJot(jot.id, { status: "done", error: null });
-			await this.bot.react(jot.id, "done");
-			await this.bot.status(jot.id, doneMessage(jot.time, jot.kind, textPart));
-			await this.bot.onJotDone(jot.id); // apply anything queued while we were working
+			// Post-`done` steps are best-effort UI + the queued-edit drain. A transient throw
+			// here must NOT route to fail(): that would demote an already-committed `done` jot
+			// to `failed`, causing wasted re-enrichment and duplicate link prompts on retry.
+			try {
+				await this.bot.react(jot.id, "done");
+				await this.bot.status(
+					jot.id,
+					doneMessage(jot.time, jot.kind, textPart),
+				);
+				await this.bot.onJotDone(jot.id); // apply anything queued while we were working
+			} catch (err) {
+				log.error({ id, err }, "post-done side effect failed — jot stays done");
+			}
 			log.info({ id, ms: Date.now() - t0 }, "jot done");
 		} catch (err) {
 			await this.fail(loaded, err);
@@ -287,13 +297,23 @@ export class JotProcessor {
 	}
 
 	private async writeLine(jot: Jot, line: string): Promise<void> {
-		const note = await this.obsidian.readNote(jot.note_path); // live — user may have edited
-		const replaced = replaceAnchorLine(note, jot.anchor, line);
+		// Read + replace + write under the per-note lock so a concurrent write (another jot,
+		// an edit, the retry sweep) can't clobber the line we just placed.
+		const replaced = await this.obsidian.withNoteLock(
+			jot.note_path,
+			async () => {
+				const note = await this.obsidian.readNote(jot.note_path); // live — user may have edited
+				const out = replaceAnchorLine(note, jot.anchor, line);
+				if (out) await this.obsidian.writeNote(jot.note_path, out);
+				return out !== null;
+			},
+		);
 		if (replaced) {
-			await this.obsidian.writeNote(jot.note_path, replaced);
 			log.debug({ id: jot.id, anchor: jot.anchor }, "line replaced in place");
 			return;
 		}
+		// Anchor missing (line hand-deleted, or note recreated). appendJournalLine takes the
+		// same lock itself, so it must run AFTER the block above releases — no re-entrancy.
 		log.warn(
 			{ id: jot.id, anchor: jot.anchor },
 			"anchor missing — appending line instead",

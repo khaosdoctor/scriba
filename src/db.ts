@@ -187,14 +187,16 @@ export class Repository {
 			created_at: Date.now(),
 		});
 	}
-	async takeQueuedEdits(jotId: string): Promise<string[]> {
-		return this.k.transaction(async (trx) => {
-			const rows = await trx("queued_edits")
-				.where({ jot_id: jotId })
-				.orderBy("created_at");
-			if (rows.length) await trx("queued_edits").where({ jot_id: jotId }).del();
-			return rows.map((r) => r.instruction as string);
-		});
+	/** Peek at queued edits without removing them, oldest first. The caller applies them
+	 *  and then calls clearQueuedEdits — so a failed apply doesn't lose the edits. */
+	async queuedEdits(jotId: string): Promise<string[]> {
+		const rows = await this.k("queued_edits")
+			.where({ jot_id: jotId })
+			.orderBy("created_at");
+		return rows.map((r) => r.instruction as string);
+	}
+	async clearQueuedEdits(jotId: string): Promise<void> {
+		await this.k("queued_edits").where({ jot_id: jotId }).del();
 	}
 
 	// --- daily ratings (write-once gate) ---
@@ -216,30 +218,8 @@ export class Repository {
 		await this.k("ratings").where({ date }).del();
 	}
 
-	/** Jot counts for the daily summary over a [from,to) epoch-ms window. */
-	async dayStats(
-		from: number,
-		to: number,
-	): Promise<{ jots: number; audio: number; failed: number }> {
-		const row = await this.k("jots")
-			.where("received_at", ">=", from)
-			.andWhere("received_at", "<", to)
-			.select(
-				this.k.raw("COUNT(*) as jots"),
-				this.k.raw("SUM(CASE WHEN kind='audio' THEN 1 ELSE 0 END) as audio"),
-				this.k.raw(
-					"SUM(CASE WHEN status IN ('failed','abandoned') THEN 1 ELSE 0 END) as failed",
-				),
-			)
-			.first();
-		return {
-			jots: Number(row?.jots ?? 0),
-			audio: Number(row?.audio ?? 0),
-			failed: Number(row?.failed ?? 0),
-		};
-	}
-
-	/** Jot counts by kind + outcome over a [from,to) epoch-ms window, for /stats. */
+	/** Jot counts by kind + outcome over a [from,to) epoch-ms window, for /stats and the
+	 *  daily summary. */
 	async windowStats(from: number, to: number): Promise<StatsRow> {
 		const row = await this.k("jots")
 			.where("received_at", ">=", from)

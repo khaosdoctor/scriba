@@ -84,11 +84,10 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 
 		await repo.queueEdit("aaaaaaaa", "s/a/b/");
 		await repo.queueEdit("aaaaaaaa", "delete");
-		assert.deepEqual(await repo.takeQueuedEdits("aaaaaaaa"), [
-			"s/a/b/",
-			"delete",
-		]);
-		assert.deepEqual(await repo.takeQueuedEdits("aaaaaaaa"), []); // cleared
+		assert.deepEqual(await repo.queuedEdits("aaaaaaaa"), ["s/a/b/", "delete"]);
+		assert.deepEqual(await repo.queuedEdits("aaaaaaaa"), ["s/a/b/", "delete"]); // peek doesn't consume
+		await repo.clearQueuedEdits("aaaaaaaa");
+		assert.deepEqual(await repo.queuedEdits("aaaaaaaa"), []); // cleared only on demand
 
 		// rating gate: first record wins, second is rejected with the existing value
 		assert.deepEqual(await repo.recordRating("2026-07-06", 8), {
@@ -105,11 +104,7 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 			current: 3,
 		});
 
-		const stats = await repo.dayStats(0, Date.now() + 1000);
-		assert.equal(stats.jots, 3); // aaaa(done) + bbbb(pending) + cccc(failed)
-		assert.equal(stats.failed, 1); // only cccccccc is still failed/abandoned
-
-		// windowStats: full kind/outcome breakdown over the window
+		// windowStats: full kind/outcome breakdown over the window (also drives the daily summary)
 		const win = await repo.windowStats(0, Date.now() + 1000);
 		assert.equal(win.total, 3);
 		assert.equal(win.text, 3); // all sample jots are kind "text"
