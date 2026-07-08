@@ -131,7 +131,7 @@ export function doneMessage(
 	textPart: string,
 	id: string,
 ): string {
-	return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n<code>${id}</code>`;
+	return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>`;
 }
 
 /** Journal bullet in the vault's house style: `- _HH:MM:SS ::_ <text> ^anchor` */
