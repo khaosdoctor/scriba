@@ -25,12 +25,14 @@ Send `/help` for the live list. Each command is one file under `src/commands/`.
 
 | Command | Does |
 | --- | --- |
+| `/menu` | interactive control panel over the slash commands |
 | `/rate [YYYY-MM-DD]` | rate a day 1 to 10 (buttons); write-once, sets the note's `overallRating` frontmatter |
 | `/habits [YYYY-MM-DD]` | review that day's habit checklist one habit at a time |
 | `/stats [today\|week\|all]` | jot counts by kind and outcome for the window (default today) |
 | `/status` | health snapshot: counts, queue depth, transcriber, link index, uptime, version |
 | `/failed` | recent failed/abandoned jots, each with a retry button |
 | `/jot <id>` | full record for one jot |
+| `/delete` | reply to a journal message with `/delete` to remove it |
 | `/flush` | drain the flush queue now |
 | `/retry [id\|all]` | requeue failed jots (`all` also revives abandoned) |
 | `/sweep` | run the retry sweep now |
@@ -41,7 +43,8 @@ Send `/help` for the live list. Each command is one file under `src/commands/`.
 | `/transcriber [local\|remote]` | show or switch the transcription backend at runtime (persisted) |
 | `/version` | version and commit sha |
 
-`/rate` and `/habits` are also fired nightly by the scheduler (`SUMMARY_TIME`, `HABITS_TIME`).
+`/rate` and `/habits` are also fired nightly by the scheduler (`RATING_TIME`, `HABITS_TIME`),
+alongside the day summary post (`SUMMARY_TIME`).
 
 ## Flow
 
@@ -110,7 +113,9 @@ validation). One class per block, wired in `src/index.ts`; all SQL lives in `Rep
 - `CLAUDE_CODE_OAUTH_TOKEN`: Claude subscription, no API key (`claude setup-token`).
 - `OBSIDIAN_API_KEY`: Obsidian Local REST API.
 - Transcription: `TRANSCRIBER=local` (Parakeet sidecar, `PARAKEET_URL`, the default) or
-  `remote` (Groq, `GROQ_API_KEY`). Text enrichment always uses Claude.
+  `remote` (Groq, `GROQ_API_KEY`). Text enrichment uses Claude, falling back to a Groq model
+  (`ENRICH_FALLBACK_MODEL`) when the Claude subscription runs out of usage; with no Groq key,
+  jots post un-enriched instead.
 
 ## Develop
 
