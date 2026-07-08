@@ -1,3 +1,10 @@
+## [1.14.0](https://github.com/khaosdoctor/scriba/compare/v1.13.0...v1.14.0) (2026-07-08)
+
+
+### Features
+
+* menu close button, link-rules submenu, retry-all confirm ([4c88e36](https://github.com/khaosdoctor/scriba/commit/4c88e367539cad00367a0ac8f0d6a99b5618b75d))
+
 ## [1.13.0](https://github.com/khaosdoctor/scriba/compare/v1.12.0...v1.13.0) (2026-07-08)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * **obsidian:** allow skipping TLS verify for non-loopback host ([c9dcb42](https://github.com/khaosdoctor/scriba/commit/c9dcb42c9bc4f4af9e3f483e516ece6b05dd540b))
-
-## [1.10.0](https://github.com/khaosdoctor/scriba/compare/v1.9.0...v1.10.0) (2026-07-08)
-
-
-### Features
-
-* interactive unreject menu with inline keyboard ([bc18e3a](https://github.com/khaosdoctor/scriba/commit/bc18e3a42cbfb211cb364f4350985ffd98a766c0))
 
