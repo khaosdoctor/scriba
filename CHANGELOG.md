@@ -1,3 +1,10 @@
+## [1.7.3](https://github.com/khaosdoctor/scriba/compare/v1.7.2...v1.7.3) (2026-07-08)
+
+
+### Bug Fixes
+
+* prevent entitiesToMarkdown from duplicating text on nested Telegram entities ([a95ac05](https://github.com/khaosdoctor/scriba/commit/a95ac053938e486fd8b0fd57f8b8b8e8171f938e))
+
 ## [1.7.2](https://github.com/khaosdoctor/scriba/compare/v1.7.1...v1.7.2) (2026-07-08)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * ignore internal/ directory when indexing vault for wikilinks ([897bb24](https://github.com/khaosdoctor/scriba/commit/897bb24e0c96615b09e862767a75c617bc141a20))
-
-## [1.6.0](https://github.com/khaosdoctor/scriba/compare/v1.5.0...v1.6.0) (2026-07-07)
-
-
-### Features
-
-* **enrich:** fall back to a free Groq model when subscription usage runs out ([ad570d2](https://github.com/khaosdoctor/scriba/commit/ad570d223e1222d0c4307bd1c1ca4f26d536a0b8))
 
