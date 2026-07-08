@@ -54,7 +54,7 @@ async function main(): Promise<void> {
 	try {
 		transcriber = new TranscriberSwitch(
 			config.transcription,
-			savedMode ?? (config.transcription.mode as TranscriberMode),
+			savedMode ?? config.transcription.mode,
 		);
 	} catch (e) {
 		log.warn(
@@ -63,7 +63,7 @@ async function main(): Promise<void> {
 		);
 		transcriber = new TranscriberSwitch(
 			config.transcription,
-			config.transcription.mode as TranscriberMode,
+			config.transcription.mode,
 		);
 	}
 	const enricher = new Enricher(

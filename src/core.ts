@@ -22,6 +22,12 @@ export function isRecoverable(err: unknown): boolean {
 	);
 }
 
+/** A jot's line can be edited/deleted only once it exists in the note: done, or abandoned
+ *  (posted un-enriched). Anything earlier still needs processing, so edits are queued. */
+export function isEditableJot(status: JotStatus): boolean {
+	return status === "done" || status === "abandoned";
+}
+
 /** Pick the enrichable source text for a jot's kind: the transcript for audio (falling
  *  back to `audioFallback` when there isn't one), the raw text for text, otherwise ""
  *  (image/video are attach-only). */

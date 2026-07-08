@@ -1,28 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-	createTranscriber,
-	GroqTranscriber,
-	ParakeetTranscriber,
-	TranscriberSwitch,
-} from "./transcribe.ts";
-
-test("factory picks the backend from mode", () => {
-	assert.ok(
-		createTranscriber({
-			mode: "local",
-			groqApiKey: "",
-			parakeetUrl: "http://p",
-		}) instanceof ParakeetTranscriber,
-	);
-	assert.ok(
-		createTranscriber({
-			mode: "remote",
-			groqApiKey: "k",
-			parakeetUrl: "",
-		}) instanceof GroqTranscriber,
-	);
-});
+import { ParakeetTranscriber, TranscriberSwitch } from "./transcribe.ts";
 
 test("switch swaps mode when the target's creds exist", () => {
 	const sw = new TranscriberSwitch({

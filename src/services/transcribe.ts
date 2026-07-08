@@ -64,13 +64,13 @@ export class ParakeetTranscriber implements Transcriber {
 	}
 }
 
+export type TranscriberMode = "local" | "remote";
+
 export interface TranscriberConfig {
-	mode: string; // "local" | "remote" (validated in config)
+	mode: TranscriberMode; // validated as the enum in config.ts
 	groqApiKey: string;
 	parakeetUrl: string;
 }
-
-export type TranscriberMode = "local" | "remote";
 
 function build(mode: TranscriberMode, cfg: TranscriberConfig): Transcriber {
 	if (mode === "local") {
@@ -82,11 +82,6 @@ function build(mode: TranscriberMode, cfg: TranscriberConfig): Transcriber {
 	return new GroqTranscriber(cfg.groqApiKey);
 }
 
-export function createTranscriber(cfg: TranscriberConfig): Transcriber {
-	log.info({ mode: cfg.mode }, "transcriber selected");
-	return build(cfg.mode as TranscriberMode, cfg);
-}
-
 /** A Transcriber whose backend can be swapped at runtime by /transcriber. Delegates
  *  every call to the current backend; setMode rebuilds it (and throws, leaving the old
  *  one in place, if the target backend's creds are missing). */
@@ -96,7 +91,7 @@ export class TranscriberSwitch implements Transcriber {
 
 	constructor(
 		private cfg: TranscriberConfig,
-		mode: TranscriberMode = cfg.mode as TranscriberMode,
+		mode: TranscriberMode = cfg.mode,
 	) {
 		this.modeVal = mode;
 		this.current = build(mode, cfg);

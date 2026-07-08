@@ -88,15 +88,13 @@ export class Scheduler {
 	}
 
 	private async sendSummary(): Promise<void> {
-		const stats = await this.repo.dayStats(startOfToday(), Date.now());
-		log.info(stats, "daily summary");
-		if (stats.jots === 0) return; // nothing today → say nothing
+		const s = await this.repo.windowStats(startOfToday(), Date.now());
+		const failed = s.failed + s.abandoned;
+		log.info({ jots: s.total, audio: s.audio, failed }, "daily summary");
+		if (s.total === 0) return; // nothing today → say nothing
 
-		const lines = [
-			`📓 ${plainDate()}`,
-			`Jots: ${stats.jots} (voice: ${stats.audio})`,
-		];
-		if (stats.failed) lines.push(`⚠️ Failed/abandoned: ${stats.failed}`);
+		const lines = [`📓 ${plainDate()}`, `Jots: ${s.total} (voice: ${s.audio})`];
+		if (failed) lines.push(`⚠️ Failed/abandoned: ${failed}`);
 		await this.notify(lines.join("\n"));
 	}
 }

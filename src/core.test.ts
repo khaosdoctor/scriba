@@ -14,6 +14,7 @@ import {
 	formatStatus,
 	insertJournalLine,
 	isBlank,
+	isEditableJot,
 	isRecoverable,
 	journalLine,
 	makeJotId,
@@ -307,6 +308,15 @@ test("isBlank treats empty and whitespace-only edits as a delete gesture", () =>
 	assert.equal(isBlank("\n\t "), true);
 	assert.equal(isBlank("x"), false);
 	assert.equal(isBlank("  hi  "), false);
+});
+
+test("isEditableJot is true only for done/abandoned (a line exists to edit)", () => {
+	assert.equal(isEditableJot("done"), true);
+	assert.equal(isEditableJot("abandoned"), true);
+	assert.equal(isEditableJot("pending"), false);
+	assert.equal(isEditableJot("processing"), false);
+	assert.equal(isEditableJot("failed"), false);
+	assert.equal(isEditableJot("deleted"), false);
 });
 
 test("formatJotDetail truncates long text and includes errors", () => {
