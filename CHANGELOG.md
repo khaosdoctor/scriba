@@ -1,3 +1,10 @@
+## [1.12.0](https://github.com/khaosdoctor/scriba/compare/v1.11.0...v1.12.0) (2026-07-08)
+
+
+### Features
+
+* mark the jot id with a bookmark emoji in the saved confirmation ([315b954](https://github.com/khaosdoctor/scriba/commit/315b954554818a554564b91448d04593d5cbbf9d))
+
 ## [1.11.0](https://github.com/khaosdoctor/scriba/compare/v1.10.1...v1.11.0) (2026-07-08)
 
 
@@ -31,11 +38,4 @@
 ### Bug Fixes
 
 * **ci:** build the release tag, not the pre-bump trigger sha ([180ff12](https://github.com/khaosdoctor/scriba/commit/180ff127e6c39e3bb54871a6df755de9ae0d1d7b))
-
-## [1.8.1](https://github.com/khaosdoctor/scriba/compare/v1.8.0...v1.8.1) (2026-07-08)
-
-
-### Bug Fixes
-
-* serialize note writes and stop losing work on transient errors ([94990cc](https://github.com/khaosdoctor/scriba/commit/94990cce8dc37a0c6da101b8a526d1731d582573))
 
