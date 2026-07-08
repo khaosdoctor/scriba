@@ -71,6 +71,9 @@ jobs:
         with:
           context: .
           push: true
+          # Pinned: the image prunes better-sqlite3's addon and the SDK's ripgrep to this
+          # one arch. A runner arch change would otherwise ship a silently-broken image.
+          platforms: linux/amd64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |

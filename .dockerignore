@@ -4,5 +4,19 @@ dist
 .env
 .env.local
 data
+vault
 *.db
 *.log
+
+# Not needed at runtime — keeps the COPY . . layer small and stable.
+.github
+.claude
+.herdr
+*.md
+docker-compose.yaml
+Dockerfile
+.dockerignore
+mise.toml
+lefthook.yml
+biome.json
+.env.example
