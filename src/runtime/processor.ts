@@ -5,6 +5,7 @@ import {
 	doneMessage,
 	enrichableSource,
 	escapeHtml,
+	forcedCandidates,
 	isRecoverable,
 	journalLine,
 	makeJotId,
@@ -146,9 +147,10 @@ export class JotProcessor {
 
 			let textPart = source;
 			if (source.trim()) {
-				const [stopwords, rejections] = await Promise.all([
+				const [stopwords, rejections, registered] = await Promise.all([
 					this.repo.stopwords(),
 					this.repo.rejections(),
+					this.repo.registeredLinks(),
 				]);
 				const index = this.links.list();
 				if (!index.length)
@@ -156,17 +158,32 @@ export class JotProcessor {
 						{ id },
 						"enricher: link index empty (SCRIBA_VAULT_HOST_PATH unset or unreadable) — no wikilinks suggested",
 					);
-				const cands = candidates(source, index, stopwords, rejections);
+				// Registered (user-forced) pairs win over anything the vault index would also
+				// suggest for the same surface+note, so it isn't listed (and judged) twice.
+				const forced = forcedCandidates(source, registered);
+				const forcedKeys = new Set(
+					forced.map((c) => `${c.surface.toLowerCase()} ${c.note}`),
+				);
+				const cands = [
+					...forced,
+					...candidates(source, index, stopwords, rejections).filter(
+						(c) => !forcedKeys.has(`${c.surface.toLowerCase()} ${c.note}`),
+					),
+				];
 				log.info(
 					{
 						id,
 						indexSize: index.length,
 						count: cands.length,
+						forced: forced.length,
 						stopwords: stopwords.size,
 						rejections: rejections.size,
-						candidates: cands.map((c) => `"${c.surface}" -> [[${c.note}]]`),
+						candidates: cands.map(
+							(c) =>
+								`"${c.surface}" -> [[${c.note}]]${c.forced ? " (registered)" : ""}`,
+						),
 					},
-					`enricher: ${cands.length} link candidate(s) from local index of ${index.length} aliases`,
+					`enricher: ${cands.length} link candidate(s) (${forced.length} registered) from local index of ${index.length} aliases`,
 				);
 				log.info(
 					{ id, chars: source.length, candidates: cands.length },

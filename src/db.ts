@@ -174,6 +174,28 @@ export class Repository {
 		return new Set(rows.map((r) => String(r.word).toLowerCase()));
 	}
 
+	// --- registered links: user-curated surface->note pairs that always force a link
+	// (the opposite of a rejection). Read as a list, not a set, since forcedCandidates
+	// needs the note target per surface, not just membership.
+	async registeredLinks(): Promise<{ surface: string; note: string }[]> {
+		// Ordered by (surface, note) so an interactive picker (mirroring /unreject's) can
+		// index into this list by position and re-derive the same order on each tap.
+		return this.k("registered_links")
+			.select("surface", "note")
+			.orderBy(["surface", "note"]);
+	}
+	async addRegisteredLink(surface: string, note: string): Promise<void> {
+		await this.k("registered_links")
+			.insert({ surface: surface.toLowerCase(), note, created_at: Date.now() })
+			.onConflict(["surface", "note"])
+			.ignore();
+	}
+	async delRegisteredLink(surface: string, note: string): Promise<number> {
+		return this.k("registered_links")
+			.where({ surface: surface.toLowerCase(), note })
+			.del();
+	}
+
 	// --- pending ambiguous-link questions ---
 	async addPendingLink(
 		id: string,

@@ -57,8 +57,9 @@ const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules
 - The vault is English. If the text is not in English, translate it to natural English preserving the author's voice and meaning. If it is already English, keep it verbatim.
 - Do not summarise or rewrite style. Other than translation, only insert wikilinks.
 - You are given candidate wikilinks (surface text -> note). Apply a link ONLY when the surface word genuinely refers to that note IN THIS CONTEXT. A word matching a note alias is not enough (e.g. "no" is rarely the country Norway; "we" is rarely a book title).
+- Candidates marked (REGISTERED) are hand-curated by the human: always link their first occurrence verbatim, with no contextual judgment — skip the ambiguity check entirely for those.
 - Apply confident links inline using [[Note|surface]] (or [[Note]] if identical). Link the first occurrence only.
-- For candidates you are unsure about, DO NOT link them; list them under "ambiguous" so the human can decide.
+- For non-registered candidates you are unsure about, DO NOT link them; list them under "ambiguous" so the human can decide.
 Respond with ONLY a JSON object: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}]}`;
 
 /** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
@@ -104,7 +105,10 @@ export class Enricher {
 	async enrich(input: EnrichInput): Promise<EnrichResult> {
 		const cands = input.candidates.length
 			? input.candidates
-					.map((c) => `- "${c.surface}" -> [[${c.note}]]`)
+					.map(
+						(c) =>
+							`- "${c.surface}" -> [[${c.note}]]${c.forced ? " (REGISTERED)" : ""}`,
+					)
 					.join("\n")
 			: "(none)";
 		// A squashed burst overrides the "keep English verbatim" rule: the fragments were

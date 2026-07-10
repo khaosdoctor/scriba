@@ -10,6 +10,7 @@ import {
 	donePreview,
 	entitiesToMarkdown,
 	escapeHtml,
+	forcedCandidates,
 	formatDuration,
 	formatJotDetail,
 	formatStats,
@@ -180,6 +181,23 @@ test("candidates drop stopwords/short aliases and honour rejections", () => {
 	const rejected = new Set(["lev Lev"]); // user previously said no to Lev
 	const got2 = candidates(text, index, STOP, rejected);
 	assert.ok(!got2.some((c) => c.note === "Lev"));
+});
+
+test("forcedCandidates: matches registered surface->note pairs, ignoring length/stopword rules, marked forced", () => {
+	const registered = [
+		{ surface: "no", note: "Norway" }, // 2 chars + a stopword elsewhere — still forced
+		{ surface: "Fume Extractor", note: "Fume Extractor" }, // multiword
+		{ surface: "gym", note: "Fitness" },
+	];
+	const text = "said no to visiting the Fume Extractor room";
+	const got = forcedCandidates(text, registered);
+	assert.deepEqual(
+		got.map((c) => [c.surface, c.note, c.forced]).sort(),
+		[
+			["Fume Extractor", "Fume Extractor", true],
+			["no", "Norway", true],
+		].sort(),
+	);
 });
 
 test("literal edit parser handles sed and natural forms, rejects freeform", () => {

@@ -290,6 +290,9 @@ export interface AliasEntry {
 export interface Candidate {
 	surface: string;
 	note: string;
+	// Set for user-registered pairs (the opposite of a rejection): the enricher must
+	// apply these unconditionally instead of judging them in context.
+	forced?: boolean;
 }
 
 /** Split text into lowercased word tokens, unicode-aware (keeps accented letters). */
@@ -322,6 +325,28 @@ export function candidates(
 		if (rejected.has(key) || seen.has(key)) continue;
 		seen.add(key);
 		out.push({ surface: a, note });
+	}
+	return out;
+}
+
+/**
+ * Force-link candidates from user-registered surface->note pairs (`/register`) — the
+ * opposite of a rejection: hand-curated, so no length/stopword filtering applies. Marked
+ * `forced` so the enricher links them unconditionally rather than judging context.
+ */
+export function forcedCandidates(
+	text: string,
+	registered: { surface: string; note: string }[],
+): Candidate[] {
+	const tokens = new Set(tokenize(text));
+	const lower = text.toLowerCase();
+	const out: Candidate[] = [];
+	for (const { surface, note } of registered) {
+		const al = surface.trim().toLowerCase();
+		if (!al) continue;
+		const hit = al.includes(" ") ? lower.includes(al) : tokens.has(al);
+		if (!hit) continue;
+		out.push({ surface, note, forced: true });
 	}
 	return out;
 }
