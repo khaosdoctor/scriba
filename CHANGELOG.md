@@ -1,3 +1,10 @@
+## [1.16.1](https://github.com/khaosdoctor/scriba/compare/v1.16.0...v1.16.1) (2026-07-10)
+
+
+### Bug Fixes
+
+* show full message content instead of truncating previews ([#1](https://github.com/khaosdoctor/scriba/issues/1)) ([08197a9](https://github.com/khaosdoctor/scriba/commit/08197a986eb33af07e9109330453cbb537aa4e92))
+
 ## [1.16.0](https://github.com/khaosdoctor/scriba/compare/v1.15.0...v1.16.0) (2026-07-08)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * retry button on intake save errors ([c2bbdd1](https://github.com/khaosdoctor/scriba/commit/c2bbdd1c7b7d8860462d7053d97449c27f018b09))
-
-## [1.12.0](https://github.com/khaosdoctor/scriba/compare/v1.11.0...v1.12.0) (2026-07-08)
-
-
-### Features
-
-* mark the jot id with a bookmark emoji in the saved confirmation ([315b954](https://github.com/khaosdoctor/scriba/commit/315b954554818a554564b91448d04593d5cbbf9d))
 
