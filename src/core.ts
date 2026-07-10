@@ -349,9 +349,18 @@ export function linkDateWords(text: string, referenceDate: string): string {
 		linkSpans.some(([s, e]) => start < e && end > s);
 
 	const ref = dateFromIso(referenceDate);
+	// chrono also matches bare times ("at 3pm", "meeting at 9") by defaulting the day to
+	// the reference date — that's not a date word, it's a clock time, so require the
+	// parse to have actually pinned down a day/weekday/month before linking it.
+	const isDateLike = (r: chrono.ParsedResult) =>
+		r.start.isCertain("day") ||
+		r.start.isCertain("weekday") ||
+		r.start.isCertain("month");
 	const matches = chrono.en.casual
 		.parse(text, ref)
-		.filter((r) => !overlapsLink(r.index, r.index + r.text.length))
+		.filter(
+			(r) => isDateLike(r) && !overlapsLink(r.index, r.index + r.text.length),
+		)
 		.sort((a, b) => b.index - a.index); // right-to-left so earlier indices stay valid
 
 	let out = text;

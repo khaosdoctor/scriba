@@ -225,6 +225,18 @@ test("linkDateWords turns relative date phrases into daily-note wikilinks", () =
 	);
 });
 
+test("linkDateWords ignores bare clock times that carry no date", () => {
+	const ref = "2026-07-10";
+	assert.equal(linkDateWords("Call is at 3pm", ref), "Call is at 3pm");
+	assert.equal(linkDateWords("We land at 22:30", ref), "We land at 22:30");
+	assert.equal(linkDateWords("meeting at 9", ref), "meeting at 9");
+	// but a time attached to an actual day keyword still links
+	assert.equal(
+		linkDateWords("Met the doctor at 3pm today", ref),
+		"Met the doctor [[2026-07-10|at 3pm today]]",
+	);
+});
+
 test("linkDateWords ignores plain text and never re-links inside a wikilink", () => {
 	const ref = "2026-07-10";
 	assert.equal(linkDateWords("no date words here", ref), "no date words here");
