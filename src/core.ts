@@ -56,10 +56,10 @@ export function combineEnrichSource(parts: string[]): string {
 		.join("\n");
 }
 
-/** One-line confirmation of what landed in the note. Attach-only jots carry no text. */
+/** Confirmation of what landed in the note, shown in full. Attach-only jots carry no text. */
 export function donePreview(kind: JotKind, textPart: string): string {
 	const text = textPart.trim();
-	if (text) return text.length > 200 ? `${text.slice(0, 200)}\u2026` : text;
+	if (text) return text;
 	if (kind === "image" || kind === "video") return `${kind} saved to the note`;
 	return "saved";
 }
@@ -429,9 +429,7 @@ export function formatJotDetail(j: Jot): string {
 	];
 	if (j.asset_path) lines.push(`Asset: ${j.asset_path}`);
 	if (j.error) lines.push(`Error: ${j.error}`);
-	lines.push(
-		`Text: ${text.length > 300 ? `${text.slice(0, 300)}\u2026` : text}`,
-	);
+	lines.push(`Text: ${text}`);
 	return lines.join("\n");
 }
 

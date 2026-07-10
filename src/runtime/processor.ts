@@ -302,7 +302,7 @@ export class JotProcessor {
 				: "";
 		await this.bot.status(
 			jot.id,
-			`⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n<code>${escapeHtml(msg.slice(0, 200))}</code>${squash}`,
+			`⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n<code>${escapeHtml(msg)}</code>${squash}`,
 			{ retry: true },
 		);
 	}
