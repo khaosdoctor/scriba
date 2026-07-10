@@ -53,9 +53,28 @@ test("dateFromIso is the inverse of plainDate and rejects malformed input", () =
 	assert.throws(() => dateFromIso(""));
 });
 
-test("dayBounds spans exactly one local calendar day", () => {
+test("dayBounds spans [local midnight, next local midnight)", () => {
+	// Not asserting a fixed 24h delta here — that's not true on a DST transition day
+	// (see the dedicated DST test below), and would push the implementation the wrong way.
 	const [from, to] = dayBounds("2026-07-10");
-	assert.equal(to - from, 24 * 60 * 60_000);
 	assert.equal(plainDate(from), "2026-07-10");
 	assert.equal(plainDate(to), "2026-07-11"); // exclusive end, next day's midnight
+	assert.equal(new Date(from).getHours(), 0);
+	assert.equal(new Date(to).getHours(), 0);
+	assert.ok(to > from);
+});
+
+test("dayBounds spans a short/long day across a DST transition, not a fixed 24h", () => {
+	const prevTZ = process.env.TZ;
+	process.env.TZ = "America/New_York";
+	try {
+		// US spring-forward 2026: clocks skip 2am -> 3am, so this local day is 23h.
+		const [springFrom, springTo] = dayBounds("2026-03-08");
+		assert.equal(springTo - springFrom, 23 * 60 * 60_000);
+		// US fall-back 2026: 1am repeats, so this local day is 25h.
+		const [fallFrom, fallTo] = dayBounds("2026-11-01");
+		assert.equal(fallTo - fallFrom, 25 * 60 * 60_000);
+	} finally {
+		process.env.TZ = prevTZ;
+	}
 });

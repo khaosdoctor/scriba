@@ -111,7 +111,9 @@ export class ReprocessCommand {
 					? this.pickRangeEnd(ctx, args)
 					: this.renderRangeEndCalendar(ctx, args);
 			case "jot":
-				return this.showJotPage(ctx, Number(args[0]) || 0);
+				// A crafted/stale button could carry a negative page — clamp rather than
+				// pass it through to jotsPage()'s offset.
+				return this.showJotPage(ctx, Math.max(0, Number(args[0]) || 0));
 			case "jotpick":
 				return this.confirmJot(ctx, args[0]);
 			case "go":
@@ -367,12 +369,27 @@ export class ReprocessCommand {
 				reply_markup: this.backTo(`${REPROCESS_NS}:root`),
 			});
 		}
+		// Guard explicitly rather than optional-chaining the enqueue away: without a queue
+		// to pick them up, resetForReprocess would flip these jots to `pending` and strand
+		// them there until the next retry sweep — a silent, hard-to-notice stuck state.
+		const queue = this.queue;
+		if (!queue) {
+			log.error(
+				{ mode, label, count: targets.length },
+				"reprocess: queue not wired — refusing to reset jots to pending",
+			);
+			await ctx.answerCallbackQuery({ text: "internal error" });
+			return void ctx.editMessageText(
+				"⚠️ Reprocess isn't ready yet — try again in a moment.",
+				{ reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
+			);
+		}
 		log.info(
 			{ mode, label, count: targets.length, ids: targets },
 			"reprocess triggered",
 		);
 		const n = await this.repo.resetForReprocess(targets);
-		for (const id of targets) this.queue?.add(id);
+		for (const id of targets) queue.add(id);
 		await ctx.answerCallbackQuery({ text: "reprocessing…" });
 		await ctx.editMessageText(
 			`🔁 Reprocessing ${pluralize(n, "jot")} from ${label}…`,

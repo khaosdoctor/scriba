@@ -46,10 +46,17 @@ export function previousDate(epochMs: number = Date.now()): string {
 }
 
 /** [start, end) epoch-ms bounds of the local calendar day for a "YYYY-MM-DD" string —
- *  the window a date-scoped reprocess query filters `received_at` against. */
+ *  the window a date-scoped reprocess query filters `received_at` against. The end is
+ *  the next local midnight, not `start + 24h`: a fixed offset lands short/long on a DST
+ *  transition day (23h/25h), which would miss or over-include jots near the boundary. */
 export function dayBounds(date: string): [number, number] {
-	const start = dateFromIso(date).getTime();
-	return [start, start + 86_400_000];
+	const start = dateFromIso(date);
+	const end = new Date(
+		start.getFullYear(),
+		start.getMonth(),
+		start.getDate() + 1,
+	);
+	return [start.getTime(), end.getTime()];
 }
 
 /** Milliseconds from now until the next occurrence of HH:MM local time. */
