@@ -3,8 +3,9 @@
  * Stopwords and rejections are injected (they live in the DB), not hardcoded here.
  */
 import { randomBytes } from "node:crypto";
+import * as chrono from "chrono-node";
 import type { Jot, JotKind, JotStatus, StatsRow } from "./db.ts";
-import { plainDate } from "./time.ts";
+import { dateFromIso, plainDate } from "./time.ts";
 
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -325,6 +326,40 @@ export function candidates(
 		if (rejected.has(key) || seen.has(key)) continue;
 		seen.add(key);
 		out.push({ surface: a, note });
+	}
+	return out;
+}
+
+const wikilinkRe = /\[\[.*?\]\]/g;
+
+/**
+ * Spot relative-date phrases ("yesterday", "three weeks ago", "next Friday") and turn
+ * each into a wikilink to that day's daily note, aliased to the original words — the
+ * note doesn't need to exist yet, Obsidian creates it lazily on first click.
+ * `referenceDate` is the jot's own day (not "now"), so a phrase in an old entry resolves
+ * relative to that entry's day. Token-free (chrono-node is a deterministic parser, not
+ * a model call) and never touches text already inside an existing `[[wikilink]]`.
+ */
+export function linkDateWords(text: string, referenceDate: string): string {
+	if (!text.trim()) return text;
+	const linkSpans = [...text.matchAll(wikilinkRe)].map(
+		(m) => [m.index, m.index + m[0].length] as const,
+	);
+	const overlapsLink = (start: number, end: number) =>
+		linkSpans.some(([s, e]) => start < e && end > s);
+
+	const ref = dateFromIso(referenceDate);
+	const matches = chrono.en.casual
+		.parse(text, ref)
+		.filter((r) => !overlapsLink(r.index, r.index + r.text.length))
+		.sort((a, b) => b.index - a.index); // right-to-left so earlier indices stay valid
+
+	let out = text;
+	for (const r of matches) {
+		const date = plainDate(r.start.date().getTime());
+		const start = r.index;
+		const end = start + r.text.length;
+		out = `${out.slice(0, start)}[[${date}|${r.text}]]${out.slice(end)}`;
 	}
 	return out;
 }

@@ -20,6 +20,7 @@ import {
 	isEditableJot,
 	isRecoverable,
 	journalLine,
+	linkDateWords,
 	makeJotId,
 	parseLiteralEdit,
 	placeholderLine,
@@ -197,6 +198,40 @@ test("forcedCandidates: matches registered surface->note pairs, ignoring length/
 			["Fume Extractor", "Fume Extractor", true],
 			["no", "Norway", true],
 		].sort(),
+	);
+});
+
+test("linkDateWords turns relative date phrases into daily-note wikilinks", () => {
+	const ref = "2026-07-10"; // a Friday
+	assert.equal(
+		linkDateWords("I did this yesterday", ref),
+		"I did this [[2026-07-09|yesterday]]",
+	);
+	assert.equal(
+		linkDateWords("see you tomorrow", ref),
+		"see you [[2026-07-11|tomorrow]]",
+	);
+	assert.equal(
+		linkDateWords("I went to the beach three weeks ago", ref),
+		"I went to the beach [[2026-06-19|three weeks ago]]",
+	);
+	assert.equal(
+		linkDateWords("in 2 days we ship", ref),
+		"[[2026-07-12|in 2 days]] we ship",
+	);
+	assert.equal(
+		linkDateWords("last month was rough", ref),
+		"[[2026-06-10|last month]] was rough",
+	);
+});
+
+test("linkDateWords ignores plain text and never re-links inside a wikilink", () => {
+	const ref = "2026-07-10";
+	assert.equal(linkDateWords("no date words here", ref), "no date words here");
+	assert.equal(linkDateWords("", ref), "");
+	assert.equal(
+		linkDateWords("read [[Monday Blues]] again", ref),
+		"read [[Monday Blues]] again",
 	);
 });
 
