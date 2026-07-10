@@ -158,10 +158,16 @@ async function main(): Promise<void> {
 	const lastDeployId = await repo.getSetting("deployId");
 	if (lastDeployId !== deployId) {
 		log.info({ deployId, lastDeployId }, "new deploy detected — notifying");
-		await bot
-			.notify(formatDeployNotice(version, sha, Date.now() - startedAt))
-			.catch((err) => log.warn({ err }, "deploy notice failed to send"));
-		await repo.setSetting("deployId", deployId);
+		// Only record the deploy once the notice actually sends — a transient Telegram
+		// outage should retry on the next boot rather than being silently swallowed.
+		try {
+			await bot.notify(
+				formatDeployNotice(version, sha, Date.now() - startedAt),
+			);
+			await repo.setSetting("deployId", deployId);
+		} catch (err) {
+			log.warn({ err }, "deploy notice failed to send — will retry next boot");
+		}
 	}
 
 	// 8. shutdown
