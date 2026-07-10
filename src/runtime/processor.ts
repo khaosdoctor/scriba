@@ -160,14 +160,16 @@ export class JotProcessor {
 					);
 				// Registered (user-forced) pairs win over anything the vault index would also
 				// suggest for the same surface+note, so it isn't listed (and judged) twice.
+				// JSON-encoded so a surface/note containing a space can't collide with a
+				// different pair (plain `${surface} ${note}` concatenation could).
+				const pairKey = (c: { surface: string; note: string }) =>
+					JSON.stringify([c.surface.toLowerCase(), c.note]);
 				const forced = forcedCandidates(source, registered);
-				const forcedKeys = new Set(
-					forced.map((c) => `${c.surface.toLowerCase()} ${c.note}`),
-				);
+				const forcedKeys = new Set(forced.map(pairKey));
 				const cands = [
 					...forced,
 					...candidates(source, index, stopwords, rejections).filter(
-						(c) => !forcedKeys.has(`${c.surface.toLowerCase()} ${c.note}`),
+						(c) => !forcedKeys.has(pairKey(c)),
 					),
 				];
 				log.info(

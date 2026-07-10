@@ -342,11 +342,12 @@ export function forcedCandidates(
 	const lower = text.toLowerCase();
 	const out: Candidate[] = [];
 	for (const { surface, note } of registered) {
-		const al = surface.trim().toLowerCase();
+		const trimmed = surface.trim();
+		const al = trimmed.toLowerCase();
 		if (!al) continue;
 		const hit = al.includes(" ") ? lower.includes(al) : tokens.has(al);
 		if (!hit) continue;
-		out.push({ surface, note, forced: true });
+		out.push({ surface: trimmed, note, forced: true });
 	}
 	return out;
 }

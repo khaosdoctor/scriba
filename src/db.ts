@@ -186,13 +186,17 @@ export class Repository {
 	}
 	async addRegisteredLink(surface: string, note: string): Promise<void> {
 		await this.k("registered_links")
-			.insert({ surface: surface.toLowerCase(), note, created_at: Date.now() })
+			.insert({
+				surface: surface.trim().toLowerCase(),
+				note: note.trim(),
+				created_at: Date.now(),
+			})
 			.onConflict(["surface", "note"])
 			.ignore();
 	}
 	async delRegisteredLink(surface: string, note: string): Promise<number> {
 		return this.k("registered_links")
-			.where({ surface: surface.toLowerCase(), note })
+			.where({ surface: surface.trim().toLowerCase(), note: note.trim() })
 			.del();
 	}
 
