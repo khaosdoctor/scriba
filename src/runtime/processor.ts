@@ -8,6 +8,7 @@ import {
 	forcedCandidates,
 	isRecoverable,
 	journalLine,
+	linkDateWords,
 	makeJotId,
 	replaceAnchorLine,
 } from "../core.ts";
@@ -373,6 +374,7 @@ export class JotProcessor {
 	}
 
 	private composeLine(jot: Jot, textPart: string): string {
+		const linked = linkDateWords(textPart, basename(jot.note_path, ".md"));
 		let embed = "";
 		if (jot.asset_path) {
 			const caption =
@@ -381,7 +383,7 @@ export class JotProcessor {
 				? `![[${jot.asset_path}|${jot.raw_text}]]`
 				: `![[${jot.asset_path}]]`;
 		}
-		const content = [textPart, embed].filter(Boolean).join(" ") || "…";
+		const content = [linked, embed].filter(Boolean).join(" ") || "…";
 		return journalLine(jot.time, content, jot.anchor);
 	}
 

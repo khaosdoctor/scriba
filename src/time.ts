@@ -19,6 +19,16 @@ export function plainDate(epochMs: number = Date.now()): string {
 	return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/** Local midnight Date for a "YYYY-MM-DD" string — the inverse of plainDate. Throws on
+ *  anything not matching DATE_RE (Number() on a malformed segment yields NaN, not
+ *  undefined, so a `??` fallback can't catch it — reject up front instead). */
+export function dateFromIso(date: string): Date {
+	if (!DATE_RE.test(date))
+		throw new Error(`dateFromIso: not a YYYY-MM-DD date: ${date}`);
+	const [y, m, d] = date.split("-").map(Number);
+	return new Date(y!, m! - 1, d!);
+}
+
 /** Local midnight (00:00:00.000) of the day containing `epochMs` (default now), as an
  *  epoch — the start of a "today" window for day-scoped stats. */
 export function startOfToday(epochMs: number = Date.now()): number {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	dateFromIso,
 	msUntilNext,
 	plainDate,
 	plainTime,
@@ -38,4 +39,15 @@ test("startOfToday zeroes the clock and is idempotent", () => {
 test("previousDate is the calendar day before", () => {
 	const now = 1_700_000_000_000;
 	assert.equal(previousDate(now), plainDate(startOfToday(now) - 1));
+});
+
+test("dateFromIso is the inverse of plainDate and rejects malformed input", () => {
+	const epochMs = 1_700_000_000_000;
+	assert.equal(
+		plainDate(dateFromIso(plainDate(epochMs)).getTime()),
+		plainDate(epochMs),
+	);
+	assert.throws(() => dateFromIso("not-a-date"));
+	assert.throws(() => dateFromIso("2026-7-10")); // not zero-padded
+	assert.throws(() => dateFromIso(""));
 });

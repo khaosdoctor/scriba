@@ -45,6 +45,11 @@ deployed on the homelab (Coolify). Single user.
 - Jot status: `pending → processing → done` (or `failed` → retry, or `abandoned` on
   give-up). `processing` is claimed atomically so flush + sweeps never double-process.
 - Stopwords and learned link-rejections live in the DB, not in code.
+- **Relative-date phrases become daily-note links.** `linkDateWords` (`core.ts`) runs on
+  the composed line after enrichment, resolving phrases like "yesterday", "three weeks
+  ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not
+  processing time) and rewriting them to `[[YYYY-MM-DD|phrase]]`. The target daily note
+  doesn't need to exist yet.
 
 ## Conventions
 
