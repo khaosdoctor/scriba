@@ -202,9 +202,9 @@ test("tokenize keeps accented letters", () => {
 	assert.deepEqual(tokenize("Não é fácil"), ["não", "é", "fácil"]);
 });
 
-test("donePreview shows enriched text, truncates long, labels attach-only", () => {
+test("donePreview shows enriched text in full, labels attach-only", () => {
 	assert.equal(donePreview("text", "  went for a run  "), "went for a run");
-	assert.equal(donePreview("audio", "x".repeat(250)), `${"x".repeat(200)}…`);
+	assert.equal(donePreview("audio", "x".repeat(250)), "x".repeat(250));
 	assert.equal(donePreview("image", ""), "image saved to the note");
 	assert.equal(donePreview("video", "  "), "video saved to the note");
 	assert.equal(donePreview("text", ""), "saved");
@@ -350,7 +350,7 @@ test("isEditableJot is true only for done/abandoned (a line exists to edit)", ()
 	assert.equal(isEditableJot("deleted"), false);
 });
 
-test("formatJotDetail truncates long text and includes errors", () => {
+test("formatJotDetail shows full text and includes errors", () => {
 	const jot: Jot = {
 		id: "deadbeef",
 		kind: "audio",
@@ -371,7 +371,7 @@ test("formatJotDetail truncates long text and includes errors", () => {
 	assert.match(out, /deadbeef \[audio\] — failed/);
 	assert.match(out, /Attempts: 3/);
 	assert.match(out, /Error: boom/);
-	assert.ok(out.includes("…")); // transcript truncated
+	assert.ok(out.includes(`Text: ${"x".repeat(400)}`)); // transcript shown in full
 });
 
 test("entitiesToMarkdown returns text unchanged when entities is undefined", () => {
