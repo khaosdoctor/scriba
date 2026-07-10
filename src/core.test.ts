@@ -10,6 +10,7 @@ import {
 	donePreview,
 	entitiesToMarkdown,
 	escapeHtml,
+	forcedCandidates,
 	formatDeployNotice,
 	formatDuration,
 	formatJotDetail,
@@ -20,6 +21,7 @@ import {
 	isEditableJot,
 	isRecoverable,
 	journalLine,
+	linkDateWords,
 	makeJotId,
 	parseLiteralEdit,
 	placeholderLine,
@@ -181,6 +183,69 @@ test("candidates drop stopwords/short aliases and honour rejections", () => {
 	const rejected = new Set(["lev Lev"]); // user previously said no to Lev
 	const got2 = candidates(text, index, STOP, rejected);
 	assert.ok(!got2.some((c) => c.note === "Lev"));
+});
+
+test("forcedCandidates: matches registered surface->note pairs, ignoring length/stopword rules, marked forced", () => {
+	const registered = [
+		{ surface: "no", note: "Norway" }, // 2 chars + a stopword elsewhere — still forced
+		{ surface: "Fume Extractor", note: "Fume Extractor" }, // multiword
+		{ surface: "gym", note: "Fitness" },
+	];
+	const text = "said no to visiting the Fume Extractor room";
+	const got = forcedCandidates(text, registered);
+	assert.deepEqual(
+		got.map((c) => [c.surface, c.note, c.forced]).sort(),
+		[
+			["Fume Extractor", "Fume Extractor", true],
+			["no", "Norway", true],
+		].sort(),
+	);
+});
+
+test("linkDateWords turns relative date phrases into daily-note wikilinks", () => {
+	const ref = "2026-07-10"; // a Friday
+	assert.equal(
+		linkDateWords("I did this yesterday", ref),
+		"I did this [[2026-07-09|yesterday]]",
+	);
+	assert.equal(
+		linkDateWords("see you tomorrow", ref),
+		"see you [[2026-07-11|tomorrow]]",
+	);
+	assert.equal(
+		linkDateWords("I went to the beach three weeks ago", ref),
+		"I went to the beach [[2026-06-19|three weeks ago]]",
+	);
+	assert.equal(
+		linkDateWords("in 2 days we ship", ref),
+		"[[2026-07-12|in 2 days]] we ship",
+	);
+	assert.equal(
+		linkDateWords("last month was rough", ref),
+		"[[2026-06-10|last month]] was rough",
+	);
+});
+
+test("linkDateWords ignores bare clock times that carry no date", () => {
+	const ref = "2026-07-10";
+	assert.equal(linkDateWords("Call is at 3pm", ref), "Call is at 3pm");
+	assert.equal(linkDateWords("We land at 22:30", ref), "We land at 22:30");
+	assert.equal(linkDateWords("meeting at 9", ref), "meeting at 9");
+	// but a time attached to an actual day keyword still links
+	assert.equal(
+		linkDateWords("Met the doctor at 3pm today", ref),
+		"Met the doctor [[2026-07-10|at 3pm today]]",
+	);
+});
+
+test("linkDateWords ignores plain text and never re-links inside a wikilink", () => {
+	const ref = "2026-07-10";
+	assert.equal(linkDateWords("no date words here", ref), "no date words here");
+	assert.equal(linkDateWords("", ref), "");
+	assert.equal(
+		linkDateWords("read [[Monday Blues]] again", ref),
+		"read [[Monday Blues]] again",
+	);
 });
 
 test("literal edit parser handles sed and natural forms, rejects freeform", () => {

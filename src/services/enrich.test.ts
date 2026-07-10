@@ -108,6 +108,22 @@ test("enrich lists candidates in the prompt, or '(none)' when empty", async () =
 	);
 });
 
+test("enrich marks forced (registered) candidates in the prompt", async () => {
+	const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
+	await new Enricher(undefined, fn).enrich({
+		text: "hey",
+		candidates: [
+			{ surface: "gym", note: "Fitness", forced: true },
+			{ surface: "John", note: "John Doe" },
+		],
+	});
+	assert.match(
+		calls[0]!.prompt as string,
+		/- "gym" -> \[\[Fitness\]\] \(REGISTERED\)/,
+	);
+	assert.match(calls[0]!.prompt as string, /- "John" -> \[\[John Doe\]\]\n/);
+});
+
 test("enrich strips the triple-quote fence from user text so it can't break out", async () => {
 	const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
 	await new Enricher(undefined, fn).enrich({
