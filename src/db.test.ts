@@ -151,6 +151,15 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 		assert.equal(await repo.unreject("No", "Norway"), 1);
 		assert.equal((await repo.rejectionList()).length, 0);
 
+		// registered links: add is idempotent + stores surface lowercased, del reports rows
+		await repo.addRegisteredLink("Gym", "Fitness");
+		await repo.addRegisteredLink("gym", "Fitness"); // dup ignored
+		assert.deepEqual(await repo.registeredLinks(), [
+			{ surface: "gym", note: "Fitness" },
+		]);
+		assert.equal(await repo.delRegisteredLink("GYM", "Fitness"), 1);
+		assert.equal((await repo.registeredLinks()).length, 0);
+
 		// settings: upsert + read
 		assert.equal(await repo.getSetting("transcriber"), undefined);
 		await repo.setSetting("transcriber", "remote");
