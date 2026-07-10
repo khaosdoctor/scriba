@@ -10,6 +10,7 @@ import {
 	donePreview,
 	entitiesToMarkdown,
 	escapeHtml,
+	formatDeployNotice,
 	formatDuration,
 	formatJotDetail,
 	formatStats,
@@ -267,6 +268,12 @@ test("formatStats hides zero outcome tails", () => {
 	assert.equal(clean.includes("failed"), false); // no failures → no tail
 	const withFail = formatStats("today", { ...base, failed: 2, inflight: 1 });
 	assert.match(withFail, /in-flight 1 · failed 2/);
+});
+
+test("formatDeployNotice reports version, sha, and uptime", () => {
+	const out = formatDeployNotice("1.2.3", "abcdef1234", 90_000);
+	assert.match(out, /scriba deployed — 1\.2\.3 \(abcdef1\)/);
+	assert.match(out, /Uptime: 1m 30s/);
 });
 
 test("formatStatus summarises health", () => {

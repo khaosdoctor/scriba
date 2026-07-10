@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import { ScribaBot } from "./bot.ts";
 import { config } from "./config.ts";
+import { formatDeployNotice } from "./core.ts";
 import { Repository } from "./db.ts";
 import { logger } from "./log.ts";
 import { JotProcessor } from "./runtime/processor.ts";
@@ -150,6 +151,18 @@ async function main(): Promise<void> {
 	// 7. start polling
 	await bot.start();
 	log.info("scriba ready");
+
+	// Notify only on an actual new deploy (version or sha changed since the last boot we
+	// recorded), so a plain process/container restart on the same image stays quiet.
+	const deployId = `${version}@${sha}`;
+	const lastDeployId = await repo.getSetting("deployId");
+	if (lastDeployId !== deployId) {
+		log.info({ deployId, lastDeployId }, "new deploy detected — notifying");
+		await bot
+			.notify(formatDeployNotice(version, sha, Date.now() - startedAt))
+			.catch((err) => log.warn({ err }, "deploy notice failed to send"));
+		await repo.setSetting("deployId", deployId);
+	}
 
 	// 8. shutdown
 	const shutdown = async (signal: string) => {

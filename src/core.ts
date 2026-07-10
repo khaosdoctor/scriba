@@ -418,6 +418,18 @@ export function formatStatus(v: StatusView): string {
 	].join("\n");
 }
 
+/** Boot notice sent once when the running version/sha differs from the last known deploy. */
+export function formatDeployNotice(
+	version: string,
+	sha: string,
+	uptimeMs: number,
+): string {
+	return [
+		`🚀 scriba deployed — ${version} (${sha.slice(0, 7)})`,
+		`Uptime: ${formatDuration(uptimeMs)}`,
+	].join("\n");
+}
+
 /** /jot body: full record for one jot. */
 export function formatJotDetail(j: Jot): string {
 	const text = j.transcript ?? j.raw_text ?? "(none)";
