@@ -1,3 +1,10 @@
+## [1.19.0](https://github.com/khaosdoctor/scriba/compare/v1.18.0...v1.19.0) (2026-07-10)
+
+
+### Features
+
+* notify on new deploy with version and uptime ([4a17358](https://github.com/khaosdoctor/scriba/commit/4a17358d9393d05c8b6bb061ccdb06aa13096665))
+
 ## [1.18.0](https://github.com/khaosdoctor/scriba/compare/v1.17.0...v1.18.0) (2026-07-10)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * squash rapid-fire jots into one journal line ([5788863](https://github.com/khaosdoctor/scriba/commit/578886328cc1d34ec479d3a4c960e547d8e93dd4))
-
-## [1.15.0](https://github.com/khaosdoctor/scriba/compare/v1.14.0...v1.15.0) (2026-07-08)
-
-
-### Features
-
-* merge rejected-links menu into interactive paginated list ([e8229c6](https://github.com/khaosdoctor/scriba/commit/e8229c695eb1b8a7dc6ce8cdd53d3c0090fee20f))
 
