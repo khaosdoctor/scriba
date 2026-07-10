@@ -45,6 +45,13 @@ export function previousDate(epochMs: number = Date.now()): string {
 	return plainDate(d.getTime());
 }
 
+/** [start, end) epoch-ms bounds of the local calendar day for a "YYYY-MM-DD" string —
+ *  the window a date-scoped reprocess query filters `received_at` against. */
+export function dayBounds(date: string): [number, number] {
+	const start = dateFromIso(date).getTime();
+	return [start, start + 86_400_000];
+}
+
 /** Milliseconds from now until the next occurrence of HH:MM local time. */
 export function msUntilNext(hhmm: string): number {
 	const [h, m] = hhmm.split(":").map(Number);

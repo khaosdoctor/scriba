@@ -529,3 +529,51 @@ export function distinctSurfaces<T extends { surface: string }>(
 	}
 	return out;
 }
+
+/** One glyph per jot status — the /menu jots browser and /reprocess pickers. */
+export const STATUS_ICON: Record<JotStatus, string> = {
+	pending: "⏳",
+	processing: "⚙️",
+	done: "✅",
+	failed: "❌",
+	abandoned: "🪦",
+	deleted: "🗑",
+};
+
+/** One-line content preview for list pickers (the /menu jots browser, /reprocess) —
+ *  falls back to "(kind)" for attach-only jots with no caption. */
+export function jotPreview(j: Jot, maxLen = 40): string {
+	return (j.transcript ?? j.raw_text ?? `(${j.kind})`)
+		.replace(/\s+/g, " ")
+		.slice(0, maxLen);
+}
+
+/** Calendar grid for a year/month (1-12): weeks (Sun-first) of day-of-month numbers,
+ *  0 for padding cells outside the month. Pure date math for the /reprocess date picker. */
+export function monthGrid(year: number, month: number): number[][] {
+	const daysInMonth = new Date(year, month, 0).getDate();
+	const startDow = new Date(year, month - 1, 1).getDay();
+	const cells = [
+		...Array(startDow).fill(0),
+		...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+	];
+	while (cells.length % 7 !== 0) cells.push(0);
+	const weeks: number[][] = [];
+	for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+	return weeks;
+}
+
+/** From a set of jots (e.g. a /reprocess date/range query), the distinct ids to actually
+ *  reprocess: a squashed follower's line lives on its leader's anchor, so a follower
+ *  resolves to that leader's id rather than being reprocessed standalone. Order of first
+ *  appearance is preserved. */
+export function reprocessTargets(jots: Pick<Jot, "anchor">[]): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const j of jots) {
+		if (seen.has(j.anchor)) continue;
+		seen.add(j.anchor);
+		out.push(j.anchor);
+	}
+	return out;
+}

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	dateFromIso,
+	dayBounds,
 	msUntilNext,
 	plainDate,
 	plainTime,
@@ -50,4 +51,11 @@ test("dateFromIso is the inverse of plainDate and rejects malformed input", () =
 	assert.throws(() => dateFromIso("not-a-date"));
 	assert.throws(() => dateFromIso("2026-7-10")); // not zero-padded
 	assert.throws(() => dateFromIso(""));
+});
+
+test("dayBounds spans exactly one local calendar day", () => {
+	const [from, to] = dayBounds("2026-07-10");
+	assert.equal(to - from, 24 * 60 * 60_000);
+	assert.equal(plainDate(from), "2026-07-10");
+	assert.equal(plainDate(to), "2026-07-11"); // exclusive end, next day's midnight
 });

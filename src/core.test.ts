@@ -20,13 +20,16 @@ import {
 	isBlank,
 	isEditableJot,
 	isRecoverable,
+	jotPreview,
 	journalLine,
 	linkDateWords,
 	makeJotId,
+	monthGrid,
 	parseLiteralEdit,
 	placeholderLine,
 	pluralize,
 	replaceAnchorLine,
+	reprocessTargets,
 	setFrontmatterNumber,
 	stripJournalLine,
 	tokenize,
@@ -557,5 +560,57 @@ test("distinctSurfaces dedupes surfaces, preserving list order", () => {
 			{ surface: "mom", note: "Family" },
 		]),
 		["gym", "mom"],
+	);
+});
+
+test("jotPreview falls back to (kind) for a captionless attach-only jot", () => {
+	const base = {
+		id: "aaaaaaaa",
+		kind: "image" as const,
+		note_path: "x.md",
+		anchor: "aaaaaaaa",
+		time: "10:00:00",
+		raw_text: null,
+		transcript: null,
+		asset_path: null,
+		file_id: null,
+		status: "done" as const,
+		attempts: 0,
+		error: null,
+		received_at: 0,
+		updated_at: 0,
+	};
+	assert.equal(jotPreview(base), "(image)");
+	assert.equal(
+		jotPreview({ ...base, raw_text: "a  sunset\nphoto" }),
+		"a sunset photo",
+	);
+	assert.equal(
+		jotPreview({ ...base, kind: "audio", transcript: "hello there" }, 5),
+		"hello",
+	);
+});
+
+test("monthGrid pads a month to full weeks starting Sunday", () => {
+	// July 2026 starts on a Wednesday and has 31 days.
+	const grid = monthGrid(2026, 7);
+	assert.equal(grid[0]!.filter((d) => d === 0).length, 3); // Sun/Mon/Tue padding
+	assert.equal(grid[0]![3], 1); // Wed 1st
+	const flat = grid.flat().filter((d) => d !== 0);
+	assert.deepEqual(
+		flat,
+		Array.from({ length: 31 }, (_, i) => i + 1),
+	);
+	for (const week of grid) assert.equal(week.length, 7);
+});
+
+test("reprocessTargets dedupes to leader ids, preserving first-seen order", () => {
+	assert.deepEqual(
+		reprocessTargets([
+			{ anchor: "leader1" },
+			{ anchor: "leader1" }, // follower sharing leader1's anchor
+			{ anchor: "leader2" },
+		]),
+		["leader1", "leader2"],
 	);
 });
