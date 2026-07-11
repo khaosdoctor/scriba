@@ -72,8 +72,10 @@ export class FlushQueue {
 			this.clearTimers();
 			return;
 		}
-		const batch = this.ids;
-		this.ids = [];
+		// At most maxBatch per flush — addMany() can queue far more than that in one
+		// call, and draining it all in a single onFlush would bypass the cap the rest of
+		// this class exists to enforce. splice() mutates `ids` down to the remainder.
+		const batch = this.ids.splice(0, this.opts.maxBatch);
 		this.clearTimers();
 		this.draining = true;
 		log.debug({ size: batch.length }, "flushing batch");
@@ -81,7 +83,7 @@ export class FlushQueue {
 			await this.opts.onFlush(batch);
 		} finally {
 			this.draining = false;
-			this.arm(); // handle anything that arrived mid-flush
+			this.arm(); // handle whatever's left (this batch's remainder, or anything that arrived mid-flush)
 		}
 	}
 }

@@ -7,6 +7,14 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 /** Matches a bare "YYYY-MM-DD" date string. */
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** True when `date` is DATE_RE-shaped *and* safe to pass to dayBounds/dateFromIso
+ *  without throwing. DATE_RE alone accepts years 0000-0099, which collide with JS
+ *  Date's 1900-1999 special case (see dayBounds) — callers that only checked DATE_RE
+ *  before calling dayBounds would still hit its throw for one of those. */
+export function isValidDate(date: string): boolean {
+	return DATE_RE.test(date) && Number(date.slice(0, 4)) >= 100;
+}
+
 /** "HH:MM:SS" for the given instant (default now). */
 export function plainTime(epochMs: number = Date.now()): string {
 	const d = new Date(epochMs);
@@ -50,15 +58,14 @@ export function previousDate(epochMs: number = Date.now()): string {
  *  the next local midnight, not `start + 24h`: a fixed offset lands short/long on a DST
  *  transition day (23h/25h), which would miss or over-include jots near the boundary. */
 export function dayBounds(date: string): [number, number] {
-	const start = dateFromIso(date); // throws on non-YYYY-MM-DD
-	// A year below 100 hits JS Date's 0-99-is-1900+ special case (dateFromIso already
-	// silently reinterpreted it) — check the raw string, since `start`'s own getFullYear()
-	// no longer reflects what was actually typed once that's happened.
-	if (Number(date.slice(0, 4)) < 100) {
+	// A year below 100 hits JS Date's 0-99-is-1900+ special case — check the raw string
+	// before dateFromIso silently reinterprets it (after which start.getFullYear() no
+	// longer reflects what was actually typed).
+	if (!isValidDate(date))
 		throw new Error(
-			`dayBounds: year 0-99 collides with Date's 1900-1999 special case: ${date}`,
+			`dayBounds: not a valid YYYY-MM-DD date (year 0-99 collides with Date's 1900-1999 special case): ${date}`,
 		);
-	}
+	const start = dateFromIso(date);
 	const end = new Date(
 		start.getFullYear(),
 		start.getMonth(),

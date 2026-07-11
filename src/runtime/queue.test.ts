@@ -71,6 +71,23 @@ test("addMany pushes the whole batch and arms once, same as add() for the cap", 
 	assert.deepEqual(flushed, [["a", "b", "c"]]);
 });
 
+test("addMany chunks a batch larger than maxBatch into multiple flushes", async () => {
+	// Real timers here: the cap-triggered flushes chain through arm() -> flush() ->
+	// arm() via promise microtasks, not the mocked setTimeout, so wait for those to
+	// settle instead of enabling t.mock.timers.
+	const { q, flushed } = make({
+		maxBatch: 2,
+		idleMs: 100_000,
+		maxWaitMs: 100_000,
+	});
+	q.addMany(["a", "b", "c", "d"]);
+	await new Promise((resolve) => setTimeout(resolve, 0));
+	assert.deepEqual(flushed, [
+		["a", "b"],
+		["c", "d"],
+	]);
+});
+
 test("addMany below the cap arms the idle timer like add()", (t) => {
 	t.mock.timers.enable({ apis: ["setTimeout"] });
 	const { q, flushed } = make({ idleMs: 100, maxBatch: 99 });

@@ -10,7 +10,7 @@ import {
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
-import { DATE_RE, dayBounds, plainDate } from "../time.ts";
+import { dayBounds, isValidDate, plainDate } from "../time.ts";
 
 const log = logger("reprocess");
 
@@ -212,7 +212,7 @@ export class ReprocessCommand {
 	private async confirmDay(ctx: any, date: string): Promise<void> {
 		// dayBounds throws on anything that isn't YYYY-MM-DD — guard a stale/crafted
 		// callback rather than let it fall through to the generic error handler.
-		if (!DATE_RE.test(date)) {
+		if (!isValidDate(date)) {
 			log.warn({ date }, "reprocess: day tap rejected: bad date");
 			return void ctx.answerCallbackQuery({ text: "bad date" });
 		}
@@ -262,7 +262,7 @@ export class ReprocessCommand {
 		// A stale/crafted callback with a missing segment would otherwise render a broken
 		// "Start: ..." prompt and only fail later, when picking the end — reject it here
 		// instead, same as the other date-shaped callback args in this flow.
-		if (!DATE_RE.test(start)) {
+		if (!isValidDate(start)) {
 			log.warn({ start }, "reprocess: range-start tap rejected: bad date");
 			return void ctx.answerCallbackQuery({ text: "bad date" });
 		}
@@ -289,7 +289,7 @@ export class ReprocessCommand {
 		const [start, y, m] = args;
 		// A stale/crafted callback could carry a missing/invalid start — guard here too,
 		// rather than rendering "Start: undefined" and only failing later in pickRangeEnd.
-		if (!DATE_RE.test(start ?? "")) {
+		if (!isValidDate(start ?? "")) {
 			log.warn(
 				{ start },
 				"reprocess: range-end calendar rejected: bad start date",
@@ -316,7 +316,7 @@ export class ReprocessCommand {
 		// dayBounds throws on anything that isn't YYYY-MM-DD — guard a stale/crafted
 		// callback (e.g. a range-start carried over from before a code change) rather than
 		// let it fall through to the generic error handler.
-		if (!DATE_RE.test(start ?? "") || !DATE_RE.test(end)) {
+		if (!isValidDate(start ?? "") || !isValidDate(end)) {
 			log.warn({ start, end }, "reprocess: range-end tap rejected: bad date");
 			return void ctx.answerCallbackQuery({ text: "bad date" });
 		}
@@ -405,7 +405,7 @@ export class ReprocessCommand {
 		// specific toast on rejection.
 		if (mode === "d") {
 			const [date] = rest;
-			if (!DATE_RE.test(date ?? "")) {
+			if (!isValidDate(date ?? "")) {
 				log.warn({ date }, "reprocess: execute rejected: bad date");
 				return void ctx.answerCallbackQuery({ text: "bad date" });
 			}
@@ -413,7 +413,7 @@ export class ReprocessCommand {
 			label = date!;
 		} else if (mode === "r") {
 			const [start, end] = rest;
-			if (!DATE_RE.test(start ?? "") || !DATE_RE.test(end ?? "")) {
+			if (!isValidDate(start ?? "") || !isValidDate(end ?? "")) {
 				log.warn({ start, end }, "reprocess: execute rejected: bad date");
 				return void ctx.answerCallbackQuery({ text: "bad date" });
 			}
