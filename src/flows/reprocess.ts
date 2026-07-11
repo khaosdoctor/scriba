@@ -463,10 +463,10 @@ export class ReprocessCommand {
 				{ reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
 			);
 		}
-		log.info(
-			{ mode, label, count: targets.length, ids: targets },
-			"reprocess triggered",
-		);
+		log.info({ mode, label, count: targets.length }, "reprocess triggered");
+		// The full id list can get long for a wide date range — keep it out of the info
+		// line and only pay for it at debug.
+		log.debug({ ids: targets }, "reprocess targets");
 		// Only enqueue what was actually flipped to pending — a target can lose eligibility
 		// between the query above and this reset (raced to `processing`, or a stale/crafted
 		// callback), and enqueueing it anyway would just be a no-op with a misleading count.

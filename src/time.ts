@@ -50,7 +50,15 @@ export function previousDate(epochMs: number = Date.now()): string {
  *  the next local midnight, not `start + 24h`: a fixed offset lands short/long on a DST
  *  transition day (23h/25h), which would miss or over-include jots near the boundary. */
 export function dayBounds(date: string): [number, number] {
-	const start = dateFromIso(date);
+	const start = dateFromIso(date); // throws on non-YYYY-MM-DD
+	// A year below 1000 hits JS Date's 0-99-is-1900+ special case (dateFromIso already
+	// silently reinterpreted it) — check the raw string, since `start`'s own getFullYear()
+	// no longer reflects what was actually typed once that's happened.
+	if (Number(date.slice(0, 4)) < 1000) {
+		throw new Error(
+			`dayBounds: year must be 4 significant digits — below 1000 collides with Date's 1900-1999 special case: ${date}`,
+		);
+	}
 	const end = new Date(
 		start.getFullYear(),
 		start.getMonth(),

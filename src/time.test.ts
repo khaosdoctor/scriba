@@ -64,6 +64,11 @@ test("dayBounds spans [local midnight, next local midnight)", () => {
 	assert.ok(to > from);
 });
 
+test("dayBounds rejects a sub-1000 year (JS Date's 0-99-is-1900+ special case)", () => {
+	assert.throws(() => dayBounds("0099-01-01"));
+	assert.throws(() => dayBounds("0000-01-01"));
+});
+
 test("dayBounds spans a short/long day across a DST transition, not a fixed 24h", () => {
 	const prevTZ = process.env.TZ;
 	process.env.TZ = "America/New_York";
