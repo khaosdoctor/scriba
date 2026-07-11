@@ -63,3 +63,28 @@ test("hard max-wait fires even under a steady trickle", (t) => {
 	t.mock.timers.tick(50); // 200 total since first item
 	assert.deepEqual(flushed, [["a", "b"]]);
 });
+
+test("addMany pushes the whole batch and arms once, same as add() for the cap", (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const { q, flushed } = make({ maxBatch: 3 });
+	q.addMany(["a", "b", "c"]); // hits cap in one call → synchronous flush
+	assert.deepEqual(flushed, [["a", "b", "c"]]);
+});
+
+test("addMany below the cap arms the idle timer like add()", (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const { q, flushed } = make({ idleMs: 100, maxBatch: 99 });
+	q.addMany(["a", "b"]);
+	assert.equal(flushed.length, 0);
+	t.mock.timers.tick(100);
+	assert.deepEqual(flushed, [["a", "b"]]);
+});
+
+test("addMany with an empty array is a no-op", (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout"] });
+	const { q, flushed } = make();
+	q.addMany([]);
+	assert.equal(q.depth, 0);
+	t.mock.timers.tick(1000);
+	assert.equal(flushed.length, 0);
+});

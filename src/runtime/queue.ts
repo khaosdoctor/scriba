@@ -33,6 +33,15 @@ export class FlushQueue {
 		if (!this.draining) this.arm();
 	}
 
+	/** Bulk-enqueue: push every id, then arm once — a loop of add() calls re-arms the
+	 *  idle/max timers on every single push, which is needless churn for a large batch
+	 *  (e.g. /reprocess over a wide date range). */
+	addMany(ids: string[]): void {
+		if (!ids.length) return;
+		this.ids.push(...ids);
+		if (!this.draining) this.arm();
+	}
+
 	private arm(): void {
 		if (this.ids.length === 0) return;
 		if (this.ids.length >= this.opts.maxBatch) {

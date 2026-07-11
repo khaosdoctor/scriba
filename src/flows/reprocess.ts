@@ -396,18 +396,20 @@ export class ReprocessCommand {
 
 	private async execute(ctx: any, args: string[]): Promise<void> {
 		const [mode, ...rest] = args;
-		let targets: string[];
+		let from: number;
+		let to: number;
 		let label: string;
 		// dayBounds throws on anything that isn't YYYY-MM-DD — guard a stale/crafted "go"
-		// callback the same way the calendar taps upstream of it already are.
+		// callback the same way the calendar taps upstream of it already are. Validation
+		// here is synchronous (no DB work), so it's safe to answer the callback with a
+		// specific toast on rejection.
 		if (mode === "d") {
 			const [date] = rest;
 			if (!DATE_RE.test(date ?? "")) {
 				log.warn({ date }, "reprocess: execute rejected: bad date");
 				return void ctx.answerCallbackQuery({ text: "bad date" });
 			}
-			const [from, to] = dayBounds(date!);
-			targets = reprocessTargets(await this.repo.jotsInRange(from, to));
+			[from, to] = dayBounds(date!);
 			label = date!;
 		} else if (mode === "r") {
 			const [start, end] = rest;
@@ -418,9 +420,8 @@ export class ReprocessCommand {
 			// A crafted/stale callback could carry start > end — swap rather than querying
 			// an inverted (always-empty) window, matching pickRangeEnd's own normalization.
 			const [lo, hi] = start! <= end! ? [start!, end!] : [end!, start!];
-			const [from] = dayBounds(lo);
-			const [, to] = dayBounds(hi);
-			targets = reprocessTargets(await this.repo.jotsInRange(from, to));
+			[from] = dayBounds(lo);
+			[, to] = dayBounds(hi);
 			label = `${lo} → ${hi}`;
 		} else if (mode === "j") {
 			const [id] = rest;
@@ -428,22 +429,41 @@ export class ReprocessCommand {
 				log.warn("reprocess: execute rejected: missing jot id");
 				return void ctx.answerCallbackQuery({ text: "bad jot id" });
 			}
+			// Ack now — everything past this point does DB work, and the callback should
+			// be acknowledged promptly rather than leaving Telegram's spinner running
+			// through it. Every remaining outcome below reports through editMessageText.
+			await ctx.answerCallbackQuery();
 			const jot = await this.repo.getJot(id);
 			if (!jot) {
 				log.warn({ id }, "reprocess: execute rejected: jot not found");
-				return void ctx.answerCallbackQuery({ text: "gone" });
+				return void ctx.editMessageText(`Jot ${id} not found.`, {
+					reply_markup: this.backTo(`${REPROCESS_NS}:root`),
+				});
 			}
 			// A crafted/stale callback could name a squashed follower directly — resolve to
 			// its leader (the anchor the combined line actually lives under), matching
 			// confirmJot's own resolution.
-			targets = [jot.anchor];
-			label = jot.anchor;
+			return this.executeTargets(ctx, [jot.anchor], jot.anchor);
 		} else {
 			await ctx.answerCallbackQuery();
 			return;
 		}
+		// Ack now, before the jotsInRange/resetForReprocess DB work below — see the mode
+		// "j" branch's comment.
+		await ctx.answerCallbackQuery();
+		const targets = reprocessTargets(await this.repo.jotsInRange(from, to));
+		return this.executeTargets(ctx, targets, label);
+	}
+
+	/** Shared tail of execute(): reset + enqueue a resolved target list. Assumes the
+	 *  callback has already been answered, so every outcome here reports through
+	 *  editMessageText only. */
+	private async executeTargets(
+		ctx: any,
+		targets: string[],
+		label: string,
+	): Promise<void> {
 		if (!targets.length) {
-			await ctx.answerCallbackQuery({ text: "nothing to reprocess" });
 			return void ctx.editMessageText(`No reprocessable jots for ${label}.`, {
 				reply_markup: this.backTo(`${REPROCESS_NS}:root`),
 			});
@@ -454,16 +474,15 @@ export class ReprocessCommand {
 		const queue = this.queue;
 		if (!queue) {
 			log.error(
-				{ mode, label, count: targets.length },
+				{ label, count: targets.length },
 				"reprocess: queue not wired — refusing to reset jots to pending",
 			);
-			await ctx.answerCallbackQuery({ text: "internal error" });
 			return void ctx.editMessageText(
 				"⚠️ Reprocess isn't ready yet — try again in a moment.",
 				{ reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
 			);
 		}
-		log.info({ mode, label, count: targets.length }, "reprocess triggered");
+		log.info({ label, count: targets.length }, "reprocess triggered");
 		// The full id list can get long for a wide date range — keep it out of the info
 		// line and only pay for it at debug.
 		log.debug({ ids: targets }, "reprocess targets");
@@ -472,14 +491,12 @@ export class ReprocessCommand {
 		// callback), and enqueueing it anyway would just be a no-op with a misleading count.
 		const reset = await this.repo.resetForReprocess(targets);
 		if (!reset.length) {
-			await ctx.answerCallbackQuery({ text: "nothing to reprocess" });
 			return void ctx.editMessageText(
 				`No reprocessable jots for ${label} anymore.`,
 				{ reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
 			);
 		}
-		for (const id of reset) queue.add(id);
-		await ctx.answerCallbackQuery({ text: "reprocessing…" });
+		queue.addMany(reset); // one arm() for the whole batch, not one per id
 		await ctx.editMessageText(
 			`🔁 Reprocessing ${pluralize(reset.length, "jot")} from ${label}…`,
 		);

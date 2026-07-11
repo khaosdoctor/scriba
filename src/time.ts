@@ -51,12 +51,12 @@ export function previousDate(epochMs: number = Date.now()): string {
  *  transition day (23h/25h), which would miss or over-include jots near the boundary. */
 export function dayBounds(date: string): [number, number] {
 	const start = dateFromIso(date); // throws on non-YYYY-MM-DD
-	// A year below 1000 hits JS Date's 0-99-is-1900+ special case (dateFromIso already
+	// A year below 100 hits JS Date's 0-99-is-1900+ special case (dateFromIso already
 	// silently reinterpreted it) — check the raw string, since `start`'s own getFullYear()
 	// no longer reflects what was actually typed once that's happened.
-	if (Number(date.slice(0, 4)) < 1000) {
+	if (Number(date.slice(0, 4)) < 100) {
 		throw new Error(
-			`dayBounds: year must be 4 significant digits — below 1000 collides with Date's 1900-1999 special case: ${date}`,
+			`dayBounds: year 0-99 collides with Date's 1900-1999 special case: ${date}`,
 		);
 	}
 	const end = new Date(
