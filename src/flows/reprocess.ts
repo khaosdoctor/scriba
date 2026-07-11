@@ -93,9 +93,10 @@ export class ReprocessCommand {
 		switch (action) {
 			case "root":
 				await ctx.answerCallbackQuery();
-				return void ctx.editMessageText("🔁 Reprocess — choose scope:", {
+				await ctx.editMessageText("🔁 Reprocess — choose scope:", {
 					reply_markup: this.rootMenu(),
 				});
+				return;
 			case "noop":
 				return void ctx.answerCallbackQuery();
 			case "day":
@@ -120,7 +121,8 @@ export class ReprocessCommand {
 				return this.execute(ctx, args);
 			case "cancel":
 				await ctx.answerCallbackQuery();
-				return void ctx.editMessageText("Cancelled.");
+				await ctx.editMessageText("Cancelled.");
+				return;
 			default:
 				log.warn({ action }, "reprocess: unknown action");
 				await ctx.answerCallbackQuery();
@@ -128,9 +130,11 @@ export class ReprocessCommand {
 	}
 
 	/** Parse year/month callback args into a valid pair, falling back to the current month
-	 *  for anything missing, non-numeric, or outside 1-12 (a stale/crafted callback) —
-	 *  otherwise an out-of-range month renders a mislabeled calendar, or (month NaN) makes
-	 *  monthGrid's `Array(startDow)` throw outright. */
+	 *  for anything missing, non-numeric, or outside range (a stale/crafted callback) —
+	 *  otherwise an out-of-range month renders a mislabeled calendar, a NaN month makes
+	 *  monthGrid's `Array(startDow)` throw outright, and a 0-99 year hits JS Date's
+	 *  1900-relative special case (desyncing the label from the math) while also building
+	 *  a callback date string DATE_RE would later reject for not being 4 digits. */
 	private parseYearMonth(
 		y?: string,
 		m?: string,
@@ -139,7 +143,10 @@ export class ReprocessCommand {
 		const year = Number(y);
 		const month = Number(m);
 		return {
-			year: Number.isInteger(year) && year > 0 ? year : now.getFullYear(),
+			year:
+				Number.isInteger(year) && year >= 1000 && year <= 9999
+					? year
+					: now.getFullYear(),
 			month:
 				Number.isInteger(month) && month >= 1 && month <= 12
 					? month
@@ -280,6 +287,15 @@ export class ReprocessCommand {
 		args: string[],
 	): Promise<void> {
 		const [start, y, m] = args;
+		// A stale/crafted callback could carry a missing/invalid start — guard here too,
+		// rather than rendering "Start: undefined" and only failing later in pickRangeEnd.
+		if (!DATE_RE.test(start ?? "")) {
+			log.warn(
+				{ start },
+				"reprocess: range-end calendar rejected: bad start date",
+			);
+			return void ctx.answerCallbackQuery({ text: "bad date" });
+		}
 		await ctx.answerCallbackQuery();
 		const { year, month } = this.parseYearMonth(y, m);
 		const kb = this.buildCalendar(
@@ -423,7 +439,8 @@ export class ReprocessCommand {
 			targets = [jot.anchor];
 			label = jot.anchor;
 		} else {
-			return void ctx.answerCallbackQuery();
+			await ctx.answerCallbackQuery();
+			return;
 		}
 		if (!targets.length) {
 			await ctx.answerCallbackQuery({ text: "nothing to reprocess" });
