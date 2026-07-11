@@ -379,6 +379,22 @@ export class ReprocessCommand {
 	private async confirmJot(ctx: any, id?: string): Promise<void> {
 		const jot = id ? await this.repo.getJot(id) : undefined;
 		if (!jot) return void ctx.answerCallbackQuery({ text: "gone" });
+		// A stale button (the jot list was rendered earlier) or a race (retry sweep,
+		// concurrent processing) can leave this jot no longer reprocessable — reject with
+		// a clear toast now rather than showing a confirm prompt that fails later.
+		if (
+			jot.status !== "done" &&
+			jot.status !== "failed" &&
+			jot.status !== "abandoned"
+		) {
+			log.warn(
+				{ id, status: jot.status },
+				"reprocess: jot pick rejected: no longer reprocessable",
+			);
+			return void ctx.answerCallbackQuery({
+				text: "not reprocessable anymore",
+			});
+		}
 		await ctx.answerCallbackQuery();
 		const leaderId = jot.anchor; // a squashed follower reprocesses via its leader's line
 		const note =

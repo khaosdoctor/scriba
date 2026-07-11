@@ -340,9 +340,15 @@ export class Repository {
 	}
 
 	/** Reprocess-eligible jots (done/failed/abandoned — not deleted, not in flight) whose
-	 *  `received_at` falls in [from, to). Backs /reprocess's day and date-range pickers. */
-	async jotsInRange(from: number, to: number): Promise<Jot[]> {
+	 *  `received_at` falls in [from, to). Backs /reprocess's day and date-range pickers.
+	 *  Only `id`/`anchor` are selected — callers dedupe/resolve to a leader's anchor, they
+	 *  never touch the (potentially large) raw_text/transcript payloads. */
+	async jotsInRange(
+		from: number,
+		to: number,
+	): Promise<Pick<Jot, "id" | "anchor">[]> {
 		return this.k<Jot>("jots")
+			.select("id", "anchor")
 			.where("received_at", ">=", from)
 			.andWhere("received_at", "<", to)
 			.whereIn("status", ["done", "failed", "abandoned"])
