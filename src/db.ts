@@ -135,25 +135,39 @@ export class Repository {
 	}
 
 	// --- telegram message → jot map (reply-to-edit) ---
-	async mapMessage(tgMessageId: number, jotId: string): Promise<void> {
+	// Keyed by (chat_id, tg_message_id): message ids are only unique per chat, so the
+	// allowed user interacting from more than one chat (a DM and a group, say) needs the
+	// chat disambiguated or a reply/edit in one chat could resolve to a jot from another.
+	async mapMessage(
+		chatId: number,
+		tgMessageId: number,
+		jotId: string,
+	): Promise<void> {
 		await this.k("msg_map")
-			.insert({ tg_message_id: tgMessageId, jot_id: jotId })
-			.onConflict("tg_message_id")
+			.insert({ chat_id: chatId, tg_message_id: tgMessageId, jot_id: jotId })
+			.onConflict(["chat_id", "tg_message_id"])
 			.merge();
 	}
-	async jotForMessage(tgMessageId: number): Promise<string | undefined> {
+	async jotForMessage(
+		chatId: number,
+		tgMessageId: number,
+	): Promise<string | undefined> {
 		const r = await this.k("msg_map")
-			.where({ tg_message_id: tgMessageId })
+			.where({ chat_id: chatId, tg_message_id: tgMessageId })
 			.first();
 		return r?.jot_id;
 	}
-	async messageForJot(jotId: string): Promise<number | undefined> {
+	async messageForJot(
+		jotId: string,
+	): Promise<{ chatId: number; messageId: number } | undefined> {
 		const r = await this.k("msg_map").where({ jot_id: jotId }).first();
-		return r?.tg_message_id;
+		return r ? { chatId: r.chat_id, messageId: r.tg_message_id } : undefined;
 	}
 	/** Forget a telegram message → jot mapping (e.g. a status message we just deleted). */
-	async unmapMessage(tgMessageId: number): Promise<void> {
-		await this.k("msg_map").where({ tg_message_id: tgMessageId }).delete();
+	async unmapMessage(chatId: number, tgMessageId: number): Promise<void> {
+		await this.k("msg_map")
+			.where({ chat_id: chatId, tg_message_id: tgMessageId })
+			.delete();
 	}
 
 	// --- learned link rejections ---
