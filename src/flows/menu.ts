@@ -397,9 +397,11 @@ export class MenuController {
 		const deps = this.getDeps();
 		const jot = id ? await deps.repo.getJot(id) : undefined;
 		if (!jot) return void ctx.answerCallbackQuery({ text: "gone" });
+		// Answer before the note-lock read/write below, which can be slow enough to blow
+		// past Telegram's callback-query window — the edited message carries the result.
+		await ctx.answerCallbackQuery();
 		log.info({ jotId: id }, "menu: delete jot");
 		const msg = await this.deleteJot(jot);
-		await ctx.answerCallbackQuery({ text: "deleted" });
 		await ctx.editMessageText(msg, { reply_markup: this.backTo("menu:jots") });
 	}
 
