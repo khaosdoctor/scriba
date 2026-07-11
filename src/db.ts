@@ -361,26 +361,26 @@ export class Repository {
 
 	/** Reset a specific set of jots to pending for reprocessing (clears attempts/error) —
 	 *  only touches ones still eligible (done/failed/abandoned), so a jot that started
-	 *  processing meanwhile isn't clobbered. Returns the ids actually reset (a subset of
-	 *  `ids`), so the caller enqueues only jots it actually flipped to pending rather than
-	 *  ones that raced to `processing` or came from a stale/crafted callback. */
+	 *  processing meanwhile isn't clobbered. A single atomic UPDATE...WHERE (the same
+	 *  claim-style pattern as `claim()`) rather than a select-then-update: the latter
+	 *  leaves a race window where a jot could flip to `processing` between the two
+	 *  statements and get clobbered back to `pending` anyway. Returns the ids actually
+	 *  reset (a subset of `ids`, via RETURNING), so the caller enqueues only jots it
+	 *  actually flipped to pending rather than ones that raced to `processing` or came
+	 *  from a stale/crafted callback. */
 	async resetForReprocess(ids: string[]): Promise<string[]> {
 		if (!ids.length) return [];
-		return this.k.transaction(async (trx) => {
-			const eligible: string[] = await trx("jots")
-				.whereIn("id", ids)
-				.whereIn("status", ["done", "failed", "abandoned"])
-				.pluck("id");
-			if (eligible.length) {
-				await trx("jots").whereIn("id", eligible).update({
-					status: "pending",
-					attempts: 0,
-					error: null,
-					updated_at: Date.now(),
-				});
-			}
-			return eligible;
-		});
+		const rows: { id: string }[] = await this.k("jots")
+			.whereIn("id", ids)
+			.whereIn("status", ["done", "failed", "abandoned"])
+			.update({
+				status: "pending",
+				attempts: 0,
+				error: null,
+				updated_at: Date.now(),
+			})
+			.returning("id");
+		return rows.map((r) => r.id);
 	}
 
 	/** Requeue failed (and optionally abandoned) jots: reset to pending, clear attempts.

@@ -10,7 +10,7 @@ import {
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
-import { dayBounds, plainDate } from "../time.ts";
+import { DATE_RE, dayBounds, plainDate } from "../time.ts";
 
 const log = logger("reprocess");
 
@@ -185,6 +185,12 @@ export class ReprocessCommand {
 	}
 
 	private async confirmDay(ctx: any, date: string): Promise<void> {
+		// dayBounds throws on anything that isn't YYYY-MM-DD — guard a stale/crafted
+		// callback rather than let it fall through to the generic error handler.
+		if (!DATE_RE.test(date)) {
+			log.warn({ date }, "reprocess: day tap rejected: bad date");
+			return void ctx.answerCallbackQuery({ text: "bad date" });
+		}
 		await ctx.answerCallbackQuery();
 		const [from, to] = dayBounds(date);
 		const targets = reprocessTargets(await this.repo.jotsInRange(from, to));
@@ -268,6 +274,13 @@ export class ReprocessCommand {
 	private async pickRangeEnd(ctx: any, args: string[]): Promise<void> {
 		const [start, y, m, d] = args;
 		const end = `${y}-${pad(m!)}-${pad(d!)}`;
+		// dayBounds throws on anything that isn't YYYY-MM-DD — guard a stale/crafted
+		// callback (e.g. a range-start carried over from before a code change) rather than
+		// let it fall through to the generic error handler.
+		if (!DATE_RE.test(start ?? "") || !DATE_RE.test(end)) {
+			log.warn({ start, end }, "reprocess: range-end tap rejected: bad date");
+			return void ctx.answerCallbackQuery({ text: "bad date" });
+		}
 		await ctx.answerCallbackQuery();
 		// Picking the end before the start (backwards range) just swaps rather than erroring.
 		const [lo, hi] = start! <= end ? [start!, end] : [end, start!];
@@ -346,13 +359,23 @@ export class ReprocessCommand {
 		const [mode, ...rest] = args;
 		let targets: string[];
 		let label: string;
+		// dayBounds throws on anything that isn't YYYY-MM-DD — guard a stale/crafted "go"
+		// callback the same way the calendar taps upstream of it already are.
 		if (mode === "d") {
 			const [date] = rest;
+			if (!DATE_RE.test(date ?? "")) {
+				log.warn({ date }, "reprocess: execute rejected: bad date");
+				return void ctx.answerCallbackQuery({ text: "bad date" });
+			}
 			const [from, to] = dayBounds(date!);
 			targets = reprocessTargets(await this.repo.jotsInRange(from, to));
 			label = date!;
 		} else if (mode === "r") {
 			const [start, end] = rest;
+			if (!DATE_RE.test(start ?? "") || !DATE_RE.test(end ?? "")) {
+				log.warn({ start, end }, "reprocess: execute rejected: bad date");
+				return void ctx.answerCallbackQuery({ text: "bad date" });
+			}
 			const [from] = dayBounds(start!);
 			const [, to] = dayBounds(end!);
 			targets = reprocessTargets(await this.repo.jotsInRange(from, to));
