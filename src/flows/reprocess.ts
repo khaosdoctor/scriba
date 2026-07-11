@@ -392,18 +392,29 @@ export class ReprocessCommand {
 				log.warn({ start, end }, "reprocess: execute rejected: bad date");
 				return void ctx.answerCallbackQuery({ text: "bad date" });
 			}
-			const [from] = dayBounds(start!);
-			const [, to] = dayBounds(end!);
+			// A crafted/stale callback could carry start > end — swap rather than querying
+			// an inverted (always-empty) window, matching pickRangeEnd's own normalization.
+			const [lo, hi] = start! <= end! ? [start!, end!] : [end!, start!];
+			const [from] = dayBounds(lo);
+			const [, to] = dayBounds(hi);
 			targets = reprocessTargets(await this.repo.jotsInRange(from, to));
-			label = `${start} → ${end}`;
+			label = `${lo} → ${hi}`;
 		} else if (mode === "j") {
 			const [id] = rest;
 			if (!id) {
 				log.warn("reprocess: execute rejected: missing jot id");
 				return void ctx.answerCallbackQuery({ text: "bad jot id" });
 			}
-			targets = [id];
-			label = id;
+			const jot = await this.repo.getJot(id);
+			if (!jot) {
+				log.warn({ id }, "reprocess: execute rejected: jot not found");
+				return void ctx.answerCallbackQuery({ text: "gone" });
+			}
+			// A crafted/stale callback could name a squashed follower directly — resolve to
+			// its leader (the anchor the combined line actually lives under), matching
+			// confirmJot's own resolution.
+			targets = [jot.anchor];
+			label = jot.anchor;
 		} else {
 			return void ctx.answerCallbackQuery();
 		}
