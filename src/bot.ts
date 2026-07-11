@@ -8,16 +8,13 @@ import {
 	deleteAnchorLine,
 	distinctSurfaces,
 	entitiesToMarkdown,
-	formatJotDetail,
 	isBlank,
 	isEditableJot,
-	jotPreview,
 	journalLine,
 	makeJotId,
 	parseLiteralEdit,
 	placeholderLine,
 	replaceAnchorLine,
-	STATUS_ICON,
 	stripJournalLine,
 	withinSquashWindow,
 } from "./core.ts";
@@ -27,6 +24,7 @@ import {
 	HabitsCommand,
 	parseHabitRef,
 } from "./flows/habits/index.ts";
+import { MenuController } from "./flows/menu.ts";
 import { RATING_NS, RatingCommand } from "./flows/rating.ts";
 import { REPROCESS_NS, ReprocessCommand } from "./flows/reprocess.ts";
 import { logger } from "./log.ts";
@@ -69,17 +67,13 @@ export class ScribaBot implements BotServices {
 	private queue!: FlushQueue;
 	private rating: RatingCommand;
 	private habits: HabitsCommand;
+	private menu: MenuController;
 	private reprocess: ReprocessCommand;
 	private processor!: JotProcessor;
 	// jotId -> the live status message we edit in place through the jot's lifecycle.
 	// ponytail: in-memory. On restart the map is empty and status() just posts a fresh
 	// message; nothing is lost. Persist it only if that ever proves annoying.
 	private statusMsgs = new Map<string, number>();
-	// Rejected-links menu page size (rows per page).
-	private static readonly REJECT_PAGE = 8;
-	// Message id of the last root menu, so opening a fresh /menu retires the old one
-	// instead of leaving stale, still-tappable keyboards piling up in the chat.
-	private lastMenuMsgId?: number;
 
 	constructor(
 		private repo: Repository,
@@ -95,6 +89,14 @@ export class ScribaBot implements BotServices {
 		this.rating = new RatingCommand(this.bot, repo, obsidian);
 		this.habits = new HabitsCommand(this.bot, obsidian);
 		this.reprocess = new ReprocessCommand(this.bot, repo);
+		this.menu = new MenuController(
+			this.bot,
+			this.rating,
+			this.habits,
+			this.reprocess,
+			() => this.deps(),
+			(jot) => this.deleteJot(jot),
+		);
 		this.registerHandlers();
 	}
 
@@ -362,8 +364,8 @@ export class ScribaBot implements BotServices {
 		this.bot.command("delete", (ctx) => this.handleDeleteCommand(ctx));
 
 		// Interactive control menu — an entry point layered over the slash commands, not a
-		// replacement. Every leaf reuses an existing command or flow (see handleMenu).
-		this.bot.command("menu", (ctx) => this.sendMenu(ctx));
+		// replacement. Every leaf reuses an existing command or flow (see MenuController).
+		this.menu.register();
 
 		this.bot.on("message:text", async (ctx) => {
 			if (ctx.message.text.startsWith("/")) return;
@@ -693,7 +695,7 @@ export class ScribaBot implements BotServices {
 	private async handleButton(ctx: any): Promise<void> {
 		const [ns, ...rest] = String(ctx.callbackQuery.data).split(":");
 		log.debug({ data: ctx.callbackQuery.data }, "button pressed");
-		if (ns === "menu") return this.handleMenu(ctx, rest);
+		if (ns === "menu") return this.menu.handleCallback(ctx, rest);
 		if (ns === "rt") return this.handleRetry(ctx, rest[0]);
 		if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
 		if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
@@ -811,405 +813,5 @@ export class ScribaBot implements BotServices {
 				? `🔗 "${rec.surface}" → [[${rec.note}]]`
 				: `"${rec.surface}": nothing to link`,
 		);
-	}
-
-	// --- interactive menu (/menu) ---
-	// A callback-driven control panel in the `menu:` namespace. Every leaf reuses an
-	// existing command (via runCmd) or flow (rating/habits prompts, deleteJot, the edit
-	// path), so the menu adds an entry point but no new business logic.
-
-	/** /menu — send a fresh root menu. Later taps edit that message in place. */
-	private async sendMenu(ctx: any): Promise<void> {
-		log.info("menu opened");
-		// Retire the previous menu so old, stale keyboards don't linger tappable in chat.
-		if (this.lastMenuMsgId) {
-			await ctx.api
-				.deleteMessage(ctx.chat.id, this.lastMenuMsgId)
-				.catch(() => {});
-		}
-		const sent = await ctx.reply("🗂 scriba control menu", {
-			reply_markup: this.rootMenu(),
-		});
-		this.lastMenuMsgId = sent.message_id;
-	}
-
-	private rootMenu(): InlineKeyboard {
-		return new InlineKeyboard()
-			.text("📊 Rate today", "menu:rate")
-			.text("🌱 Review habits", "menu:habits")
-			.row()
-			.text("🗒 Recent jots", "menu:jots")
-			.row()
-			.text("🔁 Reprocess", "menu:reprocess")
-			.row()
-			.text("📈 Stats", "menu:stats")
-			.text("🩺 Status", "menu:status")
-			.row()
-			.text("⚠️ Failed queue", "menu:failed")
-			.row()
-			.text(`🎙 Transcriber: ${this.transcriber.mode}`, "menu:tx")
-			.row()
-			.text("🔗 Link rules", "menu:links")
-			.text("🛠 Maintenance", "menu:maint")
-			.row()
-			.text("✖ Close", "menu:close");
-	}
-
-	private maintMenu(): InlineKeyboard {
-		return new InlineKeyboard()
-			.text("⚡ Flush", "menu:flush")
-			.text("🧹 Sweep", "menu:sweep")
-			.row()
-			.text("🔧 Unstick", "menu:unstick")
-			.text("🔄 Retry all", "menu:retryall")
-			.row()
-			.text("‹ Back", "menu:root");
-	}
-
-	/** Link-learning controls (rejections + stopwords) — kept off the crowded root. */
-	private linksMenu(): InlineKeyboard {
-		return new InlineKeyboard()
-			.text("🚫 Rejected links", "menu:rejections")
-			.row()
-			.text("🔇 Stopwords", "menu:stopwords")
-			.row()
-			.text("‹ Back", "menu:root");
-	}
-
-	private backTo(target: string): InlineKeyboard {
-		return new InlineKeyboard().text("‹ Back", target);
-	}
-
-	/** Run a string-returning admin command from a callback and hand back its text. */
-	private async runCmd(ctx: any, name: string, arg = ""): Promise<string> {
-		const cmd = commands.find((c) => c.name === name);
-		if (!cmd) return `unknown command ${name}`;
-		const out = await cmd.run(ctx, arg, this.deps());
-		return typeof out === "string" ? out : "";
-	}
-
-	/** Dispatch a `menu:<action>[:<arg>]` callback. */
-	private async handleMenu(ctx: any, rest: string[]): Promise<void> {
-		const [action, arg] = rest;
-		switch (action) {
-			case "root":
-				await ctx.answerCallbackQuery();
-				return void ctx.editMessageText("🗂 scriba control menu", {
-					reply_markup: this.rootMenu(),
-				});
-			case "rate":
-				// New prompt message lands below; toast tells the user the tap registered.
-				await ctx.answerCallbackQuery({
-					text: "Opening rating prompt below ↓",
-				});
-				return this.rating.prompt(plainDate());
-			case "habits":
-				await ctx.answerCallbackQuery({
-					text: "Opening habits review below ↓",
-				});
-				return this.habits.prompt(plainDate(Date.now() - 86_400_000));
-			case "jots":
-				return this.menuJots(ctx);
-			case "reprocess":
-				await ctx.answerCallbackQuery({
-					text: "Opening reprocess menu below ↓",
-				});
-				return this.reprocess.promptRoot();
-			case "jot":
-				return this.menuJotDetail(ctx, arg);
-			case "jr":
-				return this.menuJotRetry(ctx, arg);
-			case "jd":
-				return this.menuJotDeleteConfirm(ctx, arg);
-			case "jdy":
-				return this.menuJotDelete(ctx, arg);
-			case "je":
-				return this.menuJotEdit(ctx, arg);
-			case "stats":
-				return this.menuStats(ctx, arg);
-			case "status":
-				return this.menuInfo(ctx, "status", "", "menu:root");
-			case "failed":
-				return this.menuFailed(ctx);
-			case "tx":
-				return this.menuToggleTranscriber(ctx);
-			case "maint":
-				await ctx.answerCallbackQuery();
-				return void ctx.editMessageText("🛠 Maintenance", {
-					reply_markup: this.maintMenu(),
-				});
-			case "links":
-				await ctx.answerCallbackQuery();
-				return void ctx.editMessageText("🔗 Link rules", {
-					reply_markup: this.linksMenu(),
-				});
-			case "rejections":
-				return this.menuRejections(ctx, arg);
-			case "rj":
-				return this.menuRejectDelete(ctx, arg);
-			case "stopwords":
-				return this.menuInfo(ctx, "stopword", "list", "menu:links");
-			case "close":
-				return this.menuClose(ctx);
-			case "flush":
-			case "sweep":
-			case "unstick":
-				return this.menuMaint(ctx, action);
-			case "retryall":
-				return this.menuRetryAllConfirm(ctx);
-			case "retryally":
-				return this.menuMaint(ctx, "retry", "all");
-			default:
-				log.warn({ action }, "unknown menu action");
-				await ctx.answerCallbackQuery();
-		}
-	}
-
-	/** Show a command's text output with a Back button (status, stats result). */
-	private async menuInfo(
-		ctx: any,
-		name: string,
-		arg: string,
-		back: string,
-	): Promise<void> {
-		await ctx.answerCallbackQuery();
-		const text = await this.runCmd(ctx, name, arg);
-		await ctx.editMessageText(text, { reply_markup: this.backTo(back) });
-	}
-
-	/** Stats: first tap shows a range picker; a range tap shows that window. */
-	private async menuStats(ctx: any, range?: string): Promise<void> {
-		await ctx.answerCallbackQuery();
-		if (!range) {
-			const kb = new InlineKeyboard()
-				.text("Today", "menu:stats:today")
-				.text("Week", "menu:stats:week")
-				.text("All", "menu:stats:all")
-				.row()
-				.text("‹ Back", "menu:root");
-			return void ctx.editMessageText("📈 Stats range:", { reply_markup: kb });
-		}
-		const text = await this.runCmd(ctx, "stats", range);
-		await ctx.editMessageText(text, {
-			reply_markup: this.backTo("menu:stats"),
-		});
-	}
-
-	/** Flip the transcriber to the other backend (persisted) and re-render the root. */
-	private async menuToggleTranscriber(ctx: any): Promise<void> {
-		const next = this.transcriber.mode === "local" ? "remote" : "local";
-		log.info({ next }, "menu: toggling transcriber");
-		const out = await this.runCmd(ctx, "transcriber", next);
-		await ctx.answerCallbackQuery({ text: out.slice(0, 200) });
-		await ctx.editMessageText("🗂 scriba control menu", {
-			reply_markup: this.rootMenu(),
-		});
-	}
-
-	/** Retry-all re-queues every failed jot (network + enrichment) — confirm first. */
-	private async menuRetryAllConfirm(ctx: any): Promise<void> {
-		log.info("menu: retry-all confirm");
-		await ctx.answerCallbackQuery();
-		const kb = new InlineKeyboard()
-			.text("✅ Yes, retry all", "menu:retryally")
-			.row()
-			.text("‹ Cancel", "menu:maint");
-		await ctx.editMessageText("Requeue every failed jot?", {
-			reply_markup: kb,
-		});
-	}
-
-	/** Rejected links as tappable rows — one tap undoes that rejection, then re-renders.
-	 *  Rows index into the deterministically ordered rejection list by position (same
-	 *  pattern as /unreject); a stale tap whose index no longer resolves answers "expired"
-	 *  instead of undoing the wrong pair. Back cancels out without touching anything. */
-	private async menuRejections(ctx: any, arg?: string): Promise<void> {
-		await ctx.answerCallbackQuery();
-		return this.renderRejections(ctx, Number(arg) || 0);
-	}
-
-	/** Build and show one page of the rejection list (assumes the query is already answered).
-	 *  Rows carry the global list index so a tap resolves regardless of the current page;
-	 *  page is clamped so a delete that empties the last page falls back to a valid one. */
-	private async renderRejections(ctx: any, page = 0): Promise<void> {
-		const PAGE = ScribaBot.REJECT_PAGE;
-		const list = await this.repo.rejectionList();
-		if (!list.length)
-			return void ctx.editMessageText("No rejected links.", {
-				reply_markup: this.backTo("menu:links"),
-			});
-		const pages = Math.ceil(list.length / PAGE);
-		const p = Math.min(Math.max(page, 0), pages - 1);
-		const kb = new InlineKeyboard();
-		list.slice(p * PAGE, p * PAGE + PAGE).forEach((r, j) => {
-			const gi = p * PAGE + j;
-			kb.text(
-				`🗑 "${r.surface}" ✗ ${r.note}`.slice(0, 60),
-				`menu:rj:${gi}`,
-			).row();
-		});
-		if (pages > 1) {
-			if (p > 0) kb.text("‹ Prev", `menu:rejections:${p - 1}`);
-			if (p < pages - 1) kb.text("Next ›", `menu:rejections:${p + 1}`);
-			kb.row();
-		}
-		kb.text("‹ Back", "menu:links");
-		const header =
-			pages > 1
-				? `🚫 Tap to undo a rejection (page ${p + 1}/${pages}):`
-				: "🚫 Tap to undo a rejection:";
-		await ctx.editMessageText(header, { reply_markup: kb });
-	}
-
-	/** Undo the rejection at global index `arg`, then re-render its page (shrunk). */
-	private async menuRejectDelete(ctx: any, arg?: string): Promise<void> {
-		const list = await this.repo.rejectionList();
-		const gi = arg === undefined ? -1 : Number(arg);
-		const r = list[gi];
-		if (!r) {
-			log.warn({ arg }, "menu: reject index out of range");
-			return void ctx.answerCallbackQuery({ text: "expired" });
-		}
-		const n = await this.repo.unreject(r.surface, r.note);
-		log.info(
-			{ surface: r.surface, note: r.note, removed: n },
-			"unreject via menu",
-		);
-		await ctx.answerCallbackQuery({ text: n ? "unrejected" : "already gone" });
-		return this.renderRejections(ctx, Math.floor(gi / ScribaBot.REJECT_PAGE));
-	}
-
-	/** Close the menu — the control panel is transient, not part of the journal. */
-	private async menuClose(ctx: any): Promise<void> {
-		log.info("menu closed");
-		await ctx.answerCallbackQuery();
-		this.lastMenuMsgId = undefined;
-		try {
-			await ctx.deleteMessage();
-		} catch (e) {
-			// Delete can fail (already gone, >48h old); leave a tidy closed state instead.
-			log.warn({ err: e }, "menu close: delete failed, editing instead");
-			await ctx.editMessageText("🗂 Menu closed.", { reply_markup: undefined });
-		}
-	}
-
-	/** Run a no-arg maintenance command and show its result over the maintenance menu. */
-	private async menuMaint(ctx: any, name: string, arg = ""): Promise<void> {
-		log.info({ cmd: name, arg }, "menu: maintenance action");
-		const out = await this.runCmd(ctx, name, arg);
-		await ctx.answerCallbackQuery({ text: "done" });
-		await ctx.editMessageText(out || "done", {
-			reply_markup: this.maintMenu(),
-		});
-	}
-
-	/** The jots browser: recent jots as tappable rows — the read/edit surface the
-	 *  reply-to-message flow never gave (you no longer scroll chat history to find one). */
-	private async menuJots(ctx: any): Promise<void> {
-		await ctx.answerCallbackQuery();
-		const jots = await this.repo.recentJots(10);
-		if (!jots.length)
-			return void ctx.editMessageText("No jots yet.", {
-				reply_markup: this.backTo("menu:root"),
-			});
-		const kb = new InlineKeyboard();
-		for (const j of jots) {
-			kb.text(
-				`${STATUS_ICON[j.status]} ${j.time} ${jotPreview(j)}`,
-				`menu:jot:${j.id}`,
-			).row();
-		}
-		kb.text("‹ Back", "menu:root");
-		await ctx.editMessageText("🗒 Recent jots:", { reply_markup: kb });
-	}
-
-	private async menuJotDetail(ctx: any, id?: string): Promise<void> {
-		await ctx.answerCallbackQuery();
-		const jot = id ? await this.repo.getJot(id) : undefined;
-		if (!jot)
-			return void ctx.editMessageText(`No jot ${id ?? ""}.`, {
-				reply_markup: this.backTo("menu:jots"),
-			});
-		const kb = new InlineKeyboard()
-			.text("🔄 Retry", `menu:jr:${jot.id}`)
-			.text("✏️ Edit", `menu:je:${jot.id}`)
-			.row()
-			.text("🗑 Delete", `menu:jd:${jot.id}`)
-			.row()
-			.text("‹ Back", "menu:jots");
-		await ctx.editMessageText(formatJotDetail(jot), { reply_markup: kb });
-	}
-
-	private async menuJotRetry(ctx: any, id?: string): Promise<void> {
-		if (!id || !(await this.repo.getJot(id)))
-			return void ctx.answerCallbackQuery({ text: "gone" });
-		log.info({ jotId: id }, "menu: manual retry requested");
-		await this.repo.resetForRetry(id);
-		this.queue.add(id);
-		await ctx.answerCallbackQuery({ text: "retrying" });
-		await ctx.editMessageText(`🔄 retrying ${id}…`, {
-			reply_markup: this.backTo("menu:jots"),
-		});
-	}
-
-	private async menuJotDeleteConfirm(ctx: any, id?: string): Promise<void> {
-		await ctx.answerCallbackQuery();
-		if (!id) return;
-		const kb = new InlineKeyboard()
-			.text("🗑 Yes, delete", `menu:jdy:${id}`)
-			.text("Cancel", `menu:jot:${id}`);
-		await ctx.editMessageText(
-			`Delete jot ${id}? This removes its line from the journal.`,
-			{ reply_markup: kb },
-		);
-	}
-
-	private async menuJotDelete(ctx: any, id?: string): Promise<void> {
-		const jot = id ? await this.repo.getJot(id) : undefined;
-		if (!jot) return void ctx.answerCallbackQuery({ text: "gone" });
-		log.info({ jotId: id }, "menu: delete jot");
-		const msg = await this.deleteJot(jot);
-		await ctx.answerCallbackQuery({ text: "deleted" });
-		await ctx.editMessageText(msg, { reply_markup: this.backTo("menu:jots") });
-	}
-
-	/** Edit from the menu: send a force-reply prompt mapped to the jot, so the reply routes
-	 *  through the normal reply-edit path (handleEdit) with no new edit logic. */
-	private async menuJotEdit(ctx: any, id?: string): Promise<void> {
-		if (!id || !(await this.repo.getJot(id)))
-			return void ctx.answerCallbackQuery({ text: "gone" });
-		await ctx.answerCallbackQuery();
-		log.info({ jotId: id }, "menu: edit jot — prompting for a reply");
-		const sent = await this.bot.api.sendMessage(
-			config.telegram.allowedUserId,
-			`✏️ Reply to this message with your edit for ${id} (or "delete" to remove it).`,
-			{
-				reply_markup: {
-					force_reply: true,
-					input_field_placeholder: "your edit…",
-				},
-			},
-		);
-		await this.repo.mapMessage(sent.message_id, id);
-	}
-
-	/** Failed queue as tappable retry rows. Reuses the existing `rt:` retry handler. */
-	private async menuFailed(ctx: any): Promise<void> {
-		await ctx.answerCallbackQuery();
-		const jots = await this.repo.failedJots(10);
-		if (!jots.length)
-			return void ctx.editMessageText("✅ nothing failed.", {
-				reply_markup: this.backTo("menu:root"),
-			});
-		const lines = jots.map(
-			(j) =>
-				`${j.id} [${j.kind}] ${j.status} ×${j.attempts} — ${(j.error ?? "").slice(0, 60)}`,
-		);
-		const kb = new InlineKeyboard();
-		for (const j of jots) kb.text(`🔄 ${j.id}`, `rt:${j.id}`).row();
-		kb.text("‹ Back", "menu:root");
-		await ctx.editMessageText(`⚠️ ${jots.length} failed:\n${lines.join("\n")}`, {
-			reply_markup: kb,
-		});
 	}
 }
