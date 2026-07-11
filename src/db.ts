@@ -151,7 +151,9 @@ export class Repository {
 				created_at: Date.now(),
 			})
 			.onConflict(["chat_id", "tg_message_id"])
-			.merge();
+			// Only jot_id, so a re-map of the same message (e.g. an idempotent retry) can't
+			// bump created_at and disturb messageForJot()'s oldest-wins ordering.
+			.merge(["jot_id"]);
 	}
 	async jotForMessage(
 		chatId: number,
@@ -170,7 +172,13 @@ export class Repository {
 	): Promise<{ chatId: number; messageId: number } | undefined> {
 		const r = await this.k("msg_map")
 			.where({ jot_id: jotId })
-			.orderBy("created_at", "asc")
+			// Tie-broken by chat_id/tg_message_id so two rows sharing a created_at
+			// millisecond still resolve to the same row every time.
+			.orderBy([
+				{ column: "created_at", order: "asc" },
+				{ column: "chat_id", order: "asc" },
+				{ column: "tg_message_id", order: "asc" },
+			])
 			.first();
 		return r ? { chatId: r.chat_id, messageId: r.tg_message_id } : undefined;
 	}
