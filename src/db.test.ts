@@ -198,6 +198,43 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 		assert.equal((await repo.lastPendingEnrichableJot(NOTE))?.id, "11111111");
 		await repo.markDeleted("22222222");
 		assert.deepEqual(await repo.groupFollowers("11111111"), []); // deleted drops out
+
+		// /reprocess queries: jotsInRange (day/range pickers), jotsPage (the "one jot"
+		// browser), resetForReprocess (bulk reset by explicit id set).
+		const RP_NOTE = "notes/daily notes/2026-07-08.md";
+		await repo.insertJot({
+			...sampleJot("eeeeeeee"),
+			note_path: RP_NOTE,
+			status: "done",
+			received_at: 5000,
+		});
+		await repo.insertJot({
+			...sampleJot("ffffffff"),
+			note_path: RP_NOTE,
+			status: "abandoned",
+			received_at: 6000,
+		});
+		await repo.insertJot({
+			...sampleJot("11122233"), // in-flight — excluded from reprocess candidates
+			note_path: RP_NOTE,
+			status: "processing",
+			received_at: 7000,
+		});
+		assert.deepEqual(
+			(await repo.jotsInRange(0, 10_000)).map((j) => j.id),
+			["eeeeeeee", "ffffffff"], // processing excluded, oldest first
+		);
+		assert.deepEqual(
+			(await repo.jotsPage(0, 1)).map((j) => j.id),
+			["ffffffff"], // newest first
+		);
+		assert.deepEqual(
+			await repo.resetForReprocess(["eeeeeeee", "11122233", "nonexistent"]),
+			["eeeeeeee"], // only the eligible (done) id among the given set is touched
+		);
+		assert.equal((await repo.getJot("eeeeeeee"))?.status, "pending");
+		assert.equal((await repo.getJot("eeeeeeee"))?.attempts, 0);
+		assert.equal((await repo.getJot("11122233"))?.status, "processing"); // untouched
 	} finally {
 		await repo.close();
 		await rm(dbPath, { force: true });

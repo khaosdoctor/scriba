@@ -7,6 +7,25 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 /** Matches a bare "YYYY-MM-DD" date string. */
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** True when `date` is DATE_RE-shaped *and* an actual calendar day, safe to pass to
+ *  dayBounds/dateFromIso without throwing OR silently rolling over to some other date.
+ *  DATE_RE alone accepts years 0000-0099 (colliding with JS Date's 1900-1999 special
+ *  case) and out-of-range months/days like "2026-99-99" — `new Date(y, m-1, d)` doesn't
+ *  reject an overflowing month/day, it normalizes into a different date entirely, so a
+ *  shape-only check would let a crafted/stale callback silently reprocess the wrong
+ *  day. Round-tripping through the parsed components catches both. */
+export function isValidDate(date: string): boolean {
+	if (!DATE_RE.test(date)) return false;
+	const [y, m, d] = date.split("-").map(Number);
+	if (y! < 100) return false;
+	const parsed = new Date(y!, m! - 1, d!);
+	return (
+		parsed.getFullYear() === y &&
+		parsed.getMonth() === m! - 1 &&
+		parsed.getDate() === d
+	);
+}
+
 /** "HH:MM:SS" for the given instant (default now). */
 export function plainTime(epochMs: number = Date.now()): string {
 	const d = new Date(epochMs);
@@ -43,6 +62,25 @@ export function previousDate(epochMs: number = Date.now()): string {
 	const d = new Date(startOfToday(epochMs));
 	d.setDate(d.getDate() - 1);
 	return plainDate(d.getTime());
+}
+
+/** [start, end) epoch-ms bounds of the local calendar day for a "YYYY-MM-DD" string —
+ *  the window a date-scoped reprocess query filters `received_at` against. The end is
+ *  the next local midnight, not `start + 24h`: a fixed offset lands short/long on a DST
+ *  transition day (23h/25h), which would miss or over-include jots near the boundary. */
+export function dayBounds(date: string): [number, number] {
+	// isValidDate rejects everything dateFromIso would otherwise mishandle: bad shape, a
+	// 0-99 year (JS Date's 1900+ special case), and an out-of-range month/day that Date
+	// would silently roll over into a different date instead of erroring.
+	if (!isValidDate(date))
+		throw new Error(`dayBounds: not a valid YYYY-MM-DD calendar date: ${date}`);
+	const start = dateFromIso(date);
+	const end = new Date(
+		start.getFullYear(),
+		start.getMonth(),
+		start.getDate() + 1,
+	);
+	return [start.getTime(), end.getTime()];
 }
 
 /** Milliseconds from now until the next occurrence of HH:MM local time. */

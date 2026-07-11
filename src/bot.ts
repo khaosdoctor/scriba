@@ -11,21 +11,24 @@ import {
 	formatJotDetail,
 	isBlank,
 	isEditableJot,
+	jotPreview,
 	journalLine,
 	makeJotId,
 	parseLiteralEdit,
 	placeholderLine,
 	replaceAnchorLine,
+	STATUS_ICON,
 	stripJournalLine,
 	withinSquashWindow,
 } from "./core.ts";
-import type { Jot, JotKind, JotStatus, Repository } from "./db.ts";
+import type { Jot, JotKind, Repository } from "./db.ts";
 import {
 	HABITS_NS,
 	HabitsCommand,
 	parseHabitRef,
 } from "./flows/habits/index.ts";
 import { RATING_NS, RatingCommand } from "./flows/rating.ts";
+import { REPROCESS_NS, ReprocessCommand } from "./flows/reprocess.ts";
 import { logger } from "./log.ts";
 import type {
 	BotServices,
@@ -59,16 +62,6 @@ const MIME: Record<string, string> = {
 	webm: "video/webm",
 };
 
-/** One glyph per jot status, for the /menu jots browser button labels. */
-const STATUS_ICON: Record<JotStatus, string> = {
-	pending: "⏳",
-	processing: "⚙️",
-	done: "✅",
-	failed: "❌",
-	abandoned: "🪦",
-	deleted: "🗑",
-};
-
 /** All Telegram wiring. Long polling, no webhook. Implements BotServices so the
  *  processor can notify, ask link questions, download files, and apply queued edits. */
 export class ScribaBot implements BotServices {
@@ -76,6 +69,7 @@ export class ScribaBot implements BotServices {
 	private queue!: FlushQueue;
 	private rating: RatingCommand;
 	private habits: HabitsCommand;
+	private reprocess: ReprocessCommand;
 	private processor!: JotProcessor;
 	// jotId -> the live status message we edit in place through the jot's lifecycle.
 	// ponytail: in-memory. On restart the map is empty and status() just posts a fresh
@@ -100,12 +94,14 @@ export class ScribaBot implements BotServices {
 		this.bot = new Bot(config.telegram.token);
 		this.rating = new RatingCommand(this.bot, repo, obsidian);
 		this.habits = new HabitsCommand(this.bot, obsidian);
+		this.reprocess = new ReprocessCommand(this.bot, repo);
 		this.registerHandlers();
 	}
 
 	/** Break the wiring cycle: queue + processor are created after this bot (which they need). */
 	setQueue(queue: FlushQueue): void {
 		this.queue = queue;
+		this.reprocess.setQueue(queue);
 	}
 	setProcessor(processor: JotProcessor): void {
 		this.processor = processor;
@@ -139,6 +135,10 @@ export class ScribaBot implements BotServices {
 				{
 					command: "habits",
 					description: "Review habits (yesterday, or /habits YYYY-MM-DD)",
+				},
+				{
+					command: "reprocess",
+					description: "Reprocess jots — a day, a date range, or one jot",
 				},
 				{
 					command: "delete",
@@ -346,6 +346,7 @@ export class ScribaBot implements BotServices {
 		);
 		this.rating.register();
 		this.habits.register();
+		this.reprocess.register();
 
 		// Admin commands (single-user, so the allowlist above is the only auth needed).
 		for (const cmd of commands) {
@@ -699,6 +700,7 @@ export class ScribaBot implements BotServices {
 		if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
 		if (ns === HABITS_NS)
 			return this.habits.handleTap(ctx, rest[0], rest[1], rest[2]);
+		if (ns === REPROCESS_NS) return this.reprocess.handleTap(ctx, rest);
 		await ctx.answerCallbackQuery();
 	}
 
@@ -838,6 +840,8 @@ export class ScribaBot implements BotServices {
 			.row()
 			.text("🗒 Recent jots", "menu:jots")
 			.row()
+			.text("🔁 Reprocess", "menu:reprocess")
+			.row()
 			.text("📈 Stats", "menu:stats")
 			.text("🩺 Status", "menu:status")
 			.row()
@@ -906,6 +910,11 @@ export class ScribaBot implements BotServices {
 				return this.habits.prompt(plainDate(Date.now() - 86_400_000));
 			case "jots":
 				return this.menuJots(ctx);
+			case "reprocess":
+				await ctx.answerCallbackQuery({
+					text: "Opening reprocess menu below ↓",
+				});
+				return this.reprocess.promptRoot();
 			case "jot":
 				return this.menuJotDetail(ctx, arg);
 			case "jr":
@@ -1105,11 +1114,8 @@ export class ScribaBot implements BotServices {
 			});
 		const kb = new InlineKeyboard();
 		for (const j of jots) {
-			const preview = (j.transcript ?? j.raw_text ?? `(${j.kind})`)
-				.replace(/\s+/g, " ")
-				.slice(0, 40);
 			kb.text(
-				`${STATUS_ICON[j.status]} ${j.time} ${preview}`,
+				`${STATUS_ICON[j.status]} ${j.time} ${jotPreview(j)}`,
 				`menu:jot:${j.id}`,
 			).row();
 		}
