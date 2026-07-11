@@ -7,12 +7,23 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 /** Matches a bare "YYYY-MM-DD" date string. */
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** True when `date` is DATE_RE-shaped *and* safe to pass to dayBounds/dateFromIso
- *  without throwing. DATE_RE alone accepts years 0000-0099, which collide with JS
- *  Date's 1900-1999 special case (see dayBounds) — callers that only checked DATE_RE
- *  before calling dayBounds would still hit its throw for one of those. */
+/** True when `date` is DATE_RE-shaped *and* an actual calendar day, safe to pass to
+ *  dayBounds/dateFromIso without throwing OR silently rolling over to some other date.
+ *  DATE_RE alone accepts years 0000-0099 (colliding with JS Date's 1900-1999 special
+ *  case) and out-of-range months/days like "2026-99-99" — `new Date(y, m-1, d)` doesn't
+ *  reject an overflowing month/day, it normalizes into a different date entirely, so a
+ *  shape-only check would let a crafted/stale callback silently reprocess the wrong
+ *  day. Round-tripping through the parsed components catches both. */
 export function isValidDate(date: string): boolean {
-	return DATE_RE.test(date) && Number(date.slice(0, 4)) >= 100;
+	if (!DATE_RE.test(date)) return false;
+	const [y, m, d] = date.split("-").map(Number);
+	if (y! < 100) return false;
+	const parsed = new Date(y!, m! - 1, d!);
+	return (
+		parsed.getFullYear() === y &&
+		parsed.getMonth() === m! - 1 &&
+		parsed.getDate() === d
+	);
 }
 
 /** "HH:MM:SS" for the given instant (default now). */

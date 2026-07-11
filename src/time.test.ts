@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
 	dateFromIso,
 	dayBounds,
+	isValidDate,
 	msUntilNext,
 	plainDate,
 	plainTime,
@@ -68,6 +69,23 @@ test("dayBounds rejects a 0-99 year (JS Date's 1900+ special case), not years 10
 	assert.throws(() => dayBounds("0099-01-01"));
 	assert.throws(() => dayBounds("0000-01-01"));
 	assert.doesNotThrow(() => dayBounds("0500-01-01")); // outside Date's special case
+});
+
+test("dayBounds rejects an out-of-range month/day instead of silently rolling over", () => {
+	assert.throws(() => dayBounds("2026-99-99"));
+	assert.throws(() => dayBounds("2026-02-30")); // February never has a 30th
+});
+
+test("isValidDate rejects malformed shapes, sub-100 years, and out-of-range month/day", () => {
+	assert.equal(isValidDate("2026-07-10"), true);
+	assert.equal(isValidDate("2024-02-29"), true); // 2024 is a leap year
+	assert.equal(isValidDate("not-a-date"), false);
+	assert.equal(isValidDate("2026-7-10"), false); // not zero-padded
+	assert.equal(isValidDate("0099-01-01"), false); // Date's 1900+ special case
+	assert.equal(isValidDate("2026-99-99"), false); // out-of-range month/day
+	assert.equal(isValidDate("2026-13-01"), false); // month 13 doesn't exist
+	assert.equal(isValidDate("2026-02-30"), false); // Feb never has a 30th
+	assert.equal(isValidDate("2026-02-29"), false); // 2026 is not a leap year
 });
 
 test("dayBounds spans a short/long day across a DST transition, not a fixed 24h", () => {
