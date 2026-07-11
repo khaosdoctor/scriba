@@ -38,7 +38,10 @@ export class FlushQueue {
 	 *  (e.g. /reprocess over a wide date range). */
 	addMany(ids: string[]): void {
 		if (!ids.length) return;
-		this.ids.push(...ids);
+		// push(...ids) would spread every element onto the call stack — fine for a normal
+		// batch, but a RangeError waiting to happen for a genuinely large one (a wide
+		// /reprocess date range). concat() takes the array itself, no spread involved.
+		this.ids = this.ids.concat(ids);
 		if (!this.draining) this.arm();
 	}
 
