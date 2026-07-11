@@ -291,12 +291,14 @@ export class MenuController {
 			log.warn({ arg }, "menu: reject index out of range");
 			return void ctx.answerCallbackQuery({ text: "expired" });
 		}
+		// Answer before the write below, so a slow DB round-trip can't outlive Telegram's
+		// callback-query window — the re-rendered page carries the result.
+		await ctx.answerCallbackQuery();
 		const n = await this.getDeps().repo.unreject(r.surface, r.note);
 		log.info(
 			{ surface: r.surface, note: r.note, removed: n },
 			"unreject via menu",
 		);
-		await ctx.answerCallbackQuery({ text: n ? "unrejected" : "already gone" });
 		return this.renderRejections(
 			ctx,
 			Math.floor(gi / MenuController.REJECT_PAGE),
@@ -324,8 +326,10 @@ export class MenuController {
 	/** Run a no-arg maintenance command and show its result over the maintenance menu. */
 	private async menuMaint(ctx: any, name: string, arg = ""): Promise<void> {
 		log.info({ cmd: name, arg }, "menu: maintenance action");
+		// Answer before running the command (flush/sweep can be slow) — the edited message
+		// carries the result instead of a toast that might arrive after Telegram gives up.
+		await ctx.answerCallbackQuery();
 		const out = await this.runCmd(ctx, name, arg);
-		await ctx.answerCallbackQuery({ text: "done" });
 		await ctx.editMessageText(out || "done", {
 			reply_markup: this.maintMenu(),
 		});
