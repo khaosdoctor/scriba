@@ -252,9 +252,16 @@ export class ReprocessCommand {
 	private async pickRangeStart(ctx: any, args: string[]): Promise<void> {
 		const [y, m, d] = args;
 		const start = `${y}-${pad(m!)}-${pad(d!)}`;
+		// A stale/crafted callback with a missing segment would otherwise render a broken
+		// "Start: ..." prompt and only fail later, when picking the end — reject it here
+		// instead, same as the other date-shaped callback args in this flow.
+		if (!DATE_RE.test(start)) {
+			log.warn({ start }, "reprocess: range-start tap rejected: bad date");
+			return void ctx.answerCallbackQuery({ text: "bad date" });
+		}
 		await ctx.answerCallbackQuery();
-		// This next calendar's own year/month, not `start` (validated later in
-		// pickRangeEnd) — normalize so a stale/crafted callback can't crash monthGrid.
+		// This next calendar's own year/month — normalize separately (not from `start`,
+		// already validated above) so a stale/crafted callback can't crash monthGrid.
 		const { year, month } = this.parseYearMonth(y, m);
 		const kb = this.buildCalendar(
 			year,
