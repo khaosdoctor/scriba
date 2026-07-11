@@ -359,28 +359,37 @@ export class Repository {
 			.offset(offset);
 	}
 
+	// SQLite's bound-parameter cap (SQLITE_MAX_VARIABLE_NUMBER, 32766 on the bundled
+	// better-sqlite3 build) — resetForReprocess chunks whereIn("id", ids) to this size so
+	// an unusually large date-range reprocess can't hit "too many SQL variables".
+	private static readonly ID_CHUNK = 500;
+
 	/** Reset a specific set of jots to pending for reprocessing (clears attempts/error) —
 	 *  only touches ones still eligible (done/failed/abandoned), so a jot that started
-	 *  processing meanwhile isn't clobbered. A single atomic UPDATE...WHERE (the same
-	 *  claim-style pattern as `claim()`) rather than a select-then-update: the latter
+	 *  processing meanwhile isn't clobbered. A single atomic UPDATE...WHERE per chunk (the
+	 *  same claim-style pattern as `claim()`) rather than a select-then-update: the latter
 	 *  leaves a race window where a jot could flip to `processing` between the two
 	 *  statements and get clobbered back to `pending` anyway. Returns the ids actually
 	 *  reset (a subset of `ids`, via RETURNING), so the caller enqueues only jots it
 	 *  actually flipped to pending rather than ones that raced to `processing` or came
 	 *  from a stale/crafted callback. */
 	async resetForReprocess(ids: string[]): Promise<string[]> {
-		if (!ids.length) return [];
-		const rows: { id: string }[] = await this.k("jots")
-			.whereIn("id", ids)
-			.whereIn("status", ["done", "failed", "abandoned"])
-			.update({
-				status: "pending",
-				attempts: 0,
-				error: null,
-				updated_at: Date.now(),
-			})
-			.returning("id");
-		return rows.map((r) => r.id);
+		const reset: string[] = [];
+		for (let i = 0; i < ids.length; i += Repository.ID_CHUNK) {
+			const chunk = ids.slice(i, i + Repository.ID_CHUNK);
+			const rows: { id: string }[] = await this.k("jots")
+				.whereIn("id", chunk)
+				.whereIn("status", ["done", "failed", "abandoned"])
+				.update({
+					status: "pending",
+					attempts: 0,
+					error: null,
+					updated_at: Date.now(),
+				})
+				.returning("id");
+			reset.push(...rows.map((r) => r.id));
+		}
+		return reset;
 	}
 
 	/** Requeue failed (and optionally abandoned) jots: reset to pending, clear attempts.
