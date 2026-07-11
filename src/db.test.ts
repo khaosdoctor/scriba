@@ -228,9 +228,9 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 			(await repo.jotsPage(0, 1)).map((j) => j.id),
 			["ffffffff"], // newest first
 		);
-		assert.equal(
+		assert.deepEqual(
 			await repo.resetForReprocess(["eeeeeeee", "11122233", "nonexistent"]),
-			1, // only the eligible (done) id among the given set is touched
+			["eeeeeeee"], // only the eligible (done) id among the given set is touched
 		);
 		assert.equal((await repo.getJot("eeeeeeee"))?.status, "pending");
 		assert.equal((await repo.getJot("eeeeeeee"))?.attempts, 0);

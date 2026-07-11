@@ -75,6 +75,9 @@ test("dayBounds spans a short/long day across a DST transition, not a fixed 24h"
 		const [fallFrom, fallTo] = dayBounds("2026-11-01");
 		assert.equal(fallTo - fallFrom, 25 * 60 * 60_000);
 	} finally {
-		process.env.TZ = prevTZ;
+		// process.env.TZ = undefined would coerce to the string "undefined" and leave TZ
+		// set for later tests — delete the key outright when it wasn't originally set.
+		if (prevTZ === undefined) delete process.env.TZ;
+		else process.env.TZ = prevTZ;
 	}
 });

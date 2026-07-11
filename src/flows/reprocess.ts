@@ -388,11 +388,21 @@ export class ReprocessCommand {
 			{ mode, label, count: targets.length, ids: targets },
 			"reprocess triggered",
 		);
-		const n = await this.repo.resetForReprocess(targets);
-		for (const id of targets) queue.add(id);
+		// Only enqueue what was actually flipped to pending — a target can lose eligibility
+		// between the query above and this reset (raced to `processing`, or a stale/crafted
+		// callback), and enqueueing it anyway would just be a no-op with a misleading count.
+		const reset = await this.repo.resetForReprocess(targets);
+		if (!reset.length) {
+			await ctx.answerCallbackQuery({ text: "nothing to reprocess" });
+			return void ctx.editMessageText(
+				`No reprocessable jots for ${label} anymore.`,
+				{ reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
+			);
+		}
+		for (const id of reset) queue.add(id);
 		await ctx.answerCallbackQuery({ text: "reprocessing…" });
 		await ctx.editMessageText(
-			`🔁 Reprocessing ${pluralize(n, "jot")} from ${label}…`,
+			`🔁 Reprocessing ${pluralize(reset.length, "jot")} from ${label}…`,
 		);
 	}
 }
