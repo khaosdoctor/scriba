@@ -76,7 +76,20 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 			messageId: 42,
 		}); // reverse lookup for outcome reactions
 		assert.equal(await repo.messageForJot("nope"), undefined);
+
+		// A jot can pick up more than one mapping (intake message, then a later status
+		// message) — messageForJot() must deterministically prefer the oldest (the
+		// original intake message) rather than an arbitrary row. A short delay guards
+		// against both mappings landing on the same created_at millisecond.
+		await new Promise((r) => setTimeout(r, 5));
+		await repo.mapMessage(7, 43, "aaaaaaaa"); // a later mapping, same jot
+		assert.deepEqual(await repo.messageForJot("aaaaaaaa"), {
+			chatId: 7,
+			messageId: 42,
+		});
+
 		await repo.unmapMessage(7, 42);
+		await repo.unmapMessage(7, 43);
 		assert.equal(await repo.jotForMessage(7, 42), undefined);
 
 		await repo.reject("No", "Norway");

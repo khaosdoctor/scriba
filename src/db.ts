@@ -144,7 +144,12 @@ export class Repository {
 		jotId: string,
 	): Promise<void> {
 		await this.k("msg_map")
-			.insert({ chat_id: chatId, tg_message_id: tgMessageId, jot_id: jotId })
+			.insert({
+				chat_id: chatId,
+				tg_message_id: tgMessageId,
+				jot_id: jotId,
+				created_at: Date.now(),
+			})
 			.onConflict(["chat_id", "tg_message_id"])
 			.merge();
 	}
@@ -157,10 +162,16 @@ export class Repository {
 			.first();
 		return r?.jot_id;
 	}
+	/** A jot can pick up several msg_map rows (intake, status message, menu edit prompt);
+	 *  ordering by created_at deterministically prefers the oldest — the original intake
+	 *  mapping — over an arbitrary one, e.g. so react() lands on the user's own message. */
 	async messageForJot(
 		jotId: string,
 	): Promise<{ chatId: number; messageId: number } | undefined> {
-		const r = await this.k("msg_map").where({ jot_id: jotId }).first();
+		const r = await this.k("msg_map")
+			.where({ jot_id: jotId })
+			.orderBy("created_at", "asc")
+			.first();
 		return r ? { chatId: r.chat_id, messageId: r.tg_message_id } : undefined;
 	}
 	/** Forget a telegram message → jot mapping (e.g. a status message we just deleted). */

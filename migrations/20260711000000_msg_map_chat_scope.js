@@ -11,6 +11,10 @@ export async function up(knex) {
 		t.bigInteger("chat_id").notNullable();
 		t.bigInteger("tg_message_id").notNullable();
 		t.string("jot_id", 8).notNullable();
+		// A jot can pick up several rows (intake, status message, menu edit prompt) —
+		// messageForJot() orders by this to deterministically prefer the oldest (the
+		// original intake mapping) instead of an arbitrary one.
+		t.bigInteger("created_at").notNullable();
 		t.primary(["chat_id", "tg_message_id"]);
 		// messageForJot() looks up by jot_id, and a jot can pick up several rows
 		// (intake, status message, menu edit prompt) — index it to avoid a table scan.
