@@ -314,7 +314,11 @@ export class MenuController {
 		} catch (e) {
 			// Delete can fail (already gone, >48h old); leave a tidy closed state instead.
 			log.warn({ err: e }, "menu close: delete failed, editing instead");
-			await ctx.editMessageText("🗂 Menu closed.", { reply_markup: undefined });
+			// An empty InlineKeyboard actually clears the buttons; `reply_markup: undefined`
+			// is dropped from the JSON payload, so Telegram would leave the old ones tappable.
+			await ctx.editMessageText("🗂 Menu closed.", {
+				reply_markup: new InlineKeyboard(),
+			});
 		}
 	}
 
