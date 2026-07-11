@@ -127,6 +127,26 @@ export class ReprocessCommand {
 		}
 	}
 
+	/** Parse year/month callback args into a valid pair, falling back to the current month
+	 *  for anything missing, non-numeric, or outside 1-12 (a stale/crafted callback) —
+	 *  otherwise an out-of-range month renders a mislabeled calendar, or (month NaN) makes
+	 *  monthGrid's `Array(startDow)` throw outright. */
+	private parseYearMonth(
+		y?: string,
+		m?: string,
+	): { year: number; month: number } {
+		const now = new Date();
+		const year = Number(y);
+		const month = Number(m);
+		return {
+			year: Number.isInteger(year) && year > 0 ? year : now.getFullYear(),
+			month:
+				Number.isInteger(month) && month >= 1 && month <= 12
+					? month
+					: now.getMonth() + 1,
+		};
+	}
+
 	/** Prev/next month for calendar nav, wrapping across year boundaries. */
 	private monthNav(year: number, month: number) {
 		return {
@@ -169,9 +189,7 @@ export class ReprocessCommand {
 		m?: string,
 	): Promise<void> {
 		await ctx.answerCallbackQuery();
-		const now = new Date();
-		const year = Number(y) || now.getFullYear();
-		const month = Number(m) || now.getMonth() + 1;
+		const { year, month } = this.parseYearMonth(y, m);
 		const kb = this.buildCalendar(
 			year,
 			month,
@@ -218,9 +236,7 @@ export class ReprocessCommand {
 		m?: string,
 	): Promise<void> {
 		await ctx.answerCallbackQuery();
-		const now = new Date();
-		const year = Number(y) || now.getFullYear();
-		const month = Number(m) || now.getMonth() + 1;
+		const { year, month } = this.parseYearMonth(y, m);
 		const kb = this.buildCalendar(
 			year,
 			month,
@@ -237,8 +253,9 @@ export class ReprocessCommand {
 		const [y, m, d] = args;
 		const start = `${y}-${pad(m!)}-${pad(d!)}`;
 		await ctx.answerCallbackQuery();
-		const year = Number(y);
-		const month = Number(m);
+		// This next calendar's own year/month, not `start` (validated later in
+		// pickRangeEnd) — normalize so a stale/crafted callback can't crash monthGrid.
+		const { year, month } = this.parseYearMonth(y, m);
 		const kb = this.buildCalendar(
 			year,
 			month,
@@ -257,8 +274,7 @@ export class ReprocessCommand {
 	): Promise<void> {
 		const [start, y, m] = args;
 		await ctx.answerCallbackQuery();
-		const year = Number(y);
-		const month = Number(m);
+		const { year, month } = this.parseYearMonth(y, m);
 		const kb = this.buildCalendar(
 			year,
 			month,
@@ -381,8 +397,13 @@ export class ReprocessCommand {
 			targets = reprocessTargets(await this.repo.jotsInRange(from, to));
 			label = `${start} → ${end}`;
 		} else if (mode === "j") {
-			targets = [rest[0]!];
-			label = rest[0]!;
+			const [id] = rest;
+			if (!id) {
+				log.warn("reprocess: execute rejected: missing jot id");
+				return void ctx.answerCallbackQuery({ text: "bad jot id" });
+			}
+			targets = [id];
+			label = id;
 		} else {
 			return void ctx.answerCallbackQuery();
 		}
