@@ -28,9 +28,11 @@ const STATUS_ICON: Record<JotStatus, string> = {
 export class MenuController {
 	// Rejected-links menu page size (rows per page).
 	private static readonly REJECT_PAGE = 8;
-	// Message id of the last root menu, so opening a fresh /menu retires the old one
-	// instead of leaving stale, still-tappable keyboards piling up in the chat.
-	private lastMenuMsgId?: number;
+	// chatId -> message id of the last root menu in that chat, so opening a fresh /menu
+	// retires the old one instead of leaving stale, still-tappable keyboards piling up.
+	// Keyed by chat (not a single field) since message ids are only unique per chat — the
+	// allowed user can open /menu from more than one chat (e.g. a group, then a DM).
+	private lastMenuMsgId = new Map<number, number>();
 
 	constructor(
 		private bot: Bot,
@@ -48,16 +50,15 @@ export class MenuController {
 	/** /menu — send a fresh root menu. Later taps edit that message in place. */
 	async open(ctx: any): Promise<void> {
 		log.info("menu opened");
-		// Retire the previous menu so old, stale keyboards don't linger tappable in chat.
-		if (this.lastMenuMsgId) {
-			await ctx.api
-				.deleteMessage(ctx.chat.id, this.lastMenuMsgId)
-				.catch(() => {});
+		// Retire the previous menu in this chat so old, stale keyboards don't linger tappable.
+		const prev = this.lastMenuMsgId.get(ctx.chat.id);
+		if (prev) {
+			await ctx.api.deleteMessage(ctx.chat.id, prev).catch(() => {});
 		}
 		const sent = await ctx.reply("🗂 scriba control menu", {
 			reply_markup: this.rootMenu(),
 		});
-		this.lastMenuMsgId = sent.message_id;
+		this.lastMenuMsgId.set(ctx.chat.id, sent.message_id);
 	}
 
 	private rootMenu(): InlineKeyboard {
@@ -119,7 +120,7 @@ export class MenuController {
 		switch (action) {
 			case "root":
 				await ctx.answerCallbackQuery();
-				return void ctx.editMessageText("🗂 scriba control menu", {
+				return ctx.editMessageText("🗂 scriba control menu", {
 					reply_markup: this.rootMenu(),
 				});
 			case "rate":
@@ -155,12 +156,12 @@ export class MenuController {
 				return this.menuToggleTranscriber(ctx);
 			case "maint":
 				await ctx.answerCallbackQuery();
-				return void ctx.editMessageText("🛠 Maintenance", {
+				return ctx.editMessageText("🛠 Maintenance", {
 					reply_markup: this.maintMenu(),
 				});
 			case "links":
 				await ctx.answerCallbackQuery();
-				return void ctx.editMessageText("🔗 Link rules", {
+				return ctx.editMessageText("🔗 Link rules", {
 					reply_markup: this.linksMenu(),
 				});
 			case "rejections":
@@ -207,7 +208,7 @@ export class MenuController {
 				.text("All", "menu:stats:all")
 				.row()
 				.text("‹ Back", "menu:root");
-			return void ctx.editMessageText("📈 Stats range:", { reply_markup: kb });
+			return ctx.editMessageText("📈 Stats range:", { reply_markup: kb });
 		}
 		const text = await this.runCmd(ctx, "stats", range);
 		await ctx.editMessageText(text, {
@@ -256,7 +257,7 @@ export class MenuController {
 		const PAGE = MenuController.REJECT_PAGE;
 		const list = await this.getDeps().repo.rejectionList();
 		if (!list.length)
-			return void ctx.editMessageText("No rejected links.", {
+			return ctx.editMessageText("No rejected links.", {
 				reply_markup: this.backTo("menu:links"),
 			});
 		const pages = Math.ceil(list.length / PAGE);
@@ -307,7 +308,7 @@ export class MenuController {
 	private async menuClose(ctx: any): Promise<void> {
 		log.info("menu closed");
 		await ctx.answerCallbackQuery();
-		this.lastMenuMsgId = undefined;
+		this.lastMenuMsgId.delete(ctx.chat.id);
 		try {
 			await ctx.deleteMessage();
 		} catch (e) {
@@ -333,7 +334,7 @@ export class MenuController {
 		await ctx.answerCallbackQuery();
 		const jots = await this.getDeps().repo.recentJots(10);
 		if (!jots.length)
-			return void ctx.editMessageText("No jots yet.", {
+			return ctx.editMessageText("No jots yet.", {
 				reply_markup: this.backTo("menu:root"),
 			});
 		const kb = new InlineKeyboard();
@@ -354,7 +355,7 @@ export class MenuController {
 		await ctx.answerCallbackQuery();
 		const jot = id ? await this.getDeps().repo.getJot(id) : undefined;
 		if (!jot)
-			return void ctx.editMessageText(`No jot ${id ?? ""}.`, {
+			return ctx.editMessageText(`No jot ${id ?? ""}.`, {
 				reply_markup: this.backTo("menu:jots"),
 			});
 		const kb = new InlineKeyboard()
@@ -428,7 +429,7 @@ export class MenuController {
 		await ctx.answerCallbackQuery();
 		const jots = await this.getDeps().repo.failedJots(10);
 		if (!jots.length)
-			return void ctx.editMessageText("✅ nothing failed.", {
+			return ctx.editMessageText("✅ nothing failed.", {
 				reply_markup: this.backTo("menu:root"),
 			});
 		const lines = jots.map(
