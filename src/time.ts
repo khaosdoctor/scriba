@@ -69,13 +69,11 @@ export function previousDate(epochMs: number = Date.now()): string {
  *  the next local midnight, not `start + 24h`: a fixed offset lands short/long on a DST
  *  transition day (23h/25h), which would miss or over-include jots near the boundary. */
 export function dayBounds(date: string): [number, number] {
-	// A year below 100 hits JS Date's 0-99-is-1900+ special case — check the raw string
-	// before dateFromIso silently reinterprets it (after which start.getFullYear() no
-	// longer reflects what was actually typed).
+	// isValidDate rejects everything dateFromIso would otherwise mishandle: bad shape, a
+	// 0-99 year (JS Date's 1900+ special case), and an out-of-range month/day that Date
+	// would silently roll over into a different date instead of erroring.
 	if (!isValidDate(date))
-		throw new Error(
-			`dayBounds: not a valid YYYY-MM-DD date (year 0-99 collides with Date's 1900-1999 special case): ${date}`,
-		);
+		throw new Error(`dayBounds: not a valid YYYY-MM-DD calendar date: ${date}`);
 	const start = dateFromIso(date);
 	const end = new Date(
 		start.getFullYear(),
