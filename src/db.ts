@@ -339,6 +339,65 @@ export class Repository {
 			.limit(limit);
 	}
 
+	/** Reprocess-eligible jots (done/failed/abandoned — not deleted, not in flight) whose
+	 *  `received_at` falls in [from, to). Backs /reprocess's day and date-range pickers.
+	 *  Only `id`/`anchor` are selected — callers dedupe/resolve to a leader's anchor, they
+	 *  never touch the (potentially large) raw_text/transcript payloads. */
+	async jotsInRange(
+		from: number,
+		to: number,
+	): Promise<Pick<Jot, "id" | "anchor">[]> {
+		return this.k<Jot>("jots")
+			.select("id", "anchor")
+			.where("received_at", ">=", from)
+			.andWhere("received_at", "<", to)
+			.whereIn("status", ["done", "failed", "abandoned"])
+			.orderBy("received_at");
+	}
+
+	/** Page of reprocess-eligible jots, newest first — /reprocess's "one jot" picker, which
+	 *  browses full history rather than recentJots' fixed top-10. */
+	async jotsPage(offset: number, limit: number): Promise<Jot[]> {
+		return this.k<Jot>("jots")
+			.whereIn("status", ["done", "failed", "abandoned"])
+			.orderBy("received_at", "desc")
+			.limit(limit)
+			.offset(offset);
+	}
+
+	// SQLite's bound-parameter cap (SQLITE_MAX_VARIABLE_NUMBER, 32766 on the bundled
+	// better-sqlite3 build) — resetForReprocess chunks whereIn("id", ids) to this size so
+	// an unusually large date-range reprocess can't hit "too many SQL variables".
+	private static readonly ID_CHUNK = 500;
+
+	/** Reset a specific set of jots to pending for reprocessing (clears attempts/error) —
+	 *  only touches ones still eligible (done/failed/abandoned), so a jot that started
+	 *  processing meanwhile isn't clobbered. A single atomic UPDATE...WHERE per chunk (the
+	 *  same claim-style pattern as `claim()`) rather than a select-then-update: the latter
+	 *  leaves a race window where a jot could flip to `processing` between the two
+	 *  statements and get clobbered back to `pending` anyway. Returns the ids actually
+	 *  reset (a subset of `ids`, via RETURNING), so the caller enqueues only jots it
+	 *  actually flipped to pending rather than ones that raced to `processing` or came
+	 *  from a stale/crafted callback. */
+	async resetForReprocess(ids: string[]): Promise<string[]> {
+		const reset: string[] = [];
+		for (let i = 0; i < ids.length; i += Repository.ID_CHUNK) {
+			const chunk = ids.slice(i, i + Repository.ID_CHUNK);
+			const rows: { id: string }[] = await this.k("jots")
+				.whereIn("id", chunk)
+				.whereIn("status", ["done", "failed", "abandoned"])
+				.update({
+					status: "pending",
+					attempts: 0,
+					error: null,
+					updated_at: Date.now(),
+				})
+				.returning("id");
+			reset.push(...rows.map((r) => r.id));
+		}
+		return reset;
+	}
+
 	/** Requeue failed (and optionally abandoned) jots: reset to pending, clear attempts.
 	 *  Returns how many were reset. */
 	async resetFailed(includeAbandoned: boolean): Promise<number> {

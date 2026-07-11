@@ -1,30 +1,21 @@
 import { type Bot, InlineKeyboard } from "grammy";
 import { commands, type Deps } from "../commands/index.ts";
 import { config } from "../config.ts";
-import { formatJotDetail } from "../core.ts";
-import type { Jot, JotStatus } from "../db.ts";
+import { formatJotDetail, jotPreview, STATUS_ICON } from "../core.ts";
+import type { Jot } from "../db.ts";
 import { logger } from "../log.ts";
 import { plainDate } from "../time.ts";
 import type { HabitsCommand } from "./habits/index.ts";
 import type { RatingCommand } from "./rating.ts";
+import type { ReprocessCommand } from "./reprocess.ts";
 
 const log = logger("menu");
 
-/** One glyph per jot status, for the /menu jots browser button labels. */
-const STATUS_ICON: Record<JotStatus, string> = {
-	pending: "⏳",
-	processing: "⚙️",
-	done: "✅",
-	failed: "❌",
-	abandoned: "🪦",
-	deleted: "🗑",
-};
-
 /** The interactive /menu control panel — a callback-driven entry point layered over the
  *  slash commands, not a replacement. Every leaf reuses an existing command (via runCmd)
- *  or flow (rating/habits prompts, jot edit/delete), so the menu adds an entry point but
- *  no new business logic. `getDeps` is lazy (mirrors ScribaBot.deps()) since the queue and
- *  processor aren't wired up yet when this class is constructed. */
+ *  or flow (rating/habits/reprocess prompts, jot edit/delete), so the menu adds an entry
+ *  point but no new business logic. `getDeps` is lazy (mirrors ScribaBot.deps()) since the
+ *  queue and processor aren't wired up yet when this class is constructed. */
 export class MenuController {
 	// Rejected-links menu page size (rows per page).
 	private static readonly REJECT_PAGE = 8;
@@ -38,6 +29,7 @@ export class MenuController {
 		private bot: Bot,
 		private rating: RatingCommand,
 		private habits: HabitsCommand,
+		private reprocess: ReprocessCommand,
 		private getDeps: () => Deps,
 		private deleteJot: (jot: Jot) => Promise<string>,
 	) {}
@@ -67,6 +59,8 @@ export class MenuController {
 			.text("🌱 Review habits", "menu:habits")
 			.row()
 			.text("🗒 Recent jots", "menu:jots")
+			.row()
+			.text("🔁 Reprocess", "menu:reprocess")
 			.row()
 			.text("📈 Stats", "menu:stats")
 			.text("🩺 Status", "menu:status")
@@ -136,6 +130,11 @@ export class MenuController {
 				return this.habits.prompt(plainDate(Date.now() - 86_400_000));
 			case "jots":
 				return this.menuJots(ctx);
+			case "reprocess":
+				await ctx.answerCallbackQuery({
+					text: "Opening reprocess menu below ↓",
+				});
+				return this.reprocess.promptRoot();
 			case "jot":
 				return this.menuJotDetail(ctx, arg);
 			case "jr":
@@ -343,11 +342,8 @@ export class MenuController {
 			});
 		const kb = new InlineKeyboard();
 		for (const j of jots) {
-			const preview = (j.transcript ?? j.raw_text ?? `(${j.kind})`)
-				.replace(/\s+/g, " ")
-				.slice(0, 40);
 			kb.text(
-				`${STATUS_ICON[j.status]} ${j.time} ${preview}`,
+				`${STATUS_ICON[j.status]} ${j.time} ${jotPreview(j)}`,
 				`menu:jot:${j.id}`,
 			).row();
 		}

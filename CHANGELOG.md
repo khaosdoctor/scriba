@@ -1,3 +1,10 @@
+## [1.20.0](https://github.com/khaosdoctor/scriba/compare/v1.19.0...v1.20.0) (2026-07-11)
+
+
+### Features
+
+* add interactive /reprocess command ([40157bd](https://github.com/khaosdoctor/scriba/commit/40157bd5b715016c0df184aa07967c810442edfd))
+
 ## [1.19.0](https://github.com/khaosdoctor/scriba/compare/v1.18.0...v1.19.0) (2026-07-10)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * show full message content instead of truncating previews ([#1](https://github.com/khaosdoctor/scriba/issues/1)) ([08197a9](https://github.com/khaosdoctor/scriba/commit/08197a986eb33af07e9109330453cbb537aa4e92))
-
-## [1.16.0](https://github.com/khaosdoctor/scriba/compare/v1.15.0...v1.16.0) (2026-07-08)
-
-
-### Features
-
-* squash rapid-fire jots into one journal line ([5788863](https://github.com/khaosdoctor/scriba/commit/578886328cc1d34ec479d3a4c960e547d8e93dd4))
 

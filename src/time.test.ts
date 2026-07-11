@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	dateFromIso,
+	dayBounds,
+	isValidDate,
 	msUntilNext,
 	plainDate,
 	plainTime,
@@ -50,4 +52,56 @@ test("dateFromIso is the inverse of plainDate and rejects malformed input", () =
 	assert.throws(() => dateFromIso("not-a-date"));
 	assert.throws(() => dateFromIso("2026-7-10")); // not zero-padded
 	assert.throws(() => dateFromIso(""));
+});
+
+test("dayBounds spans [local midnight, next local midnight)", () => {
+	// Not asserting a fixed 24h delta here — that's not true on a DST transition day
+	// (see the dedicated DST test below), and would push the implementation the wrong way.
+	const [from, to] = dayBounds("2026-07-10");
+	assert.equal(plainDate(from), "2026-07-10");
+	assert.equal(plainDate(to), "2026-07-11"); // exclusive end, next day's midnight
+	assert.equal(new Date(from).getHours(), 0);
+	assert.equal(new Date(to).getHours(), 0);
+	assert.ok(to > from);
+});
+
+test("dayBounds rejects a 0-99 year (JS Date's 1900+ special case), not years 100-999", () => {
+	assert.throws(() => dayBounds("0099-01-01"));
+	assert.throws(() => dayBounds("0000-01-01"));
+	assert.doesNotThrow(() => dayBounds("0500-01-01")); // outside Date's special case
+});
+
+test("dayBounds rejects an out-of-range month/day instead of silently rolling over", () => {
+	assert.throws(() => dayBounds("2026-99-99"));
+	assert.throws(() => dayBounds("2026-02-30")); // February never has a 30th
+});
+
+test("isValidDate rejects malformed shapes, sub-100 years, and out-of-range month/day", () => {
+	assert.equal(isValidDate("2026-07-10"), true);
+	assert.equal(isValidDate("2024-02-29"), true); // 2024 is a leap year
+	assert.equal(isValidDate("not-a-date"), false);
+	assert.equal(isValidDate("2026-7-10"), false); // not zero-padded
+	assert.equal(isValidDate("0099-01-01"), false); // Date's 1900+ special case
+	assert.equal(isValidDate("2026-99-99"), false); // out-of-range month/day
+	assert.equal(isValidDate("2026-13-01"), false); // month 13 doesn't exist
+	assert.equal(isValidDate("2026-02-30"), false); // Feb never has a 30th
+	assert.equal(isValidDate("2026-02-29"), false); // 2026 is not a leap year
+});
+
+test("dayBounds spans a short/long day across a DST transition, not a fixed 24h", () => {
+	const prevTZ = process.env.TZ;
+	process.env.TZ = "America/New_York";
+	try {
+		// US spring-forward 2026: clocks skip 2am -> 3am, so this local day is 23h.
+		const [springFrom, springTo] = dayBounds("2026-03-08");
+		assert.equal(springTo - springFrom, 23 * 60 * 60_000);
+		// US fall-back 2026: 1am repeats, so this local day is 25h.
+		const [fallFrom, fallTo] = dayBounds("2026-11-01");
+		assert.equal(fallTo - fallFrom, 25 * 60 * 60_000);
+	} finally {
+		// process.env.TZ = undefined would coerce to the string "undefined" and leave TZ
+		// set for later tests — delete the key outright when it wasn't originally set.
+		if (prevTZ === undefined) delete process.env.TZ;
+		else process.env.TZ = prevTZ;
+	}
 });

@@ -33,6 +33,18 @@ export class FlushQueue {
 		if (!this.draining) this.arm();
 	}
 
+	/** Bulk-enqueue: push every id, then arm once — a loop of add() calls re-arms the
+	 *  idle/max timers on every single push, which is needless churn for a large batch
+	 *  (e.g. /reprocess over a wide date range). */
+	addMany(ids: string[]): void {
+		if (!ids.length) return;
+		// push(...ids) would spread every element onto the call stack — fine for a normal
+		// batch, but a RangeError waiting to happen for a genuinely large one (a wide
+		// /reprocess date range). concat() takes the array itself, no spread involved.
+		this.ids = this.ids.concat(ids);
+		if (!this.draining) this.arm();
+	}
+
 	private arm(): void {
 		if (this.ids.length === 0) return;
 		if (this.ids.length >= this.opts.maxBatch) {
@@ -63,8 +75,10 @@ export class FlushQueue {
 			this.clearTimers();
 			return;
 		}
-		const batch = this.ids;
-		this.ids = [];
+		// At most maxBatch per flush — addMany() can queue far more than that in one
+		// call, and draining it all in a single onFlush would bypass the cap the rest of
+		// this class exists to enforce. splice() mutates `ids` down to the remainder.
+		const batch = this.ids.splice(0, this.opts.maxBatch);
 		this.clearTimers();
 		this.draining = true;
 		log.debug({ size: batch.length }, "flushing batch");
@@ -72,7 +86,7 @@ export class FlushQueue {
 			await this.opts.onFlush(batch);
 		} finally {
 			this.draining = false;
-			this.arm(); // handle anything that arrived mid-flush
+			this.arm(); // handle whatever's left (this batch's remainder, or anything that arrived mid-flush)
 		}
 	}
 }

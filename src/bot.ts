@@ -26,6 +26,7 @@ import {
 } from "./flows/habits/index.ts";
 import { MenuController } from "./flows/menu.ts";
 import { RATING_NS, RatingCommand } from "./flows/rating.ts";
+import { REPROCESS_NS, ReprocessCommand } from "./flows/reprocess.ts";
 import { logger } from "./log.ts";
 import type {
 	BotServices,
@@ -67,6 +68,7 @@ export class ScribaBot implements BotServices {
 	private rating: RatingCommand;
 	private habits: HabitsCommand;
 	private menu: MenuController;
+	private reprocess: ReprocessCommand;
 	private processor!: JotProcessor;
 	// jotId -> the live status message we edit in place through the jot's lifecycle.
 	// ponytail: in-memory. On restart the map is empty and status() just posts a fresh
@@ -86,10 +88,12 @@ export class ScribaBot implements BotServices {
 		this.bot = new Bot(config.telegram.token);
 		this.rating = new RatingCommand(this.bot, repo, obsidian);
 		this.habits = new HabitsCommand(this.bot, obsidian);
+		this.reprocess = new ReprocessCommand(this.bot, repo);
 		this.menu = new MenuController(
 			this.bot,
 			this.rating,
 			this.habits,
+			this.reprocess,
 			() => this.deps(),
 			(jot) => this.deleteJot(jot),
 		);
@@ -99,6 +103,7 @@ export class ScribaBot implements BotServices {
 	/** Break the wiring cycle: queue + processor are created after this bot (which they need). */
 	setQueue(queue: FlushQueue): void {
 		this.queue = queue;
+		this.reprocess.setQueue(queue);
 	}
 	setProcessor(processor: JotProcessor): void {
 		this.processor = processor;
@@ -132,6 +137,10 @@ export class ScribaBot implements BotServices {
 				{
 					command: "habits",
 					description: "Review habits (yesterday, or /habits YYYY-MM-DD)",
+				},
+				{
+					command: "reprocess",
+					description: "Reprocess jots — a day, a date range, or one jot",
 				},
 				{
 					command: "delete",
@@ -339,6 +348,7 @@ export class ScribaBot implements BotServices {
 		);
 		this.rating.register();
 		this.habits.register();
+		this.reprocess.register();
 
 		// Admin commands (single-user, so the allowlist above is the only auth needed).
 		for (const cmd of commands) {
@@ -692,6 +702,7 @@ export class ScribaBot implements BotServices {
 		if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
 		if (ns === HABITS_NS)
 			return this.habits.handleTap(ctx, rest[0], rest[1], rest[2]);
+		if (ns === REPROCESS_NS) return this.reprocess.handleTap(ctx, rest);
 		await ctx.answerCallbackQuery();
 	}
 
