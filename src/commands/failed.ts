@@ -1,11 +1,15 @@
 import { InlineKeyboard } from "grammy";
+import { logger } from "../log.ts";
 import type { Command } from "./types.ts";
+
+const log = logger("failed");
 
 export const failed: Command = {
 	name: "failed",
 	description: "recent failed/abandoned jots, each with a retry button",
 	run: async (ctx, _args, d) => {
 		const jots = await d.repo.failedJots(10);
+		log.info({ count: jots.length }, "/failed command");
 		if (!jots.length) return "✅ nothing failed.";
 		const lines = jots.map(
 			(j) =>
