@@ -12,6 +12,9 @@ export async function up(knex) {
 		t.bigInteger("tg_message_id").notNullable();
 		t.string("jot_id", 8).notNullable();
 		t.primary(["chat_id", "tg_message_id"]);
+		// messageForJot() looks up by jot_id, and a jot can pick up several rows
+		// (intake, status message, menu edit prompt) — index it to avoid a table scan.
+		t.index(["jot_id"]);
 	});
 }
 
@@ -20,5 +23,6 @@ export async function down(knex) {
 	await knex.schema.createTable("msg_map", (t) => {
 		t.bigInteger("tg_message_id").primary();
 		t.string("jot_id", 8).notNullable();
+		t.index(["jot_id"]);
 	});
 }
