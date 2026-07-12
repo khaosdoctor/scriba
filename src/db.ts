@@ -115,6 +115,20 @@ export class Repository {
 			.orderBy("received_at", "desc")
 			.first();
 	}
+	/** Pull a squashed follower back out of its merge — the user's 🤝 opt-out. Atomic
+	 *  compare-and-swap like `claim()`: only flips `anchor` to the jot's own id (making it
+	 *  a standalone leader) while it's still `pending`. Returns false if the leader already
+	 *  folded it in (or it was never a follower), so the caller knows not to write a
+	 *  placeholder for a jot that's already merged into another line. */
+	async unsquash(id: string): Promise<boolean> {
+		const n = await this.k("jots")
+			.where({ id, status: "pending" })
+			.whereNot("anchor", id)
+			.update({ anchor: id, updated_at: Date.now() });
+		const won = n > 0;
+		log.debug({ id, won }, "unsquash attempt");
+		return won;
+	}
 	/** Followers folded into a leader's line: other live jots sharing its anchor, oldest
 	 *  first. The leader (id === anchor) is excluded; deleted jots are skipped. */
 	async groupFollowers(leaderId: string): Promise<Jot[]> {
