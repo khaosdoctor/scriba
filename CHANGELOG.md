@@ -1,3 +1,11 @@
+## [1.21.1](https://github.com/khaosdoctor/scriba/compare/v1.21.0...v1.21.1) (2026-07-12)
+
+
+### Bug Fixes
+
+* don't link "now" as a relative-date phrase ([5ad902c](https://github.com/khaosdoctor/scriba/commit/5ad902cad8447c9d74810151181ed0acb682f844))
+* show relative-date wikilinks in the Telegram confirmation preview ([4d0e821](https://github.com/khaosdoctor/scriba/commit/4d0e8216b83109e582a58960dd46fae8a526afce))
+
 ## [1.21.0](https://github.com/khaosdoctor/scriba/compare/v1.20.0...v1.21.0) (2026-07-12)
 
 
@@ -25,11 +33,4 @@
 ### Features
 
 * link relative-date phrases to daily notes ([1ce47d0](https://github.com/khaosdoctor/scriba/commit/1ce47d0530e940f8789269dd6457da3c93829f86))
-
-## [1.17.0](https://github.com/khaosdoctor/scriba/compare/v1.16.1...v1.17.0) (2026-07-10)
-
-
-### Features
-
-* add registered links to force wikilinks by surface word ([025d034](https://github.com/khaosdoctor/scriba/commit/025d03413ec1a909e785380b6c1519ff47b5c591))
 
