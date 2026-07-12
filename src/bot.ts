@@ -60,6 +60,12 @@ const MIME: Record<string, string> = {
 	webm: "video/webm",
 };
 
+/** Set on a squashed follower's message alongside ✍, marking it as slated to merge into
+ *  the previous jot's line. Reacting with it yourself — a second 🤝 on top of the bot's
+ *  own — is the opt-out: it pulls the jot back out into its own line. Too late once the
+ *  batch has already flushed and folded it in. */
+const MERGE_EMOJI = "🤝" as const;
+
 /** All Telegram wiring. Long polling, no webhook. Implements BotServices so the
  *  processor can notify, ask link questions, download files, and apply queued edits. */
 export class ScribaBot implements BotServices {
@@ -153,7 +159,12 @@ export class ScribaBot implements BotServices {
 			])
 			.catch((e) => log.warn({ err: e }, "setMyCommands failed"));
 		void this.bot.start({
-			allowed_updates: ["message", "edited_message", "callback_query"],
+			allowed_updates: [
+				"message",
+				"edited_message",
+				"callback_query",
+				"message_reaction",
+			],
 			onStart: (me) =>
 				log.info({ username: me.username }, "telegram long polling started"),
 		});
@@ -425,6 +436,9 @@ export class ScribaBot implements BotServices {
 
 		this.bot.on("callback_query:data", (ctx) => this.handleButton(ctx));
 
+		// The user tapping 🤝 on a squashed follower's message — the merge opt-out.
+		this.bot.on("message_reaction", (ctx) => this.handleMergeReaction(ctx));
+
 		this.bot.on("message", (ctx) =>
 			ctx.reply("scriba handles text, voice, images, and video for now."),
 		);
@@ -479,17 +493,10 @@ export class ScribaBot implements BotServices {
 		kind: JotKind,
 		src: { rawText?: string; fileId?: string },
 	): Promise<void> {
-		// Ack receipt with a reaction (✍ = received/awaiting) — best-effort, intake
-		// proceeds if it fails. Swapped to 👌/😱 by react() once processing settles.
-		await ctx.react("✍").catch(() => {});
 		const epochMs = ctx.message.date * 1000;
 		const id = makeJotId();
 		const date = plainDate(epochMs);
 		const time = plainTime(epochMs);
-		log.info(
-			{ id, kind, date, time, hasFile: !!src.fileId, hasText: !!src.rawText },
-			"jot received",
-		);
 		// dailyPath is pure (no REST call), so the row can be persisted even when Obsidian is
 		// down. ensureDailyNote + the placeholder write happen after, and writeLine recreates
 		// the note on flush, so a failed placeholder self-heals.
@@ -499,7 +506,9 @@ export class ScribaBot implements BotServices {
 		// previous still-pending text/voice jot in this note folds into that jot's line —
 		// it shares the leader's anchor and skips its own placeholder, so the processor
 		// (which groups by anchor) enriches them into one line. Ordering never changes: the
-		// leader's placeholder is already in place. Attach-only kinds never squash.
+		// leader's placeholder is already in place. Attach-only kinds never squash. Decided
+		// before the ack reaction below, so a squashed follower gets the 🤝 marker on the
+		// same react() call instead of a second round-trip.
 		let anchor = id;
 		let squashed = false;
 		if (kind === "text" || kind === "audio") {
@@ -516,6 +525,16 @@ export class ScribaBot implements BotServices {
 				);
 			}
 		}
+
+		// Ack receipt with a reaction (✍ = received/awaiting) — best-effort, intake
+		// proceeds if it fails. Swapped to 👌/😱 by react() once processing settles. A
+		// squashed follower also gets 🤝, marking it for merge; reacting with 🤝 yourself
+		// pulls it back out (handleMergeReaction).
+		await ctx.react(squashed ? ["✍", MERGE_EMOJI] : "✍").catch(() => {});
+		log.info(
+			{ id, kind, date, time, hasFile: !!src.fileId, hasText: !!src.rawText },
+			"jot received",
+		);
 
 		const now = Date.now();
 		const jot: Jot = {
@@ -554,6 +573,39 @@ export class ScribaBot implements BotServices {
 		}
 		this.queue.add(id);
 		log.debug({ id }, "jot queued for flush");
+	}
+
+	/** The user tapping 🤝 on a squashed follower's own message — opting it out of the
+	 *  merge. Only takes effect while the jot is still pending; `unsquash` is the
+	 *  compare-and-swap that enforces that atomically, so a tap racing the leader's flush
+	 *  loses cleanly rather than double-posting the follower's text. */
+	private async handleMergeReaction(ctx: any): Promise<void> {
+		if (!ctx.reactions().emojiAdded.includes(MERGE_EMOJI)) return;
+		const messageId = ctx.messageReaction?.message_id;
+		const jotId = messageId
+			? await this.repo.jotForMessage(messageId)
+			: undefined;
+		if (!jotId) return;
+		const jot = await this.repo.getJot(jotId);
+		if (!jot || jot.anchor === jot.id) return; // not a squashed follower, nothing to opt out of
+		if (!(await this.repo.unsquash(jotId))) {
+			log.info(
+				{ jotId },
+				"merge opt-out too late — already folded into the leader",
+			);
+			await this.notify("🤝 too late — that one's already merged in.");
+			return;
+		}
+		log.info(
+			{ jotId, formerLeader: jot.anchor },
+			"merge opt-out — jot pulled back into its own line",
+		);
+		await this.obsidian.ensureDailyNote(plainDate(jot.received_at));
+		await this.obsidian.appendJournalLine(
+			plainDate(jot.received_at),
+			placeholderLine(jot.time, jotId),
+		);
+		await ctx.react("✍").catch(() => {});
 	}
 
 	private async handleEdit(ctx: any): Promise<void> {

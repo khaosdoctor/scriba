@@ -199,6 +199,27 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 		await repo.markDeleted("22222222");
 		assert.deepEqual(await repo.groupFollowers("11111111"), []); // deleted drops out
 
+		// unsquash: the 🤝 merge opt-out. Only wins while the follower is still pending;
+		// atomic compare-and-swap like claim(), so it can't resurrect an already-merged jot.
+		await repo.insertJot({
+			...sampleJot("44444444"),
+			note_path: NOTE,
+			anchor: "11111111",
+			received_at: 3000,
+		}); // a fresh follower
+		assert.equal(await repo.unsquash("44444444"), true);
+		assert.equal((await repo.getJot("44444444"))?.anchor, "44444444"); // now its own leader
+		assert.equal(await repo.unsquash("44444444"), false); // already standalone — no-op
+		await repo.insertJot({
+			...sampleJot("55555555"),
+			note_path: NOTE,
+			anchor: "11111111",
+			status: "done",
+			received_at: -1, // outside the /reprocess range test below
+		}); // already merged by the time the opt-out arrives
+		assert.equal(await repo.unsquash("55555555"), false);
+		assert.equal((await repo.getJot("55555555"))?.anchor, "11111111"); // left alone
+
 		// /reprocess queries: jotsInRange (day/range pickers), jotsPage (the "one jot"
 		// browser), resetForReprocess (bulk reset by explicit id set).
 		const RP_NOTE = "notes/daily notes/2026-07-08.md";
