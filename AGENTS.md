@@ -42,10 +42,10 @@ deployed on the homelab (Coolify). Single user.
   the processor enriches the whole run into one line (leader + followers share an anchor).
   The rolling-gap decision is token-free (`withinSquashWindow` in `core.ts`). Attach-only
   kinds (image/video) never squash. `SQUASH_WINDOW_MS=0` disables it. A squashed follower's
-  message gets a 🤝 reaction alongside ✍, marking it for merge; reacting with 🤝 yourself is
-  the opt-out — it pulls that jot back into its own line (`Repository.unsquash`, a
-  claim()-style compare-and-swap). Too late once the batch has already flushed and folded
-  it into the leader.
+  message gets a 🤝 reaction in place of ✍ (Telegram bots can only set one reaction per
+  message), marking it for merge; reacting with 🤝 yourself is the opt-out — it pulls that
+  jot back into its own line (`Repository.unsquash`, a claim()-style compare-and-swap).
+  Too late once the batch has already flushed and folded it into the leader.
 - Jot status: `pending → processing → done` (or `failed` → retry, or `abandoned` on
   give-up). `processing` is claimed atomically so flush + sweeps never double-process.
 - Stopwords and learned link-rejections live in the DB, not in code.

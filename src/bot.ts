@@ -60,10 +60,12 @@ const MIME: Record<string, string> = {
 	webm: "video/webm",
 };
 
-/** Set on a squashed follower's message alongside ✍, marking it as slated to merge into
- *  the previous jot's line. Reacting with it yourself — a second 🤝 on top of the bot's
- *  own — is the opt-out: it pulls the jot back out into its own line. Too late once the
- *  batch has already flushed and folded it in. */
+/** Set (in place of ✍) on a squashed follower's message, marking it as slated to merge
+ *  into the previous jot's line. Telegram bots can set at most one reaction per message
+ *  (non-Premium), so this replaces rather than joins the receipt ack. Reacting with 🤝
+ *  yourself — your own reaction alongside the bot's, a distinct reactor — is the opt-out:
+ *  it pulls the jot back out into its own line. Too late once the batch has already
+ *  flushed and folded it in. */
 const MERGE_EMOJI = "🤝" as const;
 
 /** All Telegram wiring. Long polling, no webhook. Implements BotServices so the
@@ -528,9 +530,10 @@ export class ScribaBot implements BotServices {
 
 		// Ack receipt with a reaction (✍ = received/awaiting) — best-effort, intake
 		// proceeds if it fails. Swapped to 👌/😱 by react() once processing settles. A
-		// squashed follower also gets 🤝, marking it for merge; reacting with 🤝 yourself
-		// pulls it back out (handleMergeReaction).
-		await ctx.react(squashed ? ["✍", MERGE_EMOJI] : "✍").catch(() => {});
+		// squashed follower gets 🤝 instead, marking it for merge; reacting with 🤝
+		// yourself pulls it back out (handleMergeReaction). Telegram bots can set only one
+		// reaction per message (non-Premium) — setting both here would silently no-op.
+		await ctx.react(squashed ? MERGE_EMOJI : "✍").catch(() => {});
 		log.info(
 			{ id, kind, date, time, hasFile: !!src.fileId, hasText: !!src.rawText },
 			"jot received",
