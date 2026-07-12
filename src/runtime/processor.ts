@@ -225,7 +225,8 @@ export class JotProcessor {
 				);
 			}
 
-			await this.writeLine(jot, this.composeLine(jot, textPart));
+			const linked = this.linkDates(jot, textPart);
+			await this.writeLine(jot, this.composeLine(jot, linked));
 			await this.repo.updateJot(jot.id, { status: "done", error: null });
 			// Followers rode into the leader's line — mark them done too so they're not
 			// reprocessed or counted as in-flight.
@@ -241,7 +242,7 @@ export class JotProcessor {
 					doneMessage(
 						jot.time,
 						jot.kind,
-						textPart,
+						linked,
 						jot.id,
 						merged ? followers.length + 1 : 0,
 					),
@@ -300,7 +301,10 @@ export class JotProcessor {
 			),
 		);
 		try {
-			await this.writeLine(jot, this.composeLine(jot, source));
+			await this.writeLine(
+				jot,
+				this.composeLine(jot, this.linkDates(jot, source)),
+			);
 		} catch {
 			/* the note write itself is failing — nothing more we can do */
 		}
@@ -373,8 +377,12 @@ export class JotProcessor {
 		return { ...jot, ...patch };
 	}
 
+	/** Resolve relative-date phrases against the jot's own day, once, for reuse in both the journal line and the Telegram preview. */
+	private linkDates(jot: Jot, textPart: string): string {
+		return linkDateWords(textPart, basename(jot.note_path, ".md"));
+	}
+
 	private composeLine(jot: Jot, textPart: string): string {
-		const linked = linkDateWords(textPart, basename(jot.note_path, ".md"));
 		let embed = "";
 		if (jot.asset_path) {
 			const caption =
@@ -383,7 +391,7 @@ export class JotProcessor {
 				? `![[${jot.asset_path}|${jot.raw_text}]]`
 				: `![[${jot.asset_path}]]`;
 		}
-		const content = [linked, embed].filter(Boolean).join(" ") || "…";
+		const content = [textPart, embed].filter(Boolean).join(" ") || "…";
 		return journalLine(jot.time, content, jot.anchor);
 	}
 
