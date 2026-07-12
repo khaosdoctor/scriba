@@ -351,11 +351,14 @@ export function linkDateWords(text: string, referenceDate: string): string {
 	const ref = dateFromIso(referenceDate);
 	// chrono also matches bare times ("at 3pm", "meeting at 9") by defaulting the day to
 	// the reference date — that's not a date word, it's a clock time, so require the
-	// parse to have actually pinned down a day/weekday/month before linking it.
+	// parse to have actually pinned down a day/weekday/month before linking it. "now" gets
+	// the same certain-day treatment (it resolves to today) but reads as "this moment", not
+	// a day reference, so it's excluded by its casual-reference tag rather than linked.
 	const isDateLike = (r: chrono.ParsedResult) =>
-		r.start.isCertain("day") ||
-		r.start.isCertain("weekday") ||
-		r.start.isCertain("month");
+		(r.start.isCertain("day") ||
+			r.start.isCertain("weekday") ||
+			r.start.isCertain("month")) &&
+		!r.start.tags().has("casualReference/now");
 	const matches = chrono.en.casual
 		.parse(text, ref)
 		.filter(

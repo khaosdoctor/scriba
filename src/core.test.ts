@@ -241,6 +241,18 @@ test("linkDateWords ignores bare clock times that carry no date", () => {
 	);
 });
 
+test('linkDateWords leaves "now" alone but still links "today" in the same sentence', () => {
+	const ref = "2026-07-10";
+	assert.equal(
+		linkDateWords("it's good now, deploy maybe tomorrow, or today", ref),
+		"it's good now, deploy maybe [[2026-07-11|tomorrow]], or [[2026-07-10|today]]",
+	);
+	assert.equal(
+		linkDateWords("just now I fixed it", ref),
+		"just now I fixed it",
+	);
+});
+
 test("linkDateWords ignores plain text and never re-links inside a wikilink", () => {
 	const ref = "2026-07-10";
 	assert.equal(linkDateWords("no date words here", ref), "no date words here");
