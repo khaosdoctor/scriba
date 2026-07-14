@@ -643,10 +643,10 @@ export class ScribaBot implements BotServices {
 		// acquire it here — locking here and then calling deleteJot would deadlock on the path.
 		if (instructions.some((i) => i.trim().toLowerCase() === "delete"))
 			return this.deleteJot(jot);
-		return this.obsidian.withNoteLock(jot.note_path, async () => {
+		const result = await this.obsidian.withNoteLock(jot.note_path, async () => {
 			const note = await this.obsidian.readNote(jot.note_path);
 			const line = anchorLine(note, jot.anchor);
-			if (!line) return "Couldn't find that line in the note.";
+			if (!line) return null;
 
 			let text = stripJournalLine(line, jot.time, jot.anchor);
 			const freeform: string[] = [];
@@ -666,23 +666,48 @@ export class ScribaBot implements BotServices {
 				journalLine(jot.time, text, jot.anchor),
 			);
 			if (out) await this.obsidian.writeNote(jot.note_path, out);
-			return "✏️ updated";
+			return text;
 		});
+		if (result === null) return "Couldn't find that line in the note.";
+		await this.syncEditedSource(jot, result);
+		return "✏️ updated";
 	}
 
 	/** Replace a jot's entire text content (for edited messages, not instructions). */
 	private async replaceJotText(jot: Jot, newText: string): Promise<string> {
-		return this.obsidian.withNoteLock(jot.note_path, async () => {
+		const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
 			const note = await this.obsidian.readNote(jot.note_path);
-			const out = replaceAnchorLine(
+			const replaced = replaceAnchorLine(
 				note,
 				jot.anchor,
 				journalLine(jot.time, newText, jot.anchor),
 			);
-			if (!out) return "Couldn't find that line in the note.";
-			await this.obsidian.writeNote(jot.note_path, out);
-			return "✏️ updated";
+			if (replaced) await this.obsidian.writeNote(jot.note_path, replaced);
+			return replaced;
 		});
+		if (!out) return "Couldn't find that line in the note.";
+		await this.syncEditedSource(jot, newText);
+		return "✏️ updated";
+	}
+
+	/** Fold a corrected line's text back into the jot's own source field (`transcript` for
+	 *  audio, `raw_text` for text) so a later /reprocess builds on the fix instead of
+	 *  reverting to the original mis-transcription/typo — e.g. correcting a voice note's
+	 *  "bake" to "cake" via `s/bake/cake/` used to only touch the journal line; reprocessing
+	 *  afterwards re-transcribed the same audio and lost the fix. Scoped to a standalone
+	 *  jot (not a squashed leader/follower): a squashed line is several jots' sources
+	 *  combined into one, so there's no single field to fold the edited text back into
+	 *  without duplicating or dropping a follower's content. */
+	private async syncEditedSource(jot: Jot, text: string): Promise<void> {
+		if (jot.kind !== "audio" && jot.kind !== "text") return;
+		if (jot.anchor !== jot.id) return; // squashed follower — no single source to update
+		if ((await this.repo.groupFollowers(jot.id)).length > 0) return; // squashed leader
+		const field = jot.kind === "audio" ? "transcript" : "raw_text";
+		await this.repo.updateJot(jot.id, { [field]: text });
+		log.info(
+			{ jotId: jot.id, field },
+			"edit folded back into jot source for future reprocessing",
+		);
 	}
 
 	/** Remove a jot's line from its daily note and mark it deleted (a terminal state, so a

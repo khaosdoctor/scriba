@@ -54,6 +54,14 @@ deployed on the homelab (Coolify). Single user.
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not
   processing time) and rewriting them to `[[YYYY-MM-DD|phrase]]`. The target daily note
   doesn't need to exist yet.
+- **Edits fold back into the source, so reprocess doesn't undo them.** Correcting a jot's
+  line (reply `s/old/new/`, a freeform reply instruction, or Telegram's native message-edit)
+  also writes the corrected text into the jot's own `transcript` (audio) or `raw_text`
+  (text) field, not just the journal line — otherwise `/reprocess` re-transcribes/re-reads
+  the original source and silently reverts the fix. Scoped to a standalone jot
+  (`ScribaBot.syncEditedSource`, `bot.ts`): a squashed leader/follower is skipped, since a
+  squashed line is several jots' sources combined into one and there's no single field to
+  fold the edit back into.
 
 ## Conventions
 
