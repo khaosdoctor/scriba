@@ -9,8 +9,10 @@ import {
 	doneMessage,
 	donePreview,
 	editConfirmation,
+	enrichableSource,
 	entitiesToMarkdown,
 	escapeHtml,
+	extractInstructions,
 	forcedCandidates,
 	formatDeployNotice,
 	formatDuration,
@@ -26,6 +28,7 @@ import {
 	linkDateWords,
 	makeJotId,
 	monthGrid,
+	normalizeNotePath,
 	parseLiteralEdit,
 	placeholderLine,
 	pluralize,
@@ -460,6 +463,7 @@ test("formatJotDetail shows full text and includes errors", () => {
 		anchor: "deadbeef",
 		time: "10:00:00",
 		raw_text: null,
+		text: null,
 		transcript: "x".repeat(400),
 		asset_path: null,
 		file_id: null,
@@ -468,6 +472,7 @@ test("formatJotDetail shows full text and includes errors", () => {
 		error: "boom",
 		received_at: Date.now(),
 		updated_at: Date.now(),
+		instructions_run: false,
 	};
 	const out = formatJotDetail(jot);
 	assert.match(out, /deadbeef \[audio\] — failed/);
@@ -598,6 +603,7 @@ test("jotPreview falls back to (kind) for a captionless attach-only jot", () => 
 		anchor: "aaaaaaaa",
 		time: "10:00:00",
 		raw_text: null,
+		text: null,
 		transcript: null,
 		asset_path: null,
 		file_id: null,
@@ -606,6 +612,7 @@ test("jotPreview falls back to (kind) for a captionless attach-only jot", () => 
 		error: null,
 		received_at: 0,
 		updated_at: 0,
+		instructions_run: false,
 	};
 	assert.equal(jotPreview(base), "(image)");
 	assert.equal(
@@ -616,6 +623,73 @@ test("jotPreview falls back to (kind) for a captionless attach-only jot", () => 
 		jotPreview({ ...base, kind: "audio", transcript: "hello there" }, 5),
 		"hello",
 	);
+	assert.equal(
+		jotPreview({ ...base, raw_text: "old", text: "new" }),
+		"new", // stripped `text` wins over the untouched `raw_text`
+	);
+});
+
+test("extractInstructions strips all @@...@@ blocks, collapsing whitespace", () => {
+	assert.deepEqual(extractInstructions("plain text, no markers"), {
+		text: "plain text, no markers",
+		instructions: [],
+	});
+	assert.deepEqual(
+		extractInstructions("Went for a run @@create Running log.md@@ today"),
+		{
+			text: "Went for a run today",
+			instructions: ["create Running log.md"],
+		},
+	);
+	assert.deepEqual(
+		extractInstructions(
+			"@@create Idea.md@@Had a great idea@@also remind me tomorrow@@",
+		),
+		{
+			text: "Had a great idea",
+			instructions: ["create Idea.md", "also remind me tomorrow"],
+		},
+	);
+	// blank/whitespace-only instruction bodies are dropped, not kept as empty strings
+	assert.deepEqual(extractInstructions("hi @@   @@ there"), {
+		text: "hi there",
+		instructions: [],
+	});
+});
+
+test("enrichableSource prefers the stripped `text` over `raw_text` for text jots", () => {
+	const base: Jot = {
+		id: "aaaaaaaa",
+		kind: "text",
+		note_path: "x.md",
+		anchor: "aaaaaaaa",
+		time: "10:00:00",
+		raw_text: "original @@create X.md@@ message",
+		text: null,
+		transcript: null,
+		asset_path: null,
+		file_id: null,
+		status: "done",
+		attempts: 0,
+		error: null,
+		received_at: 0,
+		updated_at: 0,
+		instructions_run: false,
+	};
+	assert.equal(enrichableSource(base), "original @@create X.md@@ message"); // no `text` yet: falls back to raw_text
+	assert.equal(
+		enrichableSource({ ...base, text: "original message" }),
+		"original message",
+	);
+});
+
+test("normalizeNotePath rejects traversal/absolute paths and adds .md", () => {
+	assert.equal(normalizeNotePath("Ideas/Trip"), "Ideas/Trip.md");
+	assert.equal(normalizeNotePath("Ideas/Trip.md"), "Ideas/Trip.md");
+	assert.equal(normalizeNotePath("/etc/passwd"), null);
+	assert.equal(normalizeNotePath("../../secrets.md"), null);
+	assert.equal(normalizeNotePath("a/../b.md"), null);
+	assert.equal(normalizeNotePath("   "), null);
 });
 
 test("monthGrid pads a month to full weeks starting Sunday", () => {

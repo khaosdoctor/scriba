@@ -103,6 +103,65 @@ const ENRICH_OUTPUT_FORMAT: OutputFormat = {
 /** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
 const fence = (s: string): string => s.replaceAll('"""', "");
 
+/** A vault note action decided for one `@@instruction@@`: ensure `path` contains
+ *  `content`, either only if it's missing ("create") or appended to it either way
+ *  ("append"). Never an overwrite — the model can't destroy existing note content. */
+export interface InstructionAction {
+	path: string;
+	content: string;
+	mode: "create" | "append";
+}
+export interface InstructionResult {
+	actions: InstructionAction[];
+	reply: string; // short summary sent back to the user in Telegram
+	usage: { input: number; output: number };
+}
+
+const INSTRUCTION_SYSTEM = `You act on side-instructions a user embedded in a personal journal message, marked with @@instruction@@. You are given the full original message for context — the @@ markers show which parts are instructions; everything else is the journal entry itself, for context only, never turned into an action on its own.
+For each instruction, decide a vault note action:
+- "create": write a NEW note only if one doesn't already exist at that path (no-op if it does) — for instructions like "create this note if it doesn't exist".
+- "append": add content to the end of a note, creating it first if it doesn't exist — for instructions like "add this to my X".
+Pick a sensible vault-relative note path from context (folders allowed, e.g. "Ideas/Weekend trip.md"). Never target the daily journal note itself — these are separate side notes only.
+If an instruction doesn't clearly map to a note action, skip it (no action for it) and say why in "reply".
+Your entire response must be exactly one JSON object and nothing else: {"actions":[{"path":"...","content":"...","mode":"create"|"append"}],"reply":"<short message to the user summarizing what you did>"}
+Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
+
+const instructionPayloadSchema = z.object({
+	actions: z.array(
+		z.object({
+			path: z.string(),
+			content: z.string(),
+			mode: z.enum(["create", "append"]),
+		}),
+	),
+	reply: z.string(),
+});
+
+const INSTRUCTION_OUTPUT_FORMAT: OutputFormat = {
+	type: "json_schema",
+	schema: {
+		type: "object",
+		properties: {
+			actions: {
+				type: "array",
+				items: {
+					type: "object",
+					properties: {
+						path: { type: "string" },
+						content: { type: "string" },
+						mode: { type: "string", enum: ["create", "append"] },
+					},
+					required: ["path", "content", "mode"],
+					additionalProperties: false,
+				},
+			},
+			reply: { type: "string" },
+		},
+		required: ["actions", "reply"],
+		additionalProperties: false,
+	},
+};
+
 /** Enrichment via the Claude Agent SDK on subscription auth (CLAUDE_CODE_OAUTH_TOKEN
  *  in the environment) — no API key. One call per jot. */
 export class Enricher {
@@ -187,7 +246,10 @@ export class Enricher {
 					"enrich: structured_output failed schema validation, falling back to text parsing",
 				);
 		}
-		if (!parsed) parsed = this.extractJson(text);
+		if (!parsed)
+			parsed = this.extractJson<{ text?: string; ambiguous?: Candidate[] }>(
+				text,
+			);
 
 		if (!parsed?.text)
 			throw new Error(
@@ -254,6 +316,56 @@ export class Enricher {
 			{ role: "user", content: prompt },
 		]);
 		return text.trim() || current;
+	}
+
+	/** Decide what to do about a jot's `@@instruction@@`(s): given the full original
+	 *  message (for positional context — what "this" refers to) and the isolated
+	 *  instruction fragments, returns the note action(s) to apply and a short reply for
+	 *  the user. Execution itself is deterministic and happens in the caller (the
+	 *  processor); the agent only decides intent. */
+	async runInstructions(
+		fullText: string,
+		instructions: string[],
+	): Promise<InstructionResult> {
+		const marked = instructions
+			.map((ins, i) => `${i + 1}. ${fence(ins)}`)
+			.join("\n");
+		const prompt = `Full original message:\n"""${fence(fullText)}"""\n\nInstructions to act on:\n${marked}`;
+		log.info({ count: instructions.length }, "runInstructions: calling agent");
+		const { text, usage, structuredOutput } = await this.run(
+			prompt,
+			INSTRUCTION_SYSTEM,
+			[
+				{ role: "system", content: INSTRUCTION_SYSTEM },
+				{ role: "user", content: prompt },
+			],
+			INSTRUCTION_OUTPUT_FORMAT,
+		);
+
+		let parsed: { actions?: InstructionAction[]; reply?: string } | null = null;
+		if (structuredOutput !== undefined) {
+			const result = instructionPayloadSchema.safeParse(structuredOutput);
+			if (result.success) parsed = result.data;
+			else
+				log.warn(
+					{ err: result.error, structuredOutput },
+					"runInstructions: structured_output failed schema validation, falling back to text parsing",
+				);
+		}
+		if (!parsed)
+			parsed = this.extractJson<{
+				actions?: InstructionAction[];
+				reply?: string;
+			}>(text);
+		if (!parsed)
+			throw new Error(
+				`instruction run returned no usable JSON: ${text.slice(0, 200)}`,
+			);
+		log.info(
+			{ actions: parsed.actions?.length ?? 0, usage },
+			"runInstructions: agent responded",
+		);
+		return { actions: parsed.actions ?? [], reply: parsed.reply ?? "", usage };
 	}
 
 	/** Single-turn agent call; collects assistant text and token usage. When the
@@ -346,10 +458,9 @@ export class Enricher {
 
 	// The agent returns free-form text: usually clean JSON, occasionally wrapped in a
 	// ```json fence or a stray sentence. Try the clean parse first; fall back to the
-	// outermost {...} span only if that fails.
-	private extractJson(
-		s: string,
-	): { text?: string; ambiguous?: Candidate[] } | null {
+	// outermost {...} span only if that fails. Generic: shared by enrich() and
+	// runInstructions(), which parse differently-shaped payloads.
+	private extractJson<T>(s: string): T | null {
 		const cleaned = s
 			.trim()
 			.replace(/^```(?:json)?\s*/i, "")

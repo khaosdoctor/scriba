@@ -15,6 +15,7 @@ function sampleJot(id: string): Jot {
 		anchor: id,
 		time: "10:00:00",
 		raw_text: "hi",
+		text: "hi",
 		transcript: null,
 		asset_path: null,
 		file_id: null,
@@ -23,6 +24,7 @@ function sampleJot(id: string): Jot {
 		error: null,
 		received_at: now,
 		updated_at: now,
+		instructions_run: false,
 	};
 }
 

@@ -30,12 +30,44 @@ export function isEditableJot(status: JotStatus): boolean {
 }
 
 /** Pick the enrichable source text for a jot's kind: the transcript for audio (falling
- *  back to `audioFallback` when there isn't one), the raw text for text, otherwise ""
+ *  back to `audioFallback` when there isn't one), the stripped `text` for text (falling
+ *  back to `raw_text` for a jot inserted before that column existed), otherwise ""
  *  (image/video are attach-only). */
 export function enrichableSource(jot: Jot, audioFallback = ""): string {
 	if (jot.kind === "audio") return jot.transcript ?? audioFallback;
-	if (jot.kind === "text") return jot.raw_text ?? "";
+	if (jot.kind === "text") return jot.text ?? jot.raw_text ?? "";
 	return "";
+}
+
+/** Split a jot's raw text into the visible jot text and any `@@instruction@@` side
+ *  instructions, stripped out completely (collapsing the whitespace they leave behind).
+ *  Multiple `@@...@@` blocks are all removed and returned in order; no matches leaves
+ *  `text` unchanged and `instructions` empty. Positional context (what an instruction
+ *  refers to) lives only in the untouched raw text, not in the isolated fragments here —
+ *  callers that need that context pass the raw text itself back to the agent. */
+export function extractInstructions(text: string): {
+	text: string;
+	instructions: string[];
+} {
+	const instructions: string[] = [];
+	const stripped = text.replace(/@@([\s\S]*?)@@/g, (_, body: string) => {
+		const trimmed = body.trim();
+		if (trimmed) instructions.push(trimmed);
+		return " ";
+	});
+	return { text: stripped.replace(/[ \t]+/g, " ").trim(), instructions };
+}
+
+/** Normalize an agent-proposed vault path for an instruction's note action: reject
+ *  absolute paths and `.`/`..` traversal segments, and ensure a `.md` extension. Returns
+ *  null if the path is unsafe, so a model-authored path can never escape the vault or
+ *  overwrite a non-note file. */
+export function normalizeNotePath(path: string): string | null {
+	const trimmed = path.trim();
+	if (!trimmed || trimmed.startsWith("/")) return null;
+	const segments = trimmed.split("/");
+	if (segments.some((s) => s === "" || s === "." || s === "..")) return null;
+	return trimmed.endsWith(".md") ? trimmed : `${trimmed}.md`;
 }
 
 /** Rolling-gap test for squashing: a new jot folds into the previous still-open one
@@ -512,7 +544,7 @@ export function formatDeployNotice(
 
 /** /jot body: full record for one jot. */
 export function formatJotDetail(j: Jot): string {
-	const text = j.transcript ?? j.raw_text ?? "(none)";
+	const text = j.transcript ?? j.text ?? j.raw_text ?? "(none)";
 	const lines = [
 		`🧾 ${j.id} [${j.kind}] — ${j.status}`,
 		`Received: ${plainDate(j.received_at)} ${j.time}`,
@@ -553,7 +585,7 @@ export const STATUS_ICON: Record<JotStatus, string> = {
 /** One-line content preview for list pickers (the /menu jots browser, /reprocess) —
  *  falls back to "(kind)" for attach-only jots with no caption. */
 export function jotPreview(j: Jot, maxLen = 40): string {
-	return (j.transcript ?? j.raw_text ?? `(${j.kind})`)
+	return (j.transcript ?? j.text ?? j.raw_text ?? `(${j.kind})`)
 		.replace(/\s+/g, " ")
 		.slice(0, maxLen);
 }

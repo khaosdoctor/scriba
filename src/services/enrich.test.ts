@@ -290,6 +290,58 @@ test("editText keeps the current text when the edit comes back empty", async () 
 	assert.equal(out, "keep me");
 });
 
+test("runInstructions returns actions and reply from clean JSON", async () => {
+	const body = JSON.stringify({
+		actions: [{ path: "Ideas/Trip.md", content: "Trip idea", mode: "create" }],
+		reply: "Created a note for your trip idea.",
+	});
+	const { fn, calls } = fakeQuery([assistantText(body)]);
+	const out = await new Enricher(undefined, fn).runInstructions(
+		"Went for a run @@create Ideas/Trip.md with Trip idea@@ today",
+		["create Ideas/Trip.md with Trip idea"],
+	);
+	assert.deepEqual(out.actions, [
+		{ path: "Ideas/Trip.md", content: "Trip idea", mode: "create" },
+	]);
+	assert.equal(out.reply, "Created a note for your trip idea.");
+	assert.match(calls[0]!.prompt as string, /1\. create Ideas\/Trip\.md/);
+});
+
+test("runInstructions defaults actions/reply to empty when the model omits them", async () => {
+	const { fn } = fakeQuery([assistantText("{}")]);
+	const out = await new Enricher(undefined, fn).runInstructions("hi", [
+		"do something",
+	]);
+	assert.deepEqual(out.actions, []);
+	assert.equal(out.reply, "");
+});
+
+test("runInstructions uses the SDK's structured output when valid", async () => {
+	const { fn, calls } = fakeQuery([
+		{
+			type: "result",
+			subtype: "success",
+			structured_output: {
+				actions: [{ path: "X.md", content: "y", mode: "append" }],
+				reply: "done",
+			},
+		},
+	]);
+	const out = await new Enricher(undefined, fn).runInstructions("hi", ["x"]);
+	assert.deepEqual(out.actions, [
+		{ path: "X.md", content: "y", mode: "append" },
+	]);
+	assert.equal(calls[0]!.options.outputFormat.type, "json_schema");
+});
+
+test("runInstructions throws when the response has no usable JSON", async () => {
+	const { fn } = fakeQuery([assistantText("not json at all")]);
+	await assert.rejects(
+		new Enricher(undefined, fn).runInstructions("hi", ["x"]),
+		/no usable JSON/,
+	);
+});
+
 /** A query fn that throws while streaming — simulates the subscription SDK out of usage. */
 function failQuery(message = "usage limit reached"): QueryFn {
 	return (() => {

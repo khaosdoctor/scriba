@@ -9,6 +9,7 @@ import {
 	distinctSurfaces,
 	editConfirmation,
 	entitiesToMarkdown,
+	extractInstructions,
 	isBlank,
 	isEditableJot,
 	journalLine,
@@ -180,6 +181,21 @@ export class ScribaBot implements BotServices {
 	async notify(text: string): Promise<void> {
 		log.debug({ text }, "notify user");
 		await this.bot.api.sendMessage(config.telegram.allowedUserId, text);
+	}
+
+	/** Reply with the outcome of a jot's `@@` instruction(s) — a reply to the jot's own
+	 *  message when we still have it mapped, otherwise a plain message. Separate from the
+	 *  jot's status() lifecycle: this is a side effect report, not the jot's main outcome. */
+	async notifyInstruction(jotId: string, text: string): Promise<void> {
+		const messageId = await this.repo.messageForJot(jotId);
+		log.debug({ jotId, messageId }, "notifying instruction outcome");
+		await this.bot.api
+			.sendMessage(config.telegram.allowedUserId, text, {
+				...(messageId ? { reply_to_message_id: messageId } : {}),
+			})
+			.catch((err) =>
+				log.warn({ jotId, err }, "notifyInstruction: send failed"),
+			);
 	}
 
 	/** Nightly rating prompt (the scheduler calls this). Delegates to the rating command. */
@@ -547,6 +563,18 @@ export class ScribaBot implements BotServices {
 			"jot received",
 		);
 
+		// A text jot may carry `@@instruction@@` side instructions: raw_text keeps the
+		// message exactly as typed (forever — never edited), while text is what's actually
+		// journaled/enriched/edited from here on. Other kinds don't support instructions
+		// (image/video captions, audio dictation), so their text stays null.
+		const stripped =
+			kind === "text" && src.rawText ? extractInstructions(src.rawText) : null;
+		if (stripped?.instructions.length)
+			log.info(
+				{ id, count: stripped.instructions.length },
+				"jot carries @@ instructions",
+			);
+
 		const now = Date.now();
 		const jot: Jot = {
 			id,
@@ -555,6 +583,7 @@ export class ScribaBot implements BotServices {
 			anchor,
 			time,
 			raw_text: src.rawText ?? null,
+			text: stripped?.text ?? null,
 			transcript: null,
 			asset_path: null,
 			file_id: src.fileId ?? null,
@@ -563,6 +592,7 @@ export class ScribaBot implements BotServices {
 			error: null,
 			received_at: epochMs,
 			updated_at: now,
+			instructions_run: false,
 		};
 		// Insert the DB row (pending) BEFORE writing the placeholder line. A crash between the
 		// two then leaves a row with no line — which self-heals, since writeLine falls back to
@@ -702,18 +732,20 @@ export class ScribaBot implements BotServices {
 	}
 
 	/** Fold a corrected line's text back into the jot's own source field (`transcript` for
-	 *  audio, `raw_text` for text) so a later /reprocess builds on the fix instead of
-	 *  reverting to the original mis-transcription/typo — e.g. correcting a voice note's
-	 *  "bake" to "cake" via `s/bake/cake/` used to only touch the journal line; reprocessing
-	 *  afterwards re-transcribed the same audio and lost the fix. Scoped to a standalone
-	 *  jot (not a squashed leader/follower): a squashed line is several jots' sources
-	 *  combined into one, so there's no single field to fold the edited text back into
-	 *  without duplicating or dropping a follower's content. */
+	 *  audio, `text` for text) so a later /reprocess builds on the fix instead of reverting
+	 *  to the original mis-transcription/typo — e.g. correcting a voice note's "bake" to
+	 *  "cake" via `s/bake/cake/` used to only touch the journal line; reprocessing
+	 *  afterwards re-transcribed the same audio and lost the fix. For text jots this only
+	 *  ever touches `text`, never `raw_text` — the original as typed (`@@` instructions
+	 *  included) stays untouched forever. Scoped to a standalone jot (not a squashed
+	 *  leader/follower): a squashed line is several jots' sources combined into one, so
+	 *  there's no single field to fold the edited text back into without duplicating or
+	 *  dropping a follower's content. */
 	private async syncEditedSource(jot: Jot, text: string): Promise<void> {
 		if (jot.kind !== "audio" && jot.kind !== "text") return;
 		if (jot.anchor !== jot.id) return; // squashed follower — no single source to update
 		if ((await this.repo.groupFollowers(jot.id)).length > 0) return; // squashed leader
-		const field = jot.kind === "audio" ? "transcript" : "raw_text";
+		const field = jot.kind === "audio" ? "transcript" : "text";
 		await this.repo.updateJot(jot.id, { [field]: text });
 		log.info(
 			{ jotId: jot.id, field },

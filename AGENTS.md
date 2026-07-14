@@ -22,14 +22,17 @@ deployed on the homelab (Coolify). Single user.
   `bot.ts`. Command bodies stay thin: parse args, call `Repository`/services, and format via
   `core.ts`. Runtime settings that must survive a restart go in the `settings` key/value table.
 - **No tokens for control flow.** Batch timing, retry classification, candidate filtering,
-  language routing must not call the model. The agent is only for enrichment, translation,
-  image captioning, and freeform edits.
+  language routing, and `@@...@@` extraction must not call the model. The agent is only for
+  enrichment, translation, image captioning, freeform edits, and deciding what a jot's
+  `@@instruction@@`(s) mean — even there, the agent only decides intent (which note, what
+  content); applying it to the vault is deterministic code (`JotProcessor.handleInstructions`).
 - **Vault is English.** Voice is transcribed by the local Parakeet sidecar (default) or
   Groq (`TRANSCRIBER=remote`); non-English is translated in (Groq `/translations`, or the
   enricher for local voice + all text).
 - **Four jot kinds.** `text`/`audio` carry enrichable text (audio is transcribed).
   `image`/`video` are attach-only (saved + embedded, caption as display); a captionless
-  image gets a vision caption. Video is never transcribed.
+  image gets a vision caption. Video is never transcribed. Only `text` jots support
+  `@@instruction@@` side instructions (see below).
 
 ## Data / flow
 
@@ -56,12 +59,27 @@ deployed on the homelab (Coolify). Single user.
   doesn't need to exist yet.
 - **Edits fold back into the source, so reprocess doesn't undo them.** Correcting a jot's
   line (reply `s/old/new/`, a freeform reply instruction, or Telegram's native message-edit)
-  also writes the corrected text into the jot's own `transcript` (audio) or `raw_text`
-  (text) field, not just the journal line — otherwise `/reprocess` re-transcribes/re-reads
-  the original source and silently reverts the fix. Scoped to a standalone jot
-  (`ScribaBot.syncEditedSource`, `bot.ts`): a squashed leader/follower is skipped, since a
-  squashed line is several jots' sources combined into one and there's no single field to
-  fold the edit back into.
+  also writes the corrected text into the jot's own `transcript` (audio) or `text` (text)
+  field, not just the journal line — otherwise `/reprocess` re-enriches from the original
+  source and silently reverts the fix. Scoped to a standalone jot (`ScribaBot.syncEditedSource`,
+  `bot.ts`): a squashed leader/follower is skipped, since a squashed line is several jots'
+  sources combined into one and there's no single field to fold the edit back into.
+- **`@@instruction@@` side instructions (text jots only).** Wrapping part of a message in
+  `@@...@@` splits it in two: the marked part(s) are stripped out entirely (`extractInstructions`
+  in `core.ts`, token-free) and the rest proceeds through the normal journal flow. A text jot
+  stores both `raw_text` (the untouched original, markers included — never edited, forever) and
+  `text` (the stripped, enrichable/editable content journal lines and edit-folding actually use).
+  During processing, `JotProcessor.handleInstructions` re-extracts the instruction(s) from
+  `raw_text` (never persisted separately — cheap to recompute) and asks the agent
+  (`Enricher.runInstructions`) to turn each into a vault note action against the *full* raw
+  text, so the instruction keeps the positional context of what it refers to. The agent only
+  returns intent (`{path, content, mode: "create"|"append"}` + a short reply); applying it
+  (`ObsidianClient.ensureNote`) is deterministic and never destructive — "create" no-ops if the
+  note exists, "append" only adds to the end, and `normalizeNotePath` (`core.ts`) rejects any
+  path escaping the vault. The jot's `instructions_run` flag guards this from firing twice
+  (e.g. on a later `/reprocess`), since appending to a note isn't idempotent. The user gets a
+  reply to their own message reporting what happened (`BotServices.notifyInstruction`),
+  separate from the jot's normal done/failed status message.
 
 ## Conventions
 

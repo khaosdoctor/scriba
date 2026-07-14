@@ -34,6 +34,9 @@ export interface Jot {
 	anchor: string;
 	time: string;
 	raw_text: string | null;
+	// Stripped of `@@instruction@@` markers, editable, and what enrichment reads for
+	// kind "text" — `raw_text` stays the untouched original forever (see AGENTS.md).
+	text: string | null;
 	transcript: string | null;
 	asset_path: string | null;
 	file_id: string | null;
@@ -42,6 +45,9 @@ export interface Jot {
 	error: string | null;
 	received_at: number;
 	updated_at: number;
+	// Guards against re-running a jot's @@ instructions on reprocess/retry — their vault
+	// actions (create/append a note) aren't idempotent.
+	instructions_run: boolean;
 }
 
 /**

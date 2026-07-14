@@ -176,6 +176,36 @@ export class ObsidianClient {
 	async writeNote(vaultPath: string, content: string): Promise<void> {
 		await this.putFile(vaultPath, content, "text/markdown");
 	}
+	/** Ensure a vault note carries `content`, for a jot's `@@instruction@@` side effects.
+	 *  "create": no-op if the note already exists. "append": add to the end, creating it
+	 *  first if missing. Never overwrites existing content — the note-lock serializes this
+	 *  against any other concurrent write to the same path. */
+	async ensureNote(
+		vaultPath: string,
+		content: string,
+		mode: "create" | "append",
+	): Promise<{ created: boolean }> {
+		return this.withNoteLock(vaultPath, async () => {
+			const existing = await this.getFile(vaultPath);
+			if (existing === null) {
+				await this.putFile(vaultPath, content, "text/markdown");
+				log.info({ vaultPath, mode }, "instruction: note created");
+				return { created: true };
+			}
+			if (mode === "create") {
+				log.debug({ vaultPath }, "instruction: note already exists — no-op");
+				return { created: false };
+			}
+			await this.putFile(
+				vaultPath,
+				`${existing.replace(/\n*$/, "")}\n${content}\n`,
+				"text/markdown",
+			);
+			log.info({ vaultPath }, "instruction: content appended to note");
+			return { created: false };
+		});
+	}
+
 	async saveAsset(
 		name: string,
 		bytes: Uint8Array,

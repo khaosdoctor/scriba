@@ -5,11 +5,13 @@ import {
 	doneMessage,
 	enrichableSource,
 	escapeHtml,
+	extractInstructions,
 	forcedCandidates,
 	isRecoverable,
 	journalLine,
 	linkDateWords,
 	makeJotId,
+	normalizeNotePath,
 	replaceAnchorLine,
 } from "../core.ts";
 import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
@@ -57,6 +59,9 @@ export interface BotServices {
 		state: "done" | "failed" | "retrying",
 	) => Promise<void>; // swap the intake reaction on the jot's message
 	typing: () => Promise<void>; // "typing…" chat action while a jot is being processed
+	// Report the outcome of a jot's `@@instruction@@`(s) — a reply to the jot's own
+	// message, separate from its normal status-message lifecycle.
+	notifyInstruction: (jotId: string, text: string) => Promise<void>;
 }
 
 /** Turns a queued jot into an enriched, written journal line. Audio + text only. */
@@ -145,6 +150,12 @@ export class JotProcessor {
 					{ id, followers: followers.map((f) => f.id) },
 					`squash: enriching ${followers.length + 1} jots as one line`,
 				);
+
+			// Each jot's own @@instruction@@(s) fire independently of squash-merging — a
+			// squashed burst's line is enriched as one entry, but an instruction still acts
+			// on just the jot that carried it. Best-effort: a failure here must never block
+			// the journal line below.
+			for (const j of [jot, ...followers]) await this.handleInstructions(j);
 
 			let textPart = source;
 			if (source.trim()) {
@@ -375,6 +386,64 @@ export class JotProcessor {
 		}
 		await this.repo.updateJot(jot.id, patch);
 		return { ...jot, ...patch };
+	}
+
+	/** Act on a jot's `@@instruction@@`(s), if any: ask the agent what to do (given the
+	 *  full raw text for positional context), then deterministically apply the resulting
+	 *  note action(s) — the agent decides intent, it never touches the vault itself.
+	 *  `instructions_run` guards this from firing twice on the same jot (e.g. a later
+	 *  /reprocess), since appending to a note isn't idempotent. Best-effort: any failure is
+	 *  logged and reported to the user, but never blocks the jot's own journal line. */
+	private async handleInstructions(jot: Jot): Promise<void> {
+		if (jot.kind !== "text" || jot.instructions_run) return;
+		const { instructions } = extractInstructions(jot.raw_text ?? "");
+		if (!instructions.length) return;
+		log.info(
+			{ id: jot.id, count: instructions.length },
+			"instructions: found @@ marker(s), calling agent",
+		);
+		try {
+			const result = await this.enricher.runInstructions(
+				jot.raw_text ?? "",
+				instructions,
+			);
+			for (const action of result.actions) {
+				const path = normalizeNotePath(action.path);
+				if (!path) {
+					log.warn(
+						{ id: jot.id, path: action.path },
+						"instructions: rejected unsafe note path",
+					);
+					continue;
+				}
+				const { created } = await this.obsidian.ensureNote(
+					path,
+					action.content,
+					action.mode,
+				);
+				log.info(
+					{ id: jot.id, path, mode: action.mode, created },
+					"instructions: note action applied",
+				);
+			}
+			if (result.reply.trim())
+				await this.bot.notifyInstruction(jot.id, `🧩 ${result.reply.trim()}`);
+			log.info(
+				{ id: jot.id, actions: result.actions.length },
+				"instructions: done",
+			);
+		} catch (err) {
+			log.error(
+				{ id: jot.id, err },
+				"instructions: failed (journal line still proceeds)",
+			);
+			await this.bot.notifyInstruction(
+				jot.id,
+				"⚠️ Couldn't carry out one of your @@ instructions.",
+			);
+		} finally {
+			await this.repo.updateJot(jot.id, { instructions_run: true });
+		}
 	}
 
 	/** Resolve relative-date phrases against the jot's own day, once, for reuse in both the journal line and the Telegram preview. */
