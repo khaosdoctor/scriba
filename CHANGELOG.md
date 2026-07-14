@@ -1,3 +1,15 @@
+## [1.22.0](https://github.com/khaosdoctor/scriba/compare/v1.21.2...v1.22.0) (2026-07-14)
+
+
+### Features
+
+* use the agent SDK's native structured output for enrichment ([e5525b1](https://github.com/khaosdoctor/scriba/commit/e5525b1b4c047307d12a88268ec7516ab58ba334))
+
+
+### Bug Fixes
+
+* forbid narration in enrichment model response ([55b6832](https://github.com/khaosdoctor/scriba/commit/55b6832f73e5211d8c4b1919d7ea2cbc68090512))
+
 ## [1.21.2](https://github.com/khaosdoctor/scriba/compare/v1.21.1...v1.21.2) (2026-07-12)
 
 
@@ -26,11 +38,4 @@
 ### Features
 
 * add interactive /reprocess command ([40157bd](https://github.com/khaosdoctor/scriba/commit/40157bd5b715016c0df184aa07967c810442edfd))
-
-## [1.19.0](https://github.com/khaosdoctor/scriba/compare/v1.18.0...v1.19.0) (2026-07-10)
-
-
-### Features
-
-* notify on new deploy with version and uptime ([4a17358](https://github.com/khaosdoctor/scriba/commit/4a17358d9393d05c8b6bb061ccdb06aa13096665))
 
