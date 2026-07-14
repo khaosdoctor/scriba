@@ -10,7 +10,12 @@ type Msg =
 				usage?: { input_tokens?: number; output_tokens?: number };
 			};
 	  }
-	| { type: "result"; result?: string };
+	| {
+			type: "result";
+			result?: unknown;
+			subtype?: string;
+			structured_output?: unknown;
+	  };
 
 /** Fake SDK query: yields the given messages, and records the last call's prompt + options. */
 function fakeQuery(msgs: Msg[]) {
@@ -381,4 +386,82 @@ test("warns once when switching to the fallback and once when usage recovers", a
 	assert.equal(switches[0]!.model, "openai/gpt-oss-120b");
 	assert.equal(switches[1]!.model, "claude-haiku-4-5");
 	assert.equal(groq.calls.length, 2); // fallback used for the two failing calls only
+});
+
+test("enrich requests structured output and uses it directly, skipping text parsing", async () => {
+	const { fn, calls } = fakeQuery([
+		{
+			type: "result",
+			subtype: "success",
+			result: "ignored — structured_output wins",
+			structured_output: {
+				text: "Ran with [[John]] today",
+				ambiguous: [{ surface: "no", note: "Norway" }],
+			},
+		},
+	]);
+	const out = await new Enricher(undefined, fn).enrich({
+		text: "Ran with John today",
+		candidates: [{ surface: "John", note: "John" }],
+	});
+	assert.equal(out.text, "Ran with [[John]] today");
+	assert.deepEqual(out.ambiguous, [{ surface: "no", note: "Norway" }]);
+	assert.equal(calls[0]!.options.outputFormat.type, "json_schema");
+	assert.equal(calls[0]!.options.outputFormat.schema.required.length, 2);
+});
+
+test("editText and describeImage don't request structured output", async () => {
+	const { fn: editFn, calls: editCalls } = fakeQuery([assistantText("edited")]);
+	await new Enricher(undefined, editFn).editText("old", "fix it");
+	assert.equal("outputFormat" in editCalls[0]!.options, false);
+
+	const { fn: visionFn, calls: visionCalls } = fakeQuery([
+		assistantText("a cat"),
+	]);
+	await new Enricher(undefined, visionFn).describeImage(
+		new Uint8Array([1]),
+		"image/png",
+	);
+	assert.equal("outputFormat" in visionCalls[0]!.options, false);
+});
+
+test("enrich falls back to text parsing when structured_output fails schema validation", async () => {
+	const { fn } = fakeQuery([
+		{
+			type: "result",
+			subtype: "success",
+			result: '{"text":"from-text-fallback","ambiguous":[]}',
+			structured_output: { text: 42 }, // wrong type, and missing "ambiguous"
+		},
+	]);
+	const out = await new Enricher(undefined, fn).enrich({
+		text: "x",
+		candidates: [],
+	});
+	assert.equal(out.text, "from-text-fallback");
+});
+
+test("enrich throws when the SDK gives up on structured output (error subtype)", async () => {
+	const { fn } = fakeQuery([
+		{ type: "result", subtype: "error_max_structured_output_retries" },
+	]);
+	await assert.rejects(
+		new Enricher(undefined, fn).enrich({ text: "x", candidates: [] }),
+		/agent gave up producing a usable result/,
+	);
+});
+
+test("enrich falls back to Groq text-parsing when structured output is exhausted", async () => {
+	const groq = fakeGroq('{"text":"rescued by groq","ambiguous":[]}');
+	const enricher = new Enricher(
+		"claude-haiku-4-5",
+		fakeQuery([
+			{ type: "result", subtype: "error_max_structured_output_retries" },
+		]).fn,
+		{ apiKey: "gsk_test", model: "llama-3.3-70b-versatile" },
+		groq.fn,
+	);
+	const out = await enricher.enrich({ text: "x", candidates: [] });
+	assert.equal(out.text, "rescued by groq");
+	assert.equal(groq.calls.length, 1);
 });

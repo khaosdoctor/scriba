@@ -1,5 +1,7 @@
+import type { OutputFormat } from "@anthropic-ai/claude-agent-sdk";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import Groq from "groq-sdk";
+import { z } from "zod";
 import type { Candidate } from "../core.ts";
 import { logger } from "../log.ts";
 
@@ -62,6 +64,41 @@ const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules
 - For non-registered candidates you are unsure about, DO NOT link them; list them under "ambiguous" so the human can decide.
 Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}]}
 Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
+
+/** Validates the agent's structured_output payload (the SDK's outputFormat already
+ *  constrains the shape server-side; this guards against schema drift and the
+ *  Groq fallback, which has no native structured-output support). */
+const enrichedPayloadSchema = z.object({
+	text: z.string(),
+	ambiguous: z.array(z.object({ surface: z.string(), note: z.string() })),
+});
+
+/** JSON Schema twin of enrichedPayloadSchema, for the SDK's outputFormat request param
+ *  (which takes raw JSON Schema, not a Zod schema). Keep the two in sync by hand — the
+ *  shape is small and stable. */
+const ENRICH_OUTPUT_FORMAT: OutputFormat = {
+	type: "json_schema",
+	schema: {
+		type: "object",
+		properties: {
+			text: { type: "string" },
+			ambiguous: {
+				type: "array",
+				items: {
+					type: "object",
+					properties: {
+						surface: { type: "string" },
+						note: { type: "string" },
+					},
+					required: ["surface", "note"],
+					additionalProperties: false,
+				},
+			},
+		},
+		required: ["text", "ambiguous"],
+		additionalProperties: false,
+	},
+};
 
 /** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
 const fence = (s: string): string => s.replaceAll('"""', "");
@@ -126,18 +163,42 @@ export class Enricher {
 			},
 			"enrich: calling agent",
 		);
-		const { text, usage } = await this.run(prompt, SYSTEM, [
-			{ role: "system", content: SYSTEM },
-			{ role: "user", content: prompt },
-		]);
+		const { text, usage, structuredOutput } = await this.run(
+			prompt,
+			SYSTEM,
+			[
+				{ role: "system", content: SYSTEM },
+				{ role: "user", content: prompt },
+			],
+			ENRICH_OUTPUT_FORMAT,
+		);
 
-		const parsed = this.extractJson(text);
+		// Prefer the SDK's schema-validated structured output (only the primary model
+		// supports it — the SDK retries internally before giving up). Fall back to
+		// scraping JSON out of the free-text response for the Groq path, or for the rare
+		// case the structured payload doesn't match our schema.
+		let parsed: { text?: string; ambiguous?: Candidate[] } | null = null;
+		if (structuredOutput !== undefined) {
+			const result = enrichedPayloadSchema.safeParse(structuredOutput);
+			if (result.success) parsed = result.data;
+			else
+				log.warn(
+					{ err: result.error, structuredOutput },
+					"enrich: structured_output failed schema validation, falling back to text parsing",
+				);
+		}
+		if (!parsed) parsed = this.extractJson(text);
+
 		if (!parsed?.text)
 			throw new Error(
 				`enrichment returned no usable JSON: ${text.slice(0, 200)}`,
 			);
 		log.info(
-			{ usage, ambiguous: parsed.ambiguous?.length ?? 0 },
+			{
+				usage,
+				ambiguous: parsed.ambiguous?.length ?? 0,
+				structured: structuredOutput !== undefined,
+			},
 			"enrich: agent responded",
 		);
 		return { text: parsed.text, ambiguous: parsed.ambiguous ?? [], usage };
@@ -203,9 +264,15 @@ export class Enricher {
 		prompt: unknown,
 		systemPrompt?: string,
 		groqMessages?: GroqMessage[],
-	): Promise<{ text: string; usage: { input: number; output: number } }> {
+		outputFormat?: OutputFormat,
+	): Promise<{
+		text: string;
+		usage: { input: number; output: number };
+		structuredOutput?: unknown;
+	}> {
 		try {
 			let text = "";
+			let structuredOutput: unknown;
 			const usage = { input: 0, output: 0 };
 			const stream = this.query({
 				prompt: prompt as any,
@@ -214,6 +281,7 @@ export class Enricher {
 					allowedTools: [],
 					...(systemPrompt ? { systemPrompt } : {}),
 					...(this.model ? { model: this.model } : {}),
+					...(outputFormat ? { outputFormat } : {}),
 				},
 			});
 			for await (const msg of stream as AsyncIterable<any>) {
@@ -225,12 +293,17 @@ export class Enricher {
 						usage.input += u.input_tokens ?? 0;
 						usage.output += u.output_tokens ?? 0;
 					}
-				} else if (
-					msg.type === "result" &&
-					typeof msg.result === "string" &&
-					!text
-				) {
-					text = msg.result;
+				} else if (msg.type === "result") {
+					// A named error subtype (e.g. error_max_structured_output_retries) means
+					// the SDK already retried against the schema server-side and gave up —
+					// treat it as a failed call so the Groq fallback / give-up path kicks in.
+					if (msg.subtype && msg.subtype !== "success")
+						throw new Error(
+							`agent gave up producing a usable result (${msg.subtype})`,
+						);
+					if (typeof msg.result === "string" && !text) text = msg.result;
+					if (msg.structured_output !== undefined)
+						structuredOutput = msg.structured_output;
 				}
 			}
 			// SDK worked. If we were on the fallback, usage has recovered — flip back + warn.
@@ -242,7 +315,7 @@ export class Enricher {
 				);
 				await this.announce("primary", this.model ?? "default");
 			}
-			return { text, usage };
+			return { text, usage, structuredOutput };
 		} catch (err) {
 			if (!this.fallback || !groqMessages) throw err;
 			if (!this.usingFallback) {
