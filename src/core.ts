@@ -161,6 +161,13 @@ export function doneMessage(
 	return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squash}`;
 }
 
+/** In-chat confirmation after an edit is applied: the corrected line blockquoted so the
+ *  new text is visible immediately, not just a bare "updated". HTML parse mode — content
+ *  is escaped. */
+export function editConfirmation(time: string, text: string): string {
+	return `✏️ Updated\n<blockquote>🕒 ${time} · ${escapeHtml(text.trim() || "…")}</blockquote>`;
+}
+
 /** Journal bullet in the vault's house style: `- _HH:MM:SS ::_ <text> ^anchor` */
 export function journalLine(
 	time: string,

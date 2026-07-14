@@ -7,6 +7,7 @@ import {
 	anchorLine,
 	deleteAnchorLine,
 	distinctSurfaces,
+	editConfirmation,
 	entitiesToMarkdown,
 	isBlank,
 	isEditableJot,
@@ -312,10 +313,14 @@ export class ScribaBot implements BotServices {
 			{ jotId, count: edits.length },
 			"applying edits queued during processing",
 		);
-		await this.applyEdits(jot, edits);
+		const confirmation = await this.applyEdits(jot, edits);
 		await this.repo.clearQueuedEdits(jotId); // clear only after apply succeeds, so a throw doesn't lose them
-		await this.notify(
-			`✏️ Applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""}.`,
+		// Edit the jot's own status message in place rather than posting a new one — the
+		// chat keeps a single, already-updated message per jot instead of the stale
+		// "done" confirmation sitting alongside a separate "edited" one.
+		await this.status(
+			jotId,
+			`${confirmation}\n(applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""})`,
 		);
 	}
 
@@ -470,14 +475,17 @@ export class ScribaBot implements BotServices {
 					: "⏳ still processing — I'll apply that edit once it's done.",
 			);
 		}
+		// Both branches edit the jot's own status message in place (this.status) rather
+		// than posting a new reply, so the chat ends up with the single, already-updated
+		// message instead of the stale confirmation sitting alongside a fresh one.
 		if (blank) {
 			log.info({ jotId }, "edited message cleared — removing journal line");
-			await ctx.reply("🗑️ got it — removing…");
-			return void ctx.reply(await this.deleteJot(jot));
+			await this.status(jotId, "🗑️ got it — removing…");
+			return void this.status(jotId, await this.deleteJot(jot));
 		}
 		log.info({ jotId, text: markdown }, "applying edit to processed jot");
-		await ctx.reply("✍️ got your edit — applying…");
-		await ctx.reply(await this.replaceJotText(jot, markdown));
+		await this.status(jotId, "✍️ got your edit — applying…");
+		await this.status(jotId, await this.replaceJotText(jot, markdown));
 	}
 
 	/** Attachment intake (image/video): keep the caption as display text, save + embed the
@@ -633,7 +641,10 @@ export class ScribaBot implements BotServices {
 			);
 		}
 		log.info({ jotId, instruction }, "applying edit");
-		await ctx.reply(await this.applyEdits(jot, [instruction]));
+		// Edit the jot's own status message in place rather than posting a new reply, so
+		// the chat ends up with the single, already-updated message instead of the stale
+		// confirmation sitting alongside a fresh one.
+		await this.status(jotId, await this.applyEdits(jot, [instruction]));
 	}
 
 	/** Apply one or more edit instructions to a jot's line, merged into a single write
@@ -643,10 +654,10 @@ export class ScribaBot implements BotServices {
 		// acquire it here — locking here and then calling deleteJot would deadlock on the path.
 		if (instructions.some((i) => i.trim().toLowerCase() === "delete"))
 			return this.deleteJot(jot);
-		return this.obsidian.withNoteLock(jot.note_path, async () => {
+		const result = await this.obsidian.withNoteLock(jot.note_path, async () => {
 			const note = await this.obsidian.readNote(jot.note_path);
 			const line = anchorLine(note, jot.anchor);
-			if (!line) return "Couldn't find that line in the note.";
+			if (!line) return null;
 
 			let text = stripJournalLine(line, jot.time, jot.anchor);
 			const freeform: string[] = [];
@@ -666,23 +677,48 @@ export class ScribaBot implements BotServices {
 				journalLine(jot.time, text, jot.anchor),
 			);
 			if (out) await this.obsidian.writeNote(jot.note_path, out);
-			return "✏️ updated";
+			return text;
 		});
+		if (result === null) return "Couldn't find that line in the note.";
+		await this.syncEditedSource(jot, result);
+		return editConfirmation(jot.time, result);
 	}
 
 	/** Replace a jot's entire text content (for edited messages, not instructions). */
 	private async replaceJotText(jot: Jot, newText: string): Promise<string> {
-		return this.obsidian.withNoteLock(jot.note_path, async () => {
+		const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
 			const note = await this.obsidian.readNote(jot.note_path);
-			const out = replaceAnchorLine(
+			const replaced = replaceAnchorLine(
 				note,
 				jot.anchor,
 				journalLine(jot.time, newText, jot.anchor),
 			);
-			if (!out) return "Couldn't find that line in the note.";
-			await this.obsidian.writeNote(jot.note_path, out);
-			return "✏️ updated";
+			if (replaced) await this.obsidian.writeNote(jot.note_path, replaced);
+			return replaced;
 		});
+		if (!out) return "Couldn't find that line in the note.";
+		await this.syncEditedSource(jot, newText);
+		return editConfirmation(jot.time, newText);
+	}
+
+	/** Fold a corrected line's text back into the jot's own source field (`transcript` for
+	 *  audio, `raw_text` for text) so a later /reprocess builds on the fix instead of
+	 *  reverting to the original mis-transcription/typo — e.g. correcting a voice note's
+	 *  "bake" to "cake" via `s/bake/cake/` used to only touch the journal line; reprocessing
+	 *  afterwards re-transcribed the same audio and lost the fix. Scoped to a standalone
+	 *  jot (not a squashed leader/follower): a squashed line is several jots' sources
+	 *  combined into one, so there's no single field to fold the edited text back into
+	 *  without duplicating or dropping a follower's content. */
+	private async syncEditedSource(jot: Jot, text: string): Promise<void> {
+		if (jot.kind !== "audio" && jot.kind !== "text") return;
+		if (jot.anchor !== jot.id) return; // squashed follower — no single source to update
+		if ((await this.repo.groupFollowers(jot.id)).length > 0) return; // squashed leader
+		const field = jot.kind === "audio" ? "transcript" : "raw_text";
+		await this.repo.updateJot(jot.id, { [field]: text });
+		log.info(
+			{ jotId: jot.id, field },
+			"edit folded back into jot source for future reprocessing",
+		);
 	}
 
 	/** Remove a jot's line from its daily note and mark it deleted (a terminal state, so a
@@ -744,7 +780,9 @@ export class ScribaBot implements BotServices {
 			);
 		}
 		log.info({ jotId }, "delete command — removing journal line");
-		await ctx.reply(await this.deleteJot(jot));
+		// Edit the jot's own status message in place — see applyMessageEdit's blank-edit
+		// branch for why (single up-to-date message, not a stale one plus a new one).
+		await this.status(jotId, await this.deleteJot(jot));
 	}
 
 	private async handleButton(ctx: any): Promise<void> {
