@@ -1,3 +1,16 @@
+## [1.23.0](https://github.com/khaosdoctor/scriba/compare/v1.22.0...v1.23.0) (2026-07-14)
+
+
+### Features
+
+* quote the updated line in edit confirmations ([98e2130](https://github.com/khaosdoctor/scriba/commit/98e2130209cf089ef1bae93f318b5ac39dc09507))
+
+
+### Bug Fixes
+
+* edit jot status messages in place instead of posting new ones ([4570668](https://github.com/khaosdoctor/scriba/commit/4570668545327f8f59cc81dc0e3a33eb15ca55fd))
+* fold jot edits back into the source before reprocess ([0ad13e3](https://github.com/khaosdoctor/scriba/commit/0ad13e36ccdb4b81536a55029da0d515b900e395))
+
 ## [1.22.0](https://github.com/khaosdoctor/scriba/compare/v1.21.2...v1.22.0) (2026-07-14)
 
 
@@ -31,11 +44,4 @@
 ### Features
 
 * add merge opt-out reaction for squashed jots ([40ef4dd](https://github.com/khaosdoctor/scriba/commit/40ef4dd5433bbd131b5161f76322f01a74433c76))
-
-## [1.20.0](https://github.com/khaosdoctor/scriba/compare/v1.19.0...v1.20.0) (2026-07-11)
-
-
-### Features
-
-* add interactive /reprocess command ([40157bd](https://github.com/khaosdoctor/scriba/commit/40157bd5b715016c0df184aa07967c810442edfd))
 
