@@ -55,11 +55,12 @@ const envSchema = z
 
 		// Enrichment runs on the Claude Agent SDK (subscription auth). Haiku is the default:
 		// cheap, plenty of headroom, and the task (translate + insert wikilinks) is simple.
-		// When subscription usage is exhausted, enrichment falls back to a free Groq model
-		// (reusing GROQ_API_KEY). No key ⇒ no fallback: jots post un-enriched instead.
+		// When the subscription SDK call fails (usage exhausted, overload, network),
+		// enrichment falls back to a free Groq model (reusing GROQ_API_KEY). No key ⇒ no
+		// fallback: jots post un-enriched instead.
 		// gpt-oss-120b is Groq's strongest open-weight model for structured JSON in/out.
 		// Text-only: image captioning can't fall back (Groq has no production vision model),
-		// so a captionless image posts embedded-but-uncaptioned when usage is out.
+		// so a captionless image posts embedded-but-uncaptioned when the primary is down.
 		AGENT_MODEL: z.string().default("claude-haiku-4-5"),
 		ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
 	})

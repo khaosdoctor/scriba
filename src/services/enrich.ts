@@ -306,12 +306,14 @@ export class Enricher {
 						structuredOutput = msg.structured_output;
 				}
 			}
-			// SDK worked. If we were on the fallback, usage has recovered — flip back + warn.
+			// SDK worked. If we were on the fallback, the primary model recovered — flip
+			// back + warn. (The earlier failure may or may not have been usage exhaustion —
+			// see the `err` logged when we switched to fallback for the actual cause.)
 			if (this.usingFallback) {
 				this.usingFallback = false;
 				log.info(
 					{ model: this.model ?? "default" },
-					"enrich: subscription usage recovered — back on the primary model",
+					"enrich: primary model recovered — switching back from Groq fallback",
 				);
 				await this.announce("primary", this.model ?? "default");
 			}

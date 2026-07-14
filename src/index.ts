@@ -81,7 +81,7 @@ async function main(): Promise<void> {
 		},
 		config.enrich.groqApiKey
 			? "enricher ready with Groq fallback"
-			: "enricher ready — no GROQ_API_KEY, jots post un-enriched when usage is exhausted",
+			: "enricher ready — no GROQ_API_KEY, jots post un-enriched when the primary model is unavailable",
 	);
 	const links = new LinkIndex(config.vaultPath);
 	links.start();
@@ -106,13 +106,16 @@ async function main(): Promise<void> {
 		bot,
 	);
 	bot.setProcessor(processor);
-	// Warn in Telegram when enrichment switches models (usage out ⇄ recovered). Fires
-	// once per transition, not per jot. Late-wired here because the bot exists now.
+	// Warn in Telegram when enrichment switches models (primary unavailable ⇄
+	// recovered). Fires once per transition, not per jot. Late-wired here because the
+	// bot exists now. Wording stays cause-agnostic: a failed SDK call can mean usage is
+	// exhausted, but also overload or a network blip — check the logged `err` for the
+	// actual reason rather than assuming usage.
 	enricher.setSwitchNotifier((to, model) =>
 		bot.notify(
 			to === "fallback"
-				? `⚠️ Claude usage is exhausted — enrichment switched to the free fallback model (${model}). Quality may drop until your usage resets.`
-				: `✅ Claude usage is back — enrichment switched back to ${model}.`,
+				? `⚠️ Claude is unavailable — enrichment switched to the free fallback model (${model}). Quality may drop until it's back.`
+				: `✅ Claude is back — enrichment switched back to ${model}.`,
 		),
 	);
 	const queue = new FlushQueue({
