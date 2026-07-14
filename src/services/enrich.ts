@@ -60,7 +60,8 @@ const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules
 - Candidates marked (REGISTERED) are hand-curated by the human: always link their first occurrence verbatim, with no contextual judgment — skip the ambiguity check entirely for those.
 - Apply confident links inline using [[Note|surface]] (or [[Note]] if identical). Link the first occurrence only.
 - For non-registered candidates you are unsure about, DO NOT link them; list them under "ambiguous" so the human can decide.
-Respond with ONLY a JSON object: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}]}`;
+Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}]}
+Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
 
 /** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
 const fence = (s: string): string => s.replaceAll('"""', "");
