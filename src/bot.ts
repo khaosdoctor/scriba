@@ -315,10 +315,12 @@ export class ScribaBot implements BotServices {
 		);
 		const confirmation = await this.applyEdits(jot, edits);
 		await this.repo.clearQueuedEdits(jotId); // clear only after apply succeeds, so a throw doesn't lose them
-		await this.bot.api.sendMessage(
-			config.telegram.allowedUserId,
+		// Edit the jot's own status message in place rather than posting a new one — the
+		// chat keeps a single, already-updated message per jot instead of the stale
+		// "done" confirmation sitting alongside a separate "edited" one.
+		await this.status(
+			jotId,
 			`${confirmation}\n(applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""})`,
-			{ parse_mode: "HTML" },
 		);
 	}
 
@@ -473,16 +475,17 @@ export class ScribaBot implements BotServices {
 					: "⏳ still processing — I'll apply that edit once it's done.",
 			);
 		}
+		// Both branches edit the jot's own status message in place (this.status) rather
+		// than posting a new reply, so the chat ends up with the single, already-updated
+		// message instead of the stale confirmation sitting alongside a fresh one.
 		if (blank) {
 			log.info({ jotId }, "edited message cleared — removing journal line");
-			await ctx.reply("🗑️ got it — removing…");
-			return void ctx.reply(await this.deleteJot(jot));
+			await this.status(jotId, "🗑️ got it — removing…");
+			return void this.status(jotId, await this.deleteJot(jot));
 		}
 		log.info({ jotId, text: markdown }, "applying edit to processed jot");
-		await ctx.reply("✍️ got your edit — applying…");
-		await ctx.reply(await this.replaceJotText(jot, markdown), {
-			parse_mode: "HTML",
-		});
+		await this.status(jotId, "✍️ got your edit — applying…");
+		await this.status(jotId, await this.replaceJotText(jot, markdown));
 	}
 
 	/** Attachment intake (image/video): keep the caption as display text, save + embed the
@@ -638,9 +641,10 @@ export class ScribaBot implements BotServices {
 			);
 		}
 		log.info({ jotId, instruction }, "applying edit");
-		await ctx.reply(await this.applyEdits(jot, [instruction]), {
-			parse_mode: "HTML",
-		});
+		// Edit the jot's own status message in place rather than posting a new reply, so
+		// the chat ends up with the single, already-updated message instead of the stale
+		// confirmation sitting alongside a fresh one.
+		await this.status(jotId, await this.applyEdits(jot, [instruction]));
 	}
 
 	/** Apply one or more edit instructions to a jot's line, merged into a single write
@@ -776,7 +780,9 @@ export class ScribaBot implements BotServices {
 			);
 		}
 		log.info({ jotId }, "delete command — removing journal line");
-		await ctx.reply(await this.deleteJot(jot));
+		// Edit the jot's own status message in place — see applyMessageEdit's blank-edit
+		// branch for why (single up-to-date message, not a stale one plus a new one).
+		await this.status(jotId, await this.deleteJot(jot));
 	}
 
 	private async handleButton(ctx: any): Promise<void> {
