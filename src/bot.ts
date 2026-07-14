@@ -7,6 +7,7 @@ import {
 	anchorLine,
 	deleteAnchorLine,
 	distinctSurfaces,
+	editConfirmation,
 	entitiesToMarkdown,
 	isBlank,
 	isEditableJot,
@@ -312,10 +313,12 @@ export class ScribaBot implements BotServices {
 			{ jotId, count: edits.length },
 			"applying edits queued during processing",
 		);
-		await this.applyEdits(jot, edits);
+		const confirmation = await this.applyEdits(jot, edits);
 		await this.repo.clearQueuedEdits(jotId); // clear only after apply succeeds, so a throw doesn't lose them
-		await this.notify(
-			`✏️ Applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""}.`,
+		await this.bot.api.sendMessage(
+			config.telegram.allowedUserId,
+			`${confirmation}\n(applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""})`,
+			{ parse_mode: "HTML" },
 		);
 	}
 
@@ -477,7 +480,9 @@ export class ScribaBot implements BotServices {
 		}
 		log.info({ jotId, text: markdown }, "applying edit to processed jot");
 		await ctx.reply("✍️ got your edit — applying…");
-		await ctx.reply(await this.replaceJotText(jot, markdown));
+		await ctx.reply(await this.replaceJotText(jot, markdown), {
+			parse_mode: "HTML",
+		});
 	}
 
 	/** Attachment intake (image/video): keep the caption as display text, save + embed the
@@ -633,7 +638,9 @@ export class ScribaBot implements BotServices {
 			);
 		}
 		log.info({ jotId, instruction }, "applying edit");
-		await ctx.reply(await this.applyEdits(jot, [instruction]));
+		await ctx.reply(await this.applyEdits(jot, [instruction]), {
+			parse_mode: "HTML",
+		});
 	}
 
 	/** Apply one or more edit instructions to a jot's line, merged into a single write
@@ -670,7 +677,7 @@ export class ScribaBot implements BotServices {
 		});
 		if (result === null) return "Couldn't find that line in the note.";
 		await this.syncEditedSource(jot, result);
-		return "✏️ updated";
+		return editConfirmation(jot.time, result);
 	}
 
 	/** Replace a jot's entire text content (for edited messages, not instructions). */
@@ -687,7 +694,7 @@ export class ScribaBot implements BotServices {
 		});
 		if (!out) return "Couldn't find that line in the note.";
 		await this.syncEditedSource(jot, newText);
-		return "✏️ updated";
+		return editConfirmation(jot.time, newText);
 	}
 
 	/** Fold a corrected line's text back into the jot's own source field (`transcript` for

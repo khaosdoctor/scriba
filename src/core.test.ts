@@ -8,6 +8,7 @@ import {
 	distinctSurfaces,
 	doneMessage,
 	donePreview,
+	editConfirmation,
 	entitiesToMarkdown,
 	escapeHtml,
 	forcedCandidates,
@@ -314,6 +315,20 @@ test("doneMessage notes a squash only when more than one jot merged", () => {
 	assert.match(
 		doneMessage("14:32:00", "text", "x", "a1b2c3d4", 3),
 		/🧵 3 jots squashed into one entry$/,
+	);
+});
+
+test("editConfirmation blockquotes the time and escapes content", () => {
+	assert.equal(
+		editConfirmation("14:32:00", "ran <5k> today"),
+		"✏️ Updated\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>",
+	);
+});
+
+test("editConfirmation falls back to an ellipsis for a blank result (e.g. a delete)", () => {
+	assert.equal(
+		editConfirmation("14:32:00", "   "),
+		"✏️ Updated\n<blockquote>🕒 14:32:00 · …</blockquote>",
 	);
 });
 
