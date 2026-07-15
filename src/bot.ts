@@ -9,6 +9,7 @@ import {
 	distinctSurfaces,
 	editConfirmation,
 	entitiesToMarkdown,
+	escapeHtml,
 	extractInstructions,
 	isBlank,
 	isEditableJot,
@@ -196,6 +197,27 @@ export class ScribaBot implements BotServices {
 			.catch((err) =>
 				log.warn({ jotId, err }, "notifyInstruction: send failed"),
 			);
+	}
+
+	/** The write_note instruction tool's confirm-before-overwrite gate: ask before
+	 *  replacing a note that already has different content. Mirrors askLink's shape. */
+	async askOverwrite(
+		pendingId: string,
+		path: string,
+		preview: string,
+	): Promise<void> {
+		log.debug({ pendingId, path }, "asking user to confirm overwrite");
+		const kb = new InlineKeyboard()
+			.text("Yes, overwrite", `ow:y:${pendingId}`)
+			.text("No", `ow:n:${pendingId}`);
+		const trimmed = preview.trim();
+		const shown =
+			trimmed.length > 500 ? `${trimmed.slice(0, 500)}…` : trimmed || "(empty)";
+		await this.bot.api.sendMessage(
+			config.telegram.allowedUserId,
+			`Overwrite "${escapeHtml(path)}" with this content?\n<blockquote>${escapeHtml(shown)}</blockquote>`,
+			{ reply_markup: kb, parse_mode: "HTML" },
+		);
 	}
 
 	/** Nightly rating prompt (the scheduler calls this). Delegates to the rating command. */
@@ -823,6 +845,7 @@ export class ScribaBot implements BotServices {
 		if (ns === "menu") return this.menu.handleCallback(ctx, rest);
 		if (ns === "rt") return this.handleRetry(ctx, rest[0]);
 		if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
+		if (ns === "ow") return this.handleOverwrite(ctx, rest[0], rest[1]);
 		if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
 		if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
 		if (ns === HABITS_NS)
@@ -938,5 +961,31 @@ export class ScribaBot implements BotServices {
 				? `🔗 "${rec.surface}" → [[${rec.note}]]`
 				: `"${rec.surface}": nothing to link`,
 		);
+	}
+
+	/** The write_note instruction tool's confirm-before-overwrite gate: apply the queued
+	 *  content on "Yes", discard it on "No". The write itself goes through the note lock
+	 *  like every other vault write, in case something else touched the path meanwhile. */
+	private async handleOverwrite(
+		ctx: any,
+		verd?: string,
+		pid?: string,
+	): Promise<void> {
+		if (!pid) return void ctx.answerCallbackQuery();
+		const rec = await this.repo.takePendingOverwrite(pid);
+		if (!rec) return void ctx.answerCallbackQuery({ text: "expired" });
+
+		if (verd === "n") {
+			log.info({ path: rec.path }, "overwrite declined");
+			await ctx.answerCallbackQuery({ text: "left as is" });
+			return void ctx.editMessageText(`✋ left "${rec.path}" as is.`);
+		}
+
+		await this.obsidian.withNoteLock(rec.path, () =>
+			this.obsidian.writeNote(rec.path, rec.content),
+		);
+		log.info({ path: rec.path }, "overwrite confirmed — note replaced");
+		await ctx.answerCallbackQuery({ text: "overwritten" });
+		await ctx.editMessageText(`✏️ overwrote "${rec.path}".`);
 	}
 }

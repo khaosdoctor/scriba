@@ -290,55 +290,61 @@ test("editText keeps the current text when the edit comes back empty", async () 
 	assert.equal(out, "keep me");
 });
 
-test("runInstructions returns actions and reply from clean JSON", async () => {
-	const body = JSON.stringify({
-		actions: [{ path: "Ideas/Trip.md", content: "Trip idea", mode: "create" }],
-		reply: "Created a note for your trip idea.",
-	});
-	const { fn, calls } = fakeQuery([assistantText(body)]);
-	const out = await new Enricher(undefined, fn).runInstructions(
+const fakeToolset = {
+	mcpServers: { vault: { type: "sdk", name: "vault" } as any },
+	allowedTools: ["mcp__vault__read_note", "mcp__vault__write_note"],
+};
+
+test("runInstructionAgent wires the toolset and passes maxTurns/permissionMode through", async () => {
+	const { fn, calls } = fakeQuery([assistantText("Created the note.")]);
+	await new Enricher(undefined, fn).runInstructionAgent(
 		"Went for a run @@create Ideas/Trip.md with Trip idea@@ today",
 		["create Ideas/Trip.md with Trip idea"],
+		fakeToolset,
 	);
-	assert.deepEqual(out.actions, [
-		{ path: "Ideas/Trip.md", content: "Trip idea", mode: "create" },
-	]);
-	assert.equal(out.reply, "Created a note for your trip idea.");
-	assert.match(calls[0]!.prompt as string, /1\. create Ideas\/Trip\.md/);
+	const opts = calls[0]!.options;
+	assert.deepEqual(opts.mcpServers, fakeToolset.mcpServers);
+	assert.deepEqual(opts.allowedTools, fakeToolset.allowedTools);
+	assert.equal(opts.permissionMode, "bypassPermissions");
+	assert.equal(opts.allowDangerouslySkipPermissions, true);
+	assert.equal(opts.maxTurns, 8);
+	assert.match(
+		calls[0]!.prompt as string,
+		/1\. create Ideas\/Trip\.md with Trip idea/,
+	);
 });
 
-test("runInstructions defaults actions/reply to empty when the model omits them", async () => {
-	const { fn } = fakeQuery([assistantText("{}")]);
-	const out = await new Enricher(undefined, fn).runInstructions("hi", [
-		"do something",
+test("runInstructionAgent returns the final turn's text, not a concat of every turn", async () => {
+	const { fn } = fakeQuery([
+		assistantText("thinking about it"), // an earlier turn's stray text (e.g. around a tool call)
+		assistantText("Created the note for your trip idea."),
 	]);
-	assert.deepEqual(out.actions, []);
-	assert.equal(out.reply, "");
+	const out = await new Enricher(undefined, fn).runInstructionAgent(
+		"hi",
+		["x"],
+		fakeToolset,
+	);
+	assert.equal(out.reply, "Created the note for your trip idea.");
 });
 
-test("runInstructions uses the SDK's structured output when valid", async () => {
-	const { fn, calls } = fakeQuery([
-		{
-			type: "result",
-			subtype: "success",
-			structured_output: {
-				actions: [{ path: "X.md", content: "y", mode: "append" }],
-				reply: "done",
-			},
-		},
+test("runInstructionAgent aggregates usage across turns", async () => {
+	const { fn } = fakeQuery([
+		assistantText("working on it", { input_tokens: 5, output_tokens: 2 }),
+		assistantText("done", { input_tokens: 3, output_tokens: 1 }),
 	]);
-	const out = await new Enricher(undefined, fn).runInstructions("hi", ["x"]);
-	assert.deepEqual(out.actions, [
-		{ path: "X.md", content: "y", mode: "append" },
-	]);
-	assert.equal(calls[0]!.options.outputFormat.type, "json_schema");
+	const out = await new Enricher(undefined, fn).runInstructionAgent(
+		"hi",
+		["x"],
+		fakeToolset,
+	);
+	assert.deepEqual(out.usage, { input: 8, output: 3 });
 });
 
-test("runInstructions throws when the response has no usable JSON", async () => {
-	const { fn } = fakeQuery([assistantText("not json at all")]);
+test("runInstructionAgent throws when the agent gives up (error subtype)", async () => {
+	const { fn } = fakeQuery([{ type: "result", subtype: "error_max_turns" }]);
 	await assert.rejects(
-		new Enricher(undefined, fn).runInstructions("hi", ["x"]),
-		/no usable JSON/,
+		new Enricher(undefined, fn).runInstructionAgent("hi", ["x"], fakeToolset),
+		/agent gave up acting on the instruction/,
 	);
 });
 

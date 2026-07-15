@@ -84,6 +84,21 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 		assert.equal((await repo.takePendingLink("pppppppp"))?.note, "Lev");
 		assert.equal(await repo.takePendingLink("pppppppp"), undefined); // consumed
 
+		// pending note overwrites: the write_note instruction tool's confirm-before-
+		// overwrite gate. Same atomic-take shape as pending links.
+		await repo.addPendingOverwrite(
+			"owowowow",
+			"aaaaaaaa",
+			"X.md",
+			"new content",
+		);
+		assert.deepEqual(await repo.takePendingOverwrite("owowowow"), {
+			jot_id: "aaaaaaaa",
+			path: "X.md",
+			content: "new content",
+		});
+		assert.equal(await repo.takePendingOverwrite("owowowow"), undefined); // consumed
+
 		await repo.queueEdit("aaaaaaaa", "s/a/b/");
 		await repo.queueEdit("aaaaaaaa", "delete");
 		assert.deepEqual(await repo.queuedEdits("aaaaaaaa"), ["s/a/b/", "delete"]);

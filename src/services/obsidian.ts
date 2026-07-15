@@ -51,6 +51,13 @@ export class ObsidianClient {
 		return `${this.cfg.dailyDir}/${date}.md`;
 	}
 
+	/** True for any path under the daily notes directory — a hard guard the instruction
+	 *  tools check regardless of what the agent asks for, since writing there would bypass
+	 *  the whole jot pipeline (anchors, squash, edit-fold) instead of going through it. */
+	isDailyNote(vaultPath: string): boolean {
+		return vaultPath.startsWith(`${this.cfg.dailyDir}/`);
+	}
+
 	private async getFile(vaultPath: string): Promise<string | null> {
 		const res = await fetch(`${this.cfg.url}/vault/${this.encode(vaultPath)}`, {
 			headers: this.headers(),

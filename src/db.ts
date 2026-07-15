@@ -247,6 +247,34 @@ export class Repository {
 		});
 	}
 
+	// --- pending note overwrites: the `write_note` instruction tool's confirm-before-
+	// overwrite gate. Mirrors pending_links' shape and atomic-take semantics.
+	async addPendingOverwrite(
+		id: string,
+		jotId: string,
+		path: string,
+		content: string,
+	): Promise<void> {
+		await this.k("pending_overwrites").insert({
+			id,
+			jot_id: jotId,
+			path,
+			content,
+			created_at: Date.now(),
+		});
+	}
+	/** Atomic take: only one of two fast button taps gets the row. */
+	async takePendingOverwrite(
+		id: string,
+	): Promise<{ jot_id: string; path: string; content: string } | undefined> {
+		return this.k.transaction(async (trx) => {
+			const row = await trx("pending_overwrites").where({ id }).first();
+			if (!row) return undefined;
+			await trx("pending_overwrites").where({ id }).del();
+			return { jot_id: row.jot_id, path: row.path, content: row.content };
+		});
+	}
+
 	// --- edits queued while a jot was still processing ---
 	async queueEdit(jotId: string, instruction: string): Promise<void> {
 		await this.k("queued_edits").insert({

@@ -23,9 +23,10 @@ deployed on the homelab (Coolify). Single user.
   `core.ts`. Runtime settings that must survive a restart go in the `settings` key/value table.
 - **No tokens for control flow.** Batch timing, retry classification, candidate filtering,
   language routing, and `@@...@@` extraction must not call the model. The agent is only for
-  enrichment, translation, image captioning, freeform edits, and deciding what a jot's
-  `@@instruction@@`(s) mean — even there, the agent only decides intent (which note, what
-  content); applying it to the vault is deterministic code (`JotProcessor.handleInstructions`).
+  enrichment, translation, image captioning, freeform edits, and acting on a jot's
+  `@@instruction@@`(s) — the one deliberate exception where the agent is given real tools
+  (`JotProcessor.buildInstructionTools`) to read/write/search the vault and fetch a page
+  itself, rather than just returning a decision for code to apply.
 - **Vault is English.** Voice is transcribed by the local Parakeet sidecar (default) or
   Groq (`TRANSCRIBER=remote`); non-English is translated in (Groq `/translations`, or the
   enricher for local voice + all text).
@@ -66,20 +67,31 @@ deployed on the homelab (Coolify). Single user.
   sources combined into one and there's no single field to fold the edit back into.
 - **`@@instruction@@` side instructions (text jots only).** Wrapping part of a message in
   `@@...@@` splits it in two: the marked part(s) are stripped out entirely (`extractInstructions`
-  in `core.ts`, token-free) and the rest proceeds through the normal journal flow. A text jot
-  stores both `raw_text` (the untouched original, markers included — never edited, forever) and
-  `text` (the stripped, enrichable/editable content journal lines and edit-folding actually use).
-  During processing, `JotProcessor.handleInstructions` re-extracts the instruction(s) from
-  `raw_text` (never persisted separately — cheap to recompute) and asks the agent
-  (`Enricher.runInstructions`) to turn each into a vault note action against the *full* raw
-  text, so the instruction keeps the positional context of what it refers to. The agent only
-  returns intent (`{path, content, mode: "create"|"append"}` + a short reply); applying it
-  (`ObsidianClient.ensureNote`) is deterministic and never destructive — "create" no-ops if the
-  note exists, "append" only adds to the end, and `normalizeNotePath` (`core.ts`) rejects any
-  path escaping the vault. The jot's `instructions_run` flag guards this from firing twice
-  (e.g. on a later `/reprocess`), since appending to a note isn't idempotent. The user gets a
-  reply to their own message reporting what happened (`BotServices.notifyInstruction`),
-  separate from the jot's normal done/failed status message.
+  in `core.ts`, token-free, handles multiple `@@...@@` blocks in one message) and the rest
+  proceeds through the normal journal flow. A text jot stores both `raw_text` (the untouched
+  original, markers included — never edited, forever) and `text` (the stripped,
+  enrichable/editable content journal lines and edit-folding actually use).
+  `JotProcessor.handleInstructions` re-extracts the instruction(s) from `raw_text` (never
+  persisted separately — cheap to recompute) and runs a real multi-turn tool-calling agent
+  (`Enricher.runInstructionAgent`) against the *full* raw text, so an instruction keeps the
+  positional context of what it refers to (e.g. "this" in "@@also save this@@"). Unlike every
+  other agent call in this codebase, this one gets actual tools
+  (`JotProcessor.buildInstructionTools`, an in-process MCP server via the SDK's
+  `tool()`/`createSdkMcpServer`): `read_note`, `list_notes` (existing vault paths, so it can
+  check before creating or link to something real), `write_note` (create/append/overwrite),
+  and `fetch_url` (page text for reference material — the one place this bot reaches the open
+  internet on the user's behalf; the returned content is untrusted and the system prompt says
+  so explicitly, since it's a prompt-injection surface). `write_note`'s "create" and "append"
+  modes apply immediately; "overwrite" of a note that already holds different content never
+  applies immediately — it queues a `pending_overwrites` row and asks the user to confirm in
+  Telegram (`BotServices.askOverwrite`, mirroring `askLink`'s ambiguous-link confirmation
+  shape), applying only on "Yes". Every tool call is hard-blocked from touching the daily note
+  itself regardless of what's asked (`ObsidianClient.isDailyNote`) and from escaping the vault
+  (`normalizeNotePath` in `core.ts`) — that's enforced in the tool handlers, not just the
+  prompt. The jot's `instructions_run` flag guards the whole thing from firing twice (e.g. on
+  a later `/reprocess`), since these tool calls aren't idempotent. The user gets a reply to
+  their own message reporting what happened (`BotServices.notifyInstruction`), separate from
+  the jot's normal done/failed status message.
 
 ## Conventions
 

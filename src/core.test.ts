@@ -35,6 +35,7 @@ import {
 	replaceAnchorLine,
 	reprocessTargets,
 	setFrontmatterNumber,
+	stripHtml,
 	stripJournalLine,
 	tokenize,
 	withinSquashWindow,
@@ -681,6 +682,12 @@ test("enrichableSource prefers the stripped `text` over `raw_text` for text jots
 		enrichableSource({ ...base, text: "original message" }),
 		"original message",
 	);
+});
+
+test("stripHtml drops scripts/styles/tags and collapses whitespace", () => {
+	const html = `<html><head><style>.x{color:red}</style></head>
+		<body><script>alert(1)</script><h1>Title</h1><p>Hello&nbsp;world &amp; friends</p></body></html>`;
+	assert.equal(stripHtml(html), "Title Hello world & friends");
 });
 
 test("normalizeNotePath rejects traversal/absolute paths and adds .md", () => {

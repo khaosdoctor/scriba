@@ -58,6 +58,20 @@ export function extractInstructions(text: string): {
 	return { text: stripped.replace(/[ \t]+/g, " ").trim(), instructions };
 }
 
+/** Strip a fetched web page down to plain text for the `fetch_url` instruction tool:
+ *  drop script/style blocks, strip tags, collapse whitespace. Not a full HTML parser —
+ *  good enough for handing page content to the agent as reference text, not for display. */
+export function stripHtml(html: string): string {
+	return html
+		.replace(/<script[\s\S]*?<\/script>/gi, " ")
+		.replace(/<style[\s\S]*?<\/style>/gi, " ")
+		.replace(/<[^>]+>/g, " ")
+		.replace(/&nbsp;/gi, " ")
+		.replace(/&amp;/gi, "&")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
 /** Normalize an agent-proposed vault path for an instruction's note action: reject
  *  absolute paths and `.`/`..` traversal segments, and ensure a `.md` extension. Returns
  *  null if the path is unsafe, so a model-authored path can never escape the vault or
