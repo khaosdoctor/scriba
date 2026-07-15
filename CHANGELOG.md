@@ -1,3 +1,10 @@
+## [1.23.1](https://github.com/khaosdoctor/scriba/compare/v1.23.0...v1.23.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* stop asserting usage exhaustion as the cause of enrichment fallback ([#9](https://github.com/khaosdoctor/scriba/issues/9)) ([ff223cd](https://github.com/khaosdoctor/scriba/commit/ff223cdc1092eaa683352258ddb8eb93abc5fd8b))
+
 ## [1.23.0](https://github.com/khaosdoctor/scriba/compare/v1.22.0...v1.23.0) (2026-07-14)
 
 
@@ -37,11 +44,4 @@
 
 * don't link "now" as a relative-date phrase ([5ad902c](https://github.com/khaosdoctor/scriba/commit/5ad902cad8447c9d74810151181ed0acb682f844))
 * show relative-date wikilinks in the Telegram confirmation preview ([4d0e821](https://github.com/khaosdoctor/scriba/commit/4d0e8216b83109e582a58960dd46fae8a526afce))
-
-## [1.21.0](https://github.com/khaosdoctor/scriba/compare/v1.20.0...v1.21.0) (2026-07-12)
-
-
-### Features
-
-* add merge opt-out reaction for squashed jots ([40ef4dd](https://github.com/khaosdoctor/scriba/commit/40ef4dd5433bbd131b5161f76322f01a74433c76))
 
