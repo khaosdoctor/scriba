@@ -2,6 +2,7 @@ import { basename } from "node:path";
 import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
 import {
+	anchorLine,
 	candidates,
 	combineEnrichSource,
 	doneMessage,
@@ -167,12 +168,6 @@ export class JotProcessor {
 					`squash: enriching ${followers.length + 1} jots as one line`,
 				);
 
-			// Each jot's own @@instruction@@(s) fire independently of squash-merging — a
-			// squashed burst's line is enriched as one entry, but an instruction still acts
-			// on just the jot that carried it. Best-effort: a failure here must never block
-			// the journal line below.
-			for (const j of [jot, ...followers]) await this.handleInstructions(j);
-
 			let textPart = source;
 			if (source.trim()) {
 				const [stopwords, rejections, registered] = await Promise.all([
@@ -287,6 +282,13 @@ export class JotProcessor {
 			} catch (err) {
 				log.error({ id, err }, "post-done side effect failed — jot stays done");
 			}
+			// Each jot's own @@instruction@@(s) fire once its own line is actually in the
+			// note — some instructions (e.g. "link this to X") edit that exact line, so
+			// there has to be a real one to edit, not the "⏳" placeholder. Independent of
+			// squash-merging: a squashed burst's line is enriched as one entry, but an
+			// instruction still acts on just the jot that carried it. Best-effort, run last,
+			// after the "done" confirmation the user actually cares about landing first.
+			for (const j of [jot, ...followers]) await this.handleInstructions(j);
 			log.info({ id, ms: Date.now() - t0 }, "jot done");
 		} catch (err) {
 			await this.fail(loaded, err);
@@ -420,7 +422,7 @@ export class JotProcessor {
 			"instructions: found @@ marker(s), calling agent",
 		);
 		try {
-			const toolset = this.buildInstructionTools(jot.id);
+			const toolset = this.buildInstructionTools(jot);
 			const result = await this.enricher.runInstructionAgent(
 				jot.raw_text ?? "",
 				instructions,
@@ -472,9 +474,11 @@ export class JotProcessor {
 	}
 
 	/** Build the in-process vault tools an instruction-agent run gets: read/list/write a
-	 *  note, fetch a page. Handlers close over this processor's obsidian/repo/bot so
-	 *  Enricher itself stays SDK-plumbing only, with no Obsidian/DB/Telegram dependencies. */
-	private buildInstructionTools(jotId: string): InstructionToolset {
+	 *  note, link this jot's own entry, fetch a page. Handlers close over this processor's
+	 *  obsidian/repo/bot so Enricher itself stays SDK-plumbing only, with no
+	 *  Obsidian/DB/Telegram dependencies. */
+	private buildInstructionTools(jot: Jot): InstructionToolset {
+		const jotId = jot.id;
 		const read_note = tool(
 			"read_note",
 			"Read a vault note's current content. Returns NOT_FOUND if it doesn't exist.",
@@ -639,9 +643,53 @@ export class JotProcessor {
 			},
 		);
 
+		const link_entry = tool(
+			"link_entry",
+			"Add a wikilink from THIS jot's own journal entry to another vault note — replaces the first occurrence of `surface` in this entry's own line with [[note|surface]] (or [[note]] if identical). The only instruction tool allowed to touch the daily note, and only ever this one line in it, not the rest of the file. Use this for instructions like \"link this to X\".",
+			{ surface: z.string(), note: z.string() },
+			async ({ surface, note }) => {
+				const result = await this.obsidian.withNoteLock(
+					jot.note_path,
+					async (): Promise<"linked" | "no_line" | "not_found"> => {
+						const noteContent = await this.obsidian.readNote(jot.note_path);
+						const line = anchorLine(noteContent, jot.anchor);
+						if (!line) return "no_line";
+						if (!line.includes(surface)) return "not_found";
+						const linked = line.replace(
+							surface,
+							note === surface ? `[[${note}]]` : `[[${note}|${surface}]]`,
+						);
+						const out = replaceAnchorLine(noteContent, jot.anchor, linked);
+						if (!out) return "no_line";
+						await this.obsidian.writeNote(jot.note_path, out);
+						return "linked";
+					},
+				);
+				if (result === "linked") {
+					log.info(
+						{ jotId, surface, note },
+						"instructions: linked this entry via tool",
+					);
+					return {
+						content: [
+							{
+								type: "text",
+								text: `linked "${surface}" -> [[${note}]]`,
+							} as const,
+						],
+					};
+				}
+				const text =
+					result === "no_line"
+						? "this jot's journal line couldn't be found"
+						: `"${surface}" doesn't appear in this jot's own entry`;
+				return { content: [{ type: "text", text } as const], isError: true };
+			},
+		);
+
 		const server = createSdkMcpServer({
 			name: "vault",
-			tools: [read_note, list_notes, write_note, fetch_url],
+			tools: [read_note, list_notes, write_note, link_entry, fetch_url],
 		});
 		return {
 			mcpServers: { vault: server },
@@ -649,6 +697,7 @@ export class JotProcessor {
 				"mcp__vault__read_note",
 				"mcp__vault__list_notes",
 				"mcp__vault__write_note",
+				"mcp__vault__link_entry",
 				"mcp__vault__fetch_url",
 			],
 		};

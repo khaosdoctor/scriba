@@ -74,22 +74,27 @@ deployed on the homelab (Coolify). Single user.
   `JotProcessor.handleInstructions` re-extracts the instruction(s) from `raw_text` (never
   persisted separately — cheap to recompute) and runs a real multi-turn tool-calling agent
   (`Enricher.runInstructionAgent`) against the *full* raw text, so an instruction keeps the
-  positional context of what it refers to (e.g. "this" in "@@also save this@@"). Unlike every
-  other agent call in this codebase, this one gets actual tools
-  (`JotProcessor.buildInstructionTools`, an in-process MCP server via the SDK's
-  `tool()`/`createSdkMcpServer`): `read_note`, `list_notes` (existing vault paths, so it can
-  check before creating or link to something real), `write_note` (create/append/overwrite),
-  and `fetch_url` (page text for reference material — the one place this bot reaches the open
-  internet on the user's behalf; the returned content is untrusted and the system prompt says
-  so explicitly, since it's a prompt-injection surface). `write_note`'s "create" and "append"
+  positional context of what it refers to (e.g. "this" in "@@also save this@@"). It fires
+  after the jot's own journal line is actually written (end of `processJot`, not before
+  enrichment), since some instructions edit that exact line — running any earlier would
+  find only the "⏳" placeholder there. Unlike every other agent call in this codebase, this
+  one gets actual tools (`JotProcessor.buildInstructionTools`, an in-process MCP server via
+  the SDK's `tool()`/`createSdkMcpServer`): `read_note`, `list_notes` (existing vault paths,
+  so it can check before creating or look up the right note to link to), `write_note`
+  (create/append/overwrite a *separate* note), `link_entry` (wikilink this jot's own already-
+  written line to another note — for "link this to X" style instructions), and `fetch_url`
+  (page text for reference material — the one place this bot reaches the open internet on
+  the user's behalf; the returned content is untrusted and the system prompt says so
+  explicitly, since it's a prompt-injection surface). `write_note`'s "create" and "append"
   modes apply immediately; "overwrite" of a note that already holds different content never
   applies immediately — it queues a `pending_overwrites` row and asks the user to confirm in
   Telegram (`BotServices.askOverwrite`, mirroring `askLink`'s ambiguous-link confirmation
-  shape), applying only on "Yes". Every tool call is hard-blocked from touching the daily note
-  itself regardless of what's asked (`ObsidianClient.isDailyNote`) and from escaping the vault
-  (`normalizeNotePath` in `core.ts`) — that's enforced in the tool handlers, not just the
-  prompt. The jot's `instructions_run` flag guards the whole thing from firing twice (e.g. on
-  a later `/reprocess`), since these tool calls aren't idempotent. The user gets a reply to
+  shape), applying only on "Yes". The daily note is hard off-limits to every tool except
+  `link_entry`, and even there only this jot's own anchor line — never the rest of the file
+  — enforced in the tool handlers themselves (`ObsidianClient.isDailyNote`), not just the
+  prompt; paths are also checked against vault escape (`normalizeNotePath` in `core.ts`). The
+  jot's `instructions_run` flag guards the whole thing from firing twice (e.g. on a later
+  `/reprocess`), since these tool calls aren't idempotent. The user gets a reply to
   their own message reporting what happened (`BotServices.notifyInstruction`), separate from
   the jot's normal done/failed status message.
 
