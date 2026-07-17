@@ -5,6 +5,7 @@
 import { randomBytes } from "node:crypto";
 import * as chrono from "chrono-node";
 import type { Jot, JotKind, JotStatus, StatsRow } from "./db.ts";
+import type { ReleaseNote } from "./services/github.ts";
 import { dateFromIso, plainDate } from "./time.ts";
 
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
@@ -498,16 +499,39 @@ export function formatStatus(v: StatusView): string {
 	].join("\n");
 }
 
-/** Boot notice sent once when the running version/sha differs from the last known deploy. */
+/** Release body + link, shared by the deploy notice and /changelog. */
+function formatReleaseBody(note: ReleaseNote): string {
+	const lines: string[] = [];
+	if (note.body.trim()) lines.push(note.body.trim());
+	lines.push(note.url);
+	return lines.join("\n\n");
+}
+
+/** Boot notice sent once when the running version/sha differs from the last known deploy.
+ *  `note` is this version's GitHub Release (fetched live — see services/github.ts), so
+ *  the deploy notice always shows what actually changed. Omitted when the lookup fails. */
 export function formatDeployNotice(
 	version: string,
 	sha: string,
-	uptimeMs: number,
+	note?: ReleaseNote | null,
 ): string {
-	return [
-		`🚀 scriba deployed — ${version} (${sha.slice(0, 7)})`,
-		`Uptime: ${formatDuration(uptimeMs)}`,
-	].join("\n");
+	const header = `🚀 scriba deployed — ${version} (${sha.slice(0, 7)})`;
+	return note ? [header, formatReleaseBody(note)].join("\n\n") : header;
+}
+
+/** /changelog body for one version. */
+export function formatReleaseNote(note: ReleaseNote): string {
+	return [`📋 ${note.name}`, formatReleaseBody(note)].join("\n\n");
+}
+
+/** /changelog N: a compact list of the N most recent releases. */
+export function formatReleaseList(notes: ReleaseNote[]): string {
+	if (!notes.length) return "no releases found";
+	return notes
+		.map(
+			(n) => `• ${n.tag} (${plainDate(Date.parse(n.publishedAt))}) — ${n.url}`,
+		)
+		.join("\n");
 }
 
 /** /jot body: full record for one jot. */

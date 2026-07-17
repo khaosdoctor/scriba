@@ -15,6 +15,8 @@ import {
 	formatDeployNotice,
 	formatDuration,
 	formatJotDetail,
+	formatReleaseList,
+	formatReleaseNote,
 	formatStats,
 	formatStatus,
 	insertJournalLine,
@@ -37,6 +39,7 @@ import {
 	withinSquashWindow,
 } from "./core.ts";
 import type { Jot, StatsRow } from "./db.ts";
+import type { ReleaseNote } from "./services/github.ts";
 
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
 
@@ -365,10 +368,47 @@ test("formatStats hides zero outcome tails", () => {
 	assert.match(withFail, /in-flight 1 · failed 2/);
 });
 
-test("formatDeployNotice reports version, sha, and uptime", () => {
-	const out = formatDeployNotice("1.2.3", "abcdef1234", 90_000);
+function fakeRelease(over: Partial<ReleaseNote> = {}): ReleaseNote {
+	return {
+		tag: "v1.2.3",
+		version: "1.2.3",
+		name: "v1.2.3",
+		body: "### Bug Fixes\n\n* fixed the thing",
+		url: "https://github.com/khaosdoctor/scriba/releases/tag/v1.2.3",
+		publishedAt: "2026-07-15T20:03:58Z",
+		...over,
+	};
+}
+
+test("formatDeployNotice reports version and sha with no release note", () => {
+	const out = formatDeployNotice("1.2.3", "abcdef1234", null);
+	assert.equal(out, "🚀 scriba deployed — 1.2.3 (abcdef1)");
+});
+
+test("formatDeployNotice includes the release body and link when a note is given", () => {
+	const out = formatDeployNotice("1.2.3", "abcdef1234", fakeRelease());
 	assert.match(out, /scriba deployed — 1\.2\.3 \(abcdef1\)/);
-	assert.match(out, /Uptime: 1m 30s/);
+	assert.match(out, /fixed the thing/);
+	assert.match(out, /releases\/tag\/v1\.2\.3/);
+});
+
+test("formatReleaseNote shows the release name, body, and link", () => {
+	const out = formatReleaseNote(
+		fakeRelease({ name: "Better fallback errors" }),
+	);
+	assert.match(out, /📋 Better fallback errors/);
+	assert.match(out, /fixed the thing/);
+	assert.match(out, /releases\/tag\/v1\.2\.3/);
+});
+
+test("formatReleaseList summarises releases newest-first, and handles an empty list", () => {
+	const out = formatReleaseList([
+		fakeRelease({ tag: "v1.2.3", publishedAt: "2026-07-15T12:00:00Z" }),
+		fakeRelease({ tag: "v1.2.2", publishedAt: "2026-07-10T12:00:00Z" }),
+	]);
+	assert.match(out, /• v1\.2\.3 \(2026-07-15\)/);
+	assert.match(out, /• v1\.2\.2 \(2026-07-10\)/);
+	assert.equal(formatReleaseList([]), "no releases found");
 });
 
 test("formatStatus summarises health", () => {

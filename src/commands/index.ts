@@ -1,3 +1,4 @@
+import { changelog } from "./changelog.ts";
 import { failed } from "./failed.ts";
 import { flush } from "./flush.ts";
 import { makeHelp } from "./help.ts";
@@ -18,6 +19,7 @@ import { version } from "./version.ts";
 /** The admin command registry. The bot registers a handler per entry. */
 export const commands: Command[] = [
 	version,
+	changelog,
 	stats,
 	status,
 	failed,

@@ -2,6 +2,7 @@ import type { Context } from "grammy";
 import type { Repository } from "../db.ts";
 import type { JotProcessor } from "../runtime/processor.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
+import type { GithubReleases } from "../services/github.ts";
 import type { LinkIndex } from "../services/links.ts";
 import type { TranscriberSwitch } from "../services/transcribe.ts";
 
@@ -12,6 +13,7 @@ export interface Deps {
 	processor: JotProcessor;
 	transcriber: TranscriberSwitch;
 	links: LinkIndex;
+	github: GithubReleases;
 	version: string;
 	sha: string;
 	startedAt: number;
