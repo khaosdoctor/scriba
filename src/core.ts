@@ -499,10 +499,37 @@ export function formatStatus(v: StatusView): string {
 	].join("\n");
 }
 
+/** GitHub Release bodies are conventional-changelog markdown: `### Section` headers and
+ *  `* item ([#N](url)) ([sha](url))` bullets. Telegram gets plain text, not markdown, so
+ *  this strips the `#`/`*` markers and the trailing commit/issue link refs, leaving
+ *  `Section:` labels and `• item` bullets. */
+function formatChangelogMarkdown(body: string): string {
+	const out: string[] = [];
+	for (const raw of body.split("\n")) {
+		const line = raw.trim();
+		if (!line) continue;
+		const heading = line.match(/^#{1,6}\s+(.*)/);
+		if (heading) {
+			if (out.length) out.push("");
+			out.push(`${heading[1]!}:`);
+			continue;
+		}
+		const item = line.match(/^[*-]\s+(.*)/);
+		if (item) {
+			const text = item[1]!.replace(/\s*\(\[[^\]]+\]\([^)]+\)\)/g, "").trim();
+			out.push(`• ${text}`);
+			continue;
+		}
+		out.push(line);
+	}
+	return out.join("\n");
+}
+
 /** Release body + link, shared by the deploy notice and /changelog. */
 function formatReleaseBody(note: ReleaseNote): string {
 	const lines: string[] = [];
-	if (note.body.trim()) lines.push(note.body.trim());
+	const body = formatChangelogMarkdown(note.body).trim();
+	if (body) lines.push(body);
 	lines.push(note.url);
 	return lines.join("\n\n");
 }

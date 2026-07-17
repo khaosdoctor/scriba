@@ -401,6 +401,31 @@ test("formatReleaseNote shows the release name, body, and link", () => {
 	assert.match(out, /releases\/tag\/v1\.2\.3/);
 });
 
+test("formatReleaseNote strips conventional-changelog markdown from the body", () => {
+	const body =
+		"### Features\n\n" +
+		"* add /changelog command and put what's new in the deploy notice ([b95325e](https://github.com/khaosdoctor/scriba/commit/b95325e6721e0e63d502c8642208b9cd0a001a4f))\n\n" +
+		"### Bug Fixes\n\n" +
+		"* stop asserting usage exhaustion as the cause of enrichment fallback ([#9](https://github.com/khaosdoctor/scriba/issues/9)) ([ff223cd](https://github.com/khaosdoctor/scriba/commit/ff223cdc1092eaa683352258ddb8eb93abc5fd8b))";
+	const out = formatReleaseNote(fakeRelease({ body }));
+	assert.equal(
+		out,
+		[
+			"📋 v1.2.3",
+			[
+				"Features:",
+				"• add /changelog command and put what's new in the deploy notice",
+			].join("\n"),
+			[
+				"Bug Fixes:",
+				"• stop asserting usage exhaustion as the cause of enrichment fallback",
+			].join("\n"),
+			"https://github.com/khaosdoctor/scriba/releases/tag/v1.2.3",
+		].join("\n\n"),
+	);
+	assert.doesNotMatch(out, /###|\[|\]|\(https/);
+});
+
 test("formatReleaseList summarises releases newest-first, and handles an empty list", () => {
 	const out = formatReleaseList([
 		fakeRelease({ tag: "v1.2.3", publishedAt: "2026-07-15T12:00:00Z" }),
