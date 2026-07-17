@@ -1,3 +1,10 @@
+## [1.24.0](https://github.com/khaosdoctor/scriba/compare/v1.23.1...v1.24.0) (2026-07-17)
+
+
+### Features
+
+* surface the fallback trigger error in the Telegram warning ([9891928](https://github.com/khaosdoctor/scriba/commit/9891928a0d2f1232151f9123a3067bcd2a46725c))
+
 ## [1.23.1](https://github.com/khaosdoctor/scriba/compare/v1.23.0...v1.23.1) (2026-07-15)
 
 
@@ -36,12 +43,4 @@
 ### Bug Fixes
 
 * use a single reaction for squashed jots ([8d09911](https://github.com/khaosdoctor/scriba/commit/8d099119a43c8b6d025dd826a56c6d585f199f4d))
-
-## [1.21.1](https://github.com/khaosdoctor/scriba/compare/v1.21.0...v1.21.1) (2026-07-12)
-
-
-### Bug Fixes
-
-* don't link "now" as a relative-date phrase ([5ad902c](https://github.com/khaosdoctor/scriba/commit/5ad902cad8447c9d74810151181ed0acb682f844))
-* show relative-date wikilinks in the Telegram confirmation preview ([4d0e821](https://github.com/khaosdoctor/scriba/commit/4d0e8216b83109e582a58960dd46fae8a526afce))
 
