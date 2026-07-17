@@ -427,7 +427,11 @@ export class MenuController {
 				},
 			},
 		);
-		await deps.repo.mapMessage(sent.message_id, id);
+		await deps.repo.mapMessage(
+			config.telegram.allowedUserId,
+			sent.message_id,
+			id,
+		);
 	}
 
 	/** Failed queue as tappable retry rows. Reuses the existing `rt:` retry handler. */

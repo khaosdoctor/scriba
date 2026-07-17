@@ -247,7 +247,7 @@ export class ScribaBot implements BotServices {
 		this.statusMsgs.set(jotId, msg.message_id);
 		// Map the bot's status message to the jot too, so a reply to it edits the jot
 		// just like a reply to the original message (e.g. the transcribed audio note).
-		await this.repo.mapMessage(msg.message_id, jotId);
+		await this.repo.mapMessage(chat, msg.message_id, jotId);
 		log.debug({ jotId, messageId: msg.message_id }, "status message sent");
 	}
 
@@ -257,7 +257,8 @@ export class ScribaBot implements BotServices {
 		const messageId = this.statusMsgs.get(jotId);
 		if (!messageId) return;
 		this.statusMsgs.delete(jotId);
-		await this.repo.unmapMessage(messageId); // no stale reply-map to a gone message
+		// no stale reply-map to a gone message — status() always sends to this fixed chat
+		await this.repo.unmapMessage(config.telegram.allowedUserId, messageId);
 		try {
 			await this.bot.api.deleteMessage(
 				config.telegram.allowedUserId,
@@ -276,11 +277,11 @@ export class ScribaBot implements BotServices {
 		jotId: string,
 		state: "done" | "failed" | "retrying",
 	): Promise<void> {
-		const messageId = await this.repo.messageForJot(jotId);
-		if (!messageId) return;
+		const mapped = await this.repo.messageForJot(jotId);
+		if (!mapped) return;
 		const emoji = state === "done" ? "👌" : state === "retrying" ? "🤔" : "😱";
 		await this.bot.api
-			.setMessageReaction(config.telegram.allowedUserId, messageId, [
+			.setMessageReaction(mapped.chatId, mapped.messageId, [
 				{ type: "emoji", emoji },
 			])
 			.catch(() => {});
@@ -346,9 +347,13 @@ export class ScribaBot implements BotServices {
 			// network write that usually throws here), offer a retry button wired to the same
 			// `rt:` handler the give-up path uses. No jot → plain error (e.g. a command failure).
 			const messageId = err.ctx.message?.message_id;
-			const jotId = messageId
-				? await this.repo.jotForMessage(messageId).catch(() => undefined)
-				: undefined;
+			const chatId = err.ctx.chat?.id;
+			const jotId =
+				messageId && chatId
+					? await this.repo
+							.jotForMessage(chatId, messageId)
+							.catch(() => undefined)
+					: undefined;
 			const reply_markup = jotId
 				? new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`)
 				: undefined;
@@ -459,7 +464,10 @@ export class ScribaBot implements BotServices {
 	// is the delete gesture (Telegram never delivers an actual message delete), so a
 	// blank edit removes the journal line instead of replacing it.
 	private async applyMessageEdit(ctx: any, markdown: string): Promise<void> {
-		const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
+		const jotId = await this.repo.jotForMessage(
+			ctx.chat.id,
+			ctx.editedMessage.message_id,
+		);
 		if (!jotId) return;
 		const jot = await this.repo.getJot(jotId);
 		if (!jot) return;
@@ -575,7 +583,7 @@ export class ScribaBot implements BotServices {
 		// Map the message BEFORE the network write below so the jot is retryable even if the
 		// placeholder write throws (Obsidian down): bot.catch finds this jot by message id and
 		// offers a retry button. Queueing stays last so ordering matches the normal path.
-		await this.repo.mapMessage(ctx.message.message_id, id);
+		await this.repo.mapMessage(ctx.chat.id, ctx.message.message_id, id);
 		// A squashed follower reuses the leader's placeholder — writing its own would add a
 		// second line the processor would then have to reconcile away.
 		if (squashed) {
@@ -624,6 +632,7 @@ export class ScribaBot implements BotServices {
 
 	private async handleEdit(ctx: any): Promise<void> {
 		const jotId = await this.repo.jotForMessage(
+			ctx.chat.id,
 			ctx.message.reply_to_message.message_id,
 		);
 		if (!jotId) return void ctx.reply("Can't find that jot to edit.");
@@ -759,7 +768,7 @@ export class ScribaBot implements BotServices {
 				"Reply to a journal message with /delete to remove that line.",
 			);
 		}
-		const jotId = await this.repo.jotForMessage(reply.message_id);
+		const jotId = await this.repo.jotForMessage(ctx.chat.id, reply.message_id);
 		if (!jotId) {
 			log.warn(
 				{ messageId: reply.message_id },
