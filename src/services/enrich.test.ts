@@ -372,9 +372,9 @@ test("warns once when switching to the fallback and once when usage recovers", a
 		{ apiKey: "k", model: "openai/gpt-oss-120b" },
 		groq.fn,
 	);
-	const switches: { to: string; model: string }[] = [];
-	enricher.setSwitchNotifier((to, model) => {
-		switches.push({ to, model });
+	const switches: { to: string; model: string; err?: unknown }[] = [];
+	enricher.setSwitchNotifier((to, model, err) => {
+		switches.push({ to, model, err });
 	});
 	await enricher.enrich({ text: "a", candidates: [] }); // fail → switch to fallback
 	await enricher.enrich({ text: "b", candidates: [] }); // fail → already on fallback, no switch
@@ -385,6 +385,8 @@ test("warns once when switching to the fallback and once when usage recovers", a
 	);
 	assert.equal(switches[0]!.model, "openai/gpt-oss-120b");
 	assert.equal(switches[1]!.model, "claude-haiku-4-5");
+	assert.equal((switches[0]!.err as Error).message, "usage out"); // failure reason surfaced
+	assert.equal(switches[1]!.err, undefined); // recovery carries no error
 	assert.equal(groq.calls.length, 2); // fallback used for the two failing calls only
 });
 

@@ -108,13 +108,12 @@ async function main(): Promise<void> {
 	bot.setProcessor(processor);
 	// Warn in Telegram when enrichment switches models (primary unavailable ⇄
 	// recovered). Fires once per transition, not per jot. Late-wired here because the
-	// bot exists now. Wording stays cause-agnostic: a failed SDK call can mean usage is
-	// exhausted, but also overload or a network blip — check the logged `err` for the
-	// actual reason rather than assuming usage.
-	enricher.setSwitchNotifier((to, model) =>
+	// bot exists now. The failure reason (usage exhausted, overload, network blip, bad
+	// token, ...) is surfaced inline so the cause is visible without digging through logs.
+	enricher.setSwitchNotifier((to, model, err) =>
 		bot.notify(
 			to === "fallback"
-				? `⚠️ Claude is unavailable — enrichment switched to the free fallback model (${model}). Quality may drop until it's back.`
+				? `⚠️ Claude is unavailable — enrichment switched to the free fallback model (${model}). Quality may drop until it's back.\nReason: ${err instanceof Error ? err.message : String(err)}`
 				: `✅ Claude is back — enrichment switched back to ${model}.`,
 		),
 	);

@@ -112,6 +112,7 @@ export class Enricher {
 	private notifySwitch?: (
 		to: "fallback" | "primary",
 		model: string,
+		err?: unknown,
 	) => void | Promise<void>;
 
 	constructor(
@@ -124,7 +125,11 @@ export class Enricher {
 	/** Late-wired (bot exists after the enricher): called on each model switch so the
 	 *  bot can warn the user in Telegram. Failures here never break enrichment. */
 	setSwitchNotifier(
-		fn: (to: "fallback" | "primary", model: string) => void | Promise<void>,
+		fn: (
+			to: "fallback" | "primary",
+			model: string,
+			err?: unknown,
+		) => void | Promise<void>,
 	): void {
 		this.notifySwitch = fn;
 	}
@@ -132,11 +137,15 @@ export class Enricher {
 	private async announce(
 		to: "fallback" | "primary",
 		model: string,
+		err?: unknown,
 	): Promise<void> {
 		try {
-			await this.notifySwitch?.(to, model);
-		} catch (err) {
-			log.warn({ err, to }, "enrich: switch notifier threw (ignored)");
+			await this.notifySwitch?.(to, model, err);
+		} catch (notifyErr) {
+			log.warn(
+				{ err: notifyErr, to },
+				"enrich: switch notifier threw (ignored)",
+			);
 		}
 	}
 
@@ -326,7 +335,7 @@ export class Enricher {
 					{ err, fallbackModel: this.fallback.model },
 					"enrich: subscription SDK failed — switching to the free Groq model",
 				);
-				await this.announce("fallback", this.fallback.model);
+				await this.announce("fallback", this.fallback.model, err);
 			} else {
 				log.warn(
 					{ err, fallbackModel: this.fallback.model },
