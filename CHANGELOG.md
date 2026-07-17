@@ -1,3 +1,10 @@
+## [1.25.0](https://github.com/khaosdoctor/scriba/compare/v1.24.0...v1.25.0) (2026-07-17)
+
+
+### Features
+
+* add /changelog command and put what's new in the deploy notice ([b95325e](https://github.com/khaosdoctor/scriba/commit/b95325e6721e0e63d502c8642208b9cd0a001a4f))
+
 ## [1.24.0](https://github.com/khaosdoctor/scriba/compare/v1.23.1...v1.24.0) (2026-07-17)
 
 
@@ -36,11 +43,4 @@
 ### Bug Fixes
 
 * forbid narration in enrichment model response ([55b6832](https://github.com/khaosdoctor/scriba/commit/55b6832f73e5211d8c4b1919d7ea2cbc68090512))
-
-## [1.21.2](https://github.com/khaosdoctor/scriba/compare/v1.21.1...v1.21.2) (2026-07-12)
-
-
-### Bug Fixes
-
-* use a single reaction for squashed jots ([8d09911](https://github.com/khaosdoctor/scriba/commit/8d099119a43c8b6d025dd826a56c6d585f199f4d))
 
