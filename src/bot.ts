@@ -36,6 +36,7 @@ import type {
 } from "./runtime/processor.ts";
 import type { FlushQueue } from "./runtime/queue.ts";
 import type { Enricher } from "./services/enrich.ts";
+import type { GithubReleases } from "./services/github.ts";
 import type { LinkIndex } from "./services/links.ts";
 import type { ObsidianClient } from "./services/obsidian.ts";
 import type { TranscriberSwitch } from "./services/transcribe.ts";
@@ -90,6 +91,7 @@ export class ScribaBot implements BotServices {
 		private enricher: Enricher,
 		private transcriber: TranscriberSwitch,
 		private links: LinkIndex,
+		private github: GithubReleases,
 		private version: string,
 		private sha: string,
 		private startedAt: number,
@@ -126,6 +128,7 @@ export class ScribaBot implements BotServices {
 			processor: this.processor,
 			transcriber: this.transcriber,
 			links: this.links,
+			github: this.github,
 			version: this.version,
 			sha: this.sha,
 			startedAt: this.startedAt,

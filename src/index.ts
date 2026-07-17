@@ -9,6 +9,7 @@ import { JotProcessor } from "./runtime/processor.ts";
 import { FlushQueue } from "./runtime/queue.ts";
 import { Scheduler } from "./runtime/scheduler.ts";
 import { Enricher } from "./services/enrich.ts";
+import { GithubReleases } from "./services/github.ts";
 import { LinkIndex } from "./services/links.ts";
 import { ObsidianClient } from "./services/obsidian.ts";
 import {
@@ -85,6 +86,7 @@ async function main(): Promise<void> {
 	);
 	const links = new LinkIndex(config.vaultPath);
 	links.start();
+	const github = new GithubReleases();
 
 	// 4. wire bot ⇄ processor ⇄ queue
 	const bot = new ScribaBot(
@@ -93,6 +95,7 @@ async function main(): Promise<void> {
 		enricher,
 		transcriber,
 		links,
+		github,
 		version,
 		sha,
 		startedAt,
@@ -160,12 +163,19 @@ async function main(): Promise<void> {
 	const lastDeployId = await repo.getSetting("deployId");
 	if (lastDeployId !== deployId) {
 		log.info({ deployId, lastDeployId }, "new deploy detected — notifying");
+		// Best-effort: the deploy notice still sends without "what's new" if the GitHub
+		// lookup fails (network blip, release not published yet, rate limit).
+		const releaseNote = await github.byVersion(version).catch((err) => {
+			log.warn(
+				{ err, version },
+				"release note lookup failed for deploy notice",
+			);
+			return null;
+		});
 		// Only record the deploy once the notice actually sends — a transient Telegram
 		// outage should retry on the next boot rather than being silently swallowed.
 		try {
-			await bot.notify(
-				formatDeployNotice(version, sha, Date.now() - startedAt),
-			);
+			await bot.notify(formatDeployNotice(version, sha, releaseNote));
 			await repo.setSetting("deployId", deployId);
 		} catch (err) {
 			log.warn({ err }, "deploy notice failed to send — will retry next boot");
