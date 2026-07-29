@@ -1,3 +1,10 @@
+## [1.27.0](https://github.com/khaosdoctor/scriba/compare/v1.26.0...v1.27.0) (2026-07-29)
+
+
+### Features
+
+* step-by-step link-rules wizard with searchable note picker ([d2b38eb](https://github.com/khaosdoctor/scriba/commit/d2b38ebb4f174099d0b2a52a5102f7da6655de22))
+
 ## [1.26.0](https://github.com/khaosdoctor/scriba/compare/v1.23.1...v1.26.0) (2026-07-17)
 
 
@@ -42,11 +49,4 @@
 ### Bug Fixes
 
 * forbid narration in enrichment model response ([55b6832](https://github.com/khaosdoctor/scriba/commit/55b6832f73e5211d8c4b1919d7ea2cbc68090512))
-
-## [1.21.2](https://github.com/khaosdoctor/scriba/compare/v1.21.1...v1.21.2) (2026-07-12)
-
-
-### Bug Fixes
-
-* use a single reaction for squashed jots ([8d09911](https://github.com/khaosdoctor/scriba/commit/8d099119a43c8b6d025dd826a56c6d585f199f4d))
 
