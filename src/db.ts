@@ -183,6 +183,12 @@ export class Repository {
 	}
 
 	// --- stopwords (editable in DB) ---
+	/** Stopwords as a deterministically ordered list, so the link-rules wizard can index
+	 *  into it by row position and re-derive the same order on the next tap. */
+	async stopwordList(): Promise<string[]> {
+		const rows = await this.k("stopwords").select("word").orderBy("word");
+		return rows.map((r) => String(r.word));
+	}
 	async stopwords(): Promise<Set<string>> {
 		const rows = await this.k("stopwords").select("word");
 		return new Set(rows.map((r) => String(r.word).toLowerCase()));

@@ -3,7 +3,6 @@ import { failed } from "./failed.ts";
 import { flush } from "./flush.ts";
 import { makeHelp } from "./help.ts";
 import { jot } from "./jot.ts";
-import { register } from "./register.ts";
 import { rejections } from "./rejections.ts";
 import { retry } from "./retry.ts";
 import { stats } from "./stats.ts";
@@ -31,7 +30,6 @@ export const commands: Command[] = [
 	stopword,
 	rejections,
 	unreject,
-	register,
 	transcriber,
 ];
 // help closes over the array, so it lists itself and every command added above.

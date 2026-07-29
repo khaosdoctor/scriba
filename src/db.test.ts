@@ -141,6 +141,10 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 		await repo.addStopword("Foo");
 		await repo.addStopword("foo"); // dup ignored
 		assert.ok((await repo.stopwords()).has("foo"));
+		// the wizard indexes rows by position, so the list must come back sorted
+		const words = await repo.stopwordList();
+		assert.deepEqual(words, [...words].sort());
+		assert.ok(words.includes("foo"));
 		assert.equal(await repo.delStopword("FOO"), 1);
 		assert.ok(!(await repo.stopwords()).has("foo"));
 

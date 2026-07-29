@@ -48,7 +48,13 @@ deployed on the homelab (Coolify). Single user.
   Too late once the batch has already flushed and folded it into the leader.
 - Jot status: `pending → processing → done` (or `failed` → retry, or `abandoned` on
   give-up). `processing` is claimed atomically so flush + sweeps never double-process.
-- Stopwords and learned link-rejections live in the DB, not in code.
+- Stopwords, learned link-rejections and registered (always-link) pairs live in the DB,
+  not in code. All three are edited from the **link-rules wizard** in `flows/menu.ts`
+  (`/menu` → 🔗 Link rules): step 1 picks the rule kind, step 2 the word, step 3 the note
+  or the removal. No state is held between taps — rows index into deterministically
+  ordered lists re-derived on every callback, and a stale index answers "expired". Adding
+  a rule needs free text, so those leaves send a force-reply prompt and route the answer
+  back by the marker in the prompt text (`parseWizardRef` in `core.ts`).
 - **Relative-date phrases become daily-note links.** `linkDateWords` (`core.ts`) runs on
   the composed line after enrichment, resolving phrases like "yesterday", "three weeks
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not

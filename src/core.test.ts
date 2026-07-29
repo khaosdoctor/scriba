@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
 	anchorLine,
 	candidates,
+	cleanNoteTitle,
 	combineEnrichSource,
 	deleteAnchorLine,
 	distinctSurfaces,
@@ -11,10 +12,12 @@ import {
 	editConfirmation,
 	entitiesToMarkdown,
 	escapeHtml,
+	fitTelegram,
 	forcedCandidates,
 	formatDeployNotice,
 	formatDuration,
 	formatJotDetail,
+	formatListPage,
 	formatReleaseList,
 	formatReleaseNote,
 	formatStats,
@@ -28,14 +31,22 @@ import {
 	linkDateWords,
 	makeJotId,
 	monthGrid,
+	noteSuggestions,
 	parseLiteralEdit,
+	parseRuleWords,
+	parseWizardRef,
 	placeholderLine,
 	pluralize,
+	previewList,
 	replaceAnchorLine,
 	reprocessTargets,
 	setFrontmatterNumber,
 	stripJournalLine,
+	TELEGRAM_LIMIT,
 	tokenize,
+	WIZARD_NOTE_REF,
+	WIZARD_REGISTER_REF,
+	WIZARD_STOPWORD_REF,
 	withinSquashWindow,
 } from "./core.ts";
 import type { Jot, StatsRow } from "./db.ts";
@@ -644,6 +655,67 @@ test("entitiesToMarkdown preserves text before the first entity and after the la
 		"before `code` after",
 	);
 });
+test("parseWizardRef tells the wizard's prompts apart", () => {
+	assert.deepEqual(parseWizardRef(`add words ${WIZARD_STOPWORD_REF}`), {
+		kind: "sw",
+	});
+	assert.deepEqual(parseWizardRef(`add pairs ${WIZARD_REGISTER_REF}`), {
+		kind: "rg",
+	});
+	// `rg` is a prefix of `rgn`/`rgw` — the longer refs must not be read as a bare `rg`
+	assert.deepEqual(parseWizardRef(`search ${WIZARD_NOTE_REF}`), {
+		kind: "rgn",
+	});
+	assert.deepEqual(parseWizardRef("rename it (lw:rgw:12)"), {
+		kind: "rgw",
+		index: 12,
+	});
+	assert.equal(parseWizardRef("rename it (lw:rgw)"), null); // index is required
+	assert.equal(parseWizardRef("Rate Exercise (hb:2026-07-29:0)"), null);
+	assert.equal(parseWizardRef(""), null);
+});
+
+test("parseRuleWords keeps inner spaces, splits on commas and newlines", () => {
+	assert.deepEqual(parseRuleWords("Priscilla, Path Of Exile"), [
+		"priscilla",
+		"path of exile",
+	]);
+	assert.deepEqual(parseRuleWords(" Gym \n mom\nGYM ,, "), ["gym", "mom"]);
+	assert.deepEqual(parseRuleWords("   "), []);
+	assert.deepEqual(parseRuleWords(`ok, ${"x".repeat(61)}`), ["ok"]);
+	assert.deepEqual(parseRuleWords("a,b,c", 2), ["a", "b"]);
+});
+
+test("cleanNoteTitle strips wikilink brackets, quotes and stray whitespace", () => {
+	assert.equal(
+		cleanNoteTitle("  [[Priscilla  Rebouças]] "),
+		"Priscilla Rebouças",
+	);
+	assert.equal(cleanNoteTitle('"POE"'), "POE");
+	assert.equal(cleanNoteTitle("   "), "");
+});
+
+test("noteSuggestions ranks exact over prefix over substring, one row per note", () => {
+	const index = [
+		{ note: "Path Of Exile", alias: "Path Of Exile" },
+		{ note: "Path Of Exile", alias: "POE" }, // same note, second alias
+		{ note: "Pathfinder", alias: "Pathfinder" },
+		{ note: "My POE Build", alias: "My POE Build" },
+		{ note: "Health", alias: "Gym" },
+	];
+	assert.deepEqual(noteSuggestions("poe", index), [
+		"Path Of Exile", // exact alias hit
+		"My POE Build", // substring
+	]);
+	assert.deepEqual(noteSuggestions("path", index), [
+		"Pathfinder", // prefix, shorter alias wins the tie
+		"Path Of Exile",
+	]);
+	assert.deepEqual(noteSuggestions("nothing here", index), []);
+	assert.deepEqual(noteSuggestions("", index), []);
+	assert.equal(noteSuggestions("path", index, 1).length, 1);
+});
+
 test("distinctSurfaces dedupes surfaces, preserving list order", () => {
 	assert.deepEqual(
 		distinctSurfaces([
@@ -705,4 +777,45 @@ test("reprocessTargets dedupes to leader ids, preserving first-seen order", () =
 		]),
 		["leader1", "leader2"],
 	);
+});
+
+test("fitTelegram leaves short text alone and labels the cut on long text", () => {
+	assert.equal(fitTelegram("short"), "short");
+	const long = "x".repeat(TELEGRAM_LIMIT + 500);
+	const out = fitTelegram(long);
+	assert.equal(out.length, TELEGRAM_LIMIT);
+	assert.match(out, /cut here/);
+	// The custom limit is honoured too, so the notice can never itself overflow.
+	assert.equal(fitTelegram("y".repeat(300), 200).length, 200);
+});
+
+test("previewList counts what it leaves out instead of cutting silently", () => {
+	assert.equal(previewList(["a", "b"], 5), "a, b");
+	assert.equal(previewList([], 5), "");
+	assert.equal(previewList(["a", "b", "c", "d"], 2), "a, b … +2 more");
+});
+
+test("formatListPage clamps the page and footers what is off screen", () => {
+	const items = Array.from({ length: 5 }, (_, i) => `item${i + 1}`);
+	// One page fits: no footer at all.
+	assert.equal(formatListPage(items, 0, 10, "/x"), items.join("\n"));
+
+	const first = formatListPage(items, 0, 2, "/x");
+	assert.match(first, /^item1\nitem2\n\n/);
+	assert.match(first, /Showing 1–2 of 5 · page 1\/3 · next: \/x 2$/);
+
+	// Last page is short and points back to the start rather than a page that isn't there.
+	const last = formatListPage(items, 2, 2, "/x");
+	assert.match(last, /^item5\n\n/);
+	assert.match(
+		last,
+		/Showing 5–5 of 5 · page 3\/3 · back to the start: \/x 1$/,
+	);
+
+	// Out-of-range pages clamp instead of rendering an empty body.
+	assert.equal(formatListPage(items, 99, 2, "/x"), last);
+	assert.equal(formatListPage(items, -3, 2, "/x"), first);
+
+	// A custom separator keeps the footer on its own line.
+	assert.match(formatListPage(items, 0, 2, "/x", ", "), /^item1, item2\n\n/);
 });

@@ -9,6 +9,7 @@ import {
 	distinctSurfaces,
 	editConfirmation,
 	entitiesToMarkdown,
+	fitTelegram,
 	isBlank,
 	isEditableJot,
 	journalLine,
@@ -375,7 +376,11 @@ export class ScribaBot implements BotServices {
 		for (const cmd of commands) {
 			this.bot.command(cmd.name, async (ctx) => {
 				const out = await cmd.run(ctx, String(ctx.match ?? ""), this.deps());
-				if (typeof out === "string") await ctx.reply(out);
+				// Every string-returning command funnels through here, so this is the one
+				// place that has to survive an oversized reply. Commands that can grow
+				// paginate themselves; fitTelegram is the backstop that turns a rejected
+				// send into a labelled cut.
+				if (typeof out === "string") await ctx.reply(fitTelegram(out));
 			});
 		}
 
@@ -392,8 +397,11 @@ export class ScribaBot implements BotServices {
 			if (ctx.message.text.startsWith("/")) return;
 			if (ctx.message.reply_to_message) {
 				// A reply to a habit value question routes to the habit flow, not a jot edit.
-				if (parseHabitRef(ctx.message.reply_to_message.text ?? ""))
-					return this.habits.handleReply(ctx);
+				const prompt = ctx.message.reply_to_message.text ?? "";
+				if (parseHabitRef(prompt)) return this.habits.handleReply(ctx);
+				// Likewise a reply to one of the link wizard's add-a-rule prompts.
+				if (this.menu.isWizardPrompt(prompt))
+					return this.menu.handleWizardReply(ctx, prompt);
 				return this.handleEdit(ctx);
 			}
 			const markdown = entitiesToMarkdown(

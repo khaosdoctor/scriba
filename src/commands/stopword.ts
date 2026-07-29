@@ -1,18 +1,26 @@
+import { formatListPage } from "../core.ts";
 import { logger } from "../log.ts";
 import type { Command } from "./types.ts";
 
 const log = logger("stopword");
 
+// Words per /stopword list page. Comma-joined and mostly short, so a page of 60 stays well
+// inside Telegram's 4096-character message cap even for long stopwords.
+const PAGE = 60;
+
 export const stopword: Command = {
 	name: "stopword",
-	description: "manage stopwords — /stopword add|del|list [word]",
+	description: "manage stopwords — /stopword add|del|list [word|page]",
 	run: async (_ctx, args, d) => {
 		const [sub, ...rest] = args.trim().split(/\s+/);
 		const word = rest.join(" ");
 		if (sub === "list") {
 			const words = [...(await d.repo.stopwords())].sort();
-			log.info({ count: words.length }, "/stopword list");
-			return words.length ? words.join(", ") : "(none)";
+			// 1-based on the wire (that's what the footer tells the user to type), 0-based in.
+			const page = Math.max(1, Number(rest[0]) || 1) - 1;
+			log.info({ count: words.length, page }, "/stopword list");
+			if (!words.length) return "(none)";
+			return formatListPage(words, page, PAGE, "/stopword list", ", ");
 		}
 		if (sub === "add") {
 			if (!word) {

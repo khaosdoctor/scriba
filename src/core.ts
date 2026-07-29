@@ -440,6 +440,50 @@ export function parseLiteralEdit(
 
 // --- Telegram admin-command formatting (pure; the commands do I/O, this shapes text) ---
 
+// A Telegram message is hard-capped at 4096 characters — go over and the send is rejected
+// outright, not trimmed. Any list built from an unbounded query therefore has to stop
+// somewhere, and the rule for the three helpers below is that it always says where. A list
+// that quietly drops its tail reads as complete and is the worse failure of the two.
+
+/** Telegram's hard per-message character cap. */
+export const TELEGRAM_LIMIT = 4096;
+
+/** Last-resort guard on anything about to be sent: cut to the limit, visibly. Paginate at
+ *  the source where you can — this only exists so an oversized message degrades to a
+ *  labelled cut instead of a failed send. */
+export function fitTelegram(text: string, limit = TELEGRAM_LIMIT): string {
+	if (text.length <= limit) return text;
+	const notice = `\n… cut here — the rest is past Telegram's ${limit}-character limit.`;
+	return `${text.slice(0, limit - notice.length)}${notice}`;
+}
+
+/** Inline preview of a list: the first `max` entries, then a count of what's left out. */
+export function previewList(items: string[], max: number): string {
+	if (items.length <= max) return items.join(", ");
+	return `${items.slice(0, max).join(", ")} … +${items.length - max} more`;
+}
+
+/** One page of a list, plus a footer naming the window and the command for the next page.
+ *  `page` is 0-based and clamped; `cmd` is the command the footer tells the user to retype
+ *  with a page number (e.g. "/rejections"). A single-page list gets no footer. */
+export function formatListPage(
+	items: string[],
+	page: number,
+	size: number,
+	cmd: string,
+	sep = "\n",
+): string {
+	const pages = Math.max(1, Math.ceil(items.length / size));
+	const p = Math.min(Math.max(page, 0), pages - 1);
+	const shown = items.slice(p * size, p * size + size);
+	const body = shown.join(sep);
+	if (pages === 1) return body;
+	const from = p * size + 1;
+	const nav =
+		p + 1 < pages ? `next: ${cmd} ${p + 2}` : `back to the start: ${cmd} 1`;
+	return `${body}\n\nShowing ${from}–${from + shown.length - 1} of ${items.length} · page ${p + 1}/${pages} · ${nav}`;
+}
+
 /** `<n> <word>` with a naive plural "s" suffix for anything but 1. */
 export function pluralize(n: number, word: string): string {
 	return `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -574,6 +618,92 @@ export function formatJotDetail(j: Jot): string {
 	if (j.error) lines.push(`Error: ${j.error}`);
 	lines.push(`Text: ${text}`);
 	return lines.join("\n");
+}
+
+// --- link-rules wizard: force-reply prompt parsing ---
+// A Telegram reply carries no state of its own, so each prompt hides a marker in its own
+// text and the reply is routed by that marker (the same trick the habits flow uses).
+
+/** Marker in the wizard's "add never-link words" prompt. */
+export const WIZARD_STOPWORD_REF = "(lw:sw)";
+/** Marker in the wizard's "which word(s) should always link" prompt. */
+export const WIZARD_REGISTER_REF = "(lw:rg)";
+/** Marker in the wizard's "type the note title" prompt (the fallback when the vault
+ *  index has no match to tap). */
+export const WIZARD_NOTE_REF = "(lw:rgn)";
+/** Marker in the wizard's "rename the word of pair N" prompt, written `(lw:rgw:N)`. */
+export const WIZARD_RENAME_REF = "lw:rgw";
+
+/** Which wizard prompt a reply is answering, if any. */
+export type WizardPrompt =
+	| { kind: "sw" }
+	| { kind: "rg" }
+	| { kind: "rgn" }
+	| { kind: "rgw"; index: number };
+
+export function parseWizardRef(text: string): WizardPrompt | null {
+	// `rgn`/`rgw` before `rg` — alternation is first-match, and `rg` prefixes both.
+	const m = text.match(/\(lw:(sw|rgn|rgw|rg)(?::(\d+))?\)/);
+	if (!m) return null;
+	if (m[1] === "sw") return { kind: "sw" };
+	if (m[1] === "rg") return { kind: "rg" };
+	if (m[1] === "rgn") return { kind: "rgn" };
+	const index = Number(m[2]);
+	return Number.isInteger(index) ? { kind: "rgw", index } : null;
+}
+
+/** Words out of a reply that may list several: newline- or comma-separated. Inner spaces
+ *  are kept, so "Path Of Exile" is one word, not three. Trimmed, lowercased (surfaces are
+ *  matched case-insensitively), deduped; empty and over-long fragments are dropped. */
+export function parseRuleWords(text: string, limit = 20): string[] {
+	const out = new Set<string>();
+	for (const part of text.split(/[\n,]/)) {
+		const word = part.trim().replace(/\s+/g, " ").toLowerCase();
+		if (word && word.length <= 60) out.add(word);
+		if (out.size >= limit) break;
+	}
+	return [...out];
+}
+
+/** A note title out of a typed reply: `[[wikilink]]` brackets and stray quotes stripped,
+ *  whitespace collapsed. Empty means the caller should re-prompt. */
+export function cleanNoteTitle(text: string): string {
+	return text
+		.trim()
+		.replace(/^\[\[|\]\]$/g, "")
+		.replace(/^["']|["']$/g, "")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+/**
+ * Notes matching `query`, best first, from the vault alias index — so the note side of a
+ * rule is searched and tapped instead of typed from memory (the vault runs to thousands
+ * of notes). Token-free: exact alias beats prefix beats substring, ties break on the
+ * shorter alias (the more specific note), and each note appears once however many of its
+ * aliases hit. The caller paginates; `limit` only caps how deep a vague query can dig.
+ */
+export function noteSuggestions(
+	query: string,
+	index: AliasEntry[],
+	limit = 200,
+): string[] {
+	const q = query.trim().toLowerCase();
+	if (!q) return [];
+	const best = new Map<string, number>();
+	for (const { note, alias } of index) {
+		const a = alias.toLowerCase();
+		const rank = a === q ? 0 : a.startsWith(q) ? 1 : a.includes(q) ? 2 : -1;
+		if (rank < 0) continue;
+		// alias length is the tiebreak, scaled so it can never outweigh the rank above
+		const score = rank * 1000 + Math.min(alias.length, 999);
+		const seen = best.get(note);
+		if (seen === undefined || score < seen) best.set(note, score);
+	}
+	return [...best.entries()]
+		.sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+		.slice(0, limit)
+		.map(([note]) => note);
 }
 
 /** Unique surfaces from an ordered rejection list, preserving the list's order. Powers

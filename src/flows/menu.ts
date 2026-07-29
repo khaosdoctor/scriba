@@ -1,7 +1,22 @@
 import { type Bot, InlineKeyboard } from "grammy";
 import { commands, type Deps } from "../commands/index.ts";
 import { config } from "../config.ts";
-import { formatJotDetail, jotPreview, STATUS_ICON } from "../core.ts";
+import {
+	cleanNoteTitle,
+	distinctSurfaces,
+	fitTelegram,
+	formatJotDetail,
+	jotPreview,
+	noteSuggestions,
+	parseRuleWords,
+	parseWizardRef,
+	previewList,
+	STATUS_ICON,
+	WIZARD_NOTE_REF,
+	WIZARD_REGISTER_REF,
+	WIZARD_RENAME_REF,
+	WIZARD_STOPWORD_REF,
+} from "../core.ts";
 import type { Jot } from "../db.ts";
 import { logger } from "../log.ts";
 import { plainDate } from "../time.ts";
@@ -19,6 +34,23 @@ const log = logger("menu");
 export class MenuController {
 	// Rejected-links menu page size (rows per page).
 	private static readonly REJECT_PAGE = 8;
+	// Never-link words named inline on the step-2 summary. Anything past this is counted,
+	// not dropped — the full list is one tap away on "🗑 Remove a word", which pages.
+	private static readonly STOPWORD_PREVIEW = 40;
+	// Note-search page size. Smaller than REJECT_PAGE: note titles are long, and a wall of
+	// them is exactly the "hard to find things" problem the picker exists to solve.
+	private static readonly PICK_PAGE = 6;
+	// The one place the wizard keeps state between messages: picking the note side means
+	// searching a vault of thousands, which cannot ride in 64 bytes of callback data.
+	// ponytail: in-memory and single-flow — one user, and a restart just drops a
+	// half-finished add. Persist it only if that ever proves annoying.
+	private pending?: {
+		words: string[]; // surfaces still waiting for a note
+		i: number; // which one we're on
+		query: string; // current search text (seeded with the word itself)
+		page: number;
+		retarget?: { surface: string; note: string }; // pair being replaced, if editing
+	};
 	// chatId -> message id of the last root menu in that chat, so opening a fresh /menu
 	// retires the old one instead of leaving stale, still-tappable keyboards piling up.
 	// Keyed by chat (not a single field) since message ids are only unique per chat — the
@@ -86,16 +118,6 @@ export class MenuController {
 			.text("‹ Back", "menu:root");
 	}
 
-	/** Link-learning controls (rejections + stopwords) — kept off the crowded root. */
-	private linksMenu(): InlineKeyboard {
-		return new InlineKeyboard()
-			.text("🚫 Rejected links", "menu:rejections")
-			.row()
-			.text("🔇 Stopwords", "menu:stopwords")
-			.row()
-			.text("‹ Back", "menu:root");
-	}
-
 	private backTo(target: string): InlineKeyboard {
 		return new InlineKeyboard().text("‹ Back", target);
 	}
@@ -105,12 +127,15 @@ export class MenuController {
 		const cmd = commands.find((c) => c.name === name);
 		if (!cmd) return `unknown command ${name}`;
 		const out = await cmd.run(ctx, arg, this.getDeps());
-		return typeof out === "string" ? out : "";
+		// Backstop for every menu screen that renders a command's text: editMessageText is
+		// subject to the same 4096-character cap as a send, and a rejected edit leaves the
+		// menu frozen on the previous screen with no explanation.
+		return typeof out === "string" ? fitTelegram(out) : "";
 	}
 
 	/** Dispatch a `menu:<action>[:<arg>]` callback. Routed in from ScribaBot.handleButton. */
 	async handleCallback(ctx: any, rest: string[]): Promise<void> {
-		const [action, arg] = rest;
+		const [action, arg, arg2] = rest;
 		switch (action) {
 			case "root":
 				await ctx.answerCallbackQuery();
@@ -158,17 +183,51 @@ export class MenuController {
 				return ctx.editMessageText("🛠 Maintenance", {
 					reply_markup: this.maintMenu(),
 				});
+			// --- link-rules wizard (see the `lw` block below) ---
 			case "links":
+				return this.lwHome(ctx);
+			case "lsw":
+				return this.lwStopwords(ctx);
+			case "lswa":
+				return this.lwPrompt(ctx, "sw");
+			case "lswl":
 				await ctx.answerCallbackQuery();
-				return ctx.editMessageText("🔗 Link rules", {
-					reply_markup: this.linksMenu(),
-				});
-			case "rejections":
-				return this.menuRejections(ctx, arg);
-			case "rj":
-				return this.menuRejectDelete(ctx, arg);
-			case "stopwords":
-				return this.menuInfo(ctx, "stopword", "list", "menu:links");
+				return this.lwStopwordPage(ctx, Number(arg) || 0);
+			case "lswd":
+				return this.lwStopwordDelete(ctx, arg);
+			case "lrj":
+				await ctx.answerCallbackQuery();
+				return this.lwRejectedWords(ctx, Number(arg) || 0);
+			case "lrjs":
+				await ctx.answerCallbackQuery();
+				return this.lwRejectedNotes(ctx, Number(arg), Number(arg2) || 0);
+			case "lrju":
+				return this.lwUnreject(ctx, arg, arg2);
+			case "lrg":
+				await ctx.answerCallbackQuery();
+				return this.lwPairs(ctx, Number(arg) || 0);
+			case "lrgv":
+				await ctx.answerCallbackQuery();
+				return this.lwPairDetail(ctx, Number(arg));
+			case "lrga":
+				return this.lwPrompt(ctx, "rg");
+			case "lrgd":
+				return this.lwPairDelete(ctx, arg);
+			case "lrgw":
+				return this.lwPrompt(ctx, "rgw", Number(arg));
+			case "lrgt":
+				return this.lwRetarget(ctx, Number(arg));
+			case "lrgp":
+				return this.lwPick(ctx, Number(arg));
+			case "lrgn":
+				await ctx.answerCallbackQuery();
+				return this.showNotePicker(ctx, "edit", Number(arg) || 0);
+			case "lrgq":
+				return this.lwPrompt(ctx, "rgn");
+			case "lrgs":
+				return this.lwSkip(ctx);
+			case "lrgc":
+				return this.lwCancel(ctx);
 			case "close":
 				return this.menuClose(ctx);
 			case "flush":
@@ -240,69 +299,581 @@ export class MenuController {
 		});
 	}
 
-	/** Rejected links as tappable rows — one tap undoes that rejection, then re-renders.
-	 *  Rows index into the deterministically ordered rejection list by position (same
-	 *  pattern as /unreject); a stale tap whose index no longer resolves answers "expired"
-	 *  instead of undoing the wrong pair. Back cancels out without touching anything. */
-	private async menuRejections(ctx: any, arg?: string): Promise<void> {
+	// --- link-rules wizard ---
+	// The three ways to steer the enricher's wikilinks, as one guided flow instead of a
+	// pile of typed commands: step 1 picks the rule kind, step 2 the word, step 3 the note
+	// (or the removal). Every screen carries a breadcrumb and a step counter.
+	//
+	// No state is held between taps. Rows index into deterministically ordered lists that
+	// are re-derived on every callback, so an index that no longer resolves answers
+	// "expired" instead of acting on the wrong row. Adding a rule needs free text, which a
+	// keyboard can't collect, so those two leaves send a force-reply prompt and route the
+	// answer back by the marker in the prompt text (see parseWizardRef in core.ts).
+
+	/** Step 1 — which kind of link rule to change, with live counts and index health. */
+	private async lwHome(ctx: any): Promise<void> {
 		await ctx.answerCallbackQuery();
-		return this.renderRejections(ctx, Number(arg) || 0);
+		const { repo, links } = this.getDeps();
+		const [stops, rejects, forced] = await Promise.all([
+			repo.stopwordList(),
+			repo.rejectionList(),
+			repo.registeredLinks(),
+		]);
+		const idx = links.stats();
+		log.info(
+			{
+				stopwords: stops.length,
+				rejections: rejects.length,
+				forced: forced.length,
+			},
+			"link wizard: step 1",
+		);
+		const kb = new InlineKeyboard()
+			.text(`🔗 Always link · ${forced.length}`, "menu:lrg")
+			.row()
+			.text(`🔇 Never link · ${stops.length}`, "menu:lsw")
+			.row()
+			.text(`🚫 Rejected pairs · ${rejects.length}`, "menu:lrj:0")
+			.row()
+			.text("‹ Back", "menu:root");
+		await ctx.editMessageText(
+			[
+				"🔗 Link rules — step 1 of 3",
+				"",
+				"Which rule do you want to change?",
+				"",
+				`🔗 ${forced.length} word→note pair(s) always linked.`,
+				`🔇 ${stops.length} word(s) never become a wikilink.`,
+				`🚫 ${rejects.length} word→note pair(s) rejected.`,
+				idx.enabled
+					? `📇 vault index: ${idx.aliases} alias(es) across ${idx.files} note(s).`
+					: "📇 vault index disabled — nothing is being linked.",
+			].join("\n"),
+			{ reply_markup: kb },
+		);
 	}
 
-	/** Build and show one page of the rejection list (assumes the query is already answered).
-	 *  Rows carry the global list index so a tap resolves regardless of the current page;
-	 *  page is clamped so a delete that empties the last page falls back to a valid one. */
-	private async renderRejections(ctx: any, page = 0): Promise<void> {
+	/** Step 2 (never-link) — add a word, or go on to pick one to drop. */
+	private async lwStopwords(ctx: any): Promise<void> {
+		await ctx.answerCallbackQuery();
+		const stops = await this.getDeps().repo.stopwordList();
+		const preview = MenuController.STOPWORD_PREVIEW;
+		const hidden = Math.max(0, stops.length - preview);
+		log.info(
+			{ stopwords: stops.length, hidden },
+			"link wizard: never-link step",
+		);
+		const kb = new InlineKeyboard().text("➕ Add a word", "menu:lswa").row();
+		if (stops.length) kb.text("🗑 Remove a word", "menu:lswl:0").row();
+		kb.text("‹ Back", "menu:links");
+		const lines = [
+			"🔗 Link rules › 🔇 Never link — step 2 of 3",
+			"",
+			stops.length
+				? `${stops.length} word(s) are skipped as link candidates:`
+				: "No never-link words yet.",
+		];
+		// A summary, not the list: previewList names the leftovers instead of cutting them
+		// off, and "🗑 Remove a word" pages through every word.
+		if (stops.length) lines.push(previewList(stops, preview));
+		if (hidden)
+			lines.push("", 'Tap "🗑 Remove a word" to page through all of them.');
+		await ctx.editMessageText(fitTelegram(lines.join("\n")), {
+			reply_markup: kb,
+		});
+	}
+
+	/** Step 3 (never-link) — one page of words, tap to allow linking again. */
+	private async lwStopwordPage(ctx: any, page = 0): Promise<void> {
 		const PAGE = MenuController.REJECT_PAGE;
-		const list = await this.getDeps().repo.rejectionList();
-		if (!list.length)
-			return ctx.editMessageText("No rejected links.", {
-				reply_markup: this.backTo("menu:links"),
+		const stops = await this.getDeps().repo.stopwordList();
+		if (!stops.length)
+			return ctx.editMessageText("🔇 No never-link words left.", {
+				reply_markup: this.backTo("menu:lsw"),
 			});
-		const pages = Math.ceil(list.length / PAGE);
+		const pages = Math.ceil(stops.length / PAGE);
 		const p = Math.min(Math.max(page, 0), pages - 1);
 		const kb = new InlineKeyboard();
-		list.slice(p * PAGE, p * PAGE + PAGE).forEach((r, j) => {
-			const gi = p * PAGE + j;
-			kb.text(
-				`🗑 "${r.surface}" ✗ ${r.note}`.slice(0, 60),
-				`menu:rj:${gi}`,
-			).row();
+		stops.slice(p * PAGE, p * PAGE + PAGE).forEach((w, j) => {
+			kb.text(`🗑 ${w}`.slice(0, 60), `menu:lswd:${p * PAGE + j}`).row();
 		});
 		if (pages > 1) {
-			if (p > 0) kb.text("‹ Prev", `menu:rejections:${p - 1}`);
-			if (p < pages - 1) kb.text("Next ›", `menu:rejections:${p + 1}`);
+			if (p > 0) kb.text("‹ Prev", `menu:lswl:${p - 1}`);
+			if (p < pages - 1) kb.text("Next ›", `menu:lswl:${p + 1}`);
 			kb.row();
 		}
-		kb.text("‹ Back", "menu:links");
-		const header =
-			pages > 1
-				? `🚫 Tap to undo a rejection (page ${p + 1}/${pages}):`
-				: "🚫 Tap to undo a rejection:";
-		await ctx.editMessageText(header, { reply_markup: kb });
+		kb.text("‹ Back", "menu:lsw");
+		await ctx.editMessageText(
+			[
+				"🔗 Link rules › 🔇 Never link › 🗑 Remove — step 3 of 3",
+				"",
+				`Tap a word to let it be linked again.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`,
+			].join("\n"),
+			{ reply_markup: kb },
+		);
 	}
 
-	/** Undo the rejection at global index `arg`, then re-render its page (shrunk). */
-	private async menuRejectDelete(ctx: any, arg?: string): Promise<void> {
-		const list = await this.getDeps().repo.rejectionList();
+	/** Drop the never-link word at global index `arg`, then re-render its page. */
+	private async lwStopwordDelete(ctx: any, arg?: string): Promise<void> {
+		const { repo } = this.getDeps();
+		const stops = await repo.stopwordList();
 		const gi = arg === undefined ? -1 : Number(arg);
-		const r = list[gi];
-		if (!r) {
-			log.warn({ arg }, "menu: reject index out of range");
+		const word = stops[gi];
+		if (word === undefined) {
+			log.warn({ arg }, "link wizard: stopword index out of range");
 			return void ctx.answerCallbackQuery({ text: "expired" });
 		}
-		// Answer before the write below, so a slow DB round-trip can't outlive Telegram's
+		// Answer before the write, so a slow DB round-trip can't outlive Telegram's
 		// callback-query window — the re-rendered page carries the result.
 		await ctx.answerCallbackQuery();
-		const n = await this.getDeps().repo.unreject(r.surface, r.note);
-		log.info(
-			{ surface: r.surface, note: r.note, removed: n },
-			"unreject via menu",
-		);
-		return this.renderRejections(
+		const n = await repo.delStopword(word);
+		log.info({ word, removed: n }, "link wizard: never-link word removed");
+		return this.lwStopwordPage(
 			ctx,
 			Math.floor(gi / MenuController.REJECT_PAGE),
 		);
+	}
+
+	/** Step 2 (rejections) — one page of rejected words. */
+	private async lwRejectedWords(ctx: any, page = 0): Promise<void> {
+		const PAGE = MenuController.REJECT_PAGE;
+		const list = await this.getDeps().repo.rejectionList();
+		if (!list.length)
+			return ctx.editMessageText("🚫 No rejected links.", {
+				reply_markup: this.backTo("menu:links"),
+			});
+		const surfaces = distinctSurfaces(list);
+		const pages = Math.ceil(surfaces.length / PAGE);
+		const p = Math.min(Math.max(page, 0), pages - 1);
+		const kb = new InlineKeyboard();
+		surfaces.slice(p * PAGE, p * PAGE + PAGE).forEach((s, j) => {
+			const n = list.filter((r) => r.surface === s).length;
+			kb.text(
+				`🚫 ${s} · ${n} note(s)`.slice(0, 60),
+				`menu:lrjs:${p * PAGE + j}`,
+			).row();
+		});
+		if (pages > 1) {
+			if (p > 0) kb.text("‹ Prev", `menu:lrj:${p - 1}`);
+			if (p < pages - 1) kb.text("Next ›", `menu:lrj:${p + 1}`);
+			kb.row();
+		}
+		kb.text("‹ Back", "menu:links");
+		await ctx.editMessageText(
+			[
+				"🔗 Link rules › 🚫 Rejected pairs — step 2 of 3",
+				"",
+				`Pick the word whose rejection you want to undo.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`,
+			].join("\n"),
+			{ reply_markup: kb },
+		);
+	}
+
+	/** Step 3 (rejections) — the notes rejected for surface `si`, tap one to allow it.
+	 *  Paged like every other row list: one surface can carry more rejected notes than fit
+	 *  in a single keyboard, and a word rejected everywhere is exactly the one you come
+	 *  here to fix. */
+	private async lwRejectedNotes(ctx: any, si: number, page = 0): Promise<void> {
+		const PAGE = MenuController.REJECT_PAGE;
+		const list = await this.getDeps().repo.rejectionList();
+		const surface = distinctSurfaces(list)[si];
+		if (surface === undefined) {
+			log.warn({ si }, "link wizard: surface index out of range");
+			return this.lwRejectedWords(ctx, 0);
+		}
+		const notes = list.filter((r) => r.surface === surface).map((r) => r.note);
+		const pages = Math.max(1, Math.ceil(notes.length / PAGE));
+		const p = Math.min(Math.max(page, 0), pages - 1);
+		const kb = new InlineKeyboard();
+		// Row indices stay global so lwUnreject resolves them against the whole note list.
+		notes.slice(p * PAGE, p * PAGE + PAGE).forEach((n, j) => {
+			kb.text(`↩️ ${n}`.slice(0, 60), `menu:lrju:${si}:${p * PAGE + j}`).row();
+		});
+		if (pages > 1) {
+			if (p > 0) kb.text("‹ Prev", `menu:lrjs:${si}:${p - 1}`);
+			if (p < pages - 1) kb.text("Next ›", `menu:lrjs:${si}:${p + 1}`);
+			kb.row();
+		}
+		kb.text(
+			"‹ Back",
+			`menu:lrj:${Math.floor(si / MenuController.REJECT_PAGE)}`,
+		);
+		await ctx.editMessageText(
+			[
+				`🔗 Link rules › 🚫 ${surface} — step 3 of 3`,
+				"",
+				`${notes.length} note(s) rejected. Tap one to let "${surface}" link to it again.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`,
+			].join("\n"),
+			{ reply_markup: kb },
+		);
+	}
+
+	/** Undo the surface→note rejection at (`a`, `b`), then re-render where it came from. */
+	private async lwUnreject(ctx: any, a?: string, b?: string): Promise<void> {
+		const { repo } = this.getDeps();
+		const list = await repo.rejectionList();
+		const si = Number(a);
+		const surface = distinctSurfaces(list)[si];
+		const note =
+			surface === undefined
+				? undefined
+				: list.filter((r) => r.surface === surface).map((r) => r.note)[
+						Number(b)
+					];
+		if (surface === undefined || note === undefined) {
+			log.warn({ a, b }, "link wizard: rejection index out of range");
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		await ctx.answerCallbackQuery();
+		const n = await repo.unreject(surface, note);
+		log.info({ surface, note, removed: n }, "link wizard: rejection undone");
+		// The surface disappears from step 2 once its last note is freed, so fall back
+		// there rather than re-rendering an empty note list.
+		const left = (await repo.rejectionList()).some(
+			(r) => r.surface === surface,
+		);
+		return left
+			? this.lwRejectedNotes(
+					ctx,
+					si,
+					Math.floor(Number(b) / MenuController.REJECT_PAGE),
+				)
+			: this.lwRejectedWords(ctx, Math.floor(si / MenuController.REJECT_PAGE));
+	}
+
+	/** Step 2 (always-link) — one page of pairs. Tap a pair to edit or drop it. */
+	private async lwPairs(ctx: any, page = 0): Promise<void> {
+		const PAGE = MenuController.REJECT_PAGE;
+		const forced = await this.getDeps().repo.registeredLinks();
+		log.info({ forced: forced.length, page }, "link wizard: always-link step");
+		const kb = new InlineKeyboard().text("➕ Add word(s)", "menu:lrga").row();
+		const pages = Math.max(1, Math.ceil(forced.length / PAGE));
+		const p = Math.min(Math.max(page, 0), pages - 1);
+		forced.slice(p * PAGE, p * PAGE + PAGE).forEach((r, j) => {
+			kb.text(
+				`${r.surface} → ${r.note}`.slice(0, 60),
+				`menu:lrgv:${p * PAGE + j}`,
+			).row();
+		});
+		if (pages > 1) {
+			if (p > 0) kb.text("‹ Prev", `menu:lrg:${p - 1}`);
+			if (p < pages - 1) kb.text("Next ›", `menu:lrg:${p + 1}`);
+			kb.row();
+		}
+		kb.text("‹ Back", "menu:links");
+		await ctx.editMessageText(
+			[
+				"🔗 Link rules › 🔗 Always link — step 2 of 3",
+				"",
+				forced.length
+					? `${forced.length} pair(s) linked with no judgment call. Tap one to change it.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`
+					: "No always-link pairs yet.",
+			].join("\n"),
+			{ reply_markup: kb },
+		);
+	}
+
+	/** Step 3 (always-link) — what you can do to one pair: retarget, rename, or drop. */
+	private async lwPairDetail(ctx: any, gi: number): Promise<void> {
+		const forced = await this.getDeps().repo.registeredLinks();
+		const r = forced[gi];
+		if (!r) {
+			log.warn({ gi }, "link wizard: pair index out of range");
+			return this.lwPairs(ctx, 0);
+		}
+		const kb = new InlineKeyboard()
+			.text("🔁 Change note", `menu:lrgt:${gi}`)
+			.row()
+			.text("✏️ Rename word", `menu:lrgw:${gi}`)
+			.row()
+			.text("🗑 Delete pair", `menu:lrgd:${gi}`)
+			.row()
+			.text(
+				"‹ Back",
+				`menu:lrg:${Math.floor(gi / MenuController.REJECT_PAGE)}`,
+			);
+		await ctx.editMessageText(
+			[
+				`🔗 Link rules › 🔗 Always link › ${r.surface} — step 3 of 3`,
+				"",
+				`"${r.surface}" always links to [[${r.note}]].`,
+			].join("\n"),
+			{ reply_markup: kb },
+		);
+	}
+
+	/** Drop the pair at global index `arg`, then re-render its page. */
+	private async lwPairDelete(ctx: any, arg?: string): Promise<void> {
+		const { repo } = this.getDeps();
+		const forced = await repo.registeredLinks();
+		const gi = arg === undefined ? -1 : Number(arg);
+		const r = forced[gi];
+		if (!r) {
+			log.warn({ arg }, "link wizard: pair index out of range");
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		// Answer before the write, so a slow DB round-trip can't outlive Telegram's
+		// callback-query window — the re-rendered page carries the result.
+		await ctx.answerCallbackQuery({ text: `dropped ${r.surface}` });
+		const n = await repo.delRegisteredLink(r.surface, r.note);
+		log.info(
+			{ surface: r.surface, note: r.note, removed: n },
+			"link wizard: always-link pair removed",
+		);
+		return this.lwPairs(ctx, Math.floor(gi / MenuController.REJECT_PAGE));
+	}
+
+	/** "Change note" on an existing pair: reuse the picker, remembering what to replace. */
+	private async lwRetarget(ctx: any, gi: number): Promise<void> {
+		const forced = await this.getDeps().repo.registeredLinks();
+		const r = forced[gi];
+		if (!r) {
+			log.warn({ gi }, "link wizard: retarget index out of range");
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		await ctx.answerCallbackQuery();
+		log.info({ surface: r.surface, note: r.note }, "link wizard: retargeting");
+		this.pending = {
+			words: [r.surface],
+			i: 0,
+			query: r.surface,
+			page: 0,
+			retarget: { ...r },
+		};
+		return this.showNotePicker(ctx, "edit", 0);
+	}
+
+	/** Force-reply prompts — the three places a rule needs free text no keyboard can give.
+	 *  The answer routes back through handleWizardReply by the marker in the prompt. */
+	private async lwPrompt(
+		ctx: any,
+		kind: "sw" | "rg" | "rgn" | "rgw",
+		gi?: number,
+	): Promise<void> {
+		await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
+		log.info({ kind, gi }, "link wizard: prompting");
+		const word = this.pending?.words[this.pending.i];
+		const prompts: Record<typeof kind, [string, string]> = {
+			sw: [
+				`➕ Which word(s) should never be linked? One per line, or comma-separated. ${WIZARD_STOPWORD_REF}`,
+				"gym, mom",
+			],
+			rg: [
+				`➕ Which word(s) should always link? One per line, or comma-separated — spaces are fine, and I'll ask for each one's note next. ${WIZARD_REGISTER_REF}`,
+				"Priscilla, Path Of Exile",
+			],
+			rgn: [
+				`🔎 Search the vault for the note${word ? ` "${word}" should link to` : ""}. Reply with any part of its title. ${WIZARD_NOTE_REF}`,
+				"part of the title",
+			],
+			rgw: [
+				`✏️ Reply with the new word for this pair. ${`(${WIZARD_RENAME_REF}:${gi})`}`,
+				"the new word",
+			],
+		};
+		const [text, placeholder] = prompts[kind];
+		await this.bot.api.sendMessage(config.telegram.allowedUserId, text, {
+			reply_markup: { force_reply: true, input_field_placeholder: placeholder },
+		});
+	}
+
+	/** The note picker: search results from the vault index as tappable rows. This is the
+	 *  step that used to mean typing an exact title from memory across thousands of notes.
+	 *  `mode` is "edit" from a button tap and "send" after a force-reply (which arrives as
+	 *  a new message, so there's nothing in place to edit). */
+	private async showNotePicker(
+		ctx: any,
+		mode: "edit" | "send",
+		page = 0,
+	): Promise<void> {
+		const p = this.pending;
+		if (!p) return void ctx.reply("That link flow expired — reopen /menu.");
+		const word = p.words[p.i];
+		if (word === undefined) return this.finishPending(ctx, mode);
+
+		const PAGE = MenuController.PICK_PAGE;
+		const hits = noteSuggestions(p.query, this.getDeps().links.list());
+		const pages = Math.max(1, Math.ceil(hits.length / PAGE));
+		p.page = Math.min(Math.max(page, 0), pages - 1);
+		const shown = hits.slice(p.page * PAGE, p.page * PAGE + PAGE);
+
+		const kb = new InlineKeyboard();
+		shown.forEach((note, j) => {
+			kb.text(`📝 ${note}`.slice(0, 60), `menu:lrgp:${j}`).row();
+		});
+		if (pages > 1) {
+			if (p.page > 0) kb.text("‹ Prev", `menu:lrgn:${p.page - 1}`);
+			if (p.page < pages - 1) kb.text("Next ›", `menu:lrgn:${p.page + 1}`);
+			kb.row();
+		}
+		kb.text("🔎 Search by another name", "menu:lrgq").row();
+		if (p.words.length > 1) kb.text("⏭ Skip this word", "menu:lrgs");
+		kb.text("✖ Cancel", "menu:lrgc");
+
+		const queue =
+			p.words.length > 1 ? ` (word ${p.i + 1} of ${p.words.length})` : "";
+		const text = [
+			`🔗 "${word}" → which note?${queue}`,
+			"",
+			hits.length
+				? `${hits.length} match(es) for "${p.query}"${pages > 1 ? `, page ${p.page + 1}/${pages}` : ""}. Tap one, or search again.`
+				: `Nothing in the vault matches "${p.query}". Search again with another part of the title.`,
+		].join("\n");
+
+		if (mode === "edit") return ctx.editMessageText(text, { reply_markup: kb });
+		await this.bot.api.sendMessage(config.telegram.allowedUserId, text, {
+			reply_markup: kb,
+		});
+	}
+
+	/** A tapped suggestion: save the pair (replacing the old note when retargeting) and
+	 *  move to the next queued word. */
+	private async lwPick(ctx: any, j: number): Promise<void> {
+		const p = this.pending;
+		const word = p?.words[p.i];
+		if (!p || word === undefined) {
+			log.warn("link wizard: pick with no pending flow");
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		const PAGE = MenuController.PICK_PAGE;
+		const hits = noteSuggestions(p.query, this.getDeps().links.list());
+		const note = hits[p.page * PAGE + j];
+		if (note === undefined) {
+			log.warn({ j, page: p.page }, "link wizard: suggestion out of range");
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		await ctx.answerCallbackQuery({ text: `${word} → ${note}` });
+		return this.savePair(ctx, word, note);
+	}
+
+	/** Write one pair, retiring the pair being replaced when this is a retarget. */
+	private async savePair(ctx: any, word: string, note: string): Promise<void> {
+		const { repo } = this.getDeps();
+		const old = this.pending?.retarget;
+		if (old) await repo.delRegisteredLink(old.surface, old.note);
+		await repo.addRegisteredLink(word, note);
+		log.info(
+			{ surface: word, note, replaced: old?.note },
+			"link wizard: pair saved",
+		);
+		return this.advance(ctx);
+	}
+
+	/** Move the queue on: next word gets its own picker, an empty queue ends the flow. */
+	private async advance(ctx: any): Promise<void> {
+		const p = this.pending;
+		if (!p) return this.lwPairs(ctx, 0);
+		p.i += 1;
+		const next = p.words[p.i];
+		if (next === undefined) return this.finishPending(ctx, "edit");
+		p.query = next;
+		return this.showNotePicker(ctx, "edit", 0);
+	}
+
+	private async finishPending(ctx: any, mode: "edit" | "send"): Promise<void> {
+		const done = this.pending?.words.length ?? 0;
+		this.pending = undefined;
+		log.info({ words: done }, "link wizard: pair flow finished");
+		if (mode === "edit") return this.lwPairs(ctx, 0);
+		// Arrived from a reply, so there's no menu message here to edit — send a fresh one.
+		await this.bot.api.sendMessage(
+			config.telegram.allowedUserId,
+			"🔗 Always-link rules updated.",
+			{
+				reply_markup: new InlineKeyboard().text("🔗 Link rules", "menu:links"),
+			},
+		);
+	}
+
+	private async lwSkip(ctx: any): Promise<void> {
+		await ctx.answerCallbackQuery({ text: "skipped" });
+		log.info(
+			{ word: this.pending?.words[this.pending.i] },
+			"link wizard: word skipped",
+		);
+		return this.advance(ctx);
+	}
+
+	private async lwCancel(ctx: any): Promise<void> {
+		await ctx.answerCallbackQuery({ text: "cancelled" });
+		log.info("link wizard: pair flow cancelled");
+		this.pending = undefined;
+		return this.lwPairs(ctx, 0);
+	}
+
+	/** True when `text` is one of the wizard's own force-reply prompts (ScribaBot checks
+	 *  this before treating a reply as a jot edit). */
+	isWizardPrompt(text: string): boolean {
+		return parseWizardRef(text) !== null;
+	}
+
+	/** Route a reply to the prompt that asked for it. */
+	async handleWizardReply(ctx: any, prompt: string): Promise<void> {
+		const { repo } = this.getDeps();
+		const p = parseWizardRef(prompt);
+		if (!p) return;
+		const body = ctx.message?.text ?? "";
+
+		switch (p.kind) {
+			case "sw": {
+				const words = parseRuleWords(body);
+				if (!words.length) {
+					log.warn({ body }, "link wizard: empty never-link reply");
+					return void ctx.reply("Nothing to add — send a word.");
+				}
+				for (const w of words) await repo.addStopword(w);
+				log.info({ words }, "link wizard: never-link words added");
+				return void ctx.reply(`🔇 never linking: ${words.join(", ")}`, {
+					reply_markup: new InlineKeyboard().text(
+						"🔗 Link rules",
+						"menu:links",
+					),
+				});
+			}
+			case "rg": {
+				const words = parseRuleWords(body);
+				if (!words.length) {
+					log.warn({ body }, "link wizard: empty always-link reply");
+					return void ctx.reply("Nothing to add — send a word.");
+				}
+				log.info({ words }, "link wizard: queued words needing a note");
+				this.pending = { words, i: 0, query: words[0] ?? "", page: 0 };
+				return this.showNotePicker(ctx, "send", 0);
+			}
+			case "rgn": {
+				if (!this.pending) {
+					log.warn("link wizard: search reply with no pending flow");
+					return void ctx.reply("That link flow expired — reopen /menu.");
+				}
+				this.pending.query = cleanNoteTitle(body);
+				log.info({ query: this.pending.query }, "link wizard: note search");
+				return this.showNotePicker(ctx, "send", 0);
+			}
+			case "rgw": {
+				const forced = await repo.registeredLinks();
+				const r = forced[p.index];
+				if (!r) {
+					log.warn({ index: p.index }, "link wizard: rename target is gone");
+					return void ctx.reply("That pair is gone — reopen /menu.");
+				}
+				const [word] = parseRuleWords(body, 1);
+				if (!word) {
+					log.warn({ body }, "link wizard: empty rename reply");
+					return void ctx.reply("Nothing to rename to — send a word.");
+				}
+				await repo.delRegisteredLink(r.surface, r.note);
+				await repo.addRegisteredLink(word, r.note);
+				log.info({ from: r.surface, to: word }, "link wizard: pair renamed");
+				return void ctx.reply(`✏️ "${word}" always links to [[${r.note}]]`, {
+					reply_markup: new InlineKeyboard().text(
+						"🔗 Link rules",
+						"menu:links",
+					),
+				});
+			}
+			default:
+				return void (p satisfies never);
+		}
 	}
 
 	/** Close the menu — the control panel is transient, not part of the journal. */

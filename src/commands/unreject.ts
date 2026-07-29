@@ -10,6 +10,9 @@ const log = logger("unreject");
  *  Indices are positions in `repo.rejectionList()`, re-derived on each tap. */
 export const UNREJECT_NS = "ur";
 
+// Rows in the one-shot pick keyboard. Telegram rejects an oversized reply_markup outright.
+const ROWS = 30;
+
 export const unreject: Command = {
 	name: "unreject",
 	description: "undo a link-rejection (menu, or /unreject <word> <note>)",
@@ -34,10 +37,21 @@ export const unreject: Command = {
 		if (!list.length) return "(no rejections)";
 		const surfaces = distinctSurfaces(list);
 		log.info({ surfaces: surfaces.length }, "/unreject menu opened");
+		// This one-shot keyboard has no pages to turn — /menu › 🔗 Link rules does, so the
+		// long tail lives there. Cap the rows rather than sending a keyboard Telegram will
+		// reject, and name the cut so the list never reads as complete when it isn't.
+		const shown = surfaces.slice(0, ROWS);
 		const kb = new InlineKeyboard();
-		surfaces.forEach((s, i) => {
+		for (const [i, s] of shown.entries()) {
 			kb.text(s, `${UNREJECT_NS}:s:${i}`).row();
-		});
-		await ctx.reply("Pick a rejected word to unreject:", { reply_markup: kb });
+		}
+		const more = surfaces.length - shown.length;
+		if (more) log.info({ more }, "/unreject menu truncated");
+		await ctx.reply(
+			more
+				? `Pick a rejected word to unreject (${shown.length} of ${surfaces.length} — /menu › 🔗 Link rules pages through the rest):`
+				: "Pick a rejected word to unreject:",
+			{ reply_markup: kb },
+		);
 	},
 };
