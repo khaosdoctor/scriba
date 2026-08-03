@@ -52,11 +52,17 @@ export class MenuController {
 		page: number;
 		retarget?: { surface: string; note: string }; // pair being replaced, if editing
 	};
+	// A menu is a control panel, not journal content: one minute without a tap and it
+	// deletes itself, so a finished (or abandoned) flow doesn't leave a stale screen and a
+	// still-tappable keyboard sitting in the chat. Every tap restarts the countdown.
+	private static readonly MENU_TTL_MS = 60_000;
 	// chatId -> message id of the last root menu in that chat, so opening a fresh /menu
 	// retires the old one instead of leaving stale, still-tappable keyboards piling up.
 	// Keyed by chat (not a single field) since message ids are only unique per chat — the
 	// allowed user can open /menu from more than one chat (e.g. a group, then a DM).
 	private lastMenuMsgId = new Map<number, number>();
+	// "<chatId>:<messageId>" -> its pending self-destruct timer.
+	private expiry = new Map<string, NodeJS.Timeout>();
 
 	constructor(
 		private bot: Bot,
@@ -66,6 +72,32 @@ export class MenuController {
 		private getDeps: () => Deps,
 		private deleteJot: (jot: Jot) => Promise<string>,
 	) {}
+
+	/** (Re)start a menu message's idle countdown. Called when one is sent and again on every
+	 *  tap, so the minute is measured from the last interaction, not from the send. */
+	private scheduleExpiry(chatId: number, msgId: number): void {
+		const key = `${chatId}:${msgId}`;
+		this.cancelExpiry(chatId, msgId);
+		const timer = setTimeout(() => {
+			this.expiry.delete(key);
+			log.info({ chatId, msgId }, "menu: idle, self-destructing");
+			// Best-effort: the message may already be gone (closed, deleted by hand, >48h).
+			this.bot.api.deleteMessage(chatId, msgId).catch(() => {});
+			if (this.lastMenuMsgId.get(chatId) === msgId)
+				this.lastMenuMsgId.delete(chatId);
+		}, MenuController.MENU_TTL_MS);
+		// Don't hold the process open just for a menu that nobody is going to tap.
+		timer.unref?.();
+		this.expiry.set(key, timer);
+	}
+
+	private cancelExpiry(chatId: number, msgId: number): void {
+		const key = `${chatId}:${msgId}`;
+		const t = this.expiry.get(key);
+		if (!t) return;
+		clearTimeout(t);
+		this.expiry.delete(key);
+	}
 
 	/** Wire /menu. Callback taps are routed in from ScribaBot.handleButton. */
 	register(): void {
@@ -78,12 +110,14 @@ export class MenuController {
 		// Retire the previous menu in this chat so old, stale keyboards don't linger tappable.
 		const prev = this.lastMenuMsgId.get(ctx.chat.id);
 		if (prev) {
+			this.cancelExpiry(ctx.chat.id, prev);
 			await ctx.api.deleteMessage(ctx.chat.id, prev).catch(() => {});
 		}
 		const sent = await ctx.reply("🗂 scriba control menu", {
 			reply_markup: this.rootMenu(),
 		});
 		this.lastMenuMsgId.set(ctx.chat.id, sent.message_id);
+		this.scheduleExpiry(ctx.chat.id, sent.message_id);
 	}
 
 	private rootMenu(): InlineKeyboard {
@@ -137,6 +171,10 @@ export class MenuController {
 	/** Dispatch a `menu:<action>[:<arg>]` callback. Routed in from ScribaBot.handleButton. */
 	async handleCallback(ctx: any, rest: string[]): Promise<void> {
 		const [action, arg, arg2] = rest;
+		// Taps land on the message being edited in place, so restarting its countdown here
+		// covers every screen the wizard renders without touching each one.
+		const tapped = ctx.callbackQuery?.message;
+		if (tapped) this.scheduleExpiry(tapped.chat.id, tapped.message_id);
 		switch (action) {
 			case "root":
 				await ctx.answerCallbackQuery();
@@ -729,9 +767,17 @@ export class MenuController {
 		].join("\n");
 
 		if (mode === "edit") return ctx.editMessageText(text, { reply_markup: kb });
-		await this.bot.api.sendMessage(config.telegram.allowedUserId, text, {
-			reply_markup: kb,
-		});
+		return this.sendMenu(text, kb);
+	}
+
+	/** Send a menu screen of our own (not an edit of a tapped one) and start its countdown. */
+	private async sendMenu(text: string, kb: InlineKeyboard): Promise<void> {
+		const sent = await this.bot.api.sendMessage(
+			config.telegram.allowedUserId,
+			text,
+			{ reply_markup: kb },
+		);
+		this.scheduleExpiry(sent.chat.id, sent.message_id);
 	}
 
 	/** A tapped suggestion: save the pair (replacing the old note when retargeting) and
@@ -793,12 +839,9 @@ export class MenuController {
 		log.info({ words: done }, "link wizard: pair flow finished");
 		if (mode === "edit") return this.lwPairs(ctx, 0);
 		// Arrived from a reply, so there's no menu message here to edit — send a fresh one.
-		await this.bot.api.sendMessage(
-			config.telegram.allowedUserId,
+		await this.sendMenu(
 			"🔗 Always-link rules updated.",
-			{
-				reply_markup: new InlineKeyboard().text("🔗 Link rules", "menu:links"),
-			},
+			new InlineKeyboard().text("🔗 Link rules", "menu:links"),
 		);
 	}
 
@@ -914,6 +957,10 @@ export class MenuController {
 		log.info("menu closed");
 		await ctx.answerCallbackQuery();
 		this.lastMenuMsgId.delete(ctx.chat.id);
+		this.cancelExpiry(
+			ctx.chat.id,
+			ctx.callbackQuery?.message?.message_id ?? -1,
+		);
 		try {
 			await ctx.deleteMessage();
 		} catch (e) {
