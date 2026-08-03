@@ -1,3 +1,10 @@
+## [1.29.0](https://github.com/khaosdoctor/scriba/compare/v1.28.0...v1.29.0) (2026-08-03)
+
+
+### Features
+
+* menu messages self-destruct after a minute of no taps ([1d789db](https://github.com/khaosdoctor/scriba/commit/1d789dbf31b4b858fda1f6022191a88a11c42e58))
+
 ## [1.28.0](https://github.com/khaosdoctor/scriba/compare/v1.27.0...v1.28.0) (2026-08-03)
 
 
@@ -31,17 +38,4 @@
 ### Bug Fixes
 
 * stop asserting usage exhaustion as the cause of enrichment fallback ([#9](https://github.com/khaosdoctor/scriba/issues/9)) ([ff223cd](https://github.com/khaosdoctor/scriba/commit/ff223cdc1092eaa683352258ddb8eb93abc5fd8b))
-
-## [1.23.0](https://github.com/khaosdoctor/scriba/compare/v1.22.0...v1.23.0) (2026-07-14)
-
-
-### Features
-
-* quote the updated line in edit confirmations ([98e2130](https://github.com/khaosdoctor/scriba/commit/98e2130209cf089ef1bae93f318b5ac39dc09507))
-
-
-### Bug Fixes
-
-* edit jot status messages in place instead of posting new ones ([4570668](https://github.com/khaosdoctor/scriba/commit/4570668545327f8f59cc81dc0e3a33eb15ca55fd))
-* fold jot edits back into the source before reprocess ([0ad13e3](https://github.com/khaosdoctor/scriba/commit/0ad13e36ccdb4b81536a55029da0d515b900e395))
 
