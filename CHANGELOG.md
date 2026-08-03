@@ -1,3 +1,10 @@
+## [1.28.0](https://github.com/khaosdoctor/scriba/compare/v1.27.0...v1.28.0) (2026-08-03)
+
+
+### Features
+
+* always-link pairs can target notes that don't exist yet ([d794c58](https://github.com/khaosdoctor/scriba/commit/d794c58eef18b45d46c0a47c476e368c418c5961))
+
 ## [1.27.0](https://github.com/khaosdoctor/scriba/compare/v1.26.0...v1.27.0) (2026-07-29)
 
 
@@ -37,16 +44,4 @@
 
 * edit jot status messages in place instead of posting new ones ([4570668](https://github.com/khaosdoctor/scriba/commit/4570668545327f8f59cc81dc0e3a33eb15ca55fd))
 * fold jot edits back into the source before reprocess ([0ad13e3](https://github.com/khaosdoctor/scriba/commit/0ad13e36ccdb4b81536a55029da0d515b900e395))
-
-## [1.22.0](https://github.com/khaosdoctor/scriba/compare/v1.21.2...v1.22.0) (2026-07-14)
-
-
-### Features
-
-* use the agent SDK's native structured output for enrichment ([e5525b1](https://github.com/khaosdoctor/scriba/commit/e5525b1b4c047307d12a88268ec7516ab58ba334))
-
-
-### Bug Fixes
-
-* forbid narration in enrichment model response ([55b6832](https://github.com/khaosdoctor/scriba/commit/55b6832f73e5211d8c4b1919d7ea2cbc68090512))
 
