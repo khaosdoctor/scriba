@@ -1,3 +1,10 @@
+## [1.30.0](https://github.com/khaosdoctor/scriba/compare/v1.29.0...v1.30.0) (2026-08-03)
+
+
+### Features
+
+* undo button on a finished jot's status message ([d1a2a44](https://github.com/khaosdoctor/scriba/commit/d1a2a44a68af3b5d970476484fb538386c81367a))
+
 ## [1.29.0](https://github.com/khaosdoctor/scriba/compare/v1.28.0...v1.29.0) (2026-08-03)
 
 
@@ -31,11 +38,4 @@
 ### Bug Fixes
 
 * strip conventional-changelog markdown from release notes in Telegram messages ([d805908](https://github.com/khaosdoctor/scriba/commit/d80590867f25bb5a179e6126f4f31ed70854345c))
-
-## [1.23.1](https://github.com/khaosdoctor/scriba/compare/v1.23.0...v1.23.1) (2026-07-15)
-
-
-### Bug Fixes
-
-* stop asserting usage exhaustion as the cause of enrichment fallback ([#9](https://github.com/khaosdoctor/scriba/issues/9)) ([ff223cd](https://github.com/khaosdoctor/scriba/commit/ff223cdc1092eaa683352258ddb8eb93abc5fd8b))
 
