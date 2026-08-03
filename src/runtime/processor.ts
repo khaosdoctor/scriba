@@ -44,7 +44,7 @@ export interface BotServices {
 	status: (
 		jotId: string,
 		html: string,
-		opts?: { retry?: boolean },
+		opts?: { retry?: boolean; undo?: boolean },
 	) => Promise<void>;
 	// Delete a jot's live status message if one exists (used to collapse stray
 	// per-follower messages into the leader's single confirmation on a squash).
@@ -246,6 +246,7 @@ export class JotProcessor {
 						jot.id,
 						merged ? followers.length + 1 : 0,
 					),
+					{ undo: true },
 				);
 				await this.bot.onJotDone(jot.id); // apply anything queued while we were working
 				// Each follower's own message gets the done reaction + its queued edits drained;

@@ -62,6 +62,11 @@ deployed on the homelab (Coolify). Single user.
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not
   processing time) and rewriting them to `[[YYYY-MM-DD|phrase]]`. The target daily note
   doesn't need to exist yet.
+- **Undo is a button on the finished status message.** A jot that reaches `done` (and any
+  later edit that leaves it there) carries an ↩️ Undo button — `un:<jotId>`, handled by
+  `ScribaBot.handleUndo`, which runs the same `deleteJot` teardown as `/delete` and then
+  re-renders the status without a keyboard. Deleting a squashed leader marks its followers
+  deleted too: they share the one anchor line that just went away.
 - **Edits fold back into the source, so reprocess doesn't undo them.** Correcting a jot's
   line (reply `s/old/new/`, a freeform reply instruction, or Telegram's native message-edit)
   also writes the corrected text into the jot's own `transcript` (audio) or `raw_text`

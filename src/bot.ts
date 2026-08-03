@@ -215,15 +215,18 @@ export class ScribaBot implements BotServices {
 	/** Create-or-edit the one live status message for a jot. First call sends it and
 	 *  remembers the message id; later calls edit that same message in place, so the
 	 *  chat reads as a clean audit trail instead of a stream of notifications.
-	 *  `retry: true` attaches a force-retry button; otherwise any button is cleared. */
+	 *  `retry: true` attaches a force-retry button, `undo: true` an undo one; otherwise any
+	 *  button is cleared. */
 	async status(
 		jotId: string,
 		html: string,
-		opts?: { retry?: boolean },
+		opts?: { retry?: boolean; undo?: boolean },
 	): Promise<void> {
-		const reply_markup = opts?.retry
-			? new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`)
-			: new InlineKeyboard();
+		const reply_markup = opts?.undo
+			? new InlineKeyboard().text("↩️ Undo", `un:${jotId}`)
+			: opts?.retry
+				? new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`)
+				: new InlineKeyboard();
 		const chat = config.telegram.allowedUserId;
 		const existing = this.statusMsgs.get(jotId);
 		if (existing) {
@@ -325,6 +328,7 @@ export class ScribaBot implements BotServices {
 		await this.status(
 			jotId,
 			`${confirmation}\n(applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""})`,
+			{ undo: true },
 		);
 	}
 
@@ -496,7 +500,9 @@ export class ScribaBot implements BotServices {
 		}
 		log.info({ jotId, text: markdown }, "applying edit to processed jot");
 		await this.status(jotId, "✍️ got your edit — applying…");
-		await this.status(jotId, await this.replaceJotText(jot, markdown));
+		await this.status(jotId, await this.replaceJotText(jot, markdown), {
+			undo: true,
+		});
 	}
 
 	/** Attachment intake (image/video): keep the caption as display text, save + embed the
@@ -655,7 +661,11 @@ export class ScribaBot implements BotServices {
 		// Edit the jot's own status message in place rather than posting a new reply, so
 		// the chat ends up with the single, already-updated message instead of the stale
 		// confirmation sitting alongside a fresh one.
-		await this.status(jotId, await this.applyEdits(jot, [instruction]));
+		const applied = await this.applyEdits(jot, [instruction]);
+		// A freeform instruction can itself be "delete this", so only offer Undo when the
+		// entry is actually still in the journal.
+		const after = await this.repo.getJot(jotId);
+		await this.status(jotId, applied, { undo: after?.status === "done" });
 	}
 
 	/** Apply one or more edit instructions to a jot's line, merged into a single write
@@ -742,18 +752,20 @@ export class ScribaBot implements BotServices {
 				await this.obsidian.writeNote(jot.note_path, removed);
 			return removed;
 		});
-		if (out === null) {
-			// Line already gone (double delete, or removed by hand in Obsidian). Still mark
-			// it deleted so the record matches reality — the user's intent is satisfied.
+		// Line already gone (double delete, or removed by hand in Obsidian)? Still mark it
+		// deleted so the record matches reality — the user's intent is satisfied.
+		if (out === null)
 			log.warn(
 				{ jotId: jot.id, anchor: jot.anchor },
 				"delete: anchored line not found — marking deleted anyway",
 			);
-			await this.repo.markDeleted(jot.id);
-			return "🗑️ removed that from your journal.";
-		}
 		await this.repo.markDeleted(jot.id);
-		log.info({ jotId: jot.id }, "journal line deleted");
+		// A squashed line is several jots sharing one anchor, so removing it takes the
+		// followers' text with it — mark them deleted too rather than leave rows pointing at
+		// a line that no longer exists.
+		for (const f of await this.repo.groupFollowers(jot.id))
+			await this.repo.markDeleted(f.id);
+		if (out !== null) log.info({ jotId: jot.id }, "journal line deleted");
 		return "🗑️ removed that from your journal.";
 	}
 
@@ -801,6 +813,7 @@ export class ScribaBot implements BotServices {
 		log.debug({ data: ctx.callbackQuery.data }, "button pressed");
 		if (ns === "menu") return this.menu.handleCallback(ctx, rest);
 		if (ns === "rt") return this.handleRetry(ctx, rest[0]);
+		if (ns === "un") return this.handleUndo(ctx, rest[0]);
 		if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
 		if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
 		if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
@@ -808,6 +821,25 @@ export class ScribaBot implements BotServices {
 			return this.habits.handleTap(ctx, rest[0], rest[1], rest[2]);
 		if (ns === REPROCESS_NS) return this.reprocess.handleTap(ctx, rest);
 		await ctx.answerCallbackQuery();
+	}
+
+	/** ↩️ Undo on a finished jot's status message: pull the line back out of the journal.
+	 *  Same teardown as `/delete`, one tap away while the entry is still on screen. */
+	private async handleUndo(ctx: any, jotId?: string): Promise<void> {
+		const jot = jotId ? await this.repo.getJot(jotId) : undefined;
+		if (!jot) {
+			log.warn({ jotId }, "undo: jot is gone");
+			return void ctx.answerCallbackQuery({ text: "gone" });
+		}
+		if (jot.status === "deleted") {
+			log.warn({ jotId }, "undo: already undone");
+			return void ctx.answerCallbackQuery({ text: "already undone" });
+		}
+		log.info({ jotId }, "undo requested");
+		await ctx.answerCallbackQuery({ text: "undoing" });
+		const result = await this.deleteJot(jot);
+		// status() with no opts clears the Undo button, so a second tap can't re-run it.
+		await this.status(jot.id, result);
 	}
 
 	private async handleRetry(ctx: any, jotId?: string): Promise<void> {
