@@ -12,6 +12,7 @@ import {
 	parseWizardRef,
 	previewList,
 	STATUS_ICON,
+	WIZARD_NEWNOTE_REF,
 	WIZARD_NOTE_REF,
 	WIZARD_REGISTER_REF,
 	WIZARD_RENAME_REF,
@@ -224,6 +225,8 @@ export class MenuController {
 				return this.showNotePicker(ctx, "edit", Number(arg) || 0);
 			case "lrgq":
 				return this.lwPrompt(ctx, "rgn");
+			case "lrgm":
+				return this.lwPrompt(ctx, "rgm");
 			case "lrgs":
 				return this.lwSkip(ctx);
 			case "lrgc":
@@ -647,7 +650,7 @@ export class MenuController {
 	 *  The answer routes back through handleWizardReply by the marker in the prompt. */
 	private async lwPrompt(
 		ctx: any,
-		kind: "sw" | "rg" | "rgn" | "rgw",
+		kind: "sw" | "rg" | "rgn" | "rgm" | "rgw",
 		gi?: number,
 	): Promise<void> {
 		await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
@@ -665,6 +668,10 @@ export class MenuController {
 			rgn: [
 				`🔎 Search the vault for the note${word ? ` "${word}" should link to` : ""}. Reply with any part of its title. ${WIZARD_NOTE_REF}`,
 				"part of the title",
+			],
+			rgm: [
+				`✍️ Reply with the exact title of the note${word ? ` "${word}" should link to` : ""} — it doesn't have to exist yet. ${WIZARD_NEWNOTE_REF}`,
+				"Exact note title",
 			],
 			rgw: [
 				`✏️ Reply with the new word for this pair. ${`(${WIZARD_RENAME_REF}:${gi})`}`,
@@ -707,6 +714,7 @@ export class MenuController {
 			kb.row();
 		}
 		kb.text("🔎 Search by another name", "menu:lrgq").row();
+		kb.text("✍️ Type a note that doesn't exist yet", "menu:lrgm").row();
 		if (p.words.length > 1) kb.text("⏭ Skip this word", "menu:lrgs");
 		kb.text("✖ Cancel", "menu:lrgc");
 
@@ -746,8 +754,14 @@ export class MenuController {
 		return this.savePair(ctx, word, note);
 	}
 
-	/** Write one pair, retiring the pair being replaced when this is a retarget. */
-	private async savePair(ctx: any, word: string, note: string): Promise<void> {
+	/** Write one pair, retiring the pair being replaced when this is a retarget. `mode` is
+	 *  how the next screen gets drawn — "send" when we got here from a force-reply. */
+	private async savePair(
+		ctx: any,
+		word: string,
+		note: string,
+		mode: "edit" | "send" = "edit",
+	): Promise<void> {
 		const { repo } = this.getDeps();
 		const old = this.pending?.retarget;
 		if (old) await repo.delRegisteredLink(old.surface, old.note);
@@ -756,18 +770,21 @@ export class MenuController {
 			{ surface: word, note, replaced: old?.note },
 			"link wizard: pair saved",
 		);
-		return this.advance(ctx);
+		return this.advance(ctx, mode);
 	}
 
 	/** Move the queue on: next word gets its own picker, an empty queue ends the flow. */
-	private async advance(ctx: any): Promise<void> {
+	private async advance(
+		ctx: any,
+		mode: "edit" | "send" = "edit",
+	): Promise<void> {
 		const p = this.pending;
 		if (!p) return this.lwPairs(ctx, 0);
 		p.i += 1;
 		const next = p.words[p.i];
-		if (next === undefined) return this.finishPending(ctx, "edit");
+		if (next === undefined) return this.finishPending(ctx, mode);
 		p.query = next;
-		return this.showNotePicker(ctx, "edit", 0);
+		return this.showNotePicker(ctx, mode, 0);
 	}
 
 	private async finishPending(ctx: any, mode: "edit" | "send"): Promise<void> {
@@ -848,6 +865,22 @@ export class MenuController {
 				this.pending.query = cleanNoteTitle(body);
 				log.info({ query: this.pending.query }, "link wizard: note search");
 				return this.showNotePicker(ctx, "send", 0);
+			}
+			case "rgm": {
+				const p2 = this.pending;
+				const word = p2?.words[p2.i];
+				if (!p2 || word === undefined) {
+					log.warn("link wizard: manual note reply with no pending flow");
+					return void ctx.reply("That link flow expired — reopen /menu.");
+				}
+				const note = cleanNoteTitle(body);
+				if (!note) {
+					log.warn({ body }, "link wizard: empty manual note reply");
+					return void ctx.reply("Nothing to link to — send a note title.");
+				}
+				log.info({ surface: word, note }, "link wizard: manual note title");
+				await ctx.reply(`🔗 "${word}" → [[${note}]]`);
+				return this.savePair(ctx, word, note, "send");
 			}
 			case "rgw": {
 				const forced = await repo.registeredLinks();

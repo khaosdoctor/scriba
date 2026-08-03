@@ -367,10 +367,20 @@ export function linkDateWords(text: string, referenceDate: string): string {
 			r.start.isCertain("weekday") ||
 			r.start.isCertain("month")) &&
 		!r.start.tags().has("casualReference/now");
+	// chrono leans on `\b`, which is ASCII-only in JS: in "Pokémon" the accented é counts as
+	// a non-word char, so "mon" looks like a standalone weekday and the word gets a Monday
+	// link spliced into the middle of it. Re-check both edges against a Unicode letter/digit
+	// class so a match only survives when it really is a whole word.
+	const wordChar = /[\p{L}\p{N}]/u;
+	const insideWord = (start: number, end: number) =>
+		wordChar.test(text[start - 1] ?? "") || wordChar.test(text[end] ?? "");
 	const matches = chrono.en.casual
 		.parse(text, ref)
 		.filter(
-			(r) => isDateLike(r) && !overlapsLink(r.index, r.index + r.text.length),
+			(r) =>
+				isDateLike(r) &&
+				!overlapsLink(r.index, r.index + r.text.length) &&
+				!insideWord(r.index, r.index + r.text.length),
 		)
 		.sort((a, b) => b.index - a.index); // right-to-left so earlier indices stay valid
 
@@ -631,6 +641,10 @@ export const WIZARD_REGISTER_REF = "(lw:rg)";
 /** Marker in the wizard's "type the note title" prompt (the fallback when the vault
  *  index has no match to tap). */
 export const WIZARD_NOTE_REF = "(lw:rgn)";
+/** Marker in the wizard's "type a note title that doesn't exist yet" prompt — the vault
+ *  index only knows notes that exist, and Obsidian creates a link's target on first click,
+ *  so a pair can legitimately point at a note that hasn't been written. */
+export const WIZARD_NEWNOTE_REF = "(lw:rgm)";
 /** Marker in the wizard's "rename the word of pair N" prompt, written `(lw:rgw:N)`. */
 export const WIZARD_RENAME_REF = "lw:rgw";
 
@@ -639,15 +653,17 @@ export type WizardPrompt =
 	| { kind: "sw" }
 	| { kind: "rg" }
 	| { kind: "rgn" }
+	| { kind: "rgm" }
 	| { kind: "rgw"; index: number };
 
 export function parseWizardRef(text: string): WizardPrompt | null {
-	// `rgn`/`rgw` before `rg` — alternation is first-match, and `rg` prefixes both.
-	const m = text.match(/\(lw:(sw|rgn|rgw|rg)(?::(\d+))?\)/);
+	// `rgn`/`rgw`/`rgm` before `rg` — alternation is first-match, and `rg` prefixes them all.
+	const m = text.match(/\(lw:(sw|rgn|rgw|rgm|rg)(?::(\d+))?\)/);
 	if (!m) return null;
 	if (m[1] === "sw") return { kind: "sw" };
 	if (m[1] === "rg") return { kind: "rg" };
 	if (m[1] === "rgn") return { kind: "rgn" };
+	if (m[1] === "rgm") return { kind: "rgm" };
 	const index = Number(m[2]);
 	return Number.isInteger(index) ? { kind: "rgw", index } : null;
 }

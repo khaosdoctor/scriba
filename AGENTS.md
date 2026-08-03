@@ -54,7 +54,9 @@ deployed on the homelab (Coolify). Single user.
   or the removal. No state is held between taps — rows index into deterministically
   ordered lists re-derived on every callback, and a stale index answers "expired". Adding
   a rule needs free text, so those leaves send a force-reply prompt and route the answer
-  back by the marker in the prompt text (`parseWizardRef` in `core.ts`).
+  back by the marker in the prompt text (`parseWizardRef` in `core.ts`). The note side can
+  also be typed by hand ("✍️ Type a note that doesn't exist yet"), since the vault index
+  only knows notes that already exist and forced pairs never consult it.
 - **Relative-date phrases become daily-note links.** `linkDateWords` (`core.ts`) runs on
   the composed line after enrichment, resolving phrases like "yesterday", "three weeks
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not

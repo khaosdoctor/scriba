@@ -256,6 +256,25 @@ test("linkDateWords ignores bare clock times that carry no date", () => {
 	);
 });
 
+test("linkDateWords never links a date word buried inside a bigger word", () => {
+	const ref = "2026-07-10";
+	// "Pokémon" tripped this: JS `\b` is ASCII-only, so é read as a word break and "mon"
+	// looked like a standalone Monday.
+	assert.equal(
+		linkDateWords("played Pokémon all day", ref).includes("[[2026"),
+		false,
+	);
+	assert.equal(
+		linkDateWords("the satsuma is ripe", ref),
+		"the satsuma is ripe",
+	);
+	// the same words on their own still link
+	assert.equal(
+		linkDateWords("shipping it mon", ref),
+		"shipping it [[2026-07-13|mon]]",
+	);
+});
+
 test('linkDateWords leaves "now" alone but still links "today" in the same sentence', () => {
 	const ref = "2026-07-10";
 	assert.equal(
