@@ -1,3 +1,10 @@
+## [1.31.1](https://github.com/khaosdoctor/scriba/compare/v1.31.0...v1.31.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* pin the image to node 24.18.1 to stop the boot crash loop ([660e6d3](https://github.com/khaosdoctor/scriba/commit/660e6d3ed63bc2dca5f2c924a4269901d8f52041))
+
 ## [1.31.0](https://github.com/khaosdoctor/scriba/compare/v1.30.0...v1.31.0) (2026-08-11)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * always-link pairs can target notes that don't exist yet ([d794c58](https://github.com/khaosdoctor/scriba/commit/d794c58eef18b45d46c0a47c476e368c418c5961))
-
-## [1.27.0](https://github.com/khaosdoctor/scriba/compare/v1.26.0...v1.27.0) (2026-07-29)
-
-
-### Features
-
-* step-by-step link-rules wizard with searchable note picker ([d2b38eb](https://github.com/khaosdoctor/scriba/commit/d2b38ebb4f174099d0b2a52a5102f7da6655de22))
 
