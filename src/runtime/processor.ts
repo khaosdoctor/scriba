@@ -3,7 +3,9 @@ import {
 	candidates,
 	combineEnrichSource,
 	doneMessage,
+	ENTRY_MAX_CHARS_KEY,
 	enrichableSource,
+	entryMaxChars,
 	escapeHtml,
 	forcedCandidates,
 	isRecoverable,
@@ -11,6 +13,7 @@ import {
 	linkDateWords,
 	makeJotId,
 	replaceAnchorLine,
+	splitEntry,
 } from "../core.ts";
 import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
 import { logger } from "../log.ts";
@@ -146,6 +149,7 @@ export class JotProcessor {
 					`squash: enriching ${followers.length + 1} jots as one line`,
 				);
 
+			const maxChars = await this.maxChars();
 			let textPart = source;
 			if (source.trim()) {
 				const [stopwords, rejections, registered] = await Promise.all([
@@ -196,6 +200,7 @@ export class JotProcessor {
 					text: source,
 					candidates: cands,
 					merge: merged,
+					splitAt: maxChars,
 				});
 				textPart = res.text;
 				log.info(
@@ -225,8 +230,47 @@ export class JotProcessor {
 				);
 			}
 
-			const linked = this.linkDates(jot, textPart);
-			await this.writeLine(jot, this.composeLine(jot, linked));
+			// Too long for one entry? The tail becomes jots of its own — this one keeps the
+			// first piece, and each of the rest gets its own line, id and status message, so
+			// it can be edited or deleted on its own.
+			const pieces = splitEntry(this.linkDates(jot, textPart), maxChars);
+			const linked = pieces[0] ?? "";
+			const spillover = pieces
+				.slice(1)
+				.map((text, i) => this.pieceJot(jot, text, i + 1));
+			if (spillover.length)
+				log.info(
+					{ id, maxChars, pieces: spillover.map((p) => p.id) },
+					`entry over ${maxChars} chars — split into ${pieces.length} jots`,
+				);
+			// One write for the whole run: the spillover lines go in alongside this jot's own
+			// line, so they land together, in order, right where the placeholder was.
+			await this.writeLine(
+				jot,
+				[
+					this.composeLine(jot, linked),
+					...spillover.map((p) =>
+						journalLine(p.time, p.raw_text ?? "", p.anchor),
+					),
+				].join("\n"),
+			);
+			// Rows only after the note write: a failed write retries the whole jot, and rows
+			// written first would be duplicated by that retry.
+			// ponytail: a crash between the write and these inserts leaves the spillover lines
+			// in the note with no jot row (uneditable). Sub-millisecond window, local sqlite.
+			for (const p of spillover) await this.repo.insertJot(p);
+			// This jot now owns only its first piece — fold that back into its source so a
+			// later /reprocess re-enriches that piece alone instead of splitting all over
+			// again. Skipped for a squashed leader: its source is several jots' text combined,
+			// so there's no single field to fold into (same rule as ScribaBot.syncEditedSource).
+			if (
+				spillover.length &&
+				!merged &&
+				(jot.kind === "text" || jot.kind === "audio")
+			)
+				await this.repo.updateJot(jot.id, {
+					[jot.kind === "audio" ? "transcript" : "raw_text"]: linked,
+				});
 			await this.repo.updateJot(jot.id, { status: "done", error: null });
 			// Followers rode into the leader's line — mark them done too so they're not
 			// reprocessed or counted as in-flight.
@@ -237,6 +281,9 @@ export class JotProcessor {
 			// to `failed`, causing wasted re-enrichment and duplicate link prompts on retry.
 			try {
 				await this.bot.react(jot.id, "done");
+				// A split entry says which piece each message is; `part` is undefined (so no
+				// marker) when the text fit in one entry.
+				const of = spillover.length + 1;
 				await this.bot.status(
 					jot.id,
 					doneMessage(
@@ -245,9 +292,21 @@ export class JotProcessor {
 						linked,
 						jot.id,
 						merged ? followers.length + 1 : 0,
+						of > 1 ? { i: 1, of } : undefined,
 					),
 					{ undo: true },
 				);
+				// One message per spillover piece — each is a jot in its own right, so replying
+				// to its message edits it and its ↩️ Undo removes only that line.
+				for (const [i, p] of spillover.entries())
+					await this.bot.status(
+						p.id,
+						doneMessage(p.time, p.kind, p.raw_text ?? "", p.id, 0, {
+							i: i + 2,
+							of,
+						}),
+						{ undo: true },
+					);
 				await this.bot.onJotDone(jot.id); // apply anything queued while we were working
 				// Each follower's own message gets the done reaction + its queued edits drained;
 				// the leader carries the single status message for the whole group. Any stray
@@ -302,6 +361,8 @@ export class JotProcessor {
 			),
 		);
 		try {
+			// No splitting on the give-up path: the point here is to get the text into the
+			// note at all, and a jot that never enriched has no topic seams to split on.
 			await this.writeLine(
 				jot,
 				this.composeLine(jot, this.linkDates(jot, source)),
@@ -381,6 +442,35 @@ export class JotProcessor {
 	/** Resolve relative-date phrases against the jot's own day, once, for reuse in both the journal line and the Telegram preview. */
 	private linkDates(jot: Jot, textPart: string): string {
 		return linkDateWords(textPart, basename(jot.note_path, ".md"));
+	}
+
+	/** A jot for one spillover piece of an over-long entry: a plain text jot, already done
+	 *  (the text is enriched — it came out of this jot's own enrichment), with an id and
+	 *  anchor of its own so it edits, undoes and reprocesses independently. Its `received_at`
+	 *  is nudged past the parent's so the intake order (and any later squash query) still
+	 *  reads left to right. */
+	private pieceJot(jot: Jot, text: string, i: number): Jot {
+		const id = makeJotId();
+		return {
+			...jot,
+			id,
+			anchor: id,
+			kind: "text",
+			raw_text: text,
+			transcript: null,
+			asset_path: null, // the media stays on the parent's line, embedded once
+			file_id: null,
+			status: "done",
+			attempts: 0,
+			error: null,
+			received_at: jot.received_at + i,
+			updated_at: Date.now(),
+		};
+	}
+
+	/** Current entry-size limit: the runtime setting, or the default when unset. */
+	private async maxChars(): Promise<number> {
+		return entryMaxChars(await this.repo.getSetting(ENTRY_MAX_CHARS_KEY));
 	}
 
 	private composeLine(jot: Jot, textPart: string): string {

@@ -57,6 +57,24 @@ deployed on the homelab (Coolify). Single user.
   back by the marker in the prompt text (`parseWizardRef` in `core.ts`). The note side can
   also be typed by hand ("✍️ Type a note that doesn't exist yet"), since the vault index
   only knows notes that already exist and forced pairs never consult it.
+- **A jot that's too long splits into several jots.** `splitEntry` (`core.ts`) caps one
+  entry at `entryMaxChars` characters — a tweet (280) by default, changed from `/menu` →
+  ✂️ Entry size (presets or a typed number; the value lives in the `settings` table under
+  `entryMaxChars`, `0` turns splitting off). The split happens once, right after enrichment,
+  in `JotProcessor.processJot`: the jot keeps the first piece and each remaining piece
+  becomes a **new jot** (`pieceJot` — fresh id, own anchor, `kind: "text"`, inserted
+  already `done`) with its own journal line and its own Telegram status message, so it is
+  edited, undone and reprocessed on its own. All the lines go in as ONE
+  `replaceAnchorLine` over the placeholder, so they land together and in order. Rows are
+  inserted after that write, never before — a failed write retries the whole jot, and rows
+  written first would be duplicated. The parent's own `raw_text`/`transcript` is folded down
+  to the piece it kept (skipped for a squashed leader, which has no single source field), so
+  a later `/reprocess` re-enriches that piece instead of splitting all over again. The split
+  itself is token-free: blank lines are topic boundaries and sentences pack greedily inside a
+  topic, so a sentence is never cut in half — one longer than the cap goes out whole. The
+  model's only part is being told, when the text is over the cap, to put blank lines between
+  topics so the seams land on a change of subject; it may add nothing else. The give-up path
+  (`fail`) never splits — getting the text into the note at all is the point there.
 - **Relative-date phrases become daily-note links.** `linkDateWords` (`core.ts`) runs on
   the composed line after enrichment, resolving phrases like "yesterday", "three weeks
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not

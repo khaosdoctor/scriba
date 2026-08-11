@@ -5,12 +5,14 @@ import {
 	candidates,
 	cleanNoteTitle,
 	combineEnrichSource,
+	DEFAULT_ENTRY_MAX_CHARS,
 	deleteAnchorLine,
 	distinctSurfaces,
 	doneMessage,
 	donePreview,
 	editConfirmation,
 	entitiesToMarkdown,
+	entryMaxChars,
 	escapeHtml,
 	fitTelegram,
 	forcedCandidates,
@@ -32,6 +34,7 @@ import {
 	makeJotId,
 	monthGrid,
 	noteSuggestions,
+	parseEntrySize,
 	parseLiteralEdit,
 	parseRuleWords,
 	parseWizardRef,
@@ -41,9 +44,11 @@ import {
 	replaceAnchorLine,
 	reprocessTargets,
 	setFrontmatterNumber,
+	splitEntry,
 	stripJournalLine,
 	TELEGRAM_LIMIT,
 	tokenize,
+	WIZARD_ENTRYSIZE_REF,
 	WIZARD_NOTE_REF,
 	WIZARD_REGISTER_REF,
 	WIZARD_STOPWORD_REF,
@@ -179,6 +184,112 @@ test("replace/delete/read find the line by anchor and leave others intact", () =
 	const deleted = deleteAnchorLine(note, "aaaaaaaa");
 	assert.ok(!deleted?.includes("aaaaaaaa"));
 	assert.ok(deleted?.includes("cccccccc"));
+});
+
+test("a split jot writes its own line and its spillover lines in one replace", () => {
+	const note = [
+		"## Journal",
+		"- _10:00:00 ::_ first ^aaaaaaaa",
+		"- _10:01:00 ::_ ⏳ ^bbbbbbbb",
+		"- _10:02:00 ::_ third ^cccccccc",
+	].join("\n");
+	// Each piece is its own jot, so each line carries that jot's own anchor — they go in
+	// together so they land in order, right where the placeholder was.
+	const out = replaceAnchorLine(
+		note,
+		"bbbbbbbb",
+		[
+			"- _10:01:00 ::_ piece one ^bbbbbbbb",
+			"- _10:01:00 ::_ piece two ^11112222",
+		].join("\n"),
+	);
+	assert.equal(
+		out,
+		[
+			"## Journal",
+			"- _10:00:00 ::_ first ^aaaaaaaa",
+			"- _10:01:00 ::_ piece one ^bbbbbbbb",
+			"- _10:01:00 ::_ piece two ^11112222",
+			"- _10:02:00 ::_ third ^cccccccc",
+		].join("\n"),
+	);
+	// The spillover line is an ordinary jot line: it deletes on its own.
+	const deleted = deleteAnchorLine(out ?? "", "11112222");
+	assert.ok(!deleted?.includes("piece two"));
+	assert.ok(deleted?.includes("piece one"));
+});
+
+test("replaceAnchorLine takes `$&` in the new text literally", () => {
+	const note = "- _10:00:00 ::_ ⏳ ^aaaaaaaa";
+	assert.equal(
+		replaceAnchorLine(note, "aaaaaaaa", "- _10:00:00 ::_ cost $& up ^aaaaaaaa"),
+		"- _10:00:00 ::_ cost $& up ^aaaaaaaa",
+	);
+});
+
+test("splitEntry keeps short text whole and never cuts a sentence", () => {
+	assert.deepEqual(splitEntry("short one", 280), ["short one"]);
+	assert.deepEqual(splitEntry("  ", 280), []);
+	// Splitting off: length stops mattering.
+	assert.deepEqual(splitEntry("a".repeat(400), 0), ["a".repeat(400)]);
+	// A single sentence over the limit goes out whole rather than being cut.
+	const long = `${"word ".repeat(80)}end.`;
+	assert.deepEqual(splitEntry(long, 100), [long.replace(/\s+/g, " ").trim()]);
+
+	const three = "First one here. Second one here. Third one here.";
+	assert.deepEqual(splitEntry(three, 20), [
+		"First one here.",
+		"Second one here.",
+		"Third one here.",
+	]);
+	// Sentences pack greedily up to the limit.
+	assert.deepEqual(splitEntry(three, 34), [
+		"First one here. Second one here.",
+		"Third one here.",
+	]);
+});
+
+test("splitEntry splits on topics first and collapses each chunk to one line", () => {
+	const text = "Topic one. Still topic one.\n\nTopic two entirely.";
+	assert.deepEqual(splitEntry(text, 30), [
+		"Topic one. Still topic one.",
+		"Topic two entirely.",
+	]);
+	// Under the limit it stays one entry, newlines and all.
+	assert.deepEqual(splitEntry(text, 280), [
+		"Topic one. Still topic one. Topic two entirely.",
+	]);
+	// An abbreviation isn't a sentence end: "e.g." keeps its lowercase follower.
+	assert.deepEqual(
+		splitEntry("Bought stuff e.g. milk and eggs. Then went home.", 40),
+		["Bought stuff e.g. milk and eggs.", "Then went home."],
+	);
+});
+
+test("doneMessage marks which piece a split jot is", () => {
+	const one = doneMessage("10:00:00", "text", "hi", "a1b2c3d4");
+	assert.ok(!one.includes("part"));
+	const piece = doneMessage("10:00:00", "text", "hi", "a1b2c3d4", 0, {
+		i: 2,
+		of: 3,
+	});
+	assert.ok(piece.includes("✂️ part 2 of 3"));
+});
+
+test("entryMaxChars falls back to the default, parseEntrySize validates input", () => {
+	assert.equal(entryMaxChars(undefined), DEFAULT_ENTRY_MAX_CHARS);
+	assert.equal(entryMaxChars(""), DEFAULT_ENTRY_MAX_CHARS);
+	assert.equal(entryMaxChars("nonsense"), DEFAULT_ENTRY_MAX_CHARS);
+	assert.equal(entryMaxChars("-5"), DEFAULT_ENTRY_MAX_CHARS);
+	assert.equal(entryMaxChars("0"), 0);
+	assert.equal(entryMaxChars("140"), 140);
+
+	assert.equal(parseEntrySize("280"), 280);
+	assert.equal(parseEntrySize(" off "), 0);
+	assert.equal(parseEntrySize("0"), 0);
+	assert.equal(parseEntrySize("10"), null); // no sentence fits
+	assert.equal(parseEntrySize("99999"), null);
+	assert.equal(parseEntrySize("lots"), null);
 });
 
 test("candidates drop stopwords/short aliases and honour rejections", () => {
@@ -525,9 +636,11 @@ test("isRecoverable flags transient infra errors, not terminal ones", () => {
 
 test("stripJournalLine strips the time prefix and anchor suffix", () => {
 	assert.equal(
-		stripJournalLine("- _23:13:18 ::_ hi ^a1b2c3d4", "23:13:18", "a1b2c3d4"),
+		stripJournalLine("- _23:13:18 ::_ hi ^a1b2c3d4", "23:13:18"),
 		"hi",
 	);
+	// A caret inside the text isn't an anchor — journalLine always writes " ^id" at the end.
+	assert.equal(stripJournalLine("- _23:13:18 ::_ 3^2", "23:13:18"), "3^2");
 });
 
 test("isBlank treats empty and whitespace-only edits as a delete gesture", () => {
@@ -688,6 +801,9 @@ test("parseWizardRef tells the wizard's prompts apart", () => {
 	assert.deepEqual(parseWizardRef("rename it (lw:rgw:12)"), {
 		kind: "rgw",
 		index: 12,
+	});
+	assert.deepEqual(parseWizardRef(`how long? ${WIZARD_ENTRYSIZE_REF}`), {
+		kind: "es",
 	});
 	assert.equal(parseWizardRef("rename it (lw:rgw)"), null); // index is required
 	assert.equal(parseWizardRef("Rate Exercise (hb:2026-07-29:0)"), null);

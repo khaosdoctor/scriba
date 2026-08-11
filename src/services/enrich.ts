@@ -48,6 +48,10 @@ export interface EnrichInput {
 	// The text is several quick messages sent moments apart (a squashed burst): weave
 	// them into one flowing, well-punctuated entry rather than keeping them verbatim.
 	merge?: boolean;
+	// Character limit one journal entry gets split at. Passed so the model can mark topic
+	// boundaries with blank lines when the text is over it — the split itself is done
+	// deterministically in core.ts, this only makes the seams land on a change of subject.
+	splitAt?: number;
 }
 export interface EnrichResult {
 	text: string; // journal text with confident links applied inline
@@ -163,7 +167,14 @@ export class Enricher {
 		const mergeNote = input.merge
 			? "\n\nThis entry arrived as several quick messages sent moments apart (each line below is one). Weave them into ONE coherent journal entry with correct punctuation and natural flow. Keep every point — do not summarise, drop, or reorder content."
 			: "";
-		const prompt = `Candidate links:\n${cands}${mergeNote}\n\nJournal text:\n"""${fence(input.text)}"""`;
+		// Over the limit the text becomes several journal entries, and the split is done on
+		// blank lines first — so ask for those at the topic boundaries. Nothing else about the
+		// text may change: the split itself stays deterministic and token-free.
+		const splitNote =
+			input.splitAt && input.text.length > input.splitAt
+				? `\n\nThis is longer than ${input.splitAt} characters and will be split into several separate journal entries. Put a blank line between distinct topics so the split lands on a change of subject. Add ONLY blank lines — do not summarise, drop, reorder, or reword anything. If it is all one topic, add none.`
+				: "";
+		const prompt = `Candidate links:\n${cands}${mergeNote}${splitNote}\n\nJournal text:\n"""${fence(input.text)}"""`;
 		log.info(
 			{
 				candidates: input.candidates.length,

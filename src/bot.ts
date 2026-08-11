@@ -680,7 +680,7 @@ export class ScribaBot implements BotServices {
 			const line = anchorLine(note, jot.anchor);
 			if (!line) return null;
 
-			let text = stripJournalLine(line, jot.time, jot.anchor);
+			let text = stripJournalLine(line, jot.time);
 			const freeform: string[] = [];
 			for (const ins of instructions) {
 				const lit = parseLiteralEdit(ins);

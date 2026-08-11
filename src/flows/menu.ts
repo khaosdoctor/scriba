@@ -4,14 +4,18 @@ import { config } from "../config.ts";
 import {
 	cleanNoteTitle,
 	distinctSurfaces,
+	ENTRY_MAX_CHARS_KEY,
+	entryMaxChars,
 	fitTelegram,
 	formatJotDetail,
 	jotPreview,
 	noteSuggestions,
+	parseEntrySize,
 	parseRuleWords,
 	parseWizardRef,
 	previewList,
 	STATUS_ICON,
+	WIZARD_ENTRYSIZE_REF,
 	WIZARD_NEWNOTE_REF,
 	WIZARD_NOTE_REF,
 	WIZARD_REGISTER_REF,
@@ -114,13 +118,21 @@ export class MenuController {
 			await ctx.api.deleteMessage(ctx.chat.id, prev).catch(() => {});
 		}
 		const sent = await ctx.reply("🗂 scriba control menu", {
-			reply_markup: this.rootMenu(),
+			reply_markup: await this.rootMenu(),
 		});
 		this.lastMenuMsgId.set(ctx.chat.id, sent.message_id);
 		this.scheduleExpiry(ctx.chat.id, sent.message_id);
 	}
 
-	private rootMenu(): InlineKeyboard {
+	/** The entry-size cap in force right now (0 = splitting off). */
+	private async entrySize(): Promise<number> {
+		return entryMaxChars(
+			await this.getDeps().repo.getSetting(ENTRY_MAX_CHARS_KEY),
+		);
+	}
+
+	private async rootMenu(): Promise<InlineKeyboard> {
+		const size = await this.entrySize();
 		return new InlineKeyboard()
 			.text("📊 Rate today", "menu:rate")
 			.text("🌱 Review habits", "menu:habits")
@@ -135,6 +147,8 @@ export class MenuController {
 			.text("⚠️ Failed queue", "menu:failed")
 			.row()
 			.text(`🎙 Transcriber: ${this.getDeps().transcriber.mode}`, "menu:tx")
+			.row()
+			.text(`✂️ Entry size: ${size ? `${size} chars` : "off"}`, "menu:esz")
 			.row()
 			.text("🔗 Link rules", "menu:links")
 			.text("🛠 Maintenance", "menu:maint")
@@ -179,7 +193,7 @@ export class MenuController {
 			case "root":
 				await ctx.answerCallbackQuery();
 				return ctx.editMessageText("🗂 scriba control menu", {
-					reply_markup: this.rootMenu(),
+					reply_markup: await this.rootMenu(),
 				});
 			case "rate":
 				// New prompt message lands below; toast tells the user the tap registered.
@@ -217,6 +231,13 @@ export class MenuController {
 				return this.menuFailed(ctx);
 			case "tx":
 				return this.menuToggleTranscriber(ctx);
+			case "esz":
+				await ctx.answerCallbackQuery();
+				return this.entrySizeMenu(ctx);
+			case "ess":
+				return this.setEntrySize(ctx, arg);
+			case "esc":
+				return this.promptEntrySize(ctx);
 			case "maint":
 				await ctx.answerCallbackQuery();
 				return ctx.editMessageText("🛠 Maintenance", {
@@ -323,8 +344,65 @@ export class MenuController {
 		const out = await this.runCmd(ctx, "transcriber", next);
 		await ctx.answerCallbackQuery({ text: out.slice(0, 200) });
 		await ctx.editMessageText("🗂 scriba control menu", {
-			reply_markup: this.rootMenu(),
+			reply_markup: await this.rootMenu(),
 		});
+	}
+
+	// --- entry size ---
+	// How long one journal entry may get before it's split across several bullets. A tweet
+	// by default; the presets are the sizes worth one tap, anything else is typed.
+
+	/** Character counts offered as one-tap presets. 0 turns splitting off entirely. */
+	private static readonly ENTRY_SIZE_PRESETS = [140, 280, 560, 1000, 0];
+
+	private async entrySizeMenu(ctx: any): Promise<void> {
+		const current = await this.entrySize();
+		log.info({ current }, "menu: entry size");
+		const kb = new InlineKeyboard();
+		for (const n of MenuController.ENTRY_SIZE_PRESETS) {
+			const label = n ? `${n} chars` : "Don't split";
+			kb.text(`${n === current ? "✅ " : ""}${label}`, `menu:ess:${n}`).row();
+		}
+		kb.text("✍️ Type a size", "menu:esc").row();
+		kb.text("‹ Back", "menu:root");
+		await ctx.editMessageText(
+			[
+				"✂️ Entry size",
+				"",
+				current
+					? `Entries longer than ${current} characters are split into several journal lines.`
+					: "Splitting is off — every jot stays on one line, however long.",
+				"",
+				"Splits land on topic boundaries where there are any, and on sentence ends otherwise. A sentence is never cut in half.",
+			].join("\n"),
+			{ reply_markup: kb },
+		);
+	}
+
+	private async setEntrySize(ctx: any, arg?: string): Promise<void> {
+		const n = arg === undefined ? Number.NaN : Number(arg);
+		if (!Number.isInteger(n) || n < 0) {
+			log.warn({ arg }, "menu: bad entry size");
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		await ctx.answerCallbackQuery({ text: n ? `${n} chars` : "splitting off" });
+		await this.getDeps().repo.setSetting(ENTRY_MAX_CHARS_KEY, String(n));
+		log.info({ size: n }, "menu: entry size changed");
+		return this.entrySizeMenu(ctx);
+	}
+
+	/** Free-text size: a keyboard can't offer every number, so ask and route the reply back
+	 *  by the marker in the prompt (the same trick the link wizard uses). */
+	private async promptEntrySize(ctx: any): Promise<void> {
+		await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
+		log.info("menu: prompting for a custom entry size");
+		await this.bot.api.sendMessage(
+			config.telegram.allowedUserId,
+			`✂️ How many characters may one journal entry be? 40–4000, or "off" to stop splitting. ${WIZARD_ENTRYSIZE_REF}`,
+			{
+				reply_markup: { force_reply: true, input_field_placeholder: "280" },
+			},
+		);
 	}
 
 	/** Retry-all re-queues every failed jot (network + enrichment) — confirm first. */
@@ -946,6 +1024,25 @@ export class MenuController {
 						"menu:links",
 					),
 				});
+			}
+			case "es": {
+				const size = parseEntrySize(body);
+				if (size === null) {
+					log.warn({ body }, "menu: unusable entry size reply");
+					return void ctx.reply(
+						'Give me a whole number between 40 and 4000, or "off".',
+					);
+				}
+				await repo.setSetting(ENTRY_MAX_CHARS_KEY, String(size));
+				log.info({ size }, "menu: entry size changed");
+				return void ctx.reply(
+					size
+						? `✂️ entries split above ${size} characters`
+						: "✂️ splitting off — entries stay on one line",
+					{
+						reply_markup: new InlineKeyboard().text("✂️ Entry size", "menu:esz"),
+					},
+				);
 			}
 			default:
 				return void (p satisfies never);

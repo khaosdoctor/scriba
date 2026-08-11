@@ -152,6 +152,7 @@ export function doneMessage(
 	textPart: string,
 	id: string,
 	squashedTotal = 0,
+	part?: { i: number; of: number },
 ): string {
 	// squashedTotal is the number of jots folded into this one line (leader + followers);
 	// 0 means no squash. When set, note it so the single confirmation explains the merge.
@@ -159,7 +160,10 @@ export function doneMessage(
 		squashedTotal > 1
 			? `\n🧵 ${squashedTotal} jots squashed into one entry`
 			: "";
-	return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squash}`;
+	// `part` is set when the text was too long and got split: each piece is its own jot with
+	// its own message, so say which one this is.
+	const split = part ? `\n✂️ part ${part.i} of ${part.of}` : "";
+	return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squash}${split}`;
 }
 
 /** In-chat confirmation after an edit is applied: the corrected line blockquoted so the
@@ -178,21 +182,89 @@ export function journalLine(
 	return `- _${time} ::_ ${text} ^${anchor}`;
 }
 
+// --- entry splitting ---
+// A long jot reads as a wall of text on one journal line, so an entry over `maxChars` is
+// broken up — and each piece becomes a jot in its own right (own id, own line, own status
+// message), so it can be edited or deleted on its own. Token-free: paragraph breaks are
+// topic boundaries (the enricher is asked to place them when it knows the text is over the
+// limit — see services/enrich.ts) and sentences are packed greedily inside each topic. A
+// sentence is never cut in half; one longer than the limit goes out whole, because a
+// mid-sentence break is the worse outcome.
+
+/** Default cap on one journal entry, in characters — a tweet. */
+export const DEFAULT_ENTRY_MAX_CHARS = 280;
+
+/** `settings` key holding the entry-size cap (set from /menu, survives a restart). */
+export const ENTRY_MAX_CHARS_KEY = "entryMaxChars";
+
+/** The `entryMaxChars` setting as a number: 0 disables splitting, anything unusable (unset,
+ *  blank, not a whole number) falls back to the default. */
+export function entryMaxChars(raw: string | undefined): number {
+	const s = raw?.trim();
+	const n = Number(s);
+	return s && Number.isInteger(n) && n >= 0 ? n : DEFAULT_ENTRY_MAX_CHARS;
+}
+
+/** A typed entry-size reply: a whole number of characters, or "off" to stop splitting.
+ *  Null when it isn't usable — under 40 characters no sentence would ever fit. */
+export function parseEntrySize(text: string): number | null {
+	const s = text.trim().toLowerCase();
+	if (s === "off" || s === "none" || s === "0") return 0;
+	if (!/^\d{1,4}$/.test(s)) return null;
+	const n = Number(s);
+	return n >= 40 && n <= 4000 ? n : null;
+}
+
+// A sentence ends at a terminator (plus any closing quote/bracket) followed by whitespace
+// and something that isn't a lowercase letter — so "e.g. this" and "v1. 2" stay whole while
+// real sentence ends split. Zero-width, so `split` keeps every character.
+const SENTENCE_BOUNDARY = /(?<=[.!?…]["')\]]*)\s+(?=[^\p{Ll}\s])/u;
+
+/** A bullet is one line: newlines and runs of whitespace collapse to single spaces. */
+const collapse = (s: string): string => s.replace(/\s+/g, " ").trim();
+
+/**
+ * Split an entry's text into bullet-sized chunks of at most `maxChars`, splitting on topic
+ * (blank-line) boundaries first and sentence boundaries within a topic. `maxChars` of 0
+ * disables splitting; text already under the limit comes back as one chunk.
+ */
+export function splitEntry(text: string, maxChars: number): string[] {
+	const clean = collapse(text);
+	if (!clean) return [];
+	if (maxChars <= 0 || clean.length <= maxChars) return [clean];
+	const out: string[] = [];
+	for (const topic of text.split(/\n[ \t]*\n+/)) {
+		let buf = "";
+		for (const raw of topic.split(SENTENCE_BOUNDARY)) {
+			const sentence = collapse(raw);
+			if (!sentence) continue;
+			const merged = buf ? `${buf} ${sentence}` : sentence;
+			if (buf && merged.length > maxChars) {
+				out.push(buf);
+				buf = sentence;
+			} else buf = merged;
+		}
+		if (buf) out.push(buf);
+	}
+	return out.length ? out : [clean];
+}
+
 /** Placeholder written the instant a jot arrives — fixes ordering, filled in later. */
 export function placeholderLine(time: string, anchor: string): string {
 	return journalLine(time, "⏳", anchor);
 }
 
+// An Obsidian block anchor is `^` plus letters/digits/dashes at the end of the line, and
+// journalLine always writes it after a space — so requiring that space keeps a trailing
+// "3^2" in the text itself from being read as one.
+const ANCHOR_SUFFIX = /\s+\^[A-Za-z0-9-]+[ \t\r]*$/;
+
 /** Strip the `- _time ::_ ` prefix and ` ^anchor` suffix off a journal line, leaving
  *  just its content (for literal edits). */
-export function stripJournalLine(
-	line: string,
-	time: string,
-	anchor: string,
-): string {
+export function stripJournalLine(line: string, time: string): string {
 	return line
 		.replace(new RegExp(`^- _${escapeRe(time)} ::_ `), "")
-		.replace(new RegExp(`\\s*\\^${escapeRe(anchor)}\\s*$`), "");
+		.replace(ANCHOR_SUFFIX, "");
 }
 
 /** Insert a journal bullet under `heading`, keeping the vault's indentation:
@@ -267,9 +339,11 @@ export function setFrontmatterNumber(
 }
 
 const anchorRe = (anchor: string) =>
-	new RegExp(`^.*\\^${escapeRe(anchor)}\\s*$`, "m");
+	new RegExp(`^.*\\^${escapeRe(anchor)}[ \\t\\r]*$`, "m");
 
-/** Replace the whole line carrying `^anchor` with `newLine`. Returns null if not found. */
+/** Replace the whole line carrying `^anchor` with `newLine`. Returns null if not found.
+ *  `newLine` may itself be several lines — a jot that split into parts writes its own line
+ *  plus its parts' lines in one go, so they land together and in order. */
 export function replaceAnchorLine(
 	note: string,
 	anchor: string,
@@ -277,7 +351,7 @@ export function replaceAnchorLine(
 ): string | null {
 	const re = anchorRe(anchor);
 	if (!re.test(note)) return null;
-	return note.replace(re, newLine);
+	return note.replace(re, () => newLine); // function replacer: `$&` in the text is literal
 }
 
 /** Remove the line carrying `^anchor` entirely. Returns null if not found. */
@@ -647,6 +721,9 @@ export const WIZARD_NOTE_REF = "(lw:rgn)";
 export const WIZARD_NEWNOTE_REF = "(lw:rgm)";
 /** Marker in the wizard's "rename the word of pair N" prompt, written `(lw:rgw:N)`. */
 export const WIZARD_RENAME_REF = "lw:rgw";
+/** Marker in the "type an entry size" prompt — the same force-reply trick, for the one
+ *  setting whose value is a free number rather than one of a handful of presets. */
+export const WIZARD_ENTRYSIZE_REF = "(es:n)";
 
 /** Which wizard prompt a reply is answering, if any. */
 export type WizardPrompt =
@@ -654,9 +731,11 @@ export type WizardPrompt =
 	| { kind: "rg" }
 	| { kind: "rgn" }
 	| { kind: "rgm" }
-	| { kind: "rgw"; index: number };
+	| { kind: "rgw"; index: number }
+	| { kind: "es" };
 
 export function parseWizardRef(text: string): WizardPrompt | null {
+	if (text.includes(WIZARD_ENTRYSIZE_REF)) return { kind: "es" };
 	// `rgn`/`rgw`/`rgm` before `rg` — alternation is first-match, and `rg` prefixes them all.
 	const m = text.match(/\(lw:(sw|rgn|rgw|rgm|rg)(?::(\d+))?\)/);
 	if (!m) return null;
