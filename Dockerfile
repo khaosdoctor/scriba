@@ -2,7 +2,12 @@
 # keep it small. No TS build step — tsx runs TypeScript directly; the only thing compiled is
 # better-sqlite3's native addon, built here and copied lean into the runtime stage.
 
-FROM node:24-alpine AS builder
+# Pinned to an exact patch, NOT the floating `node:24-alpine`. v1.31.0 rebuilt on the same
+# Dockerfile and silently moved 24.18.1 -> 24.19.0, and the container then crash-looped on a
+# native assertion inside Node itself (`RemoveEnvironmentCleanupHook … Assertion failed:
+# (env) != nullptr`) at a different point on every restart. Same TypeScript, different
+# runtime. Bump this deliberately, with a deploy you watch — never let a rebuild do it.
+FROM node:24.18.1-alpine AS builder
 WORKDIR /app
 # Toolchain for better-sqlite3's node-gyp build — builder stage only.
 RUN apk add --no-cache python3 make g++
@@ -21,7 +26,8 @@ RUN cd node_modules/better-sqlite3 \
  && find node_modules/@anthropic-ai/claude-agent-sdk/vendor/ripgrep -mindepth 1 -maxdepth 1 \
          -type d ! -name x64-linux -exec rm -rf {} +
 
-FROM node:24-alpine
+# Same pin as the builder — the addon is compiled there and must run against this exact Node.
+FROM node:24.18.1-alpine
 WORKDIR /app
 # The compiled addon links libstdc++/libgcc at runtime; ca-certificates for outbound HTTPS
 # (Telegram, Groq, Obsidian REST). No compilers in this stage.
