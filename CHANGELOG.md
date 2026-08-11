@@ -1,3 +1,10 @@
+## [1.31.0](https://github.com/khaosdoctor/scriba/compare/v1.30.0...v1.31.0) (2026-08-11)
+
+
+### Features
+
+* split an over-long jot into separate jots ([811d6e0](https://github.com/khaosdoctor/scriba/commit/811d6e031f3845f04337bd3f9b148e01d9903e0a))
+
 ## [1.30.0](https://github.com/khaosdoctor/scriba/compare/v1.29.0...v1.30.0) (2026-08-03)
 
 
@@ -25,17 +32,4 @@
 ### Features
 
 * step-by-step link-rules wizard with searchable note picker ([d2b38eb](https://github.com/khaosdoctor/scriba/commit/d2b38ebb4f174099d0b2a52a5102f7da6655de22))
-
-## [1.26.0](https://github.com/khaosdoctor/scriba/compare/v1.23.1...v1.26.0) (2026-07-17)
-
-
-### Features
-
-* add /changelog command and put what's new in the deploy notice ([b21aebb](https://github.com/khaosdoctor/scriba/commit/b21aebb278ac0498ad242d690341c87444fc52e0))
-* surface the fallback trigger error in the Telegram warning ([d6c3b7e](https://github.com/khaosdoctor/scriba/commit/d6c3b7e939e0e3c5845e081e0d386d94c7365d0c))
-
-
-### Bug Fixes
-
-* strip conventional-changelog markdown from release notes in Telegram messages ([d805908](https://github.com/khaosdoctor/scriba/commit/d80590867f25bb5a179e6126f4f31ed70854345c))
 
