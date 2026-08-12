@@ -762,6 +762,11 @@ test("htmlToText drops script/style bodies instead of running them", () => {
 	assert.doesNotMatch(out, /alert|color:red|<[a-z]/i); // no code, no tags left
 	assert.match(out, /Title/);
 	assert.match(out, /First & second\./); // entities decoded
+	// Hex entities too — tropes.fyi serves its list full of &#x27;
+	assert.equal(
+		htmlToText("<p>What&#x27;s new &#8212; ok</p>"),
+		"What's new — ok",
+	);
 	assert.match(out, /- one/);
 	assert.match(out, /after/);
 	assert.doesNotMatch(out, /\n\n\n/); // blank runs collapsed

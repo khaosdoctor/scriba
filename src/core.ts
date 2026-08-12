@@ -44,7 +44,10 @@ export function htmlToText(html: string): string {
 		.replace(/&gt;/gi, ">")
 		.replace(/&quot;/gi, '"')
 		.replace(/&#39;|&apos;/gi, "'")
-		.replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)));
+		.replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)))
+		.replace(/&#x([0-9a-f]+);/gi, (_m, h: string) =>
+			String.fromCodePoint(Number.parseInt(h, 16)),
+		);
 	return text
 		.split("\n")
 		.map((l) => l.replace(/[ \t]+/g, " ").trim())

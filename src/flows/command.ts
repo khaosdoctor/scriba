@@ -44,17 +44,21 @@ HOW TO WORK
 - Ask before you guess. A short clarifying question beats a note that has to be redone.
 
 HOW TO WRITE
-Write as the owner would, in first person where the note calls for it. Plain, direct, specific. Contractions are fine. Vary sentence length.
-Do not write like a language model or a press release. Specifically avoid:
-- corporate filler and hype: leverage, utilise, robust, seamless, streamline, cutting-edge, game-changer, unlock, empower, delve, landscape, realm, tapestry, journey, moving the needle
-- the "it's not X, it's Y" contrast, and rule-of-three lists that pad rather than inform
-- opening with "In today's world" / "In the ever-evolving", closing with a summary that repeats what was just said
-- hedging everything, and praising the question before answering it
-- em-dash-heavy rhythm, and headings on a note that is three sentences long
-Say the thing. Cut what doesn't carry weight.
+Write as the owner would, in first person where the note calls for it. Plain, direct, specific. Contractions are fine. Vary sentence length. Say the thing, then stop — cut whatever doesn't carry weight. Nothing you write should read as machine-written.
 
 TELEGRAM
 Replies are read on a phone. Keep them short — a few sentences. Report what you changed and where, not how you did it. No markdown headings in replies.`;
+
+/** The canonical catalogue of AI writing tells, kept by tropes.fyi and published as one file
+ *  meant to be pasted into a system prompt. Fetched rather than copied in, so the list stays
+ *  current without a deploy — the whole point of the site is that it keeps growing. */
+const TROPES_URL = "https://tropes.fyi/tropes-md";
+const TROPES_TTL_MS = 24 * 60 * 60_000;
+/** The page wraps the file in site chrome; the file itself starts at this heading. */
+const TROPES_START = "# AI Writing Tropes to Avoid";
+/** Used only when tropes.fyi can't be reached — better than nothing, and the writing rules
+ *  above still stand on their own. */
+const TROPES_FALLBACK = `Avoid the usual machine tells: delve, leverage, utilise, robust, seamless, streamline, tapestry, landscape, realm, journey, "quietly" as a significance-adverb; the "it's not X, it's Y" contrast; "The result? Devastating." fragments; padding rule-of-three lists; "In today's world" openings and summary closings that repeat what was just said.`;
 
 /** What the tap on a confirmation resolves to. */
 type Verdict = "allow" | "deny";
@@ -69,6 +73,7 @@ export class CommandSession {
 	private busy = false;
 	private sessionId?: string;
 	private idleTimer?: NodeJS.Timeout;
+	private tropeCache?: { text: string; at: number };
 	private pending = new Map<
 		string,
 		{ decide: (v: Verdict) => void; timer: NodeJS.Timeout }
@@ -183,6 +188,29 @@ export class CommandSession {
 		}
 	}
 
+	/** The tropes.fyi file, cached for a day. Fetched through the same sandboxed fetcher the
+	 *  agent uses, so it obeys the same rules; a failure degrades to the short list rather
+	 *  than failing the run. */
+	private async tropes(): Promise<string> {
+		const fresh =
+			this.tropeCache && Date.now() - this.tropeCache.at < TROPES_TTL_MS;
+		if (fresh) return this.tropeCache!.text;
+		try {
+			const page = await this.vault.fetchPage(TROPES_URL);
+			const start = page.indexOf(TROPES_START);
+			const text = start >= 0 ? page.slice(start) : page;
+			this.tropeCache = { text, at: Date.now() };
+			log.info({ chars: text.length }, "command: tropes.fyi list refreshed");
+			return text;
+		} catch (err) {
+			log.warn(
+				{ err },
+				"command: tropes.fyi unreachable — using the short list",
+			);
+			return TROPES_FALLBACK;
+		}
+	}
+
 	private async run(prompt: string): Promise<string> {
 		const server = createSdkMcpServer({
 			name: "vault",
@@ -193,7 +221,7 @@ export class CommandSession {
 		const stream = this.query({
 			prompt,
 			options: {
-				systemPrompt: SYSTEM,
+				systemPrompt: `${SYSTEM}\n\nThese are the patterns that give machine writing away. Do not produce any of them.\n\n${await this.tropes()}`,
 				model: config.command.model,
 				maxTurns: MAX_TURNS,
 				mcpServers: { vault: server },
