@@ -1,3 +1,10 @@
+## [1.33.0](https://github.com/khaosdoctor/scriba/compare/v1.32.0...v1.33.0) (2026-08-12)
+
+
+### Features
+
+* /command opens a vault agent session ([801f18d](https://github.com/khaosdoctor/scriba/commit/801f18d981008f5cfa768272d3cc936591f49ff0))
+
 ## [1.32.0](https://github.com/khaosdoctor/scriba/compare/v1.31.1...v1.32.0) (2026-08-12)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * undo button on a finished jot's status message ([d1a2a44](https://github.com/khaosdoctor/scriba/commit/d1a2a44a68af3b5d970476484fb538386c81367a))
-
-## [1.29.0](https://github.com/khaosdoctor/scriba/compare/v1.28.0...v1.29.0) (2026-08-03)
-
-
-### Features
-
-* menu messages self-destruct after a minute of no taps ([1d789db](https://github.com/khaosdoctor/scriba/commit/1d789dbf31b4b858fda1f6022191a88a11c42e58))
 
