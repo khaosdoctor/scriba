@@ -63,6 +63,11 @@ const envSchema = z
 		// so a captionless image posts embedded-but-uncaptioned when the primary is down.
 		AGENT_MODEL: z.string().default("claude-haiku-4-5"),
 		ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
+
+		// /command runs an agent over the vault: research, judgement about an existing note's
+		// shape, and writing that has to read like the owner. Haiku is the wrong tool for
+		// that, so command mode gets its own (stronger) model.
+		COMMAND_MODEL: z.string().default("claude-sonnet-5"),
 	})
 	// Remote transcription needs a Groq key; local needs none.
 	.refine((e) => e.TRANSCRIBER !== "remote" || !!e.GROQ_API_KEY, {
@@ -105,6 +110,9 @@ export const config = {
 		fallbackModel: env.ENRICH_FALLBACK_MODEL,
 		// Reuses the transcription Groq key; empty ⇒ fallback disabled.
 		groqApiKey: env.GROQ_API_KEY ?? "",
+	},
+	command: {
+		model: env.COMMAND_MODEL,
 	},
 	vaultPath: env.SCRIBA_VAULT_HOST_PATH,
 	dbPath: env.DB_PATH,

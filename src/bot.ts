@@ -22,6 +22,7 @@ import {
 	withinSquashWindow,
 } from "./core.ts";
 import type { Jot, JotKind, Repository } from "./db.ts";
+import { COMMAND_NS, CommandSession } from "./flows/command.ts";
 import {
 	HABITS_NS,
 	HabitsCommand,
@@ -42,6 +43,7 @@ import type { GithubReleases } from "./services/github.ts";
 import type { LinkIndex } from "./services/links.ts";
 import type { ObsidianClient } from "./services/obsidian.ts";
 import type { TranscriberSwitch } from "./services/transcribe.ts";
+import { VaultTools } from "./services/vault.ts";
 import { plainDate, plainTime } from "./time.ts";
 
 const log = logger("bot");
@@ -81,6 +83,7 @@ export class ScribaBot implements BotServices {
 	private habits: HabitsCommand;
 	private menu: MenuController;
 	private reprocess: ReprocessCommand;
+	private command: CommandSession;
 	private processor!: JotProcessor;
 	// jotId -> the live status message we edit in place through the jot's lifecycle.
 	// ponytail: in-memory. On restart the map is empty and status() just posts a fresh
@@ -109,6 +112,12 @@ export class ScribaBot implements BotServices {
 			this.reprocess,
 			() => this.deps(),
 			(jot) => this.deleteJot(jot),
+		);
+		// /command: an agent session scoped to the vault. It gets no built-in tool that could
+		// reach the host — see flows/command.ts.
+		this.command = new CommandSession(
+			this.bot,
+			new VaultTools(config.vaultPath || null, obsidian),
 		);
 		this.registerHandlers();
 	}
@@ -155,6 +164,14 @@ export class ScribaBot implements BotServices {
 				{
 					command: "reprocess",
 					description: "Reprocess jots — a day, a date range, or one jot",
+				},
+				{
+					command: "command",
+					description: "Open a vault assistant session (/done to close)",
+				},
+				{
+					command: "done",
+					description: "Close the vault assistant session",
 				},
 				{
 					command: "delete",
@@ -397,9 +414,14 @@ export class ScribaBot implements BotServices {
 		// Interactive control menu — an entry point layered over the slash commands, not a
 		// replacement. Every leaf reuses an existing command or flow (see MenuController).
 		this.menu.register();
+		this.command.register();
 
 		this.bot.on("message:text", async (ctx) => {
 			if (ctx.message.text.startsWith("/")) return;
+			// Command mode takes the whole message stream while it's open, so a prompt meant for
+			// the vault assistant never lands in the journal as a jot.
+			if (this.command.isOpen())
+				return this.command.handle(ctx, ctx.message.text);
 			if (ctx.message.reply_to_message) {
 				// A reply to a habit value question routes to the habit flow, not a jot edit.
 				const prompt = ctx.message.reply_to_message.text ?? "";
@@ -819,6 +841,7 @@ export class ScribaBot implements BotServices {
 		if (ns === "menu") return this.menu.handleCallback(ctx, rest);
 		if (ns === "rt") return this.handleRetry(ctx, rest[0]);
 		if (ns === "un") return this.handleUndo(ctx, rest[0]);
+		if (ns === COMMAND_NS) return this.command.handleTap(ctx, rest);
 		if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
 		if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
 		if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);

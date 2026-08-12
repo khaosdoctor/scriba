@@ -84,6 +84,26 @@ deployed on the homelab (Coolify). Single user.
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not
   processing time) and rewriting them to `[[YYYY-MM-DD|phrase]]`. The target daily note
   doesn't need to exist yet.
+- **`/command` is a sticky agent session over the vault**, closed by `/done` (or 15 minutes
+  idle). While it's open, `ScribaBot`'s text handler routes every message to
+  `CommandSession` instead of intake, so a prompt never lands in the journal as a jot.
+  **Its limits are the tool list, not the prompt.** It gets no built-in tool that can reach
+  the host — `Bash`, `Read`, `Write`, `Glob`, `Grep`, `Task` and friends are all in
+  `disallowedTools`, and `canUseTool` denies anything not on the allowlist regardless.
+  What it has is six custom in-process tools (`createSdkMcpServer` + `tool()` from the agent
+  SDK) in `services/vault.ts`: `vault_list`/`vault_read`/`vault_search` off the read-only
+  mount, `vault_write`/`vault_delete` through Obsidian's REST API (the mount can't be
+  written), and `web_fetch`, plus the SDK's `WebSearch` for research. Every path goes
+  through `safePath` — string containment (`isInsideRoot`) **and** a realpath check, so
+  neither `../` nor a symlink inside the vault gets out. `web_fetch` is http(s) only,
+  re-checks every redirect hop, and refuses anything resolving to a private address: the bot
+  sits inside a LAN of unauthenticated services, so fetching must not become a way to read
+  them. Writes and deletes stop for a Telegram ✅/❌ confirmation (`canUseTool` awaits the
+  tap, 5-minute timeout defaulting to refusal). `COMMAND_MODEL` (default `claude-sonnet-5`)
+  is separate from `AGENT_MODEL` — enrichment is a haiku-sized job, writing a note in the
+  owner's voice is not. Style guidance lives in the system prompt, but the vault outranks
+  it: the agent is told to read neighbouring notes first and to follow `internal/voice.md`
+  if the vault has one.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button — `un:<jotId>`, handled by
   `ScribaBot.handleUndo`, which runs the same `deleteJot` teardown as `/delete` and then

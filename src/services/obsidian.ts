@@ -176,6 +176,20 @@ export class ObsidianClient {
 	async writeNote(vaultPath: string, content: string): Promise<void> {
 		await this.putFile(vaultPath, content, "text/markdown");
 	}
+	/** Delete a note. Only `/command` uses this, and only after you confirm the tap. */
+	async deleteNote(vaultPath: string): Promise<void> {
+		const res = await fetch(`${this.cfg.url}/vault/${this.encode(vaultPath)}`, {
+			method: "DELETE",
+			headers: this.headers(),
+			dispatcher: this.dispatcher,
+		});
+		log.debug(
+			{ method: "DELETE", path: vaultPath, status: res.status },
+			"obsidian request",
+		);
+		if (!res.ok && res.status !== 404)
+			throw new Error(`obsidian DELETE ${vaultPath}: ${res.status}`);
+	}
 	async saveAsset(
 		name: string,
 		bytes: Uint8Array,

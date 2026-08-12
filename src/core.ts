@@ -3,6 +3,7 @@
  * Stopwords and rejections are injected (they live in the DB), not hardcoded here.
  */
 import { randomBytes } from "node:crypto";
+import { sep } from "node:path";
 import * as chrono from "chrono-node";
 import type { Jot, JotKind, JotStatus, StatsRow } from "./db.ts";
 import type { ReleaseNote } from "./services/github.ts";
@@ -10,6 +11,47 @@ import { dateFromIso, plainDate } from "./time.ts";
 
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// --- command mode sandbox ---
+// `/command` runs an agent against the vault. Its limits are enforced in code, not asked
+// for in the prompt: it gets no built-in tool at all (no Bash, no Read — those would reach
+// the whole container: the sqlite db, the env, the tokens), only the handful of custom
+// tools in services/vault.ts, and every path they take goes through the check below.
+
+/** True when `target` is `root` itself or sits under it. Both must already be resolved to
+ *  absolute paths; the caller still realpaths afterwards, since this is string-only and a
+ *  symlink inside the vault can still point out of it. */
+export function isInsideRoot(root: string, target: string): boolean {
+	if (!root || !target) return false;
+	const r = root.endsWith(sep) ? root.slice(0, -1) : root;
+	return target === r || target.startsWith(r + sep);
+}
+
+/** Reduce a fetched page to readable text. A string transform, never a browser: script and
+ *  style bodies are dropped rather than run, and nothing here can execute JS. */
+export function htmlToText(html: string): string {
+	const text = html
+		.replace(/<!--[\s\S]*?-->/g, "")
+		.replace(/<(script|style|noscript|svg|head)[\s\S]*?<\/\1>/gi, "")
+		// Block-level ends become line breaks so the text keeps its shape.
+		.replace(/<\/(p|div|li|tr|h[1-6]|section|article|blockquote)>/gi, "\n")
+		.replace(/<(br|hr)\s*\/?>/gi, "\n")
+		.replace(/<li[^>]*>/gi, "- ")
+		.replace(/<[^>]+>/g, "")
+		.replace(/&nbsp;/gi, " ")
+		.replace(/&amp;/gi, "&")
+		.replace(/&lt;/gi, "<")
+		.replace(/&gt;/gi, ">")
+		.replace(/&quot;/gi, '"')
+		.replace(/&#39;|&apos;/gi, "'")
+		.replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)));
+	return text
+		.split("\n")
+		.map((l) => l.replace(/[ \t]+/g, " ").trim())
+		.filter((l, i, all) => l !== "" || all[i - 1] !== "") // collapse blank runs
+		.join("\n")
+		.trim();
+}
 
 /** Fixed 8-char hex id, also used as the Obsidian block anchor. */
 export function makeJotId(): string {

@@ -26,9 +26,11 @@ import {
 	formatReleaseNote,
 	formatStats,
 	formatStatus,
+	htmlToText,
 	insertJournalLine,
 	isBlank,
 	isEditableJot,
+	isInsideRoot,
 	isRecoverable,
 	jotPreview,
 	journalLine,
@@ -750,6 +752,28 @@ test("assetEmbed gives an image no alias and a video its caption", () => {
 		"![[a/b.mp4]]",
 	);
 	assert.equal(assetEmbed(mediaJot({ kind: "text", raw_text: "hi" })), "");
+});
+
+test("htmlToText drops script/style bodies instead of running them", () => {
+	const html = `<html><head><title>t</title><style>body{color:red}</style></head>
+<body><script>alert('x')</script><h1>Title</h1><p>First &amp; second.</p>
+<ul><li>one</li><li>two</li></ul><div>after</div></body></html>`;
+	const out = htmlToText(html);
+	assert.doesNotMatch(out, /alert|color:red|<[a-z]/i); // no code, no tags left
+	assert.match(out, /Title/);
+	assert.match(out, /First & second\./); // entities decoded
+	assert.match(out, /- one/);
+	assert.match(out, /after/);
+	assert.doesNotMatch(out, /\n\n\n/); // blank runs collapsed
+});
+
+test("isInsideRoot accepts the root and its children, rejects siblings", () => {
+	assert.equal(isInsideRoot("/vault", "/vault"), true);
+	assert.equal(isInsideRoot("/vault", "/vault/notes/a.md"), true);
+	assert.equal(isInsideRoot("/vault/", "/vault/a.md"), true);
+	assert.equal(isInsideRoot("/vault", "/vault-other/a.md"), false); // prefix, not child
+	assert.equal(isInsideRoot("/vault", "/etc/passwd"), false);
+	assert.equal(isInsideRoot("", "/vault/a.md"), false);
 });
 
 test("entitiesToMarkdown returns text unchanged when entities is undefined", () => {
