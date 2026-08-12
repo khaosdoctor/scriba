@@ -54,6 +54,10 @@ Replies are read on a phone. Keep them short — a few sentences. Report what yo
  *  current without a deploy — the whole point of the site is that it keeps growing. */
 const TROPES_URL = "https://tropes.fyi/tropes-md";
 const TROPES_TTL_MS = 24 * 60 * 60_000;
+/** A failed fetch is cached too, just for less long — otherwise a slow or unreachable
+ *  tropes.fyi (network blip, rate limit, homelab egress issue) pays its full connect +
+ *  timeout cost again on every single /command message instead of once per window. */
+const TROPES_FAIL_TTL_MS = 10 * 60_000;
 /** The page wraps the file in site chrome; the file itself starts at this heading. */
 const TROPES_START = "# AI Writing Tropes to Avoid";
 /** Used only when tropes.fyi can't be reached — better than nothing, and the writing rules
@@ -73,7 +77,7 @@ export class CommandSession {
 	private busy = false;
 	private sessionId?: string;
 	private idleTimer?: NodeJS.Timeout;
-	private tropeCache?: { text: string; at: number };
+	private tropeCache?: { text: string; at: number; failed: boolean };
 	private pending = new Map<
 		string,
 		{ decide: (v: Verdict) => void; timer: NodeJS.Timeout }
@@ -192,14 +196,14 @@ export class CommandSession {
 	 *  agent uses, so it obeys the same rules; a failure degrades to the short list rather
 	 *  than failing the run. */
 	private async tropes(): Promise<string> {
-		const fresh =
-			this.tropeCache && Date.now() - this.tropeCache.at < TROPES_TTL_MS;
-		if (fresh) return this.tropeCache!.text;
+		const cache = this.tropeCache;
+		const ttl = cache?.failed ? TROPES_FAIL_TTL_MS : TROPES_TTL_MS;
+		if (cache && Date.now() - cache.at < ttl) return cache.text;
 		try {
 			const page = await this.vault.fetchPage(TROPES_URL);
 			const start = page.indexOf(TROPES_START);
 			const text = start >= 0 ? page.slice(start) : page;
-			this.tropeCache = { text, at: Date.now() };
+			this.tropeCache = { text, at: Date.now(), failed: false };
 			log.info({ chars: text.length }, "command: tropes.fyi list refreshed");
 			return text;
 		} catch (err) {
@@ -207,6 +211,7 @@ export class CommandSession {
 				{ err },
 				"command: tropes.fyi unreachable — using the short list",
 			);
+			this.tropeCache = { text: TROPES_FALLBACK, at: Date.now(), failed: true };
 			return TROPES_FALLBACK;
 		}
 	}
