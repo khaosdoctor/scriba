@@ -5,6 +5,7 @@ import { UNREJECT_NS } from "./commands/unreject.ts";
 import { config } from "./config.ts";
 import {
 	anchorLine,
+	assetEmbed,
 	deleteAnchorLine,
 	distinctSurfaces,
 	editConfirmation,
@@ -505,8 +506,9 @@ export class ScribaBot implements BotServices {
 		});
 	}
 
-	/** Attachment intake (image/video): keep the caption as display text, save + embed the
-	 *  file. Returns the intake promise so a rejection reaches bot.catch. */
+	/** Attachment intake (image/video): save + embed the file, keeping the caption as the
+	 *  jot's text (an image's caption is the entry itself; a video's is its embed display).
+	 *  Returns the intake promise so a rejection reaches bot.catch. */
 	private intakeMedia(ctx: any, kind: JotKind, fileId: string): Promise<void> {
 		const markdown = entitiesToMarkdown(
 			ctx.message.caption ?? "",
@@ -705,14 +707,17 @@ export class ScribaBot implements BotServices {
 		return editConfirmation(jot.time, result);
 	}
 
-	/** Replace a jot's entire text content (for edited messages, not instructions). */
+	/** Replace a jot's entire text content (for edited messages, not instructions). The new
+	 *  text is only the message's text/caption, so a media jot's embed is re-appended —
+	 *  editing an image's caption must not drop the image out of the note. */
 	private async replaceJotText(jot: Jot, newText: string): Promise<string> {
+		const content = [newText, assetEmbed(jot)].filter(Boolean).join(" ");
 		const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
 			const note = await this.obsidian.readNote(jot.note_path);
 			const replaced = replaceAnchorLine(
 				note,
 				jot.anchor,
-				journalLine(jot.time, newText, jot.anchor),
+				journalLine(jot.time, content, jot.anchor),
 			);
 			if (replaced) await this.obsidian.writeNote(jot.note_path, replaced);
 			return replaced;

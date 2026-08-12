@@ -28,8 +28,12 @@ deployed on the homelab (Coolify). Single user.
   Groq (`TRANSCRIBER=remote`); non-English is translated in (Groq `/translations`, or the
   enricher for local voice + all text).
 - **Four jot kinds.** `text`/`audio` carry enrichable text (audio is transcribed).
-  `image`/`video` are attach-only (saved + embedded, caption as display); a captionless
-  image gets a vision caption. Video is never transcribed.
+  An **image's caption is the entry text**, enriched and wikilinked like any other jot —
+  what you type alongside the photo is the jot, not the embed's alt (Telegram's Bot API
+  exposes no alt-text field, so `assetEmbed` writes a bare `![[asset]]` for images); a
+  captionless image gets a vision caption, which becomes that text. `video` stays
+  attach-only: saved + embedded with its caption as the embed's display text, never
+  transcribed.
 
 ## Data / flow
 

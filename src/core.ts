@@ -30,13 +30,27 @@ export function isEditableJot(status: JotStatus): boolean {
 	return status === "done" || status === "abandoned";
 }
 
-/** Pick the enrichable source text for a jot's kind: the transcript for audio (falling
- *  back to `audioFallback` when there isn't one), the raw text for text, otherwise ""
- *  (image/video are attach-only). */
+/** Pick the enrichable source text for a jot's kind: the transcript for audio (falling back
+ *  to `audioFallback` when there isn't one), the raw text for text, and an image's caption —
+ *  what you typed alongside the photo is the entry, same as any other jot, so it gets
+ *  enriched and wikilinked rather than being demoted to the embed's alt text. A captionless
+ *  image uses its vision caption here. Video is still attach-only. */
 export function enrichableSource(jot: Jot, audioFallback = ""): string {
 	if (jot.kind === "audio") return jot.transcript ?? audioFallback;
-	if (jot.kind === "text") return jot.raw_text ?? "";
+	if (jot.kind === "text" || jot.kind === "image") return jot.raw_text ?? "";
 	return "";
+}
+
+/** Obsidian embed for a jot's saved asset, or "" when it has none. An image's caption is
+ *  the entry text (see enrichableSource), so its embed carries no alias — Telegram's Bot API
+ *  exposes no alt-text field to copy one from, and repeating the entry text inside the embed
+ *  would only duplicate the line. Video stays attach-only, so its caption is the display. */
+export function assetEmbed(jot: Jot): string {
+	if (!jot.asset_path) return "";
+	const alias = jot.kind === "video" && jot.raw_text;
+	return alias
+		? `![[${jot.asset_path}|${jot.raw_text}]]`
+		: `![[${jot.asset_path}]]`;
 }
 
 /** Rolling-gap test for squashing: a new jot folds into the previous still-open one

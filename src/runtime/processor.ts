@@ -1,5 +1,6 @@
 import { basename } from "node:path";
 import {
+	assetEmbed,
 	candidates,
 	combineEnrichSource,
 	doneMessage,
@@ -62,7 +63,8 @@ export interface BotServices {
 	typing: () => Promise<void>; // "typing…" chat action while a jot is being processed
 }
 
-/** Turns a queued jot into an enriched, written journal line. Audio + text only. */
+/** Turns a queued jot into an enriched, written journal line. Text, voice and image
+ *  captions carry enrichable text; video is attach-only. */
 export class JotProcessor {
 	constructor(
 		private repo: Repository,
@@ -142,7 +144,7 @@ export class JotProcessor {
 			const merged = followers.length > 0;
 			const source = combineEnrichSource(
 				[jot, ...followers].map((j) => enrichableSource(j)),
-			); // image/video are attach-only
+			); // video is attach-only, so it contributes nothing here
 			if (merged)
 				log.info(
 					{ id, followers: followers.map((f) => f.id) },
@@ -263,11 +265,9 @@ export class JotProcessor {
 			// later /reprocess re-enriches that piece alone instead of splitting all over
 			// again. Skipped for a squashed leader: its source is several jots' text combined,
 			// so there's no single field to fold into (same rule as ScribaBot.syncEditedSource).
-			if (
-				spillover.length &&
-				!merged &&
-				(jot.kind === "text" || jot.kind === "audio")
-			)
+			// `linked` is the piece's text only — the embed is added by composeLine, so an
+			// image's raw_text stays pure caption and its embed isn't folded in twice.
+			if (spillover.length && !merged)
 				await this.repo.updateJot(jot.id, {
 					[jot.kind === "audio" ? "transcript" : "raw_text"]: linked,
 				});
@@ -474,15 +474,8 @@ export class JotProcessor {
 	}
 
 	private composeLine(jot: Jot, textPart: string): string {
-		let embed = "";
-		if (jot.asset_path) {
-			const caption =
-				(jot.kind === "image" || jot.kind === "video") && jot.raw_text;
-			embed = caption
-				? `![[${jot.asset_path}|${jot.raw_text}]]`
-				: `![[${jot.asset_path}]]`;
-		}
-		const content = [textPart, embed].filter(Boolean).join(" ") || "…";
+		const content =
+			[textPart, assetEmbed(jot)].filter(Boolean).join(" ") || "…";
 		return journalLine(jot.time, content, jot.anchor);
 	}
 

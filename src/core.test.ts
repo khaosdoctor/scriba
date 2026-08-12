@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	anchorLine,
+	assetEmbed,
 	candidates,
 	cleanNoteTitle,
 	combineEnrichSource,
@@ -11,6 +12,7 @@ import {
 	doneMessage,
 	donePreview,
 	editConfirmation,
+	enrichableSource,
 	entitiesToMarkdown,
 	entryMaxChars,
 	escapeHtml,
@@ -682,6 +684,72 @@ test("formatJotDetail shows full text and includes errors", () => {
 	assert.match(out, /Attempts: 3/);
 	assert.match(out, /Error: boom/);
 	assert.ok(out.includes(`Text: ${"x".repeat(400)}`)); // transcript shown in full
+});
+
+const mediaJot = (over: Partial<Jot>): Jot => ({
+	id: "deadbeef",
+	kind: "image",
+	note_path: "notes/x.md",
+	anchor: "deadbeef",
+	time: "10:00:00",
+	raw_text: null,
+	transcript: null,
+	asset_path: null,
+	file_id: null,
+	status: "done",
+	attempts: 0,
+	error: null,
+	received_at: 0,
+	updated_at: 0,
+	...over,
+});
+
+test("an image's caption is enrichable entry text; video's is not", () => {
+	// What you type alongside a photo is the jot itself, so it goes through enrichment.
+	assert.equal(
+		enrichableSource(mediaJot({ kind: "image", raw_text: "at the park" })),
+		"at the park",
+	);
+	assert.equal(enrichableSource(mediaJot({ kind: "image" })), "");
+	// Video stays attach-only — its caption is the embed's display text, not entry text.
+	assert.equal(
+		enrichableSource(mediaJot({ kind: "video", raw_text: "clip of the dog" })),
+		"",
+	);
+	assert.equal(
+		enrichableSource(mediaJot({ kind: "audio", transcript: "spoken" })),
+		"spoken",
+	);
+	assert.equal(
+		enrichableSource(mediaJot({ kind: "audio" }), "(failed)"),
+		"(failed)",
+	);
+});
+
+test("assetEmbed gives an image no alias and a video its caption", () => {
+	// Telegram exposes no alt-text field, and the caption is already the entry text — so
+	// an image embeds bare rather than repeating itself inside the link.
+	assert.equal(
+		assetEmbed(
+			mediaJot({
+				kind: "image",
+				raw_text: "at the park",
+				asset_path: "a/b.jpg",
+			}),
+		),
+		"![[a/b.jpg]]",
+	);
+	assert.equal(
+		assetEmbed(
+			mediaJot({ kind: "video", raw_text: "the dog", asset_path: "a/b.mp4" }),
+		),
+		"![[a/b.mp4|the dog]]",
+	);
+	assert.equal(
+		assetEmbed(mediaJot({ kind: "video", asset_path: "a/b.mp4" })),
+		"![[a/b.mp4]]",
+	);
+	assert.equal(assetEmbed(mediaJot({ kind: "text", raw_text: "hi" })), "");
 });
 
 test("entitiesToMarkdown returns text unchanged when entities is undefined", () => {
