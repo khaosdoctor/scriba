@@ -149,25 +149,58 @@ export class Repository {
 	}
 
 	// --- telegram message → jot map (reply-to-edit) ---
-	async mapMessage(tgMessageId: number, jotId: string): Promise<void> {
+	// Keyed by (chat_id, tg_message_id): message ids are only unique per chat, so the
+	// allowed user interacting from more than one chat (a DM and a group, say) needs the
+	// chat disambiguated or a reply/edit in one chat could resolve to a jot from another.
+	async mapMessage(
+		chatId: number,
+		tgMessageId: number,
+		jotId: string,
+	): Promise<void> {
 		await this.k("msg_map")
-			.insert({ tg_message_id: tgMessageId, jot_id: jotId })
-			.onConflict("tg_message_id")
-			.merge();
+			.insert({
+				chat_id: chatId,
+				tg_message_id: tgMessageId,
+				jot_id: jotId,
+				created_at: Date.now(),
+			})
+			.onConflict(["chat_id", "tg_message_id"])
+			// Only jot_id, so a re-map of the same message (e.g. an idempotent retry) can't
+			// bump created_at and disturb messageForJot()'s oldest-wins ordering.
+			.merge(["jot_id"]);
 	}
-	async jotForMessage(tgMessageId: number): Promise<string | undefined> {
+	async jotForMessage(
+		chatId: number,
+		tgMessageId: number,
+	): Promise<string | undefined> {
 		const r = await this.k("msg_map")
-			.where({ tg_message_id: tgMessageId })
+			.where({ chat_id: chatId, tg_message_id: tgMessageId })
 			.first();
 		return r?.jot_id;
 	}
-	async messageForJot(jotId: string): Promise<number | undefined> {
-		const r = await this.k("msg_map").where({ jot_id: jotId }).first();
-		return r?.tg_message_id;
+	/** A jot can pick up several msg_map rows (intake, status message, menu edit prompt);
+	 *  ordering by created_at deterministically prefers the oldest — the original intake
+	 *  mapping — over an arbitrary one, e.g. so react() lands on the user's own message. */
+	async messageForJot(
+		jotId: string,
+	): Promise<{ chatId: number; messageId: number } | undefined> {
+		const r = await this.k("msg_map")
+			.where({ jot_id: jotId })
+			// Tie-broken by chat_id/tg_message_id so two rows sharing a created_at
+			// millisecond still resolve to the same row every time.
+			.orderBy([
+				{ column: "created_at", order: "asc" },
+				{ column: "chat_id", order: "asc" },
+				{ column: "tg_message_id", order: "asc" },
+			])
+			.first();
+		return r ? { chatId: r.chat_id, messageId: r.tg_message_id } : undefined;
 	}
 	/** Forget a telegram message → jot mapping (e.g. a status message we just deleted). */
-	async unmapMessage(tgMessageId: number): Promise<void> {
-		await this.k("msg_map").where({ tg_message_id: tgMessageId }).delete();
+	async unmapMessage(chatId: number, tgMessageId: number): Promise<void> {
+		await this.k("msg_map")
+			.where({ chat_id: chatId, tg_message_id: tgMessageId })
+			.delete();
 	}
 
 	// --- learned link rejections ---
