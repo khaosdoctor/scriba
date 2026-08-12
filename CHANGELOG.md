@@ -1,3 +1,10 @@
+## [1.32.0](https://github.com/khaosdoctor/scriba/compare/v1.31.1...v1.32.0) (2026-08-12)
+
+
+### Features
+
+* an image's caption is the entry text, not the embed's alt ([ec1637d](https://github.com/khaosdoctor/scriba/commit/ec1637da4596c803f7a6b21ce50e095320b627bc))
+
 ## [1.31.1](https://github.com/khaosdoctor/scriba/compare/v1.31.0...v1.31.1) (2026-08-11)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * menu messages self-destruct after a minute of no taps ([1d789db](https://github.com/khaosdoctor/scriba/commit/1d789dbf31b4b858fda1f6022191a88a11c42e58))
-
-## [1.28.0](https://github.com/khaosdoctor/scriba/compare/v1.27.0...v1.28.0) (2026-08-03)
-
-
-### Features
-
-* always-link pairs can target notes that don't exist yet ([d794c58](https://github.com/khaosdoctor/scriba/commit/d794c58eef18b45d46c0a47c476e368c418c5961))
 
