@@ -1,3 +1,10 @@
+## [1.34.0](https://github.com/khaosdoctor/scriba/compare/v1.33.0...v1.34.0) (2026-08-12)
+
+
+### Features
+
+* pull the anti-trope list from tropes.fyi ([9e414b9](https://github.com/khaosdoctor/scriba/commit/9e414b98c3e05926a4e8be30c8986cf88ebc9aaf))
+
 ## [1.33.0](https://github.com/khaosdoctor/scriba/compare/v1.32.0...v1.33.0) (2026-08-12)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * split an over-long jot into separate jots ([811d6e0](https://github.com/khaosdoctor/scriba/commit/811d6e031f3845f04337bd3f9b148e01d9903e0a))
-
-## [1.30.0](https://github.com/khaosdoctor/scriba/compare/v1.29.0...v1.30.0) (2026-08-03)
-
-
-### Features
-
-* undo button on a finished jot's status message ([d1a2a44](https://github.com/khaosdoctor/scriba/commit/d1a2a44a68af3b5d970476484fb538386c81367a))
 
