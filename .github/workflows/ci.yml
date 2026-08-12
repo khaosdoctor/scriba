@@ -13,6 +13,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Node is pinned to an exact patch, matching the Dockerfile: better-sqlite3's Statement
+# destructor aborts the process on 24.19.0 (RemoveEnvironmentCleanupHook assertion), so a
+# floating `24` breaks the DB test and hides real failures. Bump both together.
 jobs:
   lint-and-format:
     runs-on: ubuntu-latest
@@ -22,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           # Matches mise.toml / package.json engines (deploy runtime).
-          node-version: 24
+          node-version: 24.18.1
 
       - run: npm ci
 
@@ -36,7 +39,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.18.1
 
       - run: npm ci
 
@@ -49,7 +52,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: 24.18.1
 
       - run: npm ci
 
