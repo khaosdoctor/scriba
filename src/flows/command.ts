@@ -82,11 +82,16 @@ type Verdict = "allow" | "deny";
 
 /** One prompt in flight. Its status message is also its answer: it starts as "Working…"
  *  (or "Queued") with a Stop button and is edited in place when the turn settles, so a
- *  reply always lands under the message that asked for it. */
+ *  reply always lands under the message that asked for it. Everything else the assistant
+ *  says about the turn — reasoning, tool calls, confirmations — is a Telegram reply to
+ *  `sourceId`, so several turns in flight stay in separate threads. */
 type Turn = {
 	id: string;
 	prompt: string;
-	chatId?: number;
+	/** The chat, and the owner's message that asked for this. */
+	chatId: number;
+	sourceId?: number;
+	/** The status message, which becomes the answer. */
 	messageId?: number;
 	state: "queued" | "running" | "stopping";
 };
@@ -289,7 +294,13 @@ export class CommandSession {
 	 */
 	async handle(ctx: any, prompt: string): Promise<void> {
 		this.touch();
-		const turn: Turn = { id: makeJotId(), prompt, state: "queued" };
+		const turn: Turn = {
+			id: makeJotId(),
+			prompt,
+			state: "queued",
+			chatId: ctx.chat?.id ?? config.telegram.allowedUserId,
+			sourceId: ctx.message?.message_id,
+		};
 		// Queued before the await, so two messages sent in quick succession keep their order
 		// even though grammy runs their handlers concurrently.
 		const ahead = this.queue.length + (this.active ? 1 : 0);
@@ -301,6 +312,7 @@ export class CommandSession {
 		const msg = await ctx
 			.reply(ahead ? queuedNotice(ahead) : WORKING, {
 				reply_markup: this.stopKeyboard(turn),
+				...replyParams(turn),
 			})
 			.catch((err: unknown) => {
 				log.warn({ err, turn: turn.id }, "command: status message failed");
@@ -499,16 +511,19 @@ export class CommandSession {
 		if (text) this.update(`💬 ${text}`);
 	}
 
-	/** Relay one live line to the chat. Silent — this is a running commentary, not a
-	 *  notification per thought. */
+	/** Relay one live line to the chat, hung off the message that prompted it. Silent — this
+	 *  is a running commentary, not a notification per thought. */
 	private update(raw: string): void {
 		const text = clipUpdate(raw);
 		if (!text) return;
-		log.debug({ text }, "command: relaying an agent update");
+		const turn = this.active;
+		log.debug({ text, turn: turn?.id ?? null }, "command: relaying an update");
 		this.send(() =>
-			this.bot.api.sendMessage(config.telegram.allowedUserId, text, {
-				disable_notification: true,
-			}),
+			this.bot.api.sendMessage(
+				turn?.chatId ?? config.telegram.allowedUserId,
+				text,
+				{ disable_notification: true, ...replyParams(turn) },
+			),
 		);
 	}
 
@@ -523,21 +538,22 @@ export class CommandSession {
 		);
 	}
 
-	/** Final word on a turn: its status message becomes the answer and loses its button. */
+	/** Final word on a turn: its status message becomes the answer and loses its button. If
+	 *  that message is gone, the answer is sent fresh — still as a reply to the prompt, so
+	 *  it can't end up orphaned at the bottom of the chat. */
 	private settle(turn: Turn, text: string): void {
 		const body = fitTelegram(text);
 		const { chatId, messageId } = turn;
+		const fresh = () =>
+			this.bot.api.sendMessage(chatId, body, replyParams(turn));
 		this.send(async () => {
-			if (chatId && messageId)
+			if (messageId)
 				await this.bot.api
 					.editMessageText(chatId, messageId, body, {
 						reply_markup: new InlineKeyboard(),
 					})
-					.catch(() =>
-						this.bot.api.sendMessage(config.telegram.allowedUserId, body),
-					);
-			// No status message to edit (the send failed) — say it as a new one.
-			else await this.bot.api.sendMessage(config.telegram.allowedUserId, body);
+					.catch(fresh);
+			else await fresh();
 		});
 	}
 
@@ -606,8 +622,10 @@ export class CommandSession {
 		};
 	}
 
-	/** Ask in Telegram and wait for the tap. Times out into a refusal. */
+	/** Ask in Telegram and wait for the tap. Times out into a refusal. Asked as a reply to
+	 *  the prompt that led here, so it's obvious which request wants the change. */
 	private confirm(question: string, preview: string): Promise<boolean> {
+		const turn = this.active;
 		return new Promise<boolean>((resolvePromise) => {
 			const id = makeJotId();
 			const kb = new InlineKeyboard()
@@ -627,10 +645,11 @@ export class CommandSession {
 				timer,
 			});
 			void this.bot.api
-				.sendMessage(config.telegram.allowedUserId, fitTelegram(body), {
-					parse_mode: "HTML",
-					reply_markup: kb,
-				})
+				.sendMessage(
+					turn?.chatId ?? config.telegram.allowedUserId,
+					fitTelegram(body),
+					{ parse_mode: "HTML", reply_markup: kb, ...replyParams(turn) },
+				)
 				.catch((err) => {
 					log.error({ err }, "command: could not ask for confirmation");
 					clearTimeout(timer);
@@ -777,6 +796,24 @@ export class CommandSession {
 			};
 		}
 	}
+}
+
+/**
+ * Hang a message off the one that prompted it. Everything the assistant says about a turn —
+ * its status message, its reasoning, its tool calls, its confirmations, its answer — replies
+ * to the owner's own message, so a chat with several turns in flight reads as threads rather
+ * than one interleaved stream. `allow_sending_without_reply` keeps the message going out
+ * even if the original was deleted meanwhile: losing the thread beats losing the message.
+ */
+function replyParams(turn: Turn | undefined) {
+	return turn?.sourceId
+		? {
+				reply_parameters: {
+					message_id: turn.sourceId,
+					allow_sending_without_reply: true,
+				},
+			}
+		: {};
 }
 
 /** A tool result's content is either a string or the usual array of blocks. */

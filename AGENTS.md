@@ -117,6 +117,11 @@ deployed on the homelab (Coolify). Single user.
   relayed line is flattened and cut to 330 chars (`clipUpdate`) and sent silently, so the
   feed can't flood or buzz the phone. Prose is held back until something follows it: what
   is left when the turn ends is the answer, which is why it isn't relayed twice. Every
+  **Everything about a turn is a Telegram reply to the message that prompted it** — status
+  message, 💭/🔧/⚠️/💬 lines, the ✅/❌ change confirmation, and the answer — via `replyParams`
+  (`reply_parameters`, with `allow_sending_without_reply` so a deleted prompt can't take its
+  own answer down). With several turns in flight the chat reads as threads instead of one
+  interleaved stream, so `Turn` carries the owner's `chatId`/`sourceId` from `ctx`. Every
   status message carries **⏹ Stop** (`cm:s:<turnId>`) — on the running turn it calls
   `interrupt()` (and refuses any confirmation it was waiting on), on a queued one it drops
   it before it runs. Telegram sends are chained through `send()` rather than awaited, so the

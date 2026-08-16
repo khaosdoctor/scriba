@@ -74,17 +74,21 @@ const result = (text?: string, subtype = "success") => ({
 	...(text === undefined ? {} : { result: text }),
 });
 
+/** The chat the owner talks to the bot in. Deliberately not the configured user id, so a
+ *  message addressed to the wrong one shows up as a failure. */
+const CHAT = 7;
+
 /** A session wired to stubs that record every Telegram call. */
 async function harness() {
-	const sent: { text: string; opts: any }[] = [];
+	const sent: { chat: number; text: string; opts: any }[] = [];
 	const edits: { chat: number; msg: number; text: string; opts: any }[] = [];
 	let nextId = 100;
 	const bot = {
 		command: () => {},
 		api: {
-			sendMessage: async (_chat: number, text: string, opts: any = {}) => {
-				sent.push({ text, opts });
-				return { chat: { id: 7 }, message_id: nextId++ };
+			sendMessage: async (chat: number, text: string, opts: any = {}) => {
+				sent.push({ chat, text, opts });
+				return { chat: { id: chat }, message_id: nextId++ };
 			},
 			editMessageText: async (
 				chat: number,
@@ -108,19 +112,40 @@ async function harness() {
 		agent.query as any,
 	);
 
-	/** Every ctx.reply, with the id of the message it produced. */
-	const replies: { text: string; id: number; opts: any }[] = [];
-	const ctx = {
-		reply: async (text: string, opts: any = {}) => {
+	/** Every ctx.reply, with the id of the message it produced and the one it answers. */
+	const replies: { text: string; id: number; source: number; opts: any }[] = [];
+	const reply =
+		(source: number) =>
+		async (text: string, opts: any = {}) => {
 			const id = nextId++;
-			replies.push({ text, id, opts });
-			return { chat: { id: 7 }, message_id: id };
-		},
+			replies.push({ text, id, source, opts });
+			return { chat: { id: CHAT }, message_id: id };
+		};
+	const ctx = { chat: { id: CHAT }, reply: reply(0) };
+
+	/** Deliver a message the way Telegram does: its own incoming message id, which is what
+	 *  everything about that turn should hang off. Returns that id. */
+	const say = async (text: string): Promise<number> => {
+		const incoming = nextId++;
+		await session.handle(
+			{
+				chat: { id: CHAT },
+				message: { message_id: incoming, text },
+				reply: reply(incoming),
+			},
+			text,
+		);
+		return incoming;
 	};
+
 	await session.start(ctx);
 	replies.length = 0; // drop the "command mode is on" banner
-	return { session, agent, ctx, replies, sent, edits };
+	return { session, agent, ctx, say, replies, sent, edits };
 }
+
+/** What a recorded send/reply is threaded under, if anything. */
+const repliedTo = (call: { opts: any }) =>
+	call.opts?.reply_parameters?.message_id;
 
 /** The callback data behind a status message's ⏹ Stop button. */
 const stopData = (reply: { opts: any }) =>
@@ -139,10 +164,10 @@ const tap = () => {
 };
 
 test("a message sent while the agent is working is accepted, not refused", async () => {
-	const { session, agent, ctx, replies } = await harness();
-	await session.handle(ctx, "first");
+	const { agent, say, replies } = await harness();
+	const m1 = await say("first");
 	await settle();
-	await session.handle(ctx, "second");
+	const m2 = await say("second");
 	await settle();
 
 	assert.equal(replies.length, 2);
@@ -150,23 +175,26 @@ test("a message sent while the agent is working is accepted, not refused", async
 	// The second one says it was seen and where it stands — the old code refused it.
 	assert.match(replies[1]!.text, /Queued/);
 	assert.match(replies[1]!.text, /1 message ahead/);
+	// Each status message hangs off the message that asked for it.
+	assert.equal(repliedTo(replies[0]!), m1);
+	assert.equal(repliedTo(replies[1]!), m2);
 	// Only the first prompt is with the agent; the second waits its turn.
 	assert.deepEqual(agent.prompts, ["first"]);
 });
 
 test("handle returns without waiting for the agent", async () => {
-	const { session, agent, ctx } = await harness();
+	const { agent, say } = await harness();
 	// No result is ever emitted: if handle awaited the answer, this would hang.
-	await session.handle(ctx, "first");
+	await say("first");
 	await settle();
 	assert.deepEqual(agent.prompts, ["first"]);
 });
 
 test("each answer lands on the message that asked for it", async () => {
-	const { session, agent, ctx, replies, edits } = await harness();
-	await session.handle(ctx, "first");
+	const { agent, say, replies, edits } = await harness();
+	await say("first");
 	await settle();
-	await session.handle(ctx, "second");
+	await say("second");
 	await settle();
 
 	agent.emit(assistant({ type: "text", text: "one done" }));
@@ -190,8 +218,8 @@ test("each answer lands on the message that asked for it", async () => {
 });
 
 test("reasoning and tool calls are relayed live, clipped to 330 characters", async () => {
-	const { session, agent, ctx, sent } = await harness();
-	await session.handle(ctx, "write a note");
+	const { agent, say, sent } = await harness();
+	const m1 = await say("write a note");
 	await settle();
 
 	agent.emit(
@@ -212,13 +240,17 @@ test("reasoning and tool calls are relayed live, clipped to 330 characters", asy
 	assert.ok(thought!.text.length <= 330, "and clipped to 330 characters");
 	assert.match(thought!.text, /let me look first/);
 	assert.equal(call?.text, "🔧 vault_read · notes/a.md");
-	// Live chatter shouldn't buzz the phone once per thought.
+	// Live chatter shouldn't buzz the phone once per thought…
 	assert.equal(thought!.opts.disable_notification, true);
+	// …and it hangs off the message that prompted it, in that message's chat.
+	assert.equal(repliedTo(thought!), m1);
+	assert.equal(repliedTo(call!), m1);
+	assert.equal(thought!.chat, CHAT);
 });
 
 test("prose written mid-run is relayed; the closing prose is the answer", async () => {
-	const { session, agent, ctx, replies, sent, edits } = await harness();
-	await session.handle(ctx, "go");
+	const { agent, say, replies, sent, edits } = await harness();
+	await say("go");
 	await settle();
 
 	agent.emit(assistant({ type: "text", text: "reading the folder first" }));
@@ -243,9 +275,44 @@ test("prose written mid-run is relayed; the closing prose is the answer", async 
 	);
 });
 
+test("live updates thread under whichever prompt is being answered", async () => {
+	const { agent, say, sent } = await harness();
+	const m1 = await say("first");
+	await settle();
+	const m2 = await say("second");
+	await settle();
+
+	agent.emit(assistant({ type: "thinking", thinking: "on the first" }));
+	await settle();
+	agent.emit(result("first answered"));
+	await settle();
+	// The queue has moved on: the next turn's chatter belongs to the next message.
+	agent.emit(assistant({ type: "thinking", thinking: "on the second" }));
+	await settle();
+
+	const threads = sent.map((s) => [s.text, repliedTo(s)]);
+	assert.deepEqual(threads, [
+		["💭 on the first", m1],
+		["💭 on the second", m2],
+	]);
+});
+
+test("a deleted prompt can't take its answer down with it", async () => {
+	const { agent, say, sent } = await harness();
+	await say("go");
+	await settle();
+	agent.emit(assistant({ type: "thinking", thinking: "hm" }));
+	await settle();
+	// Telegram refuses a reply to a message that's gone unless this is set.
+	assert.equal(
+		sent[0]!.opts.reply_parameters.allow_sending_without_reply,
+		true,
+	);
+});
+
 test("a failing tool result is surfaced, a successful one is not", async () => {
-	const { session, agent, ctx, sent } = await harness();
-	await session.handle(ctx, "go");
+	const { agent, say, sent } = await harness();
+	await say("go");
 	await settle();
 
 	agent.emit({
@@ -266,8 +333,8 @@ test("a failing tool result is surfaced, a successful one is not", async () => {
 });
 
 test("Stop interrupts the running turn and closes its message", async () => {
-	const { session, agent, ctx, replies, edits } = await harness();
-	await session.handle(ctx, "long one");
+	const { session, agent, say, replies, edits } = await harness();
+	await say("long one");
 	await settle();
 
 	const [, , id] = stopData(replies[0]!).split(":");
@@ -285,10 +352,10 @@ test("Stop interrupts the running turn and closes its message", async () => {
 });
 
 test("Stop on a queued prompt drops it without touching the agent", async () => {
-	const { session, agent, ctx, replies, edits } = await harness();
-	await session.handle(ctx, "first");
+	const { session, agent, say, replies, edits } = await harness();
+	await say("first");
 	await settle();
-	await session.handle(ctx, "second");
+	await say("second");
 	await settle();
 
 	const [, , id] = stopData(replies[1]!).split(":");
@@ -309,8 +376,8 @@ test("Stop on a queued prompt drops it without touching the agent", async () => 
 });
 
 test("a stop for a turn that already finished says so", async () => {
-	const { session, agent, ctx, replies } = await harness();
-	await session.handle(ctx, "go");
+	const { session, agent, say, replies } = await harness();
+	await say("go");
 	await settle();
 	agent.emit(result("done"));
 	await settle();
@@ -322,10 +389,10 @@ test("a stop for a turn that already finished says so", async () => {
 });
 
 test("a query that dies is rebuilt, and the queue keeps moving", async () => {
-	const { session, agent, ctx, replies, edits } = await harness();
-	await session.handle(ctx, "first");
+	const { agent, say, replies, edits } = await harness();
+	await say("first");
 	await settle();
-	await session.handle(ctx, "second");
+	await say("second");
 	await settle();
 
 	agent.end(); // the CLI exits mid-turn
@@ -341,10 +408,10 @@ test("a query that dies is rebuilt, and the queue keeps moving", async () => {
 });
 
 test("closing the session answers everything still in flight", async () => {
-	const { session, agent, ctx, replies, edits } = await harness();
-	await session.handle(ctx, "first");
+	const { session, agent, ctx, say, replies, edits } = await harness();
+	await say("first");
 	await settle();
-	await session.handle(ctx, "second");
+	await say("second");
 	await settle();
 
 	const inFlight = [...replies]; // finish() posts its own reply; only these two matter
@@ -361,8 +428,8 @@ test("closing the session answers everything still in flight", async () => {
 });
 
 test("the agent is given a thinking budget, so there is reasoning to relay", async () => {
-	const { session, agent, ctx } = await harness();
-	await session.handle(ctx, "go");
+	const { agent, say } = await harness();
+	await say("go");
 	await settle();
 	assert.ok(agent.options.maxThinkingTokens > 0);
 });
