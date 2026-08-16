@@ -79,7 +79,7 @@ const result = (text?: string, subtype = "success") => ({
 const CHAT = 7;
 
 /** A session wired to stubs that record every Telegram call. */
-async function harness(feedEditMs = 0) {
+async function harness(feedEditMs = 0, turnSilenceMs = 30_000) {
 	const sent: { chat: number; text: string; opts: any }[] = [];
 	const edits: { chat: number; msg: number; text: string; opts: any }[] = [];
 	let nextId = 100;
@@ -111,6 +111,7 @@ async function harness(feedEditMs = 0) {
 		vault as any,
 		agent.query as any,
 		feedEditMs,
+		turnSilenceMs,
 	);
 
 	/** Every ctx.reply, with the id of the message it produced and the one it answers. */
@@ -503,4 +504,93 @@ test("the agent is given a thinking budget, so there is reasoning to relay", asy
 	await say("go");
 	await settle();
 	assert.ok(agent.options.maxThinkingTokens > 0);
+});
+
+/** Long enough that the timer fires within a test, short enough not to slow it down. */
+const SILENCE = 40;
+const silence = () => new Promise((r) => setTimeout(r, SILENCE * 2));
+
+test("a turn that goes silent is given up on, and the queue moves", async () => {
+	const { agent, say, replies, edits } = await harness(0, SILENCE);
+	await say("first");
+	await settle();
+	await say("second");
+	await settle();
+
+	// The agent takes the prompt, does some work, then stops producing anything at all —
+	// no result, and the query never ends. Before the watchdog this wedged the session:
+	// `active` stayed set and every later message queued behind it forever.
+	agent.emit(
+		assistant({
+			type: "tool_use",
+			name: "mcp__vault__vault_read",
+			input: { path: "notes/Athens.md" },
+		}),
+	);
+	await settle();
+	await silence();
+
+	assert.match(editsTo(edits, replies[0]!.id).at(-1)!, /went quiet/);
+	assert.ok(
+		agent.interrupts >= 1,
+		"the dead query is interrupted, not left running",
+	);
+	// The waiting prompt is handed to a fresh query rather than stuck behind a dead turn.
+	assert.deepEqual(agent.prompts, ["first", "second"]);
+});
+
+test("the agent doing anything at all resets the silence timer", async () => {
+	const { agent, say, replies, edits } = await harness(0, SILENCE);
+	await say("go");
+	await settle();
+
+	// Something every half-window: the turn is alive, so it must not be given up on.
+	for (let i = 0; i < 6; i++) {
+		agent.emit(assistant({ type: "thinking", thinking: `step ${i}` }));
+		await new Promise((r) => setTimeout(r, SILENCE / 2));
+	}
+	assert.ok(
+		!editsTo(edits, replies[0]!.id).some((t) => t.includes("went quiet")),
+		"a working turn was killed",
+	);
+
+	agent.emit(result("done"));
+	await settle();
+	assert.equal(editsTo(edits, replies[0]!.id).at(-1), "done");
+});
+
+test("a turn waiting on a confirmation tap isn't counted as silent", async () => {
+	const { session, say, replies, edits } = await harness(0, SILENCE);
+	await say("write a note");
+	await settle();
+
+	// canUseTool parks here until the owner taps; the agent is idle on purpose.
+	const decision = session.permit("mcp__vault__vault_write", {
+		path: "notes/a.md",
+		content: "hi",
+	});
+	await settle();
+	await silence();
+	assert.ok(
+		!editsTo(edits, replies[0]!.id).some((t) => t.includes("went quiet")),
+		"a turn waiting on the owner was given up on",
+	);
+
+	// Once the tap lands the clock runs again, so a query that then dies is still caught.
+	session.denyPending();
+	assert.equal((await decision).behavior, "deny");
+	await silence();
+	assert.match(editsTo(edits, replies[0]!.id).at(-1)!, /went quiet/);
+});
+
+test("the watchdog stops with the turn, and doesn't fire after an answer", async () => {
+	const { agent, say, replies, edits } = await harness(0, SILENCE);
+	await say("go");
+	await settle();
+	agent.emit(result("all done"));
+	await settle();
+	await silence();
+
+	// The answer is the last word: no late "went quiet" landing on top of it.
+	assert.equal(editsTo(edits, replies[0]!.id).at(-1), "all done");
 });

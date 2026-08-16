@@ -138,6 +138,16 @@ deployed on the homelab (Coolify). Single user.
   it before it runs. Telegram sends are chained through `send()` rather than awaited, so the
   chat stays in order without the agent loop ever waiting on the API. A query that dies is
   rebuilt on the next prompt with `resume: sessionId`, so the conversation survives.
+- **A turn that goes quiet is given up on.** A query can stop yielding without ever ending
+  (a CLI subprocess that dies without closing its stream, a call retrying forever), and
+  nothing else catches that: `active` never clears, so every later prompt queues behind a
+  turn that will never finish. `armWatchdog` restarts a `TURN_SILENCE_MS` timer (5 min,
+  injectable) on **agent events only** — pointedly not on the owner's messages, or the
+  replies piling up behind a dead turn would keep it alive, which is what the session's own
+  `touch()` idle timer does. On expiry `abandon` interrupts, tears the query down, answers
+  that turn with `silentNotice`, and pumps the queue; the stop-grace path goes through the
+  same `abandon`. A turn parked on a ✅/❌ confirmation is exempt (`pending.size`): it's
+  waiting on the owner by design, so the timer re-arms instead of firing.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button — `un:<jotId>`, handled by
   `ScribaBot.handleRemove`, which runs the same `deleteJot` teardown as `/delete` and then

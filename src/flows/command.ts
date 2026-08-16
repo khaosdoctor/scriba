@@ -17,6 +17,7 @@ import {
 	formatToolCall,
 	makeJotId,
 	queuedNotice,
+	silentNotice,
 	thoughtIcon,
 	toolIcon,
 } from "../core.ts";
@@ -42,6 +43,11 @@ const STOP_GRACE_MS = 20_000;
 /** Minimum gap between edits of a turn's status message. Telegram rate-limits edits, and
  *  the agent emits events far faster than a person reads them. */
 const FEED_EDIT_MS = 1_200;
+/** A running turn that produces nothing at all for this long is treated as dead. A query
+ *  can stop yielding without ever ending — a CLI subprocess that dies without closing its
+ *  stream, a call retrying forever — and without this the session wedges: `active` never
+ *  clears, so every later prompt queues behind a turn that will never finish. */
+const TURN_SILENCE_MS = 5 * 60_000;
 
 const WORKING = "🧭 Working…";
 
@@ -194,6 +200,8 @@ export class CommandSession {
 	/** The pending feed edit, and the earliest moment the one after it may go out. */
 	private feedTimer?: NodeJS.Timeout;
 	private feedAfter = 0;
+	/** Fires when the running turn has been silent too long. */
+	private turnTimer?: NodeJS.Timeout;
 
 	constructor(
 		private bot: Bot,
@@ -201,6 +209,8 @@ export class CommandSession {
 		private query: typeof sdkQuery = sdkQuery,
 		/** Minimum gap between edits of the live status message. */
 		private feedEditMs = FEED_EDIT_MS,
+		/** How long a running turn may produce nothing before it's given up on. */
+		private turnSilenceMs = TURN_SILENCE_MS,
 	) {}
 
 	register(): void {
@@ -247,6 +257,7 @@ export class CommandSession {
 		this.open = false;
 		this.sessionId = undefined;
 		if (this.idleTimer) clearTimeout(this.idleTimer);
+		this.clearWatchdog();
 		this.denyPending();
 		// Whatever was still in flight is answered with the reason it never will be, so no
 		// message is left sitting under a spinner.
@@ -358,7 +369,47 @@ export class CommandSession {
 		this.ensureAgent();
 		this.setStatus(next, WORKING);
 		this.stream?.push(next.prompt);
+		this.armWatchdog(next);
 		log.info({ turn: next.id }, "command: prompt handed to the agent");
+	}
+
+	/**
+	 * Restart the silence timer for the running turn. Only the agent's own events count as
+	 * alive here — deliberately not the owner's messages, which `touch()` handles. A turn
+	 * that has died quietly must not be kept "alive" by the very messages piling up behind
+	 * it, which is exactly what the session's idle timer would otherwise do.
+	 */
+	private armWatchdog(turn: Turn): void {
+		this.clearWatchdog();
+		this.turnTimer = setTimeout(() => {
+			if (this.active !== turn) return;
+			// Waiting on a ✅/❌ tap is the owner's move to make, not the agent's: the run is
+			// paused on purpose, so the clock starts again rather than running out.
+			if (this.pending.size) return this.armWatchdog(turn);
+			log.error(
+				{ turn: turn.id, silentMs: this.turnSilenceMs },
+				"command: turn produced nothing for too long — giving up on it",
+			);
+			this.abandon(turn, silentNotice(this.turnSilenceMs));
+		}, this.turnSilenceMs);
+		this.turnTimer.unref?.();
+	}
+
+	private clearWatchdog(): void {
+		if (this.turnTimer) clearTimeout(this.turnTimer);
+		this.turnTimer = undefined;
+	}
+
+	/** Give up on the running turn: drop the query, answer that turn, and let the queue
+	 *  move. The next prompt opens a fresh query with `resume`, so the conversation itself
+	 *  survives — only this turn is lost. */
+	private abandon(turn: Turn, text: string): void {
+		if (this.active !== turn) return;
+		this.active = undefined;
+		this.clearWatchdog();
+		this.teardown();
+		this.settle(turn, text);
+		this.pump();
 	}
 
 	/** Start the long-lived query if there isn't one. It stays open for the whole session:
@@ -398,6 +449,7 @@ export class CommandSession {
 		}
 		const stranded = this.active;
 		this.active = undefined;
+		this.clearWatchdog();
 		this.runner = undefined;
 		this.runToken = undefined;
 		this.agent = undefined;
@@ -471,6 +523,7 @@ export class CommandSession {
 	 *  chat as it happens; the prose it writes is held back, because that's the answer. */
 	private onMessage(msg: any): void {
 		this.touch(); // a working agent is a live session, however quiet the owner is
+		if (this.active) this.armWatchdog(this.active); // …and it's visibly still working
 		if (msg.type === "assistant") {
 			for (const b of msg.message?.content ?? []) {
 				if (b.type === "text") this.text += b.text;
@@ -504,6 +557,7 @@ export class CommandSession {
 		if (msg.session_id) this.sessionId = msg.session_id; // continue the thread
 		const turn = this.active;
 		this.active = undefined;
+		this.clearWatchdog();
 		const text =
 			this.text.trim() || (typeof msg.result === "string" ? msg.result : "");
 		this.text = "";
@@ -761,10 +815,7 @@ export class CommandSession {
 		const guard = setTimeout(() => {
 			if (this.active !== turn) return;
 			log.warn({ turn: turn.id }, "command: interrupt timed out — restarting");
-			this.active = undefined;
-			this.teardown();
-			this.settle(turn, "⏹ Stopped.");
-			this.pump();
+			this.abandon(turn, "⏹ Stopped.");
 		}, STOP_GRACE_MS);
 		guard.unref?.();
 	}

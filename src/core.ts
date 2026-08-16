@@ -747,6 +747,13 @@ export function formatToolCall(
 	return `${label}${detail}${size}`;
 }
 
+/** What a turn that stopped producing anything is answered with. The conversation itself
+ *  survives (the next prompt resumes the session id), so the way out is to ask again. */
+export function silentNotice(ms: number): string {
+	const mins = Math.max(1, Math.round(ms / 60_000));
+	return `⚠️ The assistant went quiet — nothing at all for ${pluralize(mins, "minute")}, so I stopped waiting on it. Send that again and it picks the conversation up where it left off.`;
+}
+
 /** Status line for a prompt that arrived while the assistant was still on an earlier one.
  *  It says the message was seen — the whole point of accepting it right away. */
 export function queuedNotice(ahead: number): string {
