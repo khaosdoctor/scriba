@@ -11,10 +11,14 @@ import { config } from "../config.ts";
 import {
 	clipUpdate,
 	escapeHtml,
+	feedMessage,
+	fitFeed,
 	fitTelegram,
 	formatToolCall,
 	makeJotId,
 	queuedNotice,
+	thoughtIcon,
+	toolIcon,
 } from "../core.ts";
 import { logger } from "../log.ts";
 import type { VaultTools } from "../services/vault.ts";
@@ -35,6 +39,9 @@ const MAX_TURNS = 120;
 /** An interrupt normally ends the turn within a second or two. If the agent hasn't come
  *  back by this point, the query is torn down and rebuilt so the session isn't wedged. */
 const STOP_GRACE_MS = 20_000;
+/** Minimum gap between edits of a turn's status message. Telegram rate-limits edits, and
+ *  the agent emits events far faster than a person reads them. */
+const FEED_EDIT_MS = 1_200;
 
 const WORKING = "🧭 Working…";
 
@@ -91,8 +98,13 @@ type Turn = {
 	/** The chat, and the owner's message that asked for this. */
 	chatId: number;
 	sourceId?: number;
-	/** The status message, which becomes the answer. */
+	/** The status message, which carries the live feed and then becomes the answer. */
 	messageId?: number;
+	/** The tail of what the agent has done on this turn, newest last. */
+	feed: string[];
+	/** What that message currently shows, so an edit that changes nothing is skipped —
+	 *  Telegram rejects those outright. */
+	rendered?: string;
 	state: "queued" | "running" | "stopping";
 };
 
@@ -179,11 +191,16 @@ export class CommandSession {
 	/** Telegram sends are chained rather than awaited: the agent must never stall behind a
 	 *  slow API call, but the chat still has to read in the order things happened. */
 	private sends: Promise<void> = Promise.resolve();
+	/** The pending feed edit, and the earliest moment the one after it may go out. */
+	private feedTimer?: NodeJS.Timeout;
+	private feedAfter = 0;
 
 	constructor(
 		private bot: Bot,
 		private vault: VaultTools,
 		private query: typeof sdkQuery = sdkQuery,
+		/** Minimum gap between edits of the live status message. */
+		private feedEditMs = FEED_EDIT_MS,
 	) {}
 
 	register(): void {
@@ -298,6 +315,7 @@ export class CommandSession {
 			id: makeJotId(),
 			prompt,
 			state: "queued",
+			feed: [],
 			chatId: ctx.chat?.id ?? config.telegram.allowedUserId,
 			sourceId: ctx.message?.message_id,
 		};
@@ -309,8 +327,9 @@ export class CommandSession {
 			{ turn: turn.id, chars: prompt.length, ahead },
 			"command: prompt accepted",
 		);
+		const head = ahead ? queuedNotice(ahead) : WORKING;
 		const msg = await ctx
-			.reply(ahead ? queuedNotice(ahead) : WORKING, {
+			.reply(head, {
 				reply_markup: this.stopKeyboard(turn),
 				...replyParams(turn),
 			})
@@ -321,6 +340,7 @@ export class CommandSession {
 		if (msg) {
 			turn.chatId = msg.chat.id;
 			turn.messageId = msg.message_id;
+			turn.rendered = head;
 			// It may have been promoted while the send was in flight; say so.
 			if (ahead && turn.state !== "queued") this.setStatus(turn, WORKING);
 		}
@@ -456,10 +476,13 @@ export class CommandSession {
 				if (b.type === "text") this.text += b.text;
 				else if (b.type === "thinking" || b.type === "redacted_thinking") {
 					this.flushText();
-					this.update(`💭 ${b.thinking ?? "(thinking)"}`);
+					const thought = b.thinking ?? "(thinking)";
+					this.update(`${thoughtIcon(thought)} ${thought}`);
 				} else if (b.type === "tool_use") {
 					this.flushText();
-					this.update(`🔧 ${formatToolCall(b.name, b.input ?? {})}`);
+					this.update(
+						`${toolIcon(b.name)} ${formatToolCall(b.name, b.input ?? {})}`,
+					);
 				}
 			}
 			return;
@@ -508,28 +531,50 @@ export class CommandSession {
 	private flushText(): void {
 		const text = this.text.trim();
 		this.text = "";
-		if (text) this.update(`💬 ${text}`);
+		if (text) this.update(`${thoughtIcon(text)} ${text}`);
 	}
 
 	/** Relay one live line to the chat, hung off the message that prompted it. Silent — this
 	 *  is a running commentary, not a notification per thought. */
 	private update(raw: string): void {
-		const text = clipUpdate(raw);
-		if (!text) return;
+		const line = clipUpdate(raw);
 		const turn = this.active;
-		log.debug({ text, turn: turn?.id ?? null }, "command: relaying an update");
-		this.send(() =>
-			this.bot.api.sendMessage(
-				turn?.chatId ?? config.telegram.allowedUserId,
-				text,
-				{ disable_notification: true, ...replyParams(turn) },
-			),
-		);
+		if (!line || !turn) return;
+		log.debug({ line, turn: turn.id }, "command: agent update");
+		turn.feed.push(line);
+		// A live view, not a transcript: once the message would go past what Telegram
+		// accepts, the oldest lines come off the front until it fits again.
+		turn.feed = fitFeed(WORKING, turn.feed);
+		this.scheduleFeed(turn);
+	}
+
+	/**
+	 * Show the feed on the turn's status message, at most one edit per `feedEditMs`. The
+	 * agent can emit several events a second and Telegram rate-limits edits, so updates are
+	 * coalesced: whatever the feed says when the timer fires is what goes out, and a later
+	 * line just rides the next edit. The last line always renders, because every line
+	 * schedules a timer if none is pending.
+	 */
+	private scheduleFeed(turn: Turn): void {
+		if (this.feedTimer) return; // already queued — it will pick up this line too
+		const wait = Math.max(0, this.feedAfter - Date.now());
+		this.feedTimer = setTimeout(() => {
+			this.feedTimer = undefined;
+			this.feedAfter = Date.now() + this.feedEditMs;
+			// The turn may have settled while this waited; its answer is on that message now
+			// and must not be overwritten by a stale feed.
+			if (this.active === turn)
+				this.setStatus(turn, feedMessage(WORKING, turn.feed));
+		}, wait);
+		this.feedTimer.unref?.();
 	}
 
 	/** Rewrite a turn's status message, keeping its Stop button. */
-	private setStatus(turn: Turn, text: string): void {
+	private setStatus(turn: Turn, raw: string): void {
 		if (!turn.chatId || !turn.messageId) return;
+		const text = fitTelegram(raw);
+		if (turn.rendered === text) return; // Telegram rejects an edit that changes nothing
+		turn.rendered = text;
 		const { chatId, messageId } = turn;
 		this.send(() =>
 			this.bot.api.editMessageText(chatId, messageId, text, {

@@ -644,10 +644,77 @@ export function fitTelegram(text: string, limit = TELEGRAM_LIMIT): string {
 // While the vault assistant works, its reasoning, tool calls and intermediate prose are
 // relayed to the chat as they happen. Those are chatter around the answer, not the answer:
 // each one is flattened to a single line and hard-capped, so a long thought or a note-sized
-// tool argument can't bury the conversation.
+// tool argument can't bury the conversation. They all live inside the turn's one status
+// message, which is rewritten as they arrive — a message per thought floods the chat.
 
 /** Hard cap on one live agent update. */
 export const AGENT_UPDATE_CHARS = 330;
+
+/** The live status message: a header, then the tail of what the agent has been up to. */
+export function feedMessage(header: string, lines: string[]): string {
+	return lines.length ? `${header}\n\n${lines.join("\n")}` : header;
+}
+
+/** Drop lines off the front until the rendered message fits. The message is a live view of
+ *  what the agent is doing now, not a transcript, so the oldest line is the one to lose —
+ *  and what's left is what the next render starts from, so the tail can't grow unbounded.
+ *  The newest line is always kept, even alone: something has to be on screen. */
+export function fitFeed(
+	header: string,
+	lines: string[],
+	limit = TELEGRAM_LIMIT,
+): string[] {
+	const kept = [...lines];
+	while (kept.length > 1 && feedMessage(header, kept).length > limit)
+		kept.shift();
+	return kept;
+}
+
+// A uniform 💭 on every line makes the feed one grey wall. Each line gets an emoji for what
+// it actually is instead, so a glance says which part of the job the agent is on. The
+// choice is a lookup, never a model call — this is display, and display must not cost a
+// token or a round trip.
+
+/** One per tool, keyed by the bare name `formatToolCall` produces. */
+const TOOL_ICONS: Record<string, string> = {
+	vault_read: "📖",
+	vault_list: "📂",
+	vault_search: "🔍",
+	vault_write: "✍️",
+	vault_delete: "🗑",
+	web_fetch: "🌐",
+	WebSearch: "🔎",
+};
+
+/** What a line of the agent's own words is about. First match wins, so the specific
+ *  patterns come before the general ones. */
+const THOUGHT_ICONS: [RegExp, string][] = [
+	[/\b(delet|remov|drop)/i, "🗑"],
+	[/\b(writ|creat|draft|updat|add)/i, "✍️"],
+	[/\b(search|find|look(ing)? for|grep)/i, "🔍"],
+	[/\b(read|open|check(ing)? the|inspect)/i, "📖"],
+	[/\b(list|folder|director)/i, "📂"],
+	[/\b(fetch|web|http|url|site|page|research)/i, "🌐"],
+	[/\b(style|voice|tone|match|convention|shape)/i, "🎨"],
+	[/\b(date|day|yesterday|today|journal)/i, "📅"],
+	[/\b(link|wikilink|backlink)/i, "🔗"],
+	[/\b(fail|error|wrong|can'?t|couldn'?t|problem)/i, "⚠️"],
+	[/\b(done|finish|complete|ready|saved)/i, "✅"],
+	[/\b(ask|question|clarif|unsure|not sure)/i, "❓"],
+	[/\b(plan|first|then|next|need to|should)/i, "🧭"],
+];
+
+/** Emoji for a tool call. Unknown tools keep the generic wrench. */
+export function toolIcon(name: string): string {
+	return TOOL_ICONS[name.replace(/^mcp__.*?__/, "")] ?? "🔧";
+}
+
+/** Emoji for a line the agent wrote — its reasoning, or prose along the way. */
+export function thoughtIcon(text: string): string {
+	for (const [pattern, icon] of THOUGHT_ICONS)
+		if (pattern.test(text)) return icon;
+	return "💭";
+}
 
 /** Flatten to one line and cut to `max` characters, on a word boundary where there is one
  *  near the end. The returned string is never longer than `max`. */

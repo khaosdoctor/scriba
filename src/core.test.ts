@@ -18,6 +18,8 @@ import {
 	entitiesToMarkdown,
 	entryMaxChars,
 	escapeHtml,
+	feedMessage,
+	fitFeed,
 	fitTelegram,
 	forcedCandidates,
 	formatDeployNotice,
@@ -57,7 +59,9 @@ import {
 	splitEntry,
 	stripJournalLine,
 	TELEGRAM_LIMIT,
+	thoughtIcon,
 	tokenize,
+	toolIcon,
 	WIZARD_ENTRYSIZE_REF,
 	WIZARD_NOTE_REF,
 	WIZARD_REGISTER_REF,
@@ -1058,6 +1062,53 @@ test("fitTelegram leaves short text alone and labels the cut on long text", () =
 	assert.match(out, /cut here/);
 	// The custom limit is honoured too, so the notice can never itself overflow.
 	assert.equal(fitTelegram("y".repeat(300), 200).length, 200);
+});
+
+test("feedMessage puts the tail under the header", () => {
+	assert.equal(feedMessage("🧭 Working…", []), "🧭 Working…");
+	assert.equal(
+		feedMessage("🧭 Working…", ["📖 read a.md", "✍️ wrote b.md"]),
+		"🧭 Working…\n\n📖 read a.md\n✍️ wrote b.md",
+	);
+});
+
+test("fitFeed drops the oldest lines until the message fits", () => {
+	const lines = Array.from(
+		{ length: 20 },
+		(_, i) => `line ${i} ${"x".repeat(300)}`,
+	);
+	const kept = fitFeed("head", lines);
+	assert.ok(feedMessage("head", kept).length <= TELEGRAM_LIMIT);
+	// The newest survive, the oldest are the ones that go.
+	assert.equal(kept.at(-1), lines.at(-1));
+	assert.ok(!kept.includes(lines[0]!));
+	// Nothing to drop when it already fits.
+	assert.deepEqual(fitFeed("head", ["a", "b"]), ["a", "b"]);
+	assert.deepEqual(fitFeed("head", []), []);
+	// One line over the limit is still shown — something has to be on screen.
+	assert.equal(fitFeed("head", ["y".repeat(5000)]).length, 1);
+});
+
+test("toolIcon says which tool without the mcp prefix", () => {
+	assert.equal(toolIcon("mcp__vault__vault_read"), "📖");
+	assert.equal(toolIcon("mcp__vault__vault_write"), "✍️");
+	assert.equal(toolIcon("mcp__vault__vault_delete"), "🗑");
+	assert.equal(toolIcon("WebSearch"), "🔎");
+	// An unknown tool still gets a line, just a generic one.
+	assert.equal(toolIcon("mcp__vault__something_new"), "🔧");
+});
+
+test("thoughtIcon reflects what the line is about", () => {
+	assert.equal(thoughtIcon("searching for the meeting note"), "🔍");
+	assert.equal(thoughtIcon("Reading notes/a.md first"), "📖");
+	assert.equal(thoughtIcon("writing the note now"), "✍️");
+	assert.equal(thoughtIcon("deleting the stale one"), "🗑");
+	assert.equal(thoughtIcon("fetching the page"), "🌐");
+	assert.equal(thoughtIcon("that failed, trying again"), "⚠️");
+	assert.equal(thoughtIcon("matching the vault's voice"), "🎨");
+	// Nothing recognisable is still a thought.
+	assert.equal(thoughtIcon("hmm"), "💭");
+	assert.equal(thoughtIcon(""), "💭");
 });
 
 test("clipUpdate flattens to one line and caps the length", () => {
