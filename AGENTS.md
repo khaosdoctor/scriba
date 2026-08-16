@@ -110,15 +110,26 @@ deployed on the homelab (Coolify). Single user.
   `PromptStream`, an async iterable of user messages — which is also what makes `interrupt()`
   available). Prompts are fed in one at a time and each `result` settles the oldest, so a
   turn and its answer can never be mismatched: a message sent mid-run is acknowledged as
-  🕐 Queued straight away and its own status message is later edited into its answer. While
-  the agent works, everything it does is relayed to the chat live — 💭 reasoning
-  (`COMMAND_THINKING_TOKENS`, default 4000; `0` turns thinking and those lines off), 🔧 tool
-  calls, ⚠️ failed tool results, and 💬 prose it writes before doing something else. Each
-  relayed line is flattened and cut to 330 chars (`clipUpdate`) and sent silently, so the
-  feed can't flood or buzz the phone. Prose is held back until something follows it: what
-  is left when the turn ends is the answer, which is why it isn't relayed twice. Every
-  **Everything about a turn is a Telegram reply to the message that prompted it** — status
-  message, 💭/🔧/⚠️/💬 lines, the ✅/❌ change confirmation, and the answer — via `replyParams`
+  🕐 Queued straight away and its own status message is later edited into its answer.
+- **A turn is one message, rewritten — not a stream of them.** Everything the agent does
+  while it works goes into that turn's status message: reasoning
+  (`COMMAND_THINKING_TOKENS`, default 4000; `0` turns thinking and those lines off), tool
+  calls, ⚠️ failed tool results, and prose it writes before doing something else. Each line
+  is flattened and cut to 330 chars (`clipUpdate`), then the message is re-rendered as
+  `feedMessage(header, turn.feed)`. **Every line is prefixed with an emoji for what it is**
+  — `toolIcon` per tool (📖 read, 🔍 search, ✍️ write, 🗑 delete, 🌐 fetch, 🔧 unknown) and
+  `thoughtIcon` for the agent's own words, a keyword lookup so a glance says which part of
+  the job it's on. Both are tables in `core.ts`: display must not cost a token or a round
+  trip. When the feed would push the message past Telegram's cap, `fitFeed` drops lines off
+  the **front** until it fits, and the trimmed tail is what's kept — a live view, not a
+  transcript. Edits are throttled to one per `FEED_EDIT_MS` (1.2s, injectable for tests):
+  the agent emits events far faster than a person reads and Telegram rate-limits edits, so
+  updates coalesce, and the render is skipped when it would change nothing (Telegram
+  rejects those). A pending edit checks `this.active === turn` before it lands, so a stale
+  feed can never overwrite an answer that arrived first. Prose is held back until something
+  follows it: what's left when the turn ends is the answer, which replaces the feed.
+- **Everything about a turn is a Telegram reply to the message that prompted it** — its
+  status message (feed and answer alike) and the ✅/❌ change confirmation — via `replyParams`
   (`reply_parameters`, with `allow_sending_without_reply` so a deleted prompt can't take its
   own answer down). With several turns in flight the chat reads as threads instead of one
   interleaved stream, so `Turn` carries the owner's `chatId`/`sourceId` from `ctx`. Every

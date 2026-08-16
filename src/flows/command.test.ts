@@ -79,7 +79,7 @@ const result = (text?: string, subtype = "success") => ({
 const CHAT = 7;
 
 /** A session wired to stubs that record every Telegram call. */
-async function harness() {
+async function harness(feedEditMs = 0) {
 	const sent: { chat: number; text: string; opts: any }[] = [];
 	const edits: { chat: number; msg: number; text: string; opts: any }[] = [];
 	let nextId = 100;
@@ -110,6 +110,7 @@ async function harness() {
 		bot as any,
 		vault as any,
 		agent.query as any,
+		feedEditMs,
 	);
 
 	/** Every ctx.reply, with the id of the message it produced and the one it answers. */
@@ -142,6 +143,10 @@ async function harness() {
 	replies.length = 0; // drop the "command mode is on" banner
 	return { session, agent, ctx, say, replies, sent, edits };
 }
+
+/** The text of every edit made to one message, oldest first. */
+const editsTo = (edits: { msg: number; text: string }[], id: number) =>
+	edits.filter((e) => e.msg === id).map((e) => e.text);
 
 /** What a recorded send/reply is threaded under, if anything. */
 const repliedTo = (call: { opts: any }) =>
@@ -217,14 +222,14 @@ test("each answer lands on the message that asked for it", async () => {
 	assert.ok(edits.some((e) => e.msg === secondId && e.text === "two done"));
 });
 
-test("reasoning and tool calls are relayed live, clipped to 330 characters", async () => {
-	const { agent, say, sent } = await harness();
+test("the live feed rewrites one message instead of posting more", async () => {
+	const { agent, say, replies, sent, edits } = await harness();
 	const m1 = await say("write a note");
 	await settle();
 
 	agent.emit(
 		assistant(
-			{ type: "thinking", thinking: `let me look first ${"x".repeat(600)}` },
+			{ type: "thinking", thinking: `let me read the note ${"x".repeat(600)}` },
 			{
 				type: "tool_use",
 				name: "mcp__vault__vault_read",
@@ -234,26 +239,94 @@ test("reasoning and tool calls are relayed live, clipped to 330 characters", asy
 	);
 	await settle();
 
-	const thought = sent.find((s) => s.text.startsWith("💭"));
-	const call = sent.find((s) => s.text.startsWith("🔧"));
-	assert.ok(thought, "the reasoning was relayed");
-	assert.ok(thought!.text.length <= 330, "and clipped to 330 characters");
-	assert.match(thought!.text, /let me look first/);
-	assert.equal(call?.text, "🔧 vault_read · notes/a.md");
-	// Live chatter shouldn't buzz the phone once per thought…
-	assert.equal(thought!.opts.disable_notification, true);
-	// …and it hangs off the message that prompted it, in that message's chat.
-	assert.equal(repliedTo(thought!), m1);
-	assert.equal(repliedTo(call!), m1);
-	assert.equal(thought!.chat, CHAT);
+	// Not one message per thought — that's what buried the chat.
+	assert.deepEqual(sent, []);
+	const status = replies[0]!;
+	assert.equal(repliedTo(status), m1);
+	const latest = editsTo(edits, status.id).at(-1)!;
+	// The header stays, and the feed accumulates under it in order.
+	assert.match(latest, /^🧭 Working…\n\n/);
+	assert.match(latest, /let me read the note/);
+	assert.match(latest, /📖 vault_read · notes\/a\.md$/);
+	// Each line is still capped, so one long thought can't fill the message.
+	for (const line of latest.split("\n").slice(2))
+		assert.ok(line.length <= 330, `feed line too long: ${line.length}`);
 });
 
-test("prose written mid-run is relayed; the closing prose is the answer", async () => {
-	const { agent, say, replies, sent, edits } = await harness();
+test("each line carries an emoji for what it is", async () => {
+	const { agent, say, replies, edits } = await harness();
 	await say("go");
 	await settle();
 
+	agent.emit(
+		assistant(
+			{ type: "thinking", thinking: "let me search for the meeting note" },
+			{ type: "tool_use", name: "mcp__vault__vault_search", input: {} },
+			{
+				type: "tool_use",
+				name: "mcp__vault__vault_write",
+				input: { path: "a.md" },
+			},
+			{ type: "tool_use", name: "WebSearch", input: {} },
+			{ type: "tool_use", name: "mcp__vault__mystery_tool", input: {} },
+		),
+	);
+	await settle();
+
+	const lines = editsTo(edits, replies[0]!.id).at(-1)!.split("\n").slice(2);
+	assert.deepEqual(
+		lines.map((l) => l.split(" ")[0]),
+		["🔍", "🔍", "✍️", "🔎", "🔧"],
+	);
+});
+
+test("the feed drops its oldest lines rather than outgrow the message", async () => {
+	const { agent, say, replies, edits } = await harness();
+	await say("go");
+	await settle();
+
+	// Each thought clips to 330 characters, so ~13 of them pass Telegram's 4096 cap.
+	for (let i = 0; i < 30; i++) {
+		agent.emit(
+			assistant({ type: "thinking", thinking: `step ${i} ${"x".repeat(400)}` }),
+		);
+		await settle(2);
+	}
+
+	const latest = editsTo(edits, replies[0]!.id).at(-1)!;
+	assert.ok(latest.length <= 4096, `message is ${latest.length} characters`);
+	// The newest line survives; the oldest ones are the ones that went.
+	assert.match(latest, /step 29/);
+	assert.ok(!latest.includes("step 0 "));
+});
+
+test("feed edits are throttled, so a busy agent doesn't hammer Telegram", async () => {
+	// A gap far longer than the test: whatever lands after the first edit waits for it.
+	const { agent, say, replies, edits } = await harness(10_000);
+	await say("go");
+	await settle();
+	const before = editsTo(edits, replies[0]!.id).length;
+
+	for (const t of ["one", "two", "three"]) {
+		agent.emit(assistant({ type: "thinking", thinking: t }));
+		await settle();
+	}
+	assert.equal(
+		editsTo(edits, replies[0]!.id).length - before,
+		1,
+		"three updates in quick succession should coalesce into one edit",
+	);
+});
+
+test("prose written mid-run joins the feed; the closing prose is the answer", async () => {
+	const { agent, say, replies, edits } = await harness();
+	await say("go");
+	await settle();
+
+	// Spaced out, the way a real run arrives: prose, then the tool call that supersedes it.
+	// (A turn that finishes before the next render just skips that frame — the answer wins.)
 	agent.emit(assistant({ type: "text", text: "reading the folder first" }));
+	await settle();
 	agent.emit(
 		assistant({
 			type: "tool_use",
@@ -261,25 +334,22 @@ test("prose written mid-run is relayed; the closing prose is the answer", async 
 			input: { dir: "notes" },
 		}),
 	);
+	await settle();
 	agent.emit(assistant({ type: "text", text: "wrote notes/a.md" }));
 	agent.emit(result());
 	await settle();
 
-	assert.ok(sent.some((s) => s.text === "💬 reading the folder first"));
-	// The last block is the reply, and it isn't duplicated into the live feed.
-	assert.ok(!sent.some((s) => s.text.includes("wrote notes/a.md")));
-	assert.ok(
-		edits.some(
-			(e) => e.msg === replies[0]!.id && e.text === "wrote notes/a.md",
-		),
-	);
+	const seen = editsTo(edits, replies[0]!.id);
+	assert.ok(seen.some((t) => t.includes("reading the folder first")));
+	// The last block is the answer: the message ends as that alone, feed cleared away.
+	assert.equal(seen.at(-1), "wrote notes/a.md");
 });
 
-test("live updates thread under whichever prompt is being answered", async () => {
-	const { agent, say, sent } = await harness();
-	const m1 = await say("first");
+test("the feed follows whichever prompt is being answered", async () => {
+	const { agent, say, replies, edits } = await harness();
+	await say("first");
 	await settle();
-	const m2 = await say("second");
+	await say("second");
 	await settle();
 
 	agent.emit(assistant({ type: "thinking", thinking: "on the first" }));
@@ -290,28 +360,20 @@ test("live updates thread under whichever prompt is being answered", async () =>
 	agent.emit(assistant({ type: "thinking", thinking: "on the second" }));
 	await settle();
 
-	const threads = sent.map((s) => [s.text, repliedTo(s)]);
-	assert.deepEqual(threads, [
-		["💭 on the first", m1],
-		["💭 on the second", m2],
-	]);
-});
-
-test("a deleted prompt can't take its answer down with it", async () => {
-	const { agent, say, sent } = await harness();
-	await say("go");
-	await settle();
-	agent.emit(assistant({ type: "thinking", thinking: "hm" }));
-	await settle();
-	// Telegram refuses a reply to a message that's gone unless this is set.
+	const one = editsTo(edits, replies[0]!.id);
+	const two = editsTo(edits, replies[1]!.id);
+	assert.ok(one.some((t) => t.includes("on the first")));
 	assert.equal(
-		sent[0]!.opts.reply_parameters.allow_sending_without_reply,
-		true,
+		one.at(-1),
+		"first answered",
+		"the answer is the last word on it",
 	);
+	assert.ok(two.some((t) => t.includes("on the second")));
+	assert.ok(!two.some((t) => t.includes("on the first")));
 });
 
 test("a failing tool result is surfaced, a successful one is not", async () => {
-	const { agent, say, sent } = await harness();
+	const { agent, say, replies, edits } = await harness();
 	await say("go");
 	await settle();
 
@@ -326,9 +388,18 @@ test("a failing tool result is surfaced, a successful one is not", async () => {
 	});
 	await settle();
 
-	assert.deepEqual(
-		sent.map((s) => s.text),
-		["⚠️ no such note"],
+	const lines = editsTo(edits, replies[0]!.id).at(-1)!.split("\n").slice(2);
+	assert.deepEqual(lines, ["⚠️ no such note"]);
+});
+
+test("a deleted prompt can't take its answer down with it", async () => {
+	const { say, replies } = await harness();
+	await say("go");
+	await settle();
+	// Telegram refuses a reply to a message that's gone unless this is set.
+	assert.equal(
+		replies[0]!.opts.reply_parameters.allow_sending_without_reply,
+		true,
 	);
 });
 
