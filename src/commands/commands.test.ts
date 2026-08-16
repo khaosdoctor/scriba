@@ -302,9 +302,13 @@ test("/failed lists nothing cheerfully, and otherwise gives a button per jot", a
 		(r: any[]) => r.length,
 	);
 	assert.equal(rows.length, 2, "one row per jot");
+	// The same 🔄 Retry / 🗑 Delete pair the failure messages carry, per row.
 	assert.deepEqual(
-		rows.flat().map((b: any) => b.callback_data),
-		["rt:abcd1234", "rt:ffff0001"],
+		rows.map((r: any[]) => r.map((b: any) => b.callback_data)),
+		[
+			["rt:abcd1234", "dl:abcd1234"],
+			["rt:ffff0001", "dl:ffff0001"],
+		],
 	);
 });
 
