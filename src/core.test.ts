@@ -41,7 +41,6 @@ import {
 	jotPreview,
 	journalLine,
 	linkDateWords,
-	linkYears,
 	makeJotId,
 	monthGrid,
 	noteSuggestions,
@@ -1063,50 +1062,6 @@ test("fitTelegram leaves short text alone and labels the cut on long text", () =
 	assert.match(out, /cut here/);
 	// The custom limit is honoured too, so the notice can never itself overflow.
 	assert.equal(fitTelegram("y".repeat(300), 200).length, 200);
-});
-
-test("linkYears links every year mentioned", () => {
-	assert.equal(
-		linkYears("started in 1918 and ended 1919"),
-		"started in [[1918]] and ended [[1919]]",
-	);
-	// Every mention, not just the first.
-	assert.equal(
-		linkYears("1918, then 1918 again"),
-		"[[1918]], then [[1918]] again",
-	);
-	// An era marker settles it whatever the length, and normalises to the note's casing.
-	assert.equal(
-		linkYears("Carthage fell in 146 bce"),
-		"Carthage fell in [[146 BCE]]",
-	);
-	assert.equal(linkYears("44 BC was busy"), "[[44 BC]] was busy");
-	assert.equal(linkYears(""), "");
-});
-
-test("linkYears leaves alone what only looks like a year", () => {
-	// A bare number has to be four digits inside the plausible range. That range is the
-	// whole of the judgement — a quantity that happens to fall in it is linked too, which
-	// is the accepted cost of never missing a real year.
-	assert.equal(linkYears("I ran 1500 metres"), "I ran [[1500]] metres");
-	assert.equal(linkYears("cost 300 euros"), "cost 300 euros");
-	assert.equal(linkYears("3000 steps"), "3000 steps");
-	// A decade is not a year.
-	assert.equal(linkYears("the 1920s were loud"), "the 1920s were loud");
-	// Already linked, ISO dates, versions and times stay untouched.
-	assert.equal(linkYears("see [[1918]] there"), "see [[1918]] there");
-	assert.equal(
-		linkYears("[[2026-08-16|yesterday]]"),
-		"[[2026-08-16|yesterday]]",
-	);
-	assert.equal(linkYears("on 2026-08-16 I wrote"), "on 2026-08-16 I wrote");
-	assert.equal(linkYears("scriba 1.35.0 shipped"), "scriba 1.35.0 shipped");
-	assert.equal(linkYears("at 19:18 today"), "at 19:18 today");
-	assert.equal(linkYears("paid $1918"), "paid $1918");
-});
-
-test("linkYears links both ends of a range", () => {
-	assert.equal(linkYears("the 1914-1918 war"), "the [[1914]]-[[1918]] war");
 });
 
 test("feedMessage puts the tail under the header", () => {

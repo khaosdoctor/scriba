@@ -567,51 +567,6 @@ export function linkDateWords(text: string, referenceDate: string): string {
 	return out;
 }
 
-// The vault keeps a note per year under `maps of content/years`, BCE included, so a year in
-// an entry should reach it. That's a string transform, not a judgement call, so it happens
-// here rather than in the enricher's prompt: the model can't miss one, and it costs nothing.
-
-/** Spans a year must not be picked out of: an existing wikilink, an ISO date (2026-08-16),
- *  and anything dotted or colon-separated — a version, a time, a score. */
-const notAYearRe = /\[\[.*?\]\]|\d{4}-\d{2}-\d{2}|\d+(?:[.:/]\d+)+/g;
-
-/** A bare number is only a year when it's four digits in a plausible range — "1500 metres"
- *  would otherwise become a link. An explicit era marker settles it whatever the length,
- *  so "44 BCE" counts. A trailing letter rules it out, which keeps "the 1920s" a decade. */
-const yearRe =
-	/(?<![\p{L}\p{N}_$£€#])(\d{1,4})(\s?(?:BCE|BC|CE|AD))?(?![\p{L}\p{N}_])/giu;
-
-/** Link every year mentioned: `1918` → `[[1918]]`, `44 bce` → `[[44 BCE]]`. The target
- *  note doesn't need to exist — an unresolved link is how the vault's year template gets
- *  triggered in Obsidian. */
-export function linkYears(text: string): string {
-	if (!text.trim()) return text;
-	const skip = [...text.matchAll(notAYearRe)].map(
-		(m) => [m.index, m.index + m[0].length] as const,
-	);
-	const covered = (start: number, end: number) =>
-		skip.some(([s, e]) => start < e && end > s);
-
-	const out: string[] = [];
-	let last = 0;
-	for (const m of text.matchAll(yearRe)) {
-		const start = m.index;
-		const end = start + m[0].length;
-		const digits = m[1] ?? "";
-		const era = m[2]?.trim().toUpperCase();
-		const plausible =
-			digits.length === 4 && Number(digits) >= 1000 && Number(digits) <= 2999;
-		if (covered(start, end) || (!era && !plausible)) continue;
-		out.push(
-			text.slice(last, start),
-			`[[${era ? `${digits} ${era}` : digits}]]`,
-		);
-		last = end;
-	}
-	out.push(text.slice(last));
-	return out.join("");
-}
-
 /**
  * Force-link candidates from user-registered surface->note pairs (`/register`) — the
  * opposite of a rejection: hand-curated, so no length/stopword filtering applies. Marked

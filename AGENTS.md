@@ -84,19 +84,17 @@ deployed on the homelab (Coolify). Single user.
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not
   processing time) and rewriting them to `[[YYYY-MM-DD|phrase]]`. The target daily note
   doesn't need to exist yet.
-- **Years become links to the vault's year notes.** The vault keeps a note per year under
-  `maps of content/years`, BCE included, so `linkYears` (`core.ts`) rewrites every year in
-  a composed entry to `[[1918]]` / `[[44 BCE]]` — token-free, next to `linkDateWords` in
-  `JotProcessor.linkDates`, dates first so the year inside a `[[YYYY-MM-DD|…]]` is already
-  a wikilink the year pass steps over. A bare number counts only at four digits in
-  1000–2999; an era marker (BCE/BC/CE/AD) qualifies any length. Existing wikilinks, ISO
-  dates, versions and times are skipped, and a trailing letter keeps `the 1920s` a decade.
-  A quantity inside the range (`1500 metres`) is linked too — the accepted cost of never
-  missing a real year. `/command` gets the same rule as a prompt instruction instead, since
-  it writes whole notes: link every mention, and create a missing year note from the shape
-  of a neighbouring one in `maps of content/years` before linking to it. That prompt also
-  bars question-word headings — "Why it matters" → "Importance", "Where it started" →
-  "Origins": a heading is a label, not a question.
+- **Years are linked by the enricher, not by a regex.** The vault keeps a note per year
+  under `maps of content/years`, so every year an entry mentions is linked — `[[1918]]`,
+  and `[[146 BCE]]` before the common era (always BCE, never BC/AD). This is the enricher's
+  job precisely because it needs context: nothing but the sentence separates "1500 metres"
+  from "in 1500 the city fell", and no amount of regex supplies that. Years are linked even
+  though they never appear in the candidate list; decades, clock times, versions and
+  already-linked dates are not. `/command` carries the same rule for the notes it writes,
+  plus: a year with no note yet is created from the year template in `internal/templates`
+  (the template holds the placeholders — a neighbouring year note doesn't), written before
+  the note that links to it. Its prompt also bars question-word headings — "Why it matters"
+  → "Importance", "Where it started" → "Origins": a heading is a label, not a question.
 - **`/command` is a sticky agent session over the vault**, closed by `/done` (or 15 minutes
   idle). While it's open, `ScribaBot`'s text handler routes every message to
   `CommandSession` instead of intake, so a prompt never lands in the journal as a jot.

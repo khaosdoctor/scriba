@@ -66,6 +66,8 @@ const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules
 - Candidates marked (REGISTERED) are hand-curated by the human: always link their first occurrence verbatim, with no contextual judgment — skip the ambiguity check entirely for those.
 - Apply confident links inline using [[Note|surface]] (or [[Note]] if identical). Link the first occurrence only.
 - For non-registered candidates you are unsure about, DO NOT link them; list them under "ambiguous" so the human can decide.
+- YEARS: the vault has a note per year, so link every year the entry mentions even though years are never in the candidate list. A year of the common era links as [[1918]]; a year before it links as [[146 BCE]] — always "BCE", never "BC" or "AD". Link every mention, not only the first.
+- Only you can tell a year from a number that looks like one, which is why this is your job and not a regex: "1500 metres", "3000 steps" and "2000 calories" are quantities, while "in 1500 the city fell" is a year. Judge it from the sentence. Never link a decade ("the 1920s"), a clock time ("19:18"), a version ("1.35.0"), a quantity, or a date that is already a link.
 Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}]}
 Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
 
