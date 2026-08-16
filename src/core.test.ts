@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+	AGENT_UPDATE_CHARS,
 	anchorLine,
 	assetEmbed,
 	candidates,
 	cleanNoteTitle,
+	clipUpdate,
 	combineEnrichSource,
 	DEFAULT_ENTRY_MAX_CHARS,
 	deleteAnchorLine,
@@ -26,6 +28,7 @@ import {
 	formatReleaseNote,
 	formatStats,
 	formatStatus,
+	formatToolCall,
 	htmlToText,
 	insertJournalLine,
 	isBlank,
@@ -45,6 +48,7 @@ import {
 	placeholderLine,
 	pluralize,
 	previewList,
+	queuedNotice,
 	replaceAnchorLine,
 	reprocessTargets,
 	setFrontmatterNumber,
@@ -1019,6 +1023,49 @@ test("fitTelegram leaves short text alone and labels the cut on long text", () =
 	assert.match(out, /cut here/);
 	// The custom limit is honoured too, so the notice can never itself overflow.
 	assert.equal(fitTelegram("y".repeat(300), 200).length, 200);
+});
+
+test("clipUpdate flattens to one line and caps the length", () => {
+	assert.equal(clipUpdate("  one\n\ttwo   three "), "one two three");
+	const long = `${"word ".repeat(200)}end`;
+	const out = clipUpdate(long);
+	assert.ok(out.length <= AGENT_UPDATE_CHARS);
+	// The cut lands on a word boundary, so the last word isn't left half-written.
+	assert.match(out, /^(word )+word…$/);
+	// A single unbroken run still gets cut, boundary or not.
+	assert.equal(clipUpdate("x".repeat(500)).length, AGENT_UPDATE_CHARS);
+	assert.equal(clipUpdate("short", 10), "short");
+});
+
+test("formatToolCall names the tool and what it is acting on", () => {
+	assert.equal(
+		formatToolCall("mcp__vault__vault_read", { path: "notes/a.md" }),
+		"vault_read · notes/a.md",
+	);
+	assert.equal(
+		formatToolCall("mcp__vault__vault_search", { query: "kubernetes" }),
+		"vault_search · kubernetes",
+	);
+	// A write carries the whole note; its size is the useful part, never the body.
+	assert.equal(
+		formatToolCall("mcp__vault__vault_write", {
+			path: "notes/a.md",
+			content: "hello",
+		}),
+		"vault_write · notes/a.md (5 chars)",
+	);
+	assert.equal(
+		formatToolCall("WebSearch", { query: "scriba" }),
+		"WebSearch · scriba",
+	);
+	assert.equal(formatToolCall("mcp__vault__vault_list", {}), "vault_list");
+	// A server name with an underscore in it still loses only the prefix.
+	assert.equal(formatToolCall("mcp__my_server__do_it", {}), "do_it");
+});
+
+test("queuedNotice says how many are ahead", () => {
+	assert.match(queuedNotice(1), /1 message ahead/);
+	assert.match(queuedNotice(3), /3 messages ahead/);
 });
 
 test("previewList counts what it leaves out instead of cutting silently", () => {
