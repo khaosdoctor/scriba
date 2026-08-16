@@ -1,3 +1,15 @@
+## [1.37.0](https://github.com/khaosdoctor/scriba/compare/v1.36.0...v1.37.0) (2026-08-16)
+
+
+### Features
+
+* **links:** link years to the vault's year notes, and name headings ([c776501](https://github.com/khaosdoctor/scriba/commit/c776501f5f5d7dae4d21abdc314d7ad82571dde4))
+
+
+### Bug Fixes
+
+* **command:** give up on a turn that stops producing anything ([137f070](https://github.com/khaosdoctor/scriba/commit/137f070ebb21d7a5579ec959b07b010ed7ac99d5))
+
 ## [1.36.0](https://github.com/khaosdoctor/scriba/compare/v1.35.0...v1.36.0) (2026-08-16)
 
 
@@ -27,11 +39,4 @@
 ### Features
 
 * /command opens a vault agent session ([801f18d](https://github.com/khaosdoctor/scriba/commit/801f18d981008f5cfa768272d3cc936591f49ff0))
-
-## [1.32.0](https://github.com/khaosdoctor/scriba/compare/v1.31.1...v1.32.0) (2026-08-12)
-
-
-### Features
-
-* an image's caption is the entry text, not the embed's alt ([ec1637d](https://github.com/khaosdoctor/scriba/commit/ec1637da4596c803f7a6b21ce50e095320b627bc))
 
