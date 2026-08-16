@@ -1,3 +1,12 @@
+## [1.35.0](https://github.com/khaosdoctor/scriba/compare/v1.34.0...v1.35.0) (2026-08-16)
+
+
+### Features
+
+* **command:** answer command mode in parallel with a live agent feed ([6a7781f](https://github.com/khaosdoctor/scriba/commit/6a7781f583b7945d754397ecaaec48860ac6f5ea))
+* **command:** thread every message under the prompt that caused it ([a256406](https://github.com/khaosdoctor/scriba/commit/a25640682a2108975d99a0945d138dc38224a95f))
+* **jots:** put retry and delete buttons on every failure ([a8e2de8](https://github.com/khaosdoctor/scriba/commit/a8e2de8b21702020d159b044006ea10b19a57ce5))
+
 ## [1.34.0](https://github.com/khaosdoctor/scriba/compare/v1.33.0...v1.34.0) (2026-08-12)
 
 
@@ -25,11 +34,4 @@
 ### Bug Fixes
 
 * pin the image to node 24.18.1 to stop the boot crash loop ([660e6d3](https://github.com/khaosdoctor/scriba/commit/660e6d3ed63bc2dca5f2c924a4269901d8f52041))
-
-## [1.31.0](https://github.com/khaosdoctor/scriba/compare/v1.30.0...v1.31.0) (2026-08-11)
-
-
-### Features
-
-* split an over-long jot into separate jots ([811d6e0](https://github.com/khaosdoctor/scriba/commit/811d6e031f3845f04337bd3f9b148e01d9903e0a))
 
