@@ -26,6 +26,7 @@ import {
 	formatReleaseNote,
 	formatStats,
 	formatStatus,
+	gaveUpMessage,
 	htmlToText,
 	insertJournalLine,
 	isBlank,
@@ -47,6 +48,7 @@ import {
 	previewList,
 	replaceAnchorLine,
 	reprocessTargets,
+	retryNotice,
 	setFrontmatterNumber,
 	splitEntry,
 	stripJournalLine,
@@ -1009,6 +1011,39 @@ test("reprocessTargets dedupes to leader ids, preserving first-seen order", () =
 		]),
 		["leader1", "leader2"],
 	);
+});
+
+test("retryNotice says where in the retry cycle a jot is", () => {
+	const out = retryNotice("audio", 2, 10, "fetch failed");
+	assert.match(out, /That audio jot didn't go through \(attempt 2 of 10\)/);
+	assert.match(out, /8 more tries left/);
+	assert.match(out, /<code>fetch failed<\/code>/);
+	// The last try before giving up reads as one, not "1 more tries".
+	assert.match(retryNotice("text", 9, 10, "boom"), /one more try left/);
+});
+
+test("gaveUpMessage names the reason and the burst it covers", () => {
+	const out = gaveUpMessage("text", "unrecoverable error", "bad json");
+	assert.match(out, /Gave up on a text jot \(unrecoverable error\)/);
+	assert.match(out, /Posted it un-enriched/);
+	assert.ok(!out.includes("squashed"));
+	assert.match(
+		gaveUpMessage("audio", "no luck after 10 tries", "boom", 3),
+		/🧵 3 jots squashed into one entry/,
+	);
+});
+
+test("a failure message escapes and caps the error it quotes", () => {
+	// An error is arbitrary text: it must not be able to inject markup…
+	assert.match(
+		retryNotice("text", 1, 10, "<b>nope</b> & co"),
+		/&lt;b&gt;nope&lt;\/b&gt; &amp; co/,
+	);
+	// …nor push the message past Telegram's limit with a whole stack trace.
+	const huge = gaveUpMessage("text", "unrecoverable error", "x".repeat(5000));
+	assert.ok(huge.length < TELEGRAM_LIMIT);
+	assert.match(huge, /x…<\/code>/);
+	assert.match(retryNotice("text", 1, 10, "   "), /no error message/);
 });
 
 test("fitTelegram leaves short text alone and labels the cut on long text", () => {
