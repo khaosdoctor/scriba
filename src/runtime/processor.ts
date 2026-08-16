@@ -13,6 +13,7 @@ import {
 	isRecoverable,
 	journalLine,
 	linkDateWords,
+	linkYears,
 	makeJotId,
 	replaceAnchorLine,
 	retryNotice,
@@ -460,8 +461,12 @@ export class JotProcessor {
 	}
 
 	/** Resolve relative-date phrases against the jot's own day, once, for reuse in both the journal line and the Telegram preview. */
+	/** Both token-free link passes over the composed entry: relative-date phrases against the
+	 *  jot's own day, then every year mentioned. Dates run first so the `[[YYYY-MM-DD|…]]`
+	 *  they produce is already a wikilink, which the year pass steps over rather than
+	 *  linking the year inside it. */
 	private linkDates(jot: Jot, textPart: string): string {
-		return linkDateWords(textPart, basename(jot.note_path, ".md"));
+		return linkYears(linkDateWords(textPart, basename(jot.note_path, ".md")));
 	}
 
 	/** A jot for one spillover piece of an over-long entry: a plain text jot, already done
