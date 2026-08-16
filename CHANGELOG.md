@@ -1,3 +1,10 @@
+## [1.38.0](https://github.com/khaosdoctor/scriba/compare/v1.37.0...v1.38.0) (2026-08-16)
+
+
+### Features
+
+* **links:** release the enricher-side year linking ([c4d26e6](https://github.com/khaosdoctor/scriba/commit/c4d26e6d37883994b3f39db8495aab5c00dcafc8))
+
 ## [1.37.0](https://github.com/khaosdoctor/scriba/compare/v1.36.0...v1.37.0) (2026-08-16)
 
 
@@ -32,11 +39,4 @@
 ### Features
 
 * pull the anti-trope list from tropes.fyi ([9e414b9](https://github.com/khaosdoctor/scriba/commit/9e414b98c3e05926a4e8be30c8986cf88ebc9aaf))
-
-## [1.33.0](https://github.com/khaosdoctor/scriba/compare/v1.32.0...v1.33.0) (2026-08-12)
-
-
-### Features
-
-* /command opens a vault agent session ([801f18d](https://github.com/khaosdoctor/scriba/commit/801f18d981008f5cfa768272d3cc936591f49ff0))
 
