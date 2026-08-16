@@ -135,6 +135,13 @@ deployed on the homelab (Coolify). Single user.
   you introduce a secret with a different field name.
 - **Slash commands are discoverable.** Any new `bot.command(...)` also gets an entry in
   `setMyCommands` (in `ScribaBot.start`) so it shows in Telegram's `/` menu.
+- **Tests sit next to the source** as `<name>.test.ts`, one per file — except the admin
+  commands, which share `src/commands/commands.test.ts`: they're one file each but one
+  surface (the registry `bot.ts` loops over), so the registry's shape and each command's
+  argument branching are checked together. Prefer a real collaborator over a mock where one
+  is cheap: `obsidian.test.ts` runs the client against a loopback HTTP server rather than
+  stubbing `fetch`, which is what lets it test the write-lock and the daily-note dedupe;
+  `log.test.ts` reads redaction back out of a child process, since pino writes to fd 1.
 
 ## Local checks
 
