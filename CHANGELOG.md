@@ -1,3 +1,10 @@
+## [1.36.0](https://github.com/khaosdoctor/scriba/compare/v1.35.0...v1.36.0) (2026-08-16)
+
+
+### Features
+
+* **command:** fold the live feed into one message per turn ([4d5c2e5](https://github.com/khaosdoctor/scriba/commit/4d5c2e593b8128b8f2aaf9bc56d8a4e3a2fa31af))
+
 ## [1.35.0](https://github.com/khaosdoctor/scriba/compare/v1.34.0...v1.35.0) (2026-08-16)
 
 
@@ -27,11 +34,4 @@
 ### Features
 
 * an image's caption is the entry text, not the embed's alt ([ec1637d](https://github.com/khaosdoctor/scriba/commit/ec1637da4596c803f7a6b21ce50e095320b627bc))
-
-## [1.31.1](https://github.com/khaosdoctor/scriba/compare/v1.31.0...v1.31.1) (2026-08-11)
-
-
-### Bug Fixes
-
-* pin the image to node 24.18.1 to stop the boot crash loop ([660e6d3](https://github.com/khaosdoctor/scriba/commit/660e6d3ed63bc2dca5f2c924a4269901d8f52041))
 
