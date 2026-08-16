@@ -111,13 +111,35 @@ jobs:
 
       # Trigger Coolify only after the image is published and SCRIBA_TAG is set.
       # Coolify sits behind Cloudflare Access, so send a CF Access service token too.
+      #
+      # POST first, GET as a fallback: /api/v1/deploy took a GET until it started answering
+      # 405 Method Not Allowed (v1.35.0's release, 2026-08-16) — newer Coolify makes it
+      # POST-only. Trying both survives that change in either direction, so an upgrade on
+      # the Coolify side can't strand a release that already built and published its image.
+      #
+      # Any 2xx counts, not 200 exactly: a queued deployment answers 201, and the env-var
+      # write above already returns 201 today.
       - name: trigger coolify redeploy
         run: |
-          code=$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" \
-            "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=true" \
-            --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
-            --header "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
-            --header "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}")
-          echo "coolify deploy responded HTTP $code"
-          # A CF Access bounce (302/403) or any non-2xx means the deploy never reached Coolify.
-          [ "$code" = "200" ] || { echo "redeploy did not reach Coolify (check CF Access service token / secrets)"; exit 1; }
+          body=$(mktemp)
+          deploy() {
+            curl --silent --show-error --output "$body" --write-out "%{http_code}" \
+              -X "$1" \
+              "${{ secrets.COOLIFY_URL }}/api/v1/deploy?uuid=${{ secrets.COOLIFY_APP_UUID }}&force=true" \
+              --header "Authorization: Bearer ${{ secrets.COOLIFY_TOKEN }}" \
+              --header "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" \
+              --header "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}"
+          }
+          code=$(deploy POST)
+          echo "coolify deploy (POST) responded HTTP $code"
+          if [ "$code" = "405" ]; then
+            code=$(deploy GET)
+            echo "coolify deploy (GET fallback) responded HTTP $code"
+          fi
+          case "$code" in
+            2*) echo "deploy triggered on Coolify" ;;
+            # Setting SCRIBA_TAG just above proved the URL, the token and the CF Access
+            # headers all work, so a failure here is this endpoint — not the credentials.
+            # Say so, and print the body rather than sending it to /dev/null.
+            *) echo "::error::Coolify's deploy endpoint answered HTTP $code for both POST and GET. The SCRIBA_TAG write immediately before this succeeded, so the URL, token and CF Access headers are fine — check what /api/v1/deploy expects on this Coolify version. Response body:"; cat "$body"; echo; exit 1 ;;
+          esac
