@@ -600,6 +600,52 @@ export function fitTelegram(text: string, limit = TELEGRAM_LIMIT): string {
 	return `${text.slice(0, limit - notice.length)}${notice}`;
 }
 
+// --- /command live updates -------------------------------------------------------------
+// While the vault assistant works, its reasoning, tool calls and intermediate prose are
+// relayed to the chat as they happen. Those are chatter around the answer, not the answer:
+// each one is flattened to a single line and hard-capped, so a long thought or a note-sized
+// tool argument can't bury the conversation.
+
+/** Hard cap on one live agent update. */
+export const AGENT_UPDATE_CHARS = 330;
+
+/** Flatten to one line and cut to `max` characters, on a word boundary where there is one
+ *  near the end. The returned string is never longer than `max`. */
+export function clipUpdate(text: string, max = AGENT_UPDATE_CHARS): string {
+	const flat = text.replace(/\s+/g, " ").trim();
+	if (flat.length <= max) return flat;
+	const cut = flat.slice(0, max - 1);
+	const space = cut.lastIndexOf(" ");
+	const body = space > max * 0.6 ? cut.slice(0, space) : cut;
+	return `${body.trimEnd()}…`;
+}
+
+/** Arguments worth showing on a live tool line, most identifying first. */
+const TOOL_ARGS = ["path", "url", "query", "dir", "pattern", "prompt"];
+
+/** One-line rendering of a tool call: the bare tool name (the `mcp__<server>__` prefix is
+ *  noise here) plus the argument that says what it is acting on. */
+export function formatToolCall(
+	name: string,
+	input: Record<string, unknown> = {},
+): string {
+	const label = name.replace(/^mcp__.*?__/, "");
+	const key = TOOL_ARGS.find(
+		(k) => typeof input[k] === "string" && (input[k] as string).trim(),
+	);
+	const detail = key ? ` · ${String(input[key]).trim()}` : "";
+	// A write carries the whole note; its size is the useful part, never the body.
+	const size =
+		typeof input.content === "string" ? ` (${input.content.length} chars)` : "";
+	return `${label}${detail}${size}`;
+}
+
+/** Status line for a prompt that arrived while the assistant was still on an earlier one.
+ *  It says the message was seen — the whole point of accepting it right away. */
+export function queuedNotice(ahead: number): string {
+	return `🕐 Queued — ${pluralize(ahead, "message")} ahead of this one. It goes to the assistant as soon as that's done, and the reply lands here.`;
+}
+
 /** Inline preview of a list: the first `max` entries, then a count of what's left out. */
 export function previewList(items: string[], max: number): string {
 	if (items.length <= max) return items.join(", ");

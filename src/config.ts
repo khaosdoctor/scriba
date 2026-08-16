@@ -68,6 +68,10 @@ const envSchema = z
 		// shape, and writing that has to read like the owner. Haiku is the wrong tool for
 		// that, so command mode gets its own (stronger) model.
 		COMMAND_MODEL: z.string().default("claude-sonnet-5"),
+		// Thinking budget for command mode. The session relays the agent's reasoning to the
+		// chat as it works, which is only worth anything if the model actually thinks. 0
+		// turns extended thinking off (and with it the 💭 lines).
+		COMMAND_THINKING_TOKENS: z.coerce.number().min(0).default(4000),
 	})
 	// Remote transcription needs a Groq key; local needs none.
 	.refine((e) => e.TRANSCRIBER !== "remote" || !!e.GROQ_API_KEY, {
@@ -113,6 +117,7 @@ export const config = {
 	},
 	command: {
 		model: env.COMMAND_MODEL,
+		thinkingTokens: env.COMMAND_THINKING_TOKENS,
 	},
 	vaultPath: env.SCRIBA_VAULT_HOST_PATH,
 	dbPath: env.DB_PATH,

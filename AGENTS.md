@@ -104,6 +104,24 @@ deployed on the homelab (Coolify). Single user.
   owner's voice is not. Style guidance lives in the system prompt, but the vault outranks
   it: the agent is told to read neighbouring notes first and to follow `internal/voice.md`
   if the vault has one.
+- **Command mode never blocks on the agent.** `handle` takes a message, gives it its own
+  status message and returns; the agent runs against one long-lived query, opened on the
+  first prompt and kept alive for the whole session (the SDK's **streaming-input mode** —
+  `PromptStream`, an async iterable of user messages — which is also what makes `interrupt()`
+  available). Prompts are fed in one at a time and each `result` settles the oldest, so a
+  turn and its answer can never be mismatched: a message sent mid-run is acknowledged as
+  🕐 Queued straight away and its own status message is later edited into its answer. While
+  the agent works, everything it does is relayed to the chat live — 💭 reasoning
+  (`COMMAND_THINKING_TOKENS`, default 4000; `0` turns thinking and those lines off), 🔧 tool
+  calls, ⚠️ failed tool results, and 💬 prose it writes before doing something else. Each
+  relayed line is flattened and cut to 330 chars (`clipUpdate`) and sent silently, so the
+  feed can't flood or buzz the phone. Prose is held back until something follows it: what
+  is left when the turn ends is the answer, which is why it isn't relayed twice. Every
+  status message carries **⏹ Stop** (`cm:s:<turnId>`) — on the running turn it calls
+  `interrupt()` (and refuses any confirmation it was waiting on), on a queued one it drops
+  it before it runs. Telegram sends are chained through `send()` rather than awaited, so the
+  chat stays in order without the agent loop ever waiting on the API. A query that dies is
+  rebuilt on the next prompt with `resume: sessionId`, so the conversation survives.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button — `un:<jotId>`, handled by
   `ScribaBot.handleUndo`, which runs the same `deleteJot` teardown as `/delete` and then
