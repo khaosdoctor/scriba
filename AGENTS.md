@@ -129,9 +129,22 @@ deployed on the homelab (Coolify). Single user.
   rebuilt on the next prompt with `resume: sessionId`, so the conversation survives.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button — `un:<jotId>`, handled by
-  `ScribaBot.handleUndo`, which runs the same `deleteJot` teardown as `/delete` and then
+  `ScribaBot.handleRemove`, which runs the same `deleteJot` teardown as `/delete` and then
   re-renders the status without a keyboard. Deleting a squashed leader marks its followers
   deleted too: they share the one anchor line that just went away.
+- **Every failure is a decision, so it carries both buttons.** Any jot that fails —
+  transient (still in the retry cycle), given up on, or thrown during intake in `bot.catch`
+  — gets **🔄 Retry** (`rt:<jotId>`, `handleRetry`: `resetForRetry` + requeue now) and
+  **🗑 Delete** (`dl:<jotId>`, the same `handleRemove` as Undo) side by side, built by
+  `jotButtons` from the `StatusButtons` flags `status()` takes. The transient case used to
+  say nothing at all and leave the message on "✨ Weaving it into your journal…" until the
+  sweep came round, which reads as stuck rather than waiting; it now posts `retryNotice`
+  (`core.ts`) naming the attempt and how many are left. Giving up posts `gaveUpMessage`.
+  Both quote the error escaped and capped, since an error can be a whole stack trace, and
+  both go out through `JotProcessor.say`, which swallows a Telegram failure so a hiccup in
+  the failure path can't throw out of `fail()` and abandon the rest of the batch. The two
+  buttons guard each other: Retry refuses a jot that's already `deleted`, and Delete answers
+  "already deleted" rather than tearing down twice. `/failed` lists the same pair per row.
 - **Edits fold back into the source, so reprocess doesn't undo them.** Correcting a jot's
   line (reply `s/old/new/`, a freeform reply instruction, or Telegram's native message-edit)
   also writes the corrected text into the jot's own `transcript` (audio) or `raw_text`

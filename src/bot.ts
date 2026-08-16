@@ -74,6 +74,25 @@ const MIME: Record<string, string> = {
  *  flushed and folded it in. */
 const MERGE_EMOJI = "🤝" as const;
 
+/** Which buttons a jot's status message carries. A jot that lands gets `undo`; one that
+ *  fails gets `retry` and `discard` — every failure is a decision, and both halves of it
+ *  should be one tap away rather than a command you have to remember. */
+export type StatusButtons = {
+	retry?: boolean;
+	undo?: boolean;
+	discard?: boolean;
+};
+
+/** The failure pair, side by side under the message: run it again now, or take it out of
+ *  the journal for good. Empty (which clears any existing keyboard) when neither is asked
+ *  for, so a message that's no longer actionable stops offering actions. */
+function jotButtons(jotId: string, opts?: StatusButtons): InlineKeyboard {
+	const kb = new InlineKeyboard();
+	if (opts?.retry) kb.text("🔄 Retry", `rt:${jotId}`);
+	if (opts?.discard) kb.text("🗑 Delete", `dl:${jotId}`);
+	return kb;
+}
+
 /** All Telegram wiring. Long polling, no webhook. Implements BotServices so the
  *  processor can notify, ask link questions, download files, and apply queued edits. */
 export class ScribaBot implements BotServices {
@@ -233,18 +252,16 @@ export class ScribaBot implements BotServices {
 	/** Create-or-edit the one live status message for a jot. First call sends it and
 	 *  remembers the message id; later calls edit that same message in place, so the
 	 *  chat reads as a clean audit trail instead of a stream of notifications.
-	 *  `retry: true` attaches a force-retry button, `undo: true` an undo one; otherwise any
-	 *  button is cleared. */
+	 *  `undo: true` attaches an undo button; `retry`/`discard` attach the failure pair;
+	 *  otherwise any button is cleared. */
 	async status(
 		jotId: string,
 		html: string,
-		opts?: { retry?: boolean; undo?: boolean },
+		opts?: StatusButtons,
 	): Promise<void> {
 		const reply_markup = opts?.undo
 			? new InlineKeyboard().text("↩️ Undo", `un:${jotId}`)
-			: opts?.retry
-				? new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`)
-				: new InlineKeyboard();
+			: jotButtons(jotId, opts);
 		const chat = config.telegram.allowedUserId;
 		const existing = this.statusMsgs.get(jotId);
 		if (existing) {
@@ -366,14 +383,14 @@ export class ScribaBot implements BotServices {
 				return;
 			}
 			// If the failing message already has a jot row (intake persists it before the
-			// network write that usually throws here), offer a retry button wired to the same
-			// `rt:` handler the give-up path uses. No jot → plain error (e.g. a command failure).
+			// network write that usually throws here), offer the same 🔄 Retry / 🗑 Delete pair
+			// the processor's failures carry. No jot → plain error (e.g. a command failure).
 			const messageId = err.ctx.message?.message_id;
 			const jotId = messageId
 				? await this.repo.jotForMessage(messageId).catch(() => undefined)
 				: undefined;
 			const reply_markup = jotId
-				? new InlineKeyboard().text("🔄 Retry", `rt:${jotId}`)
+				? jotButtons(jotId, { retry: true, discard: true })
 				: undefined;
 			await err.ctx
 				.reply(`⚠️ Couldn't save that: ${msg}`, { reply_markup })
@@ -840,7 +857,8 @@ export class ScribaBot implements BotServices {
 		log.debug({ data: ctx.callbackQuery.data }, "button pressed");
 		if (ns === "menu") return this.menu.handleCallback(ctx, rest);
 		if (ns === "rt") return this.handleRetry(ctx, rest[0]);
-		if (ns === "un") return this.handleUndo(ctx, rest[0]);
+		if (ns === "un") return this.handleRemove(ctx, rest[0], "undo");
+		if (ns === "dl") return this.handleRemove(ctx, rest[0], "discard");
 		if (ns === COMMAND_NS) return this.command.handleTap(ctx, rest);
 		if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
 		if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
@@ -851,29 +869,49 @@ export class ScribaBot implements BotServices {
 		await ctx.answerCallbackQuery();
 	}
 
-	/** ↩️ Undo on a finished jot's status message: pull the line back out of the journal.
-	 *  Same teardown as `/delete`, one tap away while the entry is still on screen. */
-	private async handleUndo(ctx: any, jotId?: string): Promise<void> {
+	/** ↩️ Undo on a finished jot, 🗑 Delete on a failed one — the same teardown either way:
+	 *  pull the line back out of the journal and put the jot in a state the retry sweep
+	 *  won't resurrect. Same as `/delete`, one tap away while the entry is on screen. */
+	private async handleRemove(
+		ctx: any,
+		jotId: string | undefined,
+		source: "undo" | "discard",
+	): Promise<void> {
 		const jot = jotId ? await this.repo.getJot(jotId) : undefined;
 		if (!jot) {
-			log.warn({ jotId }, "undo: jot is gone");
+			log.warn({ jotId, source }, "remove: jot is gone");
 			return void ctx.answerCallbackQuery({ text: "gone" });
 		}
 		if (jot.status === "deleted") {
-			log.warn({ jotId }, "undo: already undone");
-			return void ctx.answerCallbackQuery({ text: "already undone" });
+			log.warn({ jotId, source }, "remove: already removed");
+			return void ctx.answerCallbackQuery({
+				text: source === "undo" ? "already undone" : "already deleted",
+			});
 		}
-		log.info({ jotId }, "undo requested");
-		await ctx.answerCallbackQuery({ text: "undoing" });
+		log.info({ jotId, source, status: jot.status }, "jot removal requested");
+		await ctx.answerCallbackQuery({
+			text: source === "undo" ? "undoing" : "deleting",
+		});
 		const result = await this.deleteJot(jot);
-		// status() with no opts clears the Undo button, so a second tap can't re-run it.
+		// status() with no opts clears the buttons, so a second tap can't re-run it.
 		await this.status(jot.id, result);
 	}
 
+	/** 🔄 Retry on a failed jot's status message: reset its attempts and queue it now,
+	 *  rather than waiting for the sweep. */
 	private async handleRetry(ctx: any, jotId?: string): Promise<void> {
-		if (!jotId || !(await this.repo.getJot(jotId)))
+		const jot = jotId ? await this.repo.getJot(jotId) : undefined;
+		if (!jotId || !jot) {
+			log.warn({ jotId }, "retry: jot is gone");
 			return void ctx.answerCallbackQuery({ text: "gone" });
-		log.info({ jotId }, "manual retry requested");
+		}
+		// 🗑 Delete sits right next to this button, so a stray tap must not put back the
+		// line the user just took out.
+		if (jot.status === "deleted") {
+			log.warn({ jotId }, "retry: jot was deleted");
+			return void ctx.answerCallbackQuery({ text: "deleted — not retrying" });
+		}
+		log.info({ jotId, status: jot.status }, "manual retry requested");
 		await this.repo.resetForRetry(jotId);
 		this.queue.add(jotId);
 		await ctx.answerCallbackQuery({ text: "retrying" });

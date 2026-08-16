@@ -9,11 +9,13 @@ import {
 	entryMaxChars,
 	escapeHtml,
 	forcedCandidates,
+	gaveUpMessage,
 	isRecoverable,
 	journalLine,
 	linkDateWords,
 	makeJotId,
 	replaceAnchorLine,
+	retryNotice,
 	splitEntry,
 } from "../core.ts";
 import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
@@ -44,11 +46,11 @@ export interface BotServices {
 	notify: (text: string) => Promise<void>;
 	// Create-or-edit the one live status message for a jot (HTML parse mode). Edited in
 	// place through the jot's lifecycle so the chat stays a clean audit trail, not spam.
-	// `retry: true` attaches a force-retry button (used when a jot is given up on).
+	// `retry`/`discard` attach the 🔄 Retry / 🗑 Delete pair every failure carries.
 	status: (
 		jotId: string,
 		html: string,
-		opts?: { retry?: boolean; undo?: boolean },
+		opts?: { retry?: boolean; undo?: boolean; discard?: boolean },
 	) => Promise<void>;
 	// Delete a jot's live status message if one exists (used to collapse stray
 	// per-follower messages into the leader's single confirmation on a squash).
@@ -342,6 +344,13 @@ export class JotProcessor {
 				error: msg,
 			});
 			await this.bot.react(jot.id, "retrying");
+			// Say so on the jot's own status message, which otherwise sits on "Weaving it
+			// into your journal…" until the sweep comes round — indistinguishable from a jot
+			// that's stuck. The buttons are the point: waiting is a choice, not the only one.
+			await this.say(
+				jot.id,
+				retryNotice(jot.kind, attempts, MAX_ATTEMPTS, msg),
+			);
 			return;
 		}
 		// Unrecoverable, or out of tries: post whatever we have un-enriched, then stop.
@@ -382,15 +391,26 @@ export class JotProcessor {
 			if (j.id !== jot.id) await this.bot.deleteStatus(j.id);
 			await this.bot.onJotDone(j.id); // apply edits queued while it was failing
 		}
-		const squash =
-			followers.length > 0
-				? `\n🧵 ${followers.length + 1} jots squashed into one entry`
-				: "";
-		await this.bot.status(
+		await this.say(
 			jot.id,
-			`⚠️ Gave up on a ${jot.kind} jot (${reason}). Posted it un-enriched.\n<code>${escapeHtml(msg)}</code>${squash}`,
-			{ retry: true },
+			gaveUpMessage(
+				jot.kind,
+				reason,
+				msg,
+				followers.length > 0 ? followers.length + 1 : 0,
+			),
 		);
+	}
+
+	/** Post a failure on the jot's status message with 🔄 Retry / 🗑 Delete under it. The
+	 *  send is best-effort: this runs inside the failure path, and a Telegram hiccup here
+	 *  must not throw out of `fail()` and abandon the rest of the batch. */
+	private async say(id: string, html: string): Promise<void> {
+		await this.bot
+			.status(id, html, { retry: true, discard: true })
+			.catch((err) =>
+				log.warn({ id, err }, "could not post the failure notice"),
+			);
 	}
 
 	private async ensureMedia(jot: Jot): Promise<Jot> {

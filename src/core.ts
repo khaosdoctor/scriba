@@ -225,6 +225,46 @@ export function doneMessage(
 	return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squash}${split}`;
 }
 
+// A failure message is only as useful as what you can do about it, and both messages below
+// are posted with 🔄 Retry / 🗑 Delete under them. An error string can be a whole stack
+// trace, which would push the message past Telegram's limit, so it's cut here.
+const ERROR_PREVIEW_CHARS = 400;
+
+const errorBlock = (error: string) => {
+	const text = error.trim() || "(no error message)";
+	const cut = text.length > ERROR_PREVIEW_CHARS;
+	return `<code>${escapeHtml(cut ? `${text.slice(0, ERROR_PREVIEW_CHARS)}…` : text)}</code>`;
+};
+
+/** Status line for a jot that failed on a transient error and is still in the retry cycle.
+ *  Without this the message sits on "Weaving it into your journal…" until the sweep comes
+ *  round, which reads as a jot that's stuck rather than one that's waiting. */
+export function retryNotice(
+	kind: JotKind,
+	attempts: number,
+	max: number,
+	error: string,
+): string {
+	const left = Math.max(0, max - attempts);
+	const more = left === 1 ? "one more try" : `${left} more tries`;
+	return `⚠️ That ${kind} jot didn't go through (attempt ${attempts} of ${max}). I'll try again on my own — ${more} left, or decide it now.\n${errorBlock(error)}`;
+}
+
+/** Status line once a jot is given up on. The text is in the note un-enriched, so what's
+ *  left to decide is whether to run it again or take it out. */
+export function gaveUpMessage(
+	kind: JotKind,
+	reason: string,
+	error: string,
+	squashedTotal = 0,
+): string {
+	const squash =
+		squashedTotal > 1
+			? `\n🧵 ${squashedTotal} jots squashed into one entry`
+			: "";
+	return `⚠️ Gave up on a ${kind} jot (${reason}). Posted it un-enriched.\n${errorBlock(error)}${squash}`;
+}
+
 /** In-chat confirmation after an edit is applied: the corrected line blockquoted so the
  *  new text is visible immediately, not just a bare "updated". HTML parse mode — content
  *  is escaped. */

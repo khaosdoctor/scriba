@@ -6,7 +6,7 @@ const log = logger("failed");
 
 export const failed: Command = {
 	name: "failed",
-	description: "recent failed/abandoned jots, each with a retry button",
+	description: "recent failed/abandoned jots, each with retry + delete buttons",
 	run: async (ctx, _args, d) => {
 		const jots = await d.repo.failedJots(10);
 		log.info({ count: jots.length }, "/failed command");
@@ -15,9 +15,11 @@ export const failed: Command = {
 			(j) =>
 				`${j.id} [${j.kind}] ${j.status} ×${j.attempts} — ${(j.error ?? "").slice(0, 60)}`,
 		);
-		// One retry button per jot; reuses the existing `rt:` callback handler in the bot.
+		// The same pair the failure messages carry, a row per jot: run it again, or take it
+		// out. Both reuse the `rt:`/`dl:` callback handlers in the bot.
 		const kb = new InlineKeyboard();
-		for (const j of jots) kb.text(`🔄 ${j.id}`, `rt:${j.id}`).row();
+		for (const j of jots)
+			kb.text(`🔄 ${j.id}`, `rt:${j.id}`).text("🗑", `dl:${j.id}`).row();
 		await ctx.reply(`⚠️ ${jots.length} failed:\n${lines.join("\n")}`, {
 			reply_markup: kb,
 		});
