@@ -659,9 +659,7 @@ export class TasksFlow {
 		}
 		return this.showView(
 			ctx,
-			((view ?? "open") as TaskView) in VIEW_LABEL
-				? (view as TaskView)
-				: "open",
+			view && view in VIEW_LABEL ? (view as TaskView) : "open",
 			Math.max(0, Number(pageRaw) || 0),
 			"edit",
 		);
@@ -695,5 +693,4 @@ const VIEW_ALIASES: Record<string, TaskView> = {
 	two: "two",
 	fortnight: "two",
 	done: "done",
-	menu: "open",
 };

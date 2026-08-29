@@ -588,8 +588,15 @@ export const VIEW_LABEL: Record<TaskView, string> = {
 	done: "✅ Done",
 };
 
-/** One task as a chat line: its state, its dates and its text. HTML parse mode. */
-export function taskListLine(t: Task, n: number, today = plainDate()): string {
+/** One task as a chat line: its state, its dates and its text. HTML parse mode. Long
+ *  descriptions are clipped — a real one runs to a few hundred characters, and eight of
+ *  those would push the message past what Telegram accepts. */
+export function taskListLine(
+	t: Task,
+	n: number,
+	today = plainDate(),
+	max = 160,
+): string {
 	const late = t.state === "open" && t.due && t.due < today ? " ⚠️" : "";
 	const dates =
 		t.state === "done"
@@ -603,7 +610,9 @@ export function taskListLine(t: Task, n: number, today = plainDate()): string {
 		t.state === "open" && t.start && t.start !== t.due
 			? ` · starts ${t.start}`
 			: "";
-	return `${n}. ${STATE_ICON[t.state]} ${escapeHtml(t.text || "(no description)")}${dates}${started} <i>${t.type === "work" ? "work" : "personal"}</i>`;
+	const full = t.text || "(no description)";
+	const text = full.length > max ? `${full.slice(0, max - 1)}…` : full;
+	return `${n}. ${STATE_ICON[t.state]} ${escapeHtml(text)}${dates}${started} <i>${t.type === "work" ? "work" : "personal"}</i>`;
 }
 
 /** Button label for a task row — short enough to survive Telegram's button width. */

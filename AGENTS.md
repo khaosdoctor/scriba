@@ -5,7 +5,8 @@ Operating manual for AI agents working on scriba. `CLAUDE.md` symlinks to this f
 ## What this is
 
 A Telegram → Obsidian journaling bot. Text/voice/image/video become enriched journal
-lines in the Obsidian daily note. One Node/TS process, run via **tsx** (`node --import tsx`),
+lines in the Obsidian daily note, and tasks become checklist bullets in the vault's two
+task notes. One Node/TS process, run via **tsx** (`node --import tsx`),
 deployed on the homelab (Coolify). Single user.
 
 ## Ground rules
@@ -159,6 +160,49 @@ deployed on the homelab (Coolify). Single user.
   that turn with `silentNotice`, and pumps the queue; the stop-grace path goes through the
   same `abandon`. A turn parked on a ✅/❌ confirmation is exempt (`pending.size`): it's
   waiting on the owner by design, so the timer re-arms instead of firing.
+- **Tasks live in two vault notes, never in the DB.** A task is a checklist bullet under
+  one heading per note — `## Other Tasks` in the work note, `## Things to do` in the
+  personal one — tagged (`#type/todo/work`, `#type/todo`) and carrying `[start:: date]`
+  (planned start, optional) and `[due:: date]` (the deadline, mandatory), with
+  `[completion:: date]` stamped on done. Paths, headings, tags and which end a new task
+  goes on (work runs newest-first, personal is appended to) are all config. Only the two
+  notes are the truth: created tasks are never mirrored into sqlite, so a task edited in
+  Obsidian is still the task scriba lists and ticks. `flows/tasks/parse.ts` is the pure
+  half and is deliberately tolerant of what is really in those notes — the older
+  `✅ 2026-03-02` done marker beside `[completion:: ]`, cancelled `- [-]` rows, a typo'd
+  `[start::6-03-01]`, an empty description, and `[id:: ]`/`[dependsOn:: ]` fields it must
+  leave untouched. `services/tasks.ts` is the I/O half: read-modify-write under
+  `withNoteLock`, bumping the note's `updatedAt` frontmatter.
+- **A message never becomes a task directly.** Task mode (`/task`, closed by `/done` or 15
+  minutes idle) turns each message into a *draft*, shown on a confirmation card whose
+  buttons change the description, either date or the type; only ✅ Create writes the note,
+  and it refuses a draft with no deadline and asks for one instead. Drafts live in the
+  `task_drafts` table rather than in memory: a description can't ride in Telegram's 64
+  bytes of callback data, and a card whose buttons go dead on a restart is worse than one
+  that survives it. The split itself is token-free — `chrono-node` finds the date spans and
+  the cue word in front of each ("by", "due", "starts", "from") says which date it is; one
+  date is the deadline, since that is the mandatory one. Personal unless the text plainly
+  says work (`for work`, `at work`, `@work`), because a bare "work" is a verb as often as a
+  category, and the type button is one tap.
+- **Task mode and command mode never run at once.** Both own the whole message stream, so
+  neither opens over the other, and the single `/done` — registered by `ScribaBot`, not by
+  either flow — closes whichever is open.
+- **The task lists are the vault's own Tasks-plugin queries.** Open, overdue, due today,
+  this week, the next fortnight, and done by completion date. Every row is a button:
+  tapping an open task ticks it in the note, tapping a done one reopens it, and the list
+  re-renders in place. A row's callback carries the digest of the line it was drawn from,
+  so a tap that lands after the note changed underneath is refused rather than ticking
+  whatever has since moved into that position. Telegram's own checklists (`sendChecklist`)
+  are business-account-only, so buttons are as close as a normal bot gets.
+- **Tasks spotted in a jot come out of the enrichment call, not a second one.** The
+  enricher already reads every entry, so its JSON carries a `tasks` array beside the
+  wikilinks; each one becomes the same confirmation card, with 🚫 Not a task in place of
+  Cancel. The model reports the author's own words for the timing ("next friday") and never
+  does date arithmetic — chrono resolves them against the **jot's own day**. Two guards:
+  the feature switches off from the task menu (a `settings` row), and a jot that already
+  produced drafts is never asked about again, so `/reprocess` can't re-propose tasks that
+  were created or dismissed weeks ago. `tasks` is optional coming back in, since the Groq
+  fallback has no structured output to enforce the shape.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button — `un:<jotId>`, handled by
   `ScribaBot.handleRemove`, which runs the same `deleteJot` teardown as `/delete` and then

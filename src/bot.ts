@@ -490,6 +490,10 @@ export class ScribaBot implements BotServices {
 				// not task mode is open (a jot suggestion asks for its deadline outright).
 				if (this.tasks.isTaskPrompt(prompt))
 					return this.tasks.handleReply(ctx, prompt);
+				// Anything else replied to while task mode is open is another task, not an
+				// edit to some jot — task mode owns the stream, replies included.
+				if (this.tasks.isOpen())
+					return this.tasks.handle(ctx, ctx.message.text);
 				return this.handleEdit(ctx);
 			}
 			// Task mode takes the rest of the stream: the message becomes a task, not a jot.
