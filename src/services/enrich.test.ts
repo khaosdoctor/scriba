@@ -409,7 +409,51 @@ test("enrich requests structured output and uses it directly, skipping text pars
 	assert.equal(out.text, "Ran with [[John]] today");
 	assert.deepEqual(out.ambiguous, [{ surface: "no", note: "Norway" }]);
 	assert.equal(calls[0]!.options.outputFormat.type, "json_schema");
-	assert.equal(calls[0]!.options.outputFormat.schema.required.length, 2);
+	assert.deepEqual(calls[0]!.options.outputFormat.schema.required, [
+		"text",
+		"ambiguous",
+		"tasks",
+	]);
+	// The schema asks for tasks every time, but a payload without them still parses — the
+	// Groq fallback has no structured output to enforce the shape.
+	assert.deepEqual(out.tasks, []);
+});
+
+test("enrich reports the tasks the entry says are still to do", async () => {
+	const { fn } = fakeQuery([
+		{
+			type: "result",
+			subtype: "success",
+			structured_output: {
+				text: "Long day. I need to call the vet tomorrow.",
+				ambiguous: [],
+				tasks: [
+					{ description: "Call the vet", due: "tomorrow", type: "personal" },
+					{ description: "Answer the RFC", type: "work" },
+				],
+			},
+		},
+	]);
+	const out = await new Enricher(undefined, fn).enrich({
+		text: "Long day. I need to call the vet tomorrow.",
+		candidates: [],
+	});
+	assert.deepEqual(out.tasks, [
+		{ description: "Call the vet", due: "tomorrow", type: "personal" },
+		{ description: "Answer the RFC", type: "work" },
+	]);
+});
+
+test("a response with no tasks field is a response with no tasks", async () => {
+	const { fn } = fakeQuery([
+		assistantText('{"text":"plain day","ambiguous":[]}'),
+	]);
+	const out = await new Enricher(undefined, fn).enrich({
+		text: "plain day",
+		candidates: [],
+	});
+	assert.deepEqual(out.tasks, []);
+	assert.equal(out.text, "plain day");
 });
 
 test("editText and describeImage don't request structured output", async () => {

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
 	completeTaskLine,
+	detectionEnabled,
+	draftFromDetection,
 	effectiveStart,
 	filterTasks,
 	insertTaskLine,
@@ -391,4 +393,72 @@ test("the card and the row labels say what's missing", () => {
 		taskButtonLabel(task({ text: "a".repeat(50) }), 3, 10),
 		`☐ 3. ${"a".repeat(9)}…`,
 	);
+});
+
+// --- detection ---
+
+test("a detected task's own words become dates against the jot's day", () => {
+	assert.deepEqual(
+		draftFromDetection(
+			{ description: "Call the vet", due: "tomorrow", type: "personal" },
+			TODAY,
+		),
+		{
+			description: "Call the vet",
+			type: "personal",
+			start: null,
+			due: "2026-08-30",
+		},
+	);
+	// A date left inside the description is lifted out of it rather than read twice.
+	assert.deepEqual(
+		draftFromDetection({ description: "Call the vet tomorrow" }, TODAY),
+		{
+			description: "Call the vet",
+			type: "personal",
+			start: null,
+			due: "2026-08-30",
+		},
+	);
+	// A start with no deadline is promoted, since the deadline is the mandatory one.
+	assert.deepEqual(
+		draftFromDetection(
+			{ description: "Book the flights", start: "next monday", type: "work" },
+			TODAY,
+		),
+		{
+			description: "Book the flights",
+			type: "work",
+			start: null,
+			due: "2026-08-31",
+		},
+	);
+});
+
+test("a detected task with no timing at all keeps none — the card asks", () => {
+	const d = draftFromDetection({ description: "Renew the passport" }, TODAY);
+	assert.equal(d.due, null);
+	assert.equal(d.start, null);
+	// Nonsense the model may put in a date field is dropped, not guessed at.
+	assert.equal(
+		draftFromDetection(
+			{ description: "Renew the passport", due: "soon-ish" },
+			TODAY,
+		).due,
+		null,
+	);
+	// An unknown type falls back to what the text says (personal by default).
+	assert.equal(
+		draftFromDetection(
+			{ description: "Renew the passport", type: "other" },
+			TODAY,
+		).type,
+		"personal",
+	);
+});
+
+test("detection is on unless it was switched off", () => {
+	assert.equal(detectionEnabled(undefined), true);
+	assert.equal(detectionEnabled("on"), true);
+	assert.equal(detectionEnabled("off"), false);
 });

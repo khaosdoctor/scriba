@@ -53,9 +53,20 @@ export interface EnrichInput {
 	// deterministically in core.ts, this only makes the seams land on a change of subject.
 	splitAt?: number;
 }
+/** A task the entry says the author still has to do. The dates are the author's own words
+ *  ("next friday", "by the 15th"), resolved against the jot's day by chrono — the model is
+ *  never asked what today is, and never asked to do date arithmetic. */
+export interface DetectedTask {
+	description: string;
+	start?: string;
+	due?: string;
+	type?: string;
+}
+
 export interface EnrichResult {
 	text: string; // journal text with confident links applied inline
 	ambiguous: Candidate[]; // links to confirm via Telegram buttons
+	tasks: DetectedTask[]; // things to do, proposed for confirmation as tasks
 	usage: { input: number; output: number };
 }
 
@@ -68,7 +79,9 @@ const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules
 - For non-registered candidates you are unsure about, DO NOT link them; list them under "ambiguous" so the human can decide.
 - YEARS: the vault has a note per year, so link every year the entry mentions even though years are never in the candidate list. A year of the common era links as [[1918]]; a year before it links as [[146 BCE]] — always "BCE", never "BC" or "AD". Link every mention, not only the first.
 - Only you can tell a year from a number that looks like one, which is why this is your job and not a regex: "1500 metres", "3000 steps" and "2000 calories" are quantities, while "in 1500 the city fell" is a year. Judge it from the sentence. Never link a decade ("the 1920s"), a clock time ("19:18"), a version ("1.35.0"), a quantity, or a date that is already a link.
-Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}]}
+- TASKS: if the entry says the author still has to DO something — a commitment, an errand, a plan, anything phrased as needing or intending to do it — list it under "tasks". Something already done is not a task, and neither is an idle wish with no intent. Most entries contain none: return an empty list then, and never turn the entry itself into a task.
+- Each task has a "description" (what to do, in English, as a short instruction), an optional "due" and "start", and a "type" of "work" when it is clearly about the author's job or "personal" otherwise. Copy "due"/"start" VERBATIM from the entry as the author phrased the timing ("next friday", "tomorrow", "by the 15th") — do not convert them to a date, do not calculate anything, and omit them entirely when the entry says nothing about when.
+Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}], "tasks": [{"description":"...","due":"...","type":"personal"}]}
 Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
 
 /** Validates the agent's structured_output payload (the SDK's outputFormat already
@@ -77,6 +90,18 @@ Do not write any preamble, explanation, commentary, or acknowledgement of the ta
 const enrichedPayloadSchema = z.object({
 	text: z.string(),
 	ambiguous: z.array(z.object({ surface: z.string(), note: z.string() })),
+	// Optional: the Groq fallback has no structured output to enforce this, and an answer
+	// without the field is a valid answer — it just means "no tasks in this one".
+	tasks: z
+		.array(
+			z.object({
+				description: z.string(),
+				start: z.string().optional(),
+				due: z.string().optional(),
+				type: z.string().optional(),
+			}),
+		)
+		.optional(),
 });
 
 /** JSON Schema twin of enrichedPayloadSchema, for the SDK's outputFormat request param
@@ -100,8 +125,22 @@ const ENRICH_OUTPUT_FORMAT: OutputFormat = {
 					additionalProperties: false,
 				},
 			},
+			tasks: {
+				type: "array",
+				items: {
+					type: "object",
+					properties: {
+						description: { type: "string" },
+						start: { type: "string" },
+						due: { type: "string" },
+						type: { type: "string", enum: ["work", "personal"] },
+					},
+					required: ["description"],
+					additionalProperties: false,
+				},
+			},
 		},
-		required: ["text", "ambiguous"],
+		required: ["text", "ambiguous", "tasks"],
 		additionalProperties: false,
 	},
 };
@@ -199,7 +238,11 @@ export class Enricher {
 		// supports it — the SDK retries internally before giving up). Fall back to
 		// scraping JSON out of the free-text response for the Groq path, or for the rare
 		// case the structured payload doesn't match our schema.
-		let parsed: { text?: string; ambiguous?: Candidate[] } | null = null;
+		let parsed: {
+			text?: string;
+			ambiguous?: Candidate[];
+			tasks?: DetectedTask[];
+		} | null = null;
 		if (structuredOutput !== undefined) {
 			const result = enrichedPayloadSchema.safeParse(structuredOutput);
 			if (result.success) parsed = result.data;
@@ -219,11 +262,17 @@ export class Enricher {
 			{
 				usage,
 				ambiguous: parsed.ambiguous?.length ?? 0,
+				tasks: parsed.tasks?.length ?? 0,
 				structured: structuredOutput !== undefined,
 			},
 			"enrich: agent responded",
 		);
-		return { text: parsed.text, ambiguous: parsed.ambiguous ?? [], usage };
+		return {
+			text: parsed.text,
+			ambiguous: parsed.ambiguous ?? [],
+			tasks: parsed.tasks ?? [],
+			usage,
+		};
 	}
 
 	/** Vision: caption an image that arrived without one. Returns a short caption. */
@@ -373,7 +422,7 @@ export class Enricher {
 	// outermost {...} span only if that fails.
 	private extractJson(
 		s: string,
-	): { text?: string; ambiguous?: Candidate[] } | null {
+	): { text?: string; ambiguous?: Candidate[]; tasks?: DetectedTask[] } | null {
 		const cleaned = s
 			.trim()
 			.replace(/^```(?:json)?\s*/i, "")

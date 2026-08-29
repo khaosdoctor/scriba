@@ -6,10 +6,12 @@ import { logger } from "../../log.ts";
 import type { TaskStore } from "../../services/tasks.ts";
 import { plainDate } from "../../time.ts";
 import {
+	detectionEnabled,
 	filterTasks,
 	isTaskType,
 	parseTaskDate,
 	parseTaskDraft,
+	TASK_DETECTION_KEY,
 	type Task,
 	type TaskDraft,
 	type TaskView,
@@ -25,9 +27,6 @@ const log = logger("tasks-flow");
 /** callback_query namespace this flow owns (see ScribaBot.handleButton). */
 export const TASKS_NS = "tk";
 
-/** `settings` key for the jot → task suggestions, so the switch survives a restart. */
-export const TASK_DETECTION_KEY = "taskDetection";
-
 /** Task mode closes itself after this long without a message, so it can't be left open by
  *  accident and swallow the next thing you meant to journal (same rule as command mode). */
 const SESSION_TTL_MS = 15 * 60_000;
@@ -38,9 +37,9 @@ const PAGE = 8;
 /** The list views offered on the task menu, in the order they're shown. */
 const VIEWS: TaskView[] = ["open", "overdue", "today", "week", "two", "done"];
 
-/** Is jot → task detection on? Unset means on: the feature is the point of having it. */
+/** Is jot → task detection on right now? */
 export async function taskDetectionEnabled(repo: Repository): Promise<boolean> {
-	return (await repo.getSetting(TASK_DETECTION_KEY)) !== "off";
+	return detectionEnabled(await repo.getSetting(TASK_DETECTION_KEY));
 }
 
 /** Which change prompt a force-reply is answering — the marker rides in the prompt's own

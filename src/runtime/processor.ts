@@ -19,6 +19,12 @@ import {
 	splitEntry,
 } from "../core.ts";
 import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
+import {
+	detectionEnabled,
+	draftFromDetection,
+	TASK_DETECTION_KEY,
+	type TaskDraft,
+} from "../flows/tasks/parse.ts";
 import { logger } from "../log.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { LinkIndex } from "../services/links.ts";
@@ -56,6 +62,9 @@ export interface BotServices {
 	// per-follower messages into the leader's single confirmation on a squash).
 	deleteStatus: (jotId: string) => Promise<void>;
 	askLink: (pendingId: string, surface: string, note: string) => Promise<void>;
+	// Propose a task the enricher spotted in a jot — the same confirmation card task mode
+	// uses, so a suggestion is edited and created exactly like one typed by hand.
+	askTask: (draft: TaskDraft, jotId: string, jotDate: string) => Promise<void>;
 	downloadFile: (fileId: string) => Promise<DownloadedFile>;
 	onJotDone: (jotId: string) => Promise<void>; // apply edits queued while processing
 	react: (
@@ -155,6 +164,7 @@ export class JotProcessor {
 
 			const maxChars = await this.maxChars();
 			let textPart = source;
+			let detected: TaskDraft[] = [];
 			if (source.trim()) {
 				const [stopwords, rejections, registered] = await Promise.all([
 					this.repo.stopwords(),
@@ -218,6 +228,7 @@ export class JotProcessor {
 					},
 					"enricher: done",
 				);
+				detected = await this.tasksFrom(res.tasks, jot);
 				for (const a of res.ambiguous) {
 					const pid = makeJotId();
 					await this.repo.addPendingLink(pid, jot.id, a.surface, a.note);
@@ -309,6 +320,10 @@ export class JotProcessor {
 						}),
 						{ undo: true },
 					);
+				// Tasks come after the entry is safely in the note: a card is a question about
+				// something already journalled, never a step on the way to journalling it.
+				for (const draft of detected)
+					await this.bot.askTask(draft, jot.id, basename(jot.note_path, ".md"));
 				await this.bot.onJotDone(jot.id); // apply anything queued while we were working
 				// Each follower's own message gets the done reaction + its queued edits drained;
 				// the leader carries the single status message for the whole group. Any stray
@@ -457,6 +472,49 @@ export class JotProcessor {
 		}
 		await this.repo.updateJot(jot.id, patch);
 		return { ...jot, ...patch };
+	}
+
+	/**
+	 * Tasks the enricher spotted in this entry, as drafts ready for their confirmation card.
+	 * Two guards: the whole feature can be switched off from the task menu, and a jot that
+	 * already produced drafts is never asked about again — otherwise /reprocess would
+	 * re-propose tasks that were created, or dismissed, weeks ago. Relative phrases resolve
+	 * against the jot's own day, so "tomorrow" means the day after the entry.
+	 */
+	private async tasksFrom(
+		detected: {
+			description: string;
+			start?: string;
+			due?: string;
+			type?: string;
+		}[],
+		jot: Jot,
+	): Promise<TaskDraft[]> {
+		if (!detected?.length) return [];
+		if (!detectionEnabled(await this.repo.getSetting(TASK_DETECTION_KEY))) {
+			log.debug({ id: jot.id }, "task detection off — suggestions dropped");
+			return [];
+		}
+		if (await this.repo.taskDraftsForJot(jot.id)) {
+			log.info(
+				{ id: jot.id, tasks: detected.length },
+				"task detection: this jot was already asked about — not asking again",
+			);
+			return [];
+		}
+		const day = basename(jot.note_path, ".md");
+		const drafts = detected
+			.map((d) => draftFromDetection(d, day))
+			.filter((d) => d.description.trim());
+		log.info(
+			{
+				id: jot.id,
+				count: drafts.length,
+				tasks: drafts.map((d) => `${d.description} (due ${d.due ?? "?"})`),
+			},
+			`task detection: ${drafts.length} task(s) found in this jot`,
+		);
+		return drafts;
 	}
 
 	/** Resolve relative-date phrases against the jot's own day, once, for reuse in both the journal line and the Telegram preview. */

@@ -436,6 +436,57 @@ export function parseTaskDate(
 	return hit ? plainDate(hit.start.date().getTime()) : undefined;
 }
 
+// --- detection ---
+// The enricher already reads every entry, so spotting "I need to book the flights" costs
+// no extra call: it comes back in the same JSON as the wikilinks. What it must NOT do is
+// date arithmetic — it reports the author's own words ("next friday") and chrono resolves
+// them here, against the jot's own day.
+
+/** `settings` key for the jot → task suggestions (set from the task menu, survives a
+ *  restart). Unset means on: suggesting is the point of having the feature. */
+export const TASK_DETECTION_KEY = "taskDetection";
+
+/** Whether detection is on, from the raw setting value. */
+export function detectionEnabled(raw: string | undefined): boolean {
+	return raw !== "off";
+}
+
+/** One date phrase as the model copied it out of the entry. */
+function phraseDate(phrase: string | undefined, today: string): string | null {
+	if (!phrase?.trim()) return null;
+	return parseTaskDate(phrase, today) ?? null;
+}
+
+/**
+ * Turn a detected task into a draft. The description goes through the same deterministic
+ * split task mode uses, so a date the model left in the sentence is lifted out of it rather
+ * than read twice, and its dates stand in when the model reported none.
+ */
+export function draftFromDetection(
+	detected: {
+		description: string;
+		start?: string;
+		due?: string;
+		type?: string;
+	},
+	jotDate: string,
+): TaskDraft {
+	const base = parseTaskDraft(detected.description, jotDate);
+	let start = phraseDate(detected.start, jotDate) ?? base.start;
+	let due = phraseDate(detected.due, jotDate) ?? base.due;
+	// The deadline is the mandatory one, so a lone start becomes it (as in parseTaskDraft).
+	if (!due && start) {
+		due = start;
+		start = null;
+	}
+	return {
+		description: base.description || detected.description.trim(),
+		type: isTaskType(detected.type) ? detected.type : base.type,
+		start,
+		due,
+	};
+}
+
 // --- views ------------------------------------------------------------------------------
 // The list presets mirror the Tasks-plugin queries in the vault's own dashboard: overdue is
 // "due before today", today is "due on today", and the week views count from the current

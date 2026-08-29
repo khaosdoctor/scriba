@@ -27,13 +27,17 @@ const jot = (over: Partial<Jot> = {}): Jot =>
 /** A processor whose collaborators only record what they were asked to do. The note write
  *  throws, which is the give-up path's own escape hatch — it keeps the stubs to the parts
  *  under test. */
-function harness(over: { followers?: Jot[] } = {}) {
+function harness(
+	over: { followers?: Jot[]; detection?: string; priorDrafts?: number } = {},
+) {
 	const posted: Posted[] = [];
 	const reactions: [string, string][] = [];
 	const updates: [string, any][] = [];
 	const repo = {
 		updateJot: async (id: string, patch: any) => void updates.push([id, patch]),
 		groupFollowers: async () => over.followers ?? [],
+		getSetting: async () => over.detection,
+		taskDraftsForJot: async () => over.priorDrafts ?? 0,
 	};
 	const obsidian = {
 		ensureDailyNote: async () => {
@@ -119,4 +123,45 @@ test("a failed status message that won't send doesn't take the batch down", asyn
 	};
 	// fail() runs inside processJot's catch — a throw here would abandon the other jots.
 	await processor.fail(jot(), new Error("fetch failed"));
+});
+
+// --- tasks spotted in a jot ---
+
+const detected = [
+	{ description: "Call the vet tomorrow", type: "personal" },
+	{ description: "Answer the RFC", due: "next friday", type: "work" },
+];
+
+test("detected tasks become drafts dated from the jot's own day", async () => {
+	const { processor } = harness();
+	// The jot's note is 2026-08-16 (a Sunday), so "tomorrow" is the day after the entry —
+	// not the day it happens to be processed.
+	assert.deepEqual(await processor.tasksFrom(detected, jot()), [
+		{
+			description: "Call the vet",
+			type: "personal",
+			start: null,
+			due: "2026-08-17",
+		},
+		{
+			description: "Answer the RFC",
+			type: "work",
+			start: null,
+			due: "2026-08-21",
+		},
+	]);
+});
+
+test("detection can be switched off, and never asks about the same jot twice", async () => {
+	const off = harness({ detection: "off" });
+	assert.deepEqual(await off.processor.tasksFrom(detected, jot()), []);
+
+	// A jot that already produced drafts was asked about once — /reprocess must not ask
+	// again about tasks that were created, or dismissed, weeks ago.
+	const asked = harness({ priorDrafts: 2 });
+	assert.deepEqual(await asked.processor.tasksFrom(detected, jot()), []);
+
+	const none = harness();
+	assert.deepEqual(await none.processor.tasksFrom([], jot()), []);
+	assert.deepEqual(await none.processor.tasksFrom(undefined, jot()), []);
 });
