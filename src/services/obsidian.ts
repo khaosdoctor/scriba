@@ -1,5 +1,5 @@
 import { Agent, fetch } from "undici";
-import { insertJournalLine, setFrontmatterNumber } from "../core.ts";
+import { insertJournalLine, setFrontmatterValue } from "../core.ts";
 import { logger } from "../log.ts";
 
 const log = logger("obsidian");
@@ -151,7 +151,7 @@ export class ObsidianClient {
 			const note = await this.readNote(path);
 			await this.writeNote(
 				path,
-				setFrontmatterNumber(note, "overallRating", rating),
+				setFrontmatterValue(note, "overallRating", rating),
 			);
 		});
 		log.info({ date, rating, path }, "overallRating frontmatter set");

@@ -14,6 +14,33 @@ export type JotStatus =
 
 export const MAX_ATTEMPTS = 10;
 
+/** Which task note a task belongs to. Personal is the default for anything not clearly
+ *  work — see flows/tasks/parse.ts, which owns the rest of the task vocabulary. */
+export type TaskType = "work" | "personal";
+/** Where a draft came from: typed in task mode, or spotted in a journal entry. */
+export type TaskDraftSource = "mode" | "jot";
+/** `pending` until you decide: `created` once it's in the note, `cancelled` when you drop
+ *  one you typed, `dismissed` when you tell scriba a detected one wasn't a task. */
+export type TaskDraftStatus = "pending" | "created" | "cancelled" | "dismissed";
+
+/** A task waiting on its confirmation card. Created tasks aren't stored — the task notes
+ *  are the source of truth for those. */
+export interface TaskDraftRow {
+	id: string;
+	source: TaskDraftSource;
+	jot_id: string | null;
+	type: TaskType;
+	description: string;
+	start: string | null;
+	due: string | null;
+	source_date: string;
+	status: TaskDraftStatus;
+	chat_id: number;
+	message_id: number | null;
+	created_at: number;
+	updated_at: number;
+}
+
 /** Jot counts over a window, broken down by kind and outcome — for the /stats command. */
 export interface StatsRow {
 	total: number;
@@ -465,6 +492,37 @@ export class Repository {
 		return this.k("rejections")
 			.where({ surface: surface.toLowerCase(), note })
 			.del();
+	}
+
+	// --- task drafts (a task awaiting its confirmation card) ---
+	async insertTaskDraft(d: TaskDraftRow): Promise<void> {
+		await this.k("task_drafts").insert(d);
+		log.debug(
+			{ id: d.id, source: d.source, type: d.type },
+			"task draft inserted",
+		);
+	}
+	async getTaskDraft(id: string): Promise<TaskDraftRow | undefined> {
+		return this.k<TaskDraftRow>("task_drafts").where({ id }).first();
+	}
+	async updateTaskDraft(
+		id: string,
+		patch: Partial<TaskDraftRow>,
+	): Promise<void> {
+		await this.k("task_drafts")
+			.where({ id })
+			.update({ ...patch, updated_at: Date.now() });
+		log.debug({ id, ...patch }, "task draft updated");
+	}
+	/** How many drafts a jot has already produced. Non-zero means its tasks were proposed
+	 *  once and answered (created, or dismissed) — so a later /reprocess of that jot must
+	 *  not ask about them all over again. */
+	async taskDraftsForJot(jotId: string): Promise<number> {
+		const row = await this.k("task_drafts")
+			.where({ jot_id: jotId })
+			.count("* as n")
+			.first();
+		return Number(row?.n ?? 0);
 	}
 
 	// --- runtime settings (key/value; survives restart) ---

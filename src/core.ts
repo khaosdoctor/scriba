@@ -408,13 +408,14 @@ export function insertJournalLine(
 	return lines.join("\n");
 }
 
-/** Set a numeric YAML frontmatter field, replacing it in place or inserting it into
+/** Set a scalar YAML frontmatter field, replacing it in place or inserting it into
  *  (or creating) the `---` block at the top of the note. Always returns a note that
- *  carries `key: value`. */
-export function setFrontmatterNumber(
+ *  carries `key: value`. The value is written raw, so it must be something YAML reads as a
+ *  scalar (a number, a date, an unquoted word) — this is not a general YAML writer. */
+export function setFrontmatterValue(
 	note: string,
 	key: string,
-	value: number,
+	value: string | number,
 ): string {
 	const lines = note.split("\n");
 	if (lines[0] !== "---") return `---\n${key}: ${value}\n---\n\n${note}`;

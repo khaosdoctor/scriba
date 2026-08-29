@@ -36,6 +36,22 @@ const envSchema = z
 		HABITS_HEADING: z.string().default("Habits"),
 		ASSETS_DIR: z.string().default("internal/assets/journal"),
 
+		// The two task notes. Tasks are checklist bullets under one heading in each: the
+		// work note's list runs newest-first, the personal one is appended to. Both use
+		// `[start:: ]` (planned start, optional) and `[due:: ]` (the deadline, mandatory).
+		TASKS_WORK_NOTE: z
+			.string()
+			.default("notes/tracking notes/What's going on at work.md"),
+		TASKS_WORK_HEADING: z.string().default("Other Tasks"),
+		TASKS_WORK_TAG: z.string().default("#type/todo/work"),
+		TASKS_WORK_INSERT: z.enum(["top", "bottom"]).default("top"),
+		TASKS_PERSONAL_NOTE: z
+			.string()
+			.default("notes/tracking notes/dashboards/Todos.md"),
+		TASKS_PERSONAL_HEADING: z.string().default("Things to do"),
+		TASKS_PERSONAL_TAG: z.string().default("#type/todo"),
+		TASKS_PERSONAL_INSERT: z.enum(["top", "bottom"]).default("bottom"),
+
 		// Where the app READS the vault. Set SCRIBA_VAULT_HOST_PATH to point at a real
 		// vault dir (local run); unset ⇒ /vault, the containerized bind-mount. Empty ⇒
 		// link index disabled.
@@ -108,6 +124,20 @@ export const config = {
 		journalHeading: env.JOURNAL_HEADING,
 		habitsHeading: env.HABITS_HEADING,
 		assetsDir: env.ASSETS_DIR,
+	},
+	tasks: {
+		work: {
+			path: env.TASKS_WORK_NOTE,
+			heading: env.TASKS_WORK_HEADING,
+			tag: env.TASKS_WORK_TAG,
+			insert: env.TASKS_WORK_INSERT,
+		},
+		personal: {
+			path: env.TASKS_PERSONAL_NOTE,
+			heading: env.TASKS_PERSONAL_HEADING,
+			tag: env.TASKS_PERSONAL_TAG,
+			insert: env.TASKS_PERSONAL_INSERT,
+		},
 	},
 	enrich: {
 		model: env.AGENT_MODEL,

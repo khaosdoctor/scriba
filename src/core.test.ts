@@ -55,7 +55,7 @@ import {
 	replaceAnchorLine,
 	reprocessTargets,
 	retryNotice,
-	setFrontmatterNumber,
+	setFrontmatterValue,
 	splitEntry,
 	stripJournalLine,
 	TELEGRAM_LIMIT,
@@ -89,25 +89,34 @@ test("combineEnrichSource joins parts, dropping blanks", () => {
 	assert.equal(combineEnrichSource([" solo "]), "solo");
 });
 
-test("setFrontmatterNumber replaces an existing field in place", () => {
+test("setFrontmatterValue replaces an existing field in place", () => {
 	const note = "---\noverallRating: 5\ntags: [daily]\n---\n\n## Journal\n";
 	assert.equal(
-		setFrontmatterNumber(note, "overallRating", 8),
+		setFrontmatterValue(note, "overallRating", 8),
 		"---\noverallRating: 8\ntags: [daily]\n---\n\n## Journal\n",
 	);
 });
 
-test("setFrontmatterNumber inserts a missing field before the closing fence", () => {
+test("setFrontmatterValue inserts a missing field before the closing fence", () => {
 	const note = "---\ntags: [daily]\n---\n\nbody\n";
 	assert.equal(
-		setFrontmatterNumber(note, "overallRating", 7),
+		setFrontmatterValue(note, "overallRating", 7),
 		"---\ntags: [daily]\noverallRating: 7\n---\n\nbody\n",
 	);
 });
 
-test("setFrontmatterNumber creates frontmatter when the note has none", () => {
+test("setFrontmatterValue writes a string value too (updatedAt on a task note)", () => {
+	const note =
+		"---\ntitle: Todos\nupdatedAt: 2026-08-01T10:00:00Z\n---\n# Todos\n";
 	assert.equal(
-		setFrontmatterNumber("# hi\n", "overallRating", 3),
+		setFrontmatterValue(note, "updatedAt", "2026-08-29T16:10:02Z"),
+		"---\ntitle: Todos\nupdatedAt: 2026-08-29T16:10:02Z\n---\n# Todos\n",
+	);
+});
+
+test("setFrontmatterValue creates frontmatter when the note has none", () => {
+	assert.equal(
+		setFrontmatterValue("# hi\n", "overallRating", 3),
 		"---\noverallRating: 3\n---\n\n# hi\n",
 	);
 });
