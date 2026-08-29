@@ -12,7 +12,6 @@ import {
 	parseTaskDate,
 	parseTaskDraft,
 	TASK_DETECTION_KEY,
-	type Task,
 	type TaskDraft,
 	type TaskView,
 	TYPE_LABEL,
@@ -35,7 +34,15 @@ const SESSION_TTL_MS = 15 * 60_000;
 const PAGE = 8;
 
 /** The list views offered on the task menu, in the order they're shown. */
-const VIEWS: TaskView[] = ["open", "overdue", "today", "week", "two", "done"];
+const VIEWS: TaskView[] = [
+	"day",
+	"open",
+	"overdue",
+	"today",
+	"week",
+	"two",
+	"done",
+];
 
 /** Is jot → task detection on right now? */
 export async function taskDetectionEnabled(repo: Repository): Promise<boolean> {
@@ -566,25 +573,20 @@ export class TasksFlow {
 		await ctx.reply(MENU_TEXT, { reply_markup: kb });
 	}
 
-	/** Render one list view. Rows are tappable: an open task ticks, a done one reopens. */
-	private async showView(
-		ctx: any,
+	/**
+	 * Build one list view: the message body and its keyboard. Rows are tappable — an open
+	 * task ticks, a done one reopens — and each row carries the digest of the line it was
+	 * drawn from, so a tap that lands after the note changed is refused rather than acting
+	 * on whatever has since moved into that position. Throws when the notes can't be read;
+	 * every caller says so in its own way.
+	 */
+	private async viewMessage(
 		view: TaskView,
 		page: number,
-		mode: "edit" | "send",
-	): Promise<void> {
+		header?: string,
+	): Promise<{ text: string; kb: InlineKeyboard; count: number }> {
 		const today = plainDate();
-		let all: Task[];
-		try {
-			all = await this.store.list();
-		} catch (err) {
-			log.error({ err, view }, "tasks: could not read the task notes");
-			const text = `⚠️ Couldn't read your task notes: ${err instanceof Error ? err.message : String(err)}`;
-			return void (mode === "edit"
-				? await ctx.editMessageText(text).catch(() => {})
-				: await ctx.reply(text));
-		}
-		const tasks = filterTasks(all, view, today);
+		const tasks = filterTasks(await this.store.list(), view, today);
 		const pages = Math.max(1, Math.ceil(tasks.length / PAGE));
 		const p = Math.min(Math.max(page, 0), pages - 1);
 		const shown = tasks.slice(p * PAGE, p * PAGE + PAGE);
@@ -610,25 +612,88 @@ export class TasksFlow {
 		kb.text("‹ Tasks", `${TASKS_NS}:m`);
 
 		const head = [
-			`<b>${VIEW_LABEL[view]}</b>`,
+			header ?? `<b>${VIEW_LABEL[view]}</b>`,
 			tasks.length
 				? `${tasks.length} task${tasks.length === 1 ? "" : "s"}${pages > 1 ? ` · page ${p + 1}/${pages}` : ""} · tap one to ${view === "done" ? "reopen it" : "tick it off"}`
 				: "Nothing here.",
 			"",
 		];
-		const body = fitTelegram(
+		const text = fitTelegram(
 			[
 				...head,
 				...shown.map((t, j) => taskListLine(t, p * PAGE + j + 1, today)),
 			].join("\n"),
 		);
+		return { text, kb, count: tasks.length };
+	}
+
+	/** Show a list view, editing the tapped message or sending a fresh one. */
+	private async showView(
+		ctx: any,
+		view: TaskView,
+		page: number,
+		mode: "edit" | "send",
+	): Promise<void> {
+		let out: { text: string; kb: InlineKeyboard };
+		try {
+			out = await this.viewMessage(view, page);
+		} catch (err) {
+			log.error({ err, view }, "tasks: could not read the task notes");
+			const text = `⚠️ Couldn't read your task notes: ${err instanceof Error ? err.message : String(err)}`;
+			return void (mode === "edit"
+				? await ctx.editMessageText(text).catch(() => {})
+				: await ctx.reply(text));
+		}
 		if (mode === "edit")
 			return void (await ctx
-				.editMessageText(body, { parse_mode: "HTML", reply_markup: kb })
+				.editMessageText(out.text, {
+					parse_mode: "HTML",
+					reply_markup: out.kb,
+				})
 				.catch((err: unknown) =>
 					log.warn({ err, view }, "tasks: list edit failed"),
 				));
-		await ctx.reply(body, { parse_mode: "HTML", reply_markup: kb });
+		await ctx.reply(out.text, { parse_mode: "HTML", reply_markup: out.kb });
+	}
+
+	/**
+	 * The morning summary: what's due today plus whatever is still hanging over from before,
+	 * sent unprompted at TASKS_TIME. Explicitly not silent — this is the one message of the
+	 * day that is meant to interrupt, so it always arrives with a notification rather than
+	 * inheriting any quieter default. (A chat muted in Telegram itself stays muted: no bot
+	 * can override that, there is no API for it.)
+	 *
+	 * It goes out every day, including on a day with nothing on it — silence would be
+	 * indistinguishable from scriba being down, and the whole point is that you can trust
+	 * the 9am message.
+	 */
+	async dailySummary(): Promise<void> {
+		const today = plainDate();
+		const chat = config.telegram.allowedUserId;
+		log.info({ date: today }, "tasks: sending the daily summary");
+		try {
+			const { text, kb, count } = await this.viewMessage(
+				"day",
+				0,
+				`<b>🌅 Your tasks for ${today}</b>`,
+			);
+			await this.bot.api.sendMessage(chat, text, {
+				parse_mode: "HTML",
+				reply_markup: kb,
+				disable_notification: false,
+			});
+			log.info({ date: today, tasks: count }, "tasks: daily summary sent");
+		} catch (err) {
+			log.error({ err }, "tasks: daily summary failed");
+			// Still loud: a morning with no summary and no explanation reads as a dead bot.
+			await this.bot.api
+				.sendMessage(
+					chat,
+					`⚠️ Couldn't put together your task summary: ${err instanceof Error ? err.message : String(err)}`,
+					{ disable_notification: false },
+				)
+				.catch(() => {});
+		}
 	}
 
 	/** Tick (or reopen) the row a tap points at, then re-render the list it came from. */
@@ -692,6 +757,7 @@ const MENU_TEXT = [
 
 /** What `/tasks <arg>` accepts, mapped onto the views. */
 const VIEW_ALIASES: Record<string, TaskView> = {
+	day: "day",
 	all: "open",
 	open: "open",
 	overdue: "overdue",

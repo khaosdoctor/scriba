@@ -6,7 +6,8 @@ import type { JotProcessor } from "./processor.ts";
 
 const log = logger("scheduler");
 
-/** Owns the two recurring jobs: the nightly summary and the forever-retry sweep. */
+/** Owns the recurring jobs: the nightly summary, the rating and habit prompts, the morning
+ *  task summary, and the forever-retry sweep. */
 export class Scheduler {
 	private timers: NodeJS.Timeout[] = [];
 
@@ -16,6 +17,7 @@ export class Scheduler {
 		private notify: (text: string) => Promise<void>,
 		private askRating: (date: string) => Promise<void>,
 		private askHabits: (date: string) => Promise<void>,
+		private sendTaskSummary: () => Promise<void>,
 		private retryMs = 5 * 60_000,
 	) {}
 
@@ -37,12 +39,20 @@ export class Scheduler {
 			() => this.askHabits(previousDate()),
 			"daily habit review",
 		);
+		// The one message of the day meant to interrupt: what's due today and what is still
+		// hanging over from before, in the morning, whether or not you ask.
+		this.scheduleDaily(
+			config.tasksTime,
+			() => this.sendTaskSummary(),
+			"daily task summary",
+		);
 		log.info(
 			{
 				retryMs: this.retryMs,
 				summaryTime: config.summaryTime,
 				ratingTime: config.ratingTime,
 				habitsTime: config.habitsTime,
+				tasksTime: config.tasksTime,
 			},
 			"scheduler started",
 		);

@@ -350,6 +350,8 @@ test("the list presets mirror the vault's task queries", () => {
 		"starts today",
 	]);
 	assert.deepEqual(texts("overdue"), ["overdue"]);
+	// The morning summary's view: due today, still due from before, or starting today.
+	assert.deepEqual(texts("day"), ["overdue", "today", "starts today"]);
 	assert.deepEqual(texts("today"), ["today", "starts today"]);
 	assert.deepEqual(texts("future"), [
 		"today",

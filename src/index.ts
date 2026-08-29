@@ -135,6 +135,7 @@ async function main(): Promise<void> {
 		(t) => bot.notify(t),
 		(d) => bot.promptRating(d),
 		(d) => bot.promptHabits(d),
+		() => bot.promptTaskSummary(),
 	);
 	scheduler.start();
 

@@ -527,6 +527,7 @@ export function shiftDate(date: string, days: number): string {
 }
 
 export type TaskView =
+	| "day"
 	| "open"
 	| "future"
 	| "overdue"
@@ -552,6 +553,10 @@ export function filterTasks(
 	const open = tasks.filter(isOpen);
 	const picked = open.filter((t) => {
 		switch (view) {
+			// What is actually on the plate right now: due today, still due from before, or
+			// planned to start today. The daily summary is this view.
+			case "day":
+				return (!!t.due && t.due <= today) || effectiveStart(t) === today;
 			case "open":
 				return true;
 			case "future":
@@ -579,6 +584,7 @@ export function filterTasks(
 
 /** Header for a list view, so a screen says what it's showing. */
 export const VIEW_LABEL: Record<TaskView, string> = {
+	day: "🌅 Today and overdue",
 	open: "📋 All open tasks",
 	future: "🔭 Open tasks ahead",
 	overdue: "⏰ Overdue",

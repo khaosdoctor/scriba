@@ -255,6 +255,11 @@ export class ScribaBot implements BotServices {
 		await this.habits.prompt(date);
 	}
 
+	/** Morning task summary (the scheduler calls this). Delegates to the task flow. */
+	async promptTaskSummary(): Promise<void> {
+		await this.tasks.dailySummary();
+	}
+
 	async askLink(
 		pendingId: string,
 		surface: string,

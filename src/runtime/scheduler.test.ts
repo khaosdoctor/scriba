@@ -7,6 +7,7 @@ process.env.TELEGRAM_BOT_TOKEN ??= "t";
 process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
 const { Scheduler } = await import("./scheduler.ts");
+const { plainDate } = await import("../time.ts");
 
 const DAY = 24 * 60 * 60_000;
 
@@ -27,6 +28,7 @@ function harness(stats: Partial<Stats> = {}, sweep?: () => Promise<void>) {
 	const notified: string[] = [];
 	const rated: string[] = [];
 	const habits: string[] = [];
+	const summaries: string[] = [];
 	let sweeps = 0;
 	const repo = {
 		windowStats: async (): Promise<Stats> => ({
@@ -49,6 +51,7 @@ function harness(stats: Partial<Stats> = {}, sweep?: () => Promise<void>) {
 		async (text: string) => void notified.push(text),
 		async (date: string) => void rated.push(date),
 		async (date: string) => void habits.push(date),
+		async () => void summaries.push(plainDate()),
 		1000, // retry interval, in mock-clock ms
 	);
 	return {
@@ -56,6 +59,7 @@ function harness(stats: Partial<Stats> = {}, sweep?: () => Promise<void>) {
 		notified,
 		rated,
 		habits,
+		summaries,
 		sweeps: () => sweeps,
 	};
 }
@@ -119,6 +123,27 @@ test("a sweep that throws is logged and the next one still runs", async (t) => {
 	assert.equal(h.sweeps(), 2);
 });
 
+test("the morning task summary fires daily, on its own schedule", async (t) => {
+	t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+	const h = harness();
+	h.scheduler.start();
+
+	// Its time (09:00 by default) falls somewhere inside any 24h window, whatever "now" is.
+	t.mock.timers.tick(DAY);
+	await flush();
+	assert.equal(h.summaries.length, 1);
+
+	// Re-armed, so it goes out every morning rather than once after a deploy.
+	t.mock.timers.tick(DAY);
+	await flush();
+	assert.equal(h.summaries.length, 2);
+
+	h.scheduler.stop();
+	t.mock.timers.tick(DAY * 2);
+	await flush();
+	assert.equal(h.summaries.length, 2);
+});
+
 test("the nightly prompts fire for the day that just ended, then re-arm", async (t) => {
 	t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
 	const h = harness();
@@ -149,6 +174,7 @@ test("a prompt that throws still re-arms for tomorrow", async (t) => {
 			calls++;
 			throw new Error("telegram is down");
 		},
+		async () => {},
 		async () => {},
 		1000,
 	);

@@ -194,6 +194,14 @@ deployed on the homelab (Coolify). Single user.
   so a tap that lands after the note changed underneath is refused rather than ticking
   whatever has since moved into that position. Telegram's own checklists (`sendChecklist`)
   are business-account-only, so buttons are as close as a normal bot gets.
+- **The morning summary is the one message that interrupts.** At `TASKS_TIME` (09:00) the
+  scheduler calls `TasksFlow.dailySummary`, which renders the `day` view — due today, still
+  due from before, or starting today — through the same `viewMessage` the lists use, so its
+  rows tick straight through to the vault. It is sent with `disable_notification: false`
+  rather than inheriting a default, and it goes out on empty days too: silence is
+  indistinguishable from a dead bot, which is the one thing a daily summary must not be. A
+  chat muted in Telegram itself stays muted — no bot can override that, there is no API
+  for it.
 - **Tasks spotted in a jot come out of the enrichment call, not a second one.** The
   enricher already reads every entry, so its JSON carries a `tasks` array beside the
   wikilinks; each one becomes the same confirmation card, with 🚫 Not a task in place of

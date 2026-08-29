@@ -11,7 +11,7 @@ const { TasksFlow, parseTaskPromptRef, taskDetectionEnabled } = await import(
 );
 const { TaskStore } = await import("../../services/tasks.ts");
 
-type Sent = { chat: number; text: string; markup?: any };
+type Sent = { chat: number; text: string; markup?: any; silent?: unknown };
 type Edited = { chat: number; msg: number; text: string; markup?: any };
 
 /** A bot stub that records what reached Telegram, a task store over an in-memory note, and
@@ -33,7 +33,12 @@ function harness(
 	const bot = {
 		api: {
 			sendMessage: async (chat: number, text: string, opts?: any) => {
-				sent.push({ chat, text, markup: opts?.reply_markup });
+				sent.push({
+					chat,
+					text,
+					markup: opts?.reply_markup,
+					silent: opts?.disable_notification ?? null,
+				});
 				return { message_id: nextId++, chat: { id: chat } };
 			},
 			editMessageText: async (
@@ -67,8 +72,12 @@ function harness(
 
 	// A minimal Obsidian stand-in: one note in memory, read and written whole.
 	const vault = { content: note };
+	let broken = false;
 	const obsidian = {
-		readNote: async () => vault.content,
+		readNote: async () => {
+			if (broken) throw new Error("obsidian is down");
+			return vault.content;
+		},
 		writeNote: async (_p: string, c: string) => {
 			vault.content = c;
 		},
@@ -113,6 +122,9 @@ function harness(
 		ctx,
 		buttons,
 		settings,
+		breakReads: (v: boolean) => {
+			broken = v;
+		},
 	};
 }
 
@@ -300,6 +312,53 @@ test("the done list reopens a task instead of ticking it", async () => {
 		h.vault.content,
 		/- \[ \] finish the book #type\/todo \[due:: 2026-06-14\]$/m,
 	);
+});
+
+test("the morning summary is loud, dated, and its rows tick straight through", async () => {
+	const today = new Date();
+	const iso = (d: Date) =>
+		`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+	const yesterday = new Date(today.getTime() - 86_400_000);
+	const h = harness(
+		[
+			"---",
+			"updatedAt: 2026-08-01T10:00:00Z",
+			"---",
+			"## Things to do",
+			`- [ ] Pay the invoice #type/todo [due:: ${iso(yesterday)}]`,
+			`- [ ] Buy cat sand #type/todo [due:: ${iso(today)}]`,
+			"- [ ] Something far off #type/todo [due:: 2099-01-01]",
+			"- [x] finish the book #type/todo [due:: 2026-06-14] [completion:: 2026-06-23]",
+		].join("\n"),
+	);
+
+	await h.flow.dailySummary();
+	const sent = h.sent.at(-1)!;
+	assert.match(sent.text, new RegExp(`🌅 Your tasks for ${iso(today)}`));
+	// What's on the plate: due today plus what's still hanging over. Not the far-off one,
+	// and not the finished one.
+	assert.match(sent.text, /Pay the invoice/);
+	assert.match(sent.text, /Buy cat sand/);
+	assert.doesNotMatch(sent.text, /Something far off/);
+	assert.doesNotMatch(sent.text, /finish the book/);
+	assert.equal(sent.silent, false); // always notifies, never a quiet send
+
+	// The rows are the same tickable buttons the lists use.
+	const [first] = h.buttons(sent.markup);
+	assert.match(first!, /^tk:k:personal:0:[0-9a-f]{8}:day:0$/);
+	await h.flow.handleTap(h.ctx as any, first!.split(":").slice(1));
+	assert.match(
+		h.vault.content,
+		/- \[x\] Pay the invoice .*\[completion:: \d{4}-\d{2}-\d{2}\]/,
+	);
+});
+
+test("a summary that can't read the notes still says so, loudly", async () => {
+	const h = harness();
+	h.breakReads(true);
+	await h.flow.dailySummary();
+	assert.match(h.sent.at(-1)!.text, /Couldn't put together your task summary/);
+	assert.equal(h.sent.at(-1)!.silent, false);
 });
 
 test("jot detection is on by default and the menu toggles it", async () => {

@@ -60,6 +60,7 @@ const envSchema = z
 		SUMMARY_TIME: hhmm.default("23:30"),
 		RATING_TIME: hhmm.default("00:00"), // nightly "how was your day?" 1–10 prompt
 		HABITS_TIME: hhmm.default("00:00"), // nightly "did you do yesterday's habits?" prompt
+		TASKS_TIME: hhmm.default("09:00"), // morning "here is your day" task summary
 
 		FLUSH_IDLE_MS: z.coerce.number().default(30_000),
 		FLUSH_MAX_BATCH: z.coerce.number().default(8),
@@ -154,6 +155,7 @@ export const config = {
 	summaryTime: env.SUMMARY_TIME,
 	ratingTime: env.RATING_TIME,
 	habitsTime: env.HABITS_TIME,
+	tasksTime: env.TASKS_TIME,
 	flush: {
 		idleMs: env.FLUSH_IDLE_MS,
 		maxBatch: env.FLUSH_MAX_BATCH,
