@@ -1,3 +1,10 @@
+## [1.40.0](https://github.com/khaosdoctor/scriba/compare/v1.39.0...v1.40.0) (2026-08-29)
+
+
+### Features
+
+* **tasks:** send a task summary every morning ([970dba2](https://github.com/khaosdoctor/scriba/commit/970dba28a3c0b969ee66d8d09c0489040ffa3b0b))
+
 ## [1.39.0](https://github.com/khaosdoctor/scriba/compare/v1.38.0...v1.39.0) (2026-08-29)
 
 
@@ -38,13 +45,4 @@
 ### Features
 
 * **command:** fold the live feed into one message per turn ([4d5c2e5](https://github.com/khaosdoctor/scriba/commit/4d5c2e593b8128b8f2aaf9bc56d8a4e3a2fa31af))
-
-## [1.35.0](https://github.com/khaosdoctor/scriba/compare/v1.34.0...v1.35.0) (2026-08-16)
-
-
-### Features
-
-* **command:** answer command mode in parallel with a live agent feed ([6a7781f](https://github.com/khaosdoctor/scriba/commit/6a7781f583b7945d754397ecaaec48860ac6f5ea))
-* **command:** thread every message under the prompt that caused it ([a256406](https://github.com/khaosdoctor/scriba/commit/a25640682a2108975d99a0945d138dc38224a95f))
-* **jots:** put retry and delete buttons on every failure ([a8e2de8](https://github.com/khaosdoctor/scriba/commit/a8e2de8b21702020d159b044006ea10b19a57ce5))
 
