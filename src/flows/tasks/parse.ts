@@ -9,8 +9,8 @@
  *   - [-] Hire the cleaning company #type/todo [start:: 2026-03-03] [cancelled:: 2026-03-03]
  *
  * `[due::]` is the deadline and is mandatory; `[start::]` is the planned start and is
- * optional — when it's missing the due date stands in for it, so both fields are always
- * written. Older rows in the vault carry `✅ 2026-03-02` instead of `[completion:: …]`
+ * optional — a task with no start is written without the field rather than having the
+ * deadline copied into it. Older rows carry `✅ 2026-03-02` instead of `[completion:: …]`
  * (the Tasks plugin's own shorthand): those are read as done and cleaned up on untick,
  * but never written.
  */
@@ -176,18 +176,18 @@ export function parseTasks(
 
 // --- writing ----------------------------------------------------------------------------
 
-/** Render a new task bullet. `start` falls back to `due` (a task always carries both), and
- *  `(from [[date]])` records the day it came from — the jot's own day for one scriba spotted
+/** Render a new task bullet. A task with no planned start is written without the field —
+ *  an empty start says "no date set", which copying the deadline into it would not. The
+ *  `(from [[date]])` records the day it came from: the jot's own day for one scriba spotted
  *  in the journal, today for one typed in task mode. */
 export function renderTaskLine(
 	draft: TaskDraft,
 	tag: string,
 	sourceDate?: string,
 ): string {
-	const start = draft.start ?? draft.due;
 	const from = sourceDate ? ` (from [[${sourceDate}]])` : "";
 	const parts = [`- [ ] ${draft.description.trim()}${from}`, tag];
-	if (start) parts.push(`[start:: ${start}]`);
+	if (draft.start) parts.push(`[start:: ${draft.start}]`);
 	if (draft.due) parts.push(`[due:: ${draft.due}]`);
 	return parts.join(" ");
 }
@@ -624,14 +624,13 @@ export function taskButtonLabel(t: Task, n: number, max = 34): string {
 
 /** The confirmation card: what will be written, before anything is. HTML parse mode. */
 export function taskCard(draft: TaskDraft, header = "📝 New task"): string {
-	const start = draft.start ?? draft.due;
 	return [
 		header,
 		"",
 		`<b>${escapeHtml(draft.description || "(no description yet)")}</b>`,
 		"",
 		`Type: ${TYPE_LABEL[draft.type]}`,
-		`Start: ${start ?? "—"}`,
+		`Start: ${draft.start ?? "—"}`,
 		`Due: ${draft.due ?? "— <i>(needed)</i>"}`,
 	].join("\n");
 }
