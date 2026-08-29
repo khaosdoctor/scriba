@@ -1,3 +1,10 @@
+## [1.40.1](https://github.com/khaosdoctor/scriba/compare/v1.40.0...v1.40.1) (2026-08-29)
+
+
+### Bug Fixes
+
+* **tasks:** keep quiet on a morning with nothing due ([fcfb954](https://github.com/khaosdoctor/scriba/commit/fcfb9541ddc7ffee31ad5e3530add87db26c3d30))
+
 ## [1.40.0](https://github.com/khaosdoctor/scriba/compare/v1.39.0...v1.40.0) (2026-08-29)
 
 
@@ -38,11 +45,4 @@
 ### Bug Fixes
 
 * **command:** give up on a turn that stops producing anything ([137f070](https://github.com/khaosdoctor/scriba/commit/137f070ebb21d7a5579ec959b07b010ed7ac99d5))
-
-## [1.36.0](https://github.com/khaosdoctor/scriba/compare/v1.35.0...v1.36.0) (2026-08-16)
-
-
-### Features
-
-* **command:** fold the live feed into one message per turn ([4d5c2e5](https://github.com/khaosdoctor/scriba/commit/4d5c2e593b8128b8f2aaf9bc56d8a4e3a2fa31af))
 
