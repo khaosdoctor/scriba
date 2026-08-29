@@ -55,6 +55,12 @@ function harness(
 		getTaskDraft: async (id: string) => drafts.get(id),
 		updateTaskDraft: async (id: string, patch: any) =>
 			void drafts.set(id, { ...drafts.get(id), ...patch }),
+		claimTaskDraft: async (id: string) => {
+			const d = drafts.get(id);
+			if (d?.status !== "pending") return false;
+			drafts.set(id, { ...d, status: "created" });
+			return true;
+		},
 		getSetting: async (k: string) => settings.get(k),
 		setSetting: async (k: string, v: string) => void settings.set(k, v),
 	};
@@ -225,6 +231,21 @@ test("a suggestion from a jot carries the jot's day and asks for a missing deadl
 	await h.flow.handleTap(h.ctx as any, ["x", d.id]);
 	assert.equal(h.drafts.get(d.id).status, "dismissed");
 	assert.match(h.edited.at(-1)!.text, /Not a task/);
+});
+
+test("two fast taps on ✅ write the task once", async () => {
+	const h = harness();
+	await h.flow.handle(h.ctx as any, "buy cat sand next week");
+	const id = draftId(h.drafts);
+	await Promise.all([
+		h.flow.handleTap(h.ctx as any, ["ok", id]),
+		h.flow.handleTap(h.ctx as any, ["ok", id]),
+	]);
+	const lines = h.vault.content
+		.split("\n")
+		.filter((l) => l.includes("buy cat sand"));
+	assert.equal(lines.length, 1);
+	assert.match(h.answered.join(" "), /already created/);
 });
 
 test("a settled draft ignores later taps", async () => {

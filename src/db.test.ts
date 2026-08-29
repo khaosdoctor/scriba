@@ -285,6 +285,25 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 		const draft = await repo.getTaskDraft("d0000001");
 		assert.equal(draft?.type, "work");
 		assert.equal(draft?.status, "created");
+		// Only one caller may turn a draft into a task, however fast the button is tapped.
+		await repo.insertTaskDraft({
+			id: "d0000002",
+			source: "mode",
+			jot_id: null,
+			type: "personal",
+			description: "Buy milk",
+			start: null,
+			due: "2026-09-03",
+			source_date: "2026-08-29",
+			status: "pending",
+			chat_id: 42,
+			message_id: 7,
+			created_at: Date.now(),
+			updated_at: Date.now(),
+		});
+		assert.equal(await repo.claimTaskDraft("d0000002"), true);
+		assert.equal(await repo.claimTaskDraft("d0000002"), false); // already claimed
+		assert.equal(await repo.claimTaskDraft("d0000001"), false); // already created
 		// A jot that has already been asked about is not asked about again on reprocess.
 		assert.equal(await repo.taskDraftsForJot("aaaaaaaa"), 1);
 		assert.equal(await repo.taskDraftsForJot("ffffffff"), 0);

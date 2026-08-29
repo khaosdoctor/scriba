@@ -468,11 +468,16 @@ export class TasksFlow {
 			await ctx.answerCallbackQuery({ text: "it needs a due date first" });
 			return this.promptField(row, "u");
 		}
+		// Claim it before writing anything: two fast taps both see a pending draft, and only
+		// the one that wins the compare-and-swap may put a line in the note.
+		if (!(await this.repo.claimTaskDraft(row.id))) {
+			log.warn({ draft: row.id }, "task: create lost the claim");
+			return void ctx.answerCallbackQuery({ text: "already created" });
+		}
 		// Answer before the vault round-trip, which can outlive Telegram's callback window.
 		await ctx.answerCallbackQuery({ text: "creating…" });
 		try {
 			const line = await this.store.add(this.draftOf(row), row.source_date);
-			await this.repo.updateTaskDraft(row.id, { status: "created" });
 			log.info(
 				{ draft: row.id, type: row.type, due: row.due },
 				"task created from a card",
@@ -485,7 +490,10 @@ export class TasksFlow {
 				].join("\n"),
 			);
 		} catch (err) {
+			// The write failed, so the draft never became a task: hand it back so the card
+			// still works and the ✅ can be tried again.
 			log.error({ err, draft: row.id }, "task creation failed");
+			await this.repo.updateTaskDraft(row.id, { status: "pending" });
 			await this.redraw(row, this.headerFor(row));
 			await this.bot.api
 				.sendMessage(
