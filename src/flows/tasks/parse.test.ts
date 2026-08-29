@@ -152,10 +152,7 @@ test("completeTaskLine ticks and stamps once; uncomplete undoes both notations",
 	const done = completeTaskLine(open, "2026-08-31");
 	assert.equal(
 		done,
-		"- [ ] Buy cat sand #type/todo [start:: 2026-08-30] [due:: 2026-09-02]".replace(
-			"- [ ]",
-			"- [x]",
-		) + " [completion:: 2026-08-31]",
+		"- [x] Buy cat sand #type/todo [start:: 2026-08-30] [due:: 2026-09-02] [completion:: 2026-08-31]",
 	);
 	assert.equal(completeTaskLine(done, "2026-09-05"), done); // idempotent
 	assert.equal(uncompleteTaskLine(done), open);

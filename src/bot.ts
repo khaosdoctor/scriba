@@ -31,6 +31,8 @@ import {
 import { MenuController } from "./flows/menu.ts";
 import { RATING_NS, RatingCommand } from "./flows/rating.ts";
 import { REPROCESS_NS, ReprocessCommand } from "./flows/reprocess.ts";
+import { TASKS_NS, TasksFlow } from "./flows/tasks/index.ts";
+import type { TaskDraft } from "./flows/tasks/parse.ts";
 import { logger } from "./log.ts";
 import type {
 	BotServices,
@@ -42,6 +44,7 @@ import type { Enricher } from "./services/enrich.ts";
 import type { GithubReleases } from "./services/github.ts";
 import type { LinkIndex } from "./services/links.ts";
 import type { ObsidianClient } from "./services/obsidian.ts";
+import { TaskStore } from "./services/tasks.ts";
 import type { TranscriberSwitch } from "./services/transcribe.ts";
 import { VaultTools } from "./services/vault.ts";
 import { plainDate, plainTime } from "./time.ts";
@@ -103,6 +106,7 @@ export class ScribaBot implements BotServices {
 	private menu: MenuController;
 	private reprocess: ReprocessCommand;
 	private command: CommandSession;
+	private tasks: TasksFlow;
 	private processor!: JotProcessor;
 	// jotId -> the live status message we edit in place through the jot's lifecycle.
 	// ponytail: in-memory. On restart the map is empty and status() just posts a fresh
@@ -138,6 +142,16 @@ export class ScribaBot implements BotServices {
 			this.bot,
 			new VaultTools(config.vaultPath || null, obsidian),
 		);
+		// /task: every message becomes a task in one of the two task notes instead of a jot.
+		// It and command mode both own the message stream, so neither opens over the other.
+		this.tasks = new TasksFlow(
+			this.bot,
+			repo,
+			new TaskStore(obsidian, config.tasks),
+			() => this.command.isOpen(),
+		);
+		this.command.setBusyCheck(() => this.tasks.isOpen());
+		this.menu.setTasks(this.tasks);
 		this.registerHandlers();
 	}
 
@@ -189,8 +203,16 @@ export class ScribaBot implements BotServices {
 					description: "Open a vault assistant session (/done to close)",
 				},
 				{
+					command: "task",
+					description: "Turn every message into a task (/done to close)",
+				},
+				{
+					command: "tasks",
+					description: "List your tasks — open, today, this week, done",
+				},
+				{
 					command: "done",
-					description: "Close the vault assistant session",
+					description: "Close the vault assistant or task session",
 				},
 				{
 					command: "delete",
@@ -247,6 +269,16 @@ export class ScribaBot implements BotServices {
 			`Link "${surface}" → [[${note}]]?`,
 			{ reply_markup: kb },
 		);
+	}
+
+	/** Propose a task the enricher spotted in a jot: the same confirmation card task mode
+	 *  uses, so a suggestion is edited and created exactly like one you typed yourself. */
+	async askTask(
+		draft: TaskDraft,
+		jotId: string,
+		jotDate: string,
+	): Promise<void> {
+		await this.tasks.suggest(draft, jotId, jotDate);
 	}
 
 	/** Create-or-edit the one live status message for a jot. First call sends it and
@@ -432,6 +464,14 @@ export class ScribaBot implements BotServices {
 		// replacement. Every leaf reuses an existing command or flow (see MenuController).
 		this.menu.register();
 		this.command.register();
+		this.tasks.register();
+
+		// One /done for both message-stream modes: it closes whichever is actually open, so
+		// there's a single command to remember rather than one per mode.
+		this.bot.command("done", async (ctx) => {
+			if (this.tasks.isOpen()) return this.tasks.finish(ctx);
+			return this.command.finish(ctx);
+		});
 
 		this.bot.on("message:text", async (ctx) => {
 			if (ctx.message.text.startsWith("/")) return;
@@ -446,8 +486,14 @@ export class ScribaBot implements BotServices {
 				// Likewise a reply to one of the link wizard's add-a-rule prompts.
 				if (this.menu.isWizardPrompt(prompt))
 					return this.menu.handleWizardReply(ctx, prompt);
+				// …and a reply to a task card's change prompt, which can arrive whether or
+				// not task mode is open (a jot suggestion asks for its deadline outright).
+				if (this.tasks.isTaskPrompt(prompt))
+					return this.tasks.handleReply(ctx, prompt);
 				return this.handleEdit(ctx);
 			}
+			// Task mode takes the rest of the stream: the message becomes a task, not a jot.
+			if (this.tasks.isOpen()) return this.tasks.handle(ctx, ctx.message.text);
 			const markdown = entitiesToMarkdown(
 				ctx.message.text,
 				ctx.message.entities,
@@ -456,10 +502,14 @@ export class ScribaBot implements BotServices {
 		});
 
 		this.bot.on("message:voice", (ctx) =>
-			this.intake(ctx, "audio", { fileId: ctx.message.voice.file_id }),
+			this.tasks.isOpen()
+				? this.spokenTask(ctx, ctx.message.voice.file_id)
+				: this.intake(ctx, "audio", { fileId: ctx.message.voice.file_id }),
 		);
 		this.bot.on("message:audio", (ctx) =>
-			this.intake(ctx, "audio", { fileId: ctx.message.audio.file_id }),
+			this.tasks.isOpen()
+				? this.spokenTask(ctx, ctx.message.audio.file_id)
+				: this.intake(ctx, "audio", { fileId: ctx.message.audio.file_id }),
 		);
 
 		// Image/video are attachments: saved and embedded, caption kept, not transcribed.
@@ -543,6 +593,17 @@ export class ScribaBot implements BotServices {
 		await this.status(jotId, await this.replaceJotText(jot, markdown), {
 			undo: true,
 		});
+	}
+
+	/** A voice note sent while task mode is open. It is transcribed like any other voice
+	 *  jot and then read as a task — dictating a task is the whole point of task mode being
+	 *  a mode rather than a command with arguments. */
+	private async spokenTask(ctx: any, fileId: string): Promise<void> {
+		await ctx.react("✍").catch(() => {});
+		const file = await this.downloadFile(fileId);
+		const text = await this.transcriber.transcribe(file.bytes, file.ext);
+		log.info({ chars: text.length }, "task mode: voice note transcribed");
+		await this.tasks.handle(ctx, text);
 	}
 
 	/** Attachment intake (image/video): save + embed the file, keeping the caption as the
@@ -860,6 +921,7 @@ export class ScribaBot implements BotServices {
 		if (ns === "un") return this.handleRemove(ctx, rest[0], "undo");
 		if (ns === "dl") return this.handleRemove(ctx, rest[0], "discard");
 		if (ns === COMMAND_NS) return this.command.handleTap(ctx, rest);
+		if (ns === TASKS_NS) return this.tasks.handleTap(ctx, rest);
 		if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
 		if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
 		if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);

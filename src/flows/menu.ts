@@ -28,6 +28,7 @@ import { plainDate } from "../time.ts";
 import type { HabitsCommand } from "./habits/index.ts";
 import type { RatingCommand } from "./rating.ts";
 import type { ReprocessCommand } from "./reprocess.ts";
+import type { TasksFlow } from "./tasks/index.ts";
 
 const log = logger("menu");
 
@@ -76,6 +77,13 @@ export class MenuController {
 		private getDeps: () => Deps,
 		private deleteJot: (jot: Jot) => Promise<string>,
 	) {}
+
+	/** Late-wired: TasksFlow needs collaborators that don't exist yet when the menu is
+	 *  built (mirrors ScribaBot.setQueue). */
+	private tasks?: TasksFlow;
+	setTasks(tasks: TasksFlow): void {
+		this.tasks = tasks;
+	}
 
 	/** (Re)start a menu message's idle countdown. Called when one is sent and again on every
 	 *  tap, so the minute is measured from the last interaction, not from the send. */
@@ -138,6 +146,9 @@ export class MenuController {
 			.text("🌱 Review habits", "menu:habits")
 			.row()
 			.text("🗒 Recent jots", "menu:jots")
+			.row()
+			.text("🗂 Tasks", "menu:tasks")
+			.text("📝 Task mode", "menu:taskmode")
 			.row()
 			.text("🔁 Reprocess", "menu:reprocess")
 			.row()
@@ -208,6 +219,12 @@ export class MenuController {
 				return this.habits.prompt(plainDate(Date.now() - 86_400_000));
 			case "jots":
 				return this.menuJots(ctx);
+			case "tasks":
+				await ctx.answerCallbackQuery({ text: "Opening tasks below ↓" });
+				return this.tasks?.promptRoot();
+			case "taskmode":
+				await ctx.answerCallbackQuery();
+				return this.tasks?.start(ctx);
 			case "reprocess":
 				await ctx.answerCallbackQuery({
 					text: "Opening reprocess menu below ↓",

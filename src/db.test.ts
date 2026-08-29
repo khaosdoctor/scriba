@@ -260,6 +260,35 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
 		assert.equal((await repo.getJot("eeeeeeee"))?.status, "pending");
 		assert.equal((await repo.getJot("eeeeeeee"))?.attempts, 0);
 		assert.equal((await repo.getJot("11122233"))?.status, "processing"); // untouched
+
+		// --- task drafts ---
+		await repo.insertTaskDraft({
+			id: "d0000001",
+			source: "jot",
+			jot_id: "aaaaaaaa",
+			type: "personal",
+			description: "Buy cat sand",
+			start: null,
+			due: "2026-09-02",
+			source_date: "2026-08-29",
+			status: "pending",
+			chat_id: 42,
+			message_id: null,
+			created_at: Date.now(),
+			updated_at: Date.now(),
+		});
+		assert.equal(
+			(await repo.getTaskDraft("d0000001"))?.description,
+			"Buy cat sand",
+		);
+		await repo.updateTaskDraft("d0000001", { type: "work", status: "created" });
+		const draft = await repo.getTaskDraft("d0000001");
+		assert.equal(draft?.type, "work");
+		assert.equal(draft?.status, "created");
+		// A jot that has already been asked about is not asked about again on reprocess.
+		assert.equal(await repo.taskDraftsForJot("aaaaaaaa"), 1);
+		assert.equal(await repo.taskDraftsForJot("ffffffff"), 0);
+		assert.equal(await repo.getTaskDraft("nope"), undefined);
 	} finally {
 		await repo.close();
 		await rm(dbPath, { force: true });

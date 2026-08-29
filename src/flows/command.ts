@@ -208,6 +208,8 @@ export class CommandSession {
 	private feedAfter = 0;
 	/** Fires when the running turn has been silent too long. */
 	private turnTimer?: NodeJS.Timeout;
+	/** Whether the other message-stream mode (task mode) is open — see setBusyCheck. */
+	private otherModeOpen: () => boolean = () => false;
 
 	constructor(
 		private bot: Bot,
@@ -221,14 +223,25 @@ export class CommandSession {
 
 	register(): void {
 		this.bot.command("command", (ctx) => this.start(ctx));
-		this.bot.command("done", (ctx) => this.finish(ctx));
 	}
 
 	isOpen(): boolean {
 		return this.open;
 	}
 
+	/** Task mode owns the message stream too, so the two never run at once. Late-wired:
+	 *  TasksFlow is built after this session (see ScribaBot). */
+	setBusyCheck(fn: () => boolean): void {
+		this.otherModeOpen = fn;
+	}
+
 	private async start(ctx: any): Promise<void> {
+		if (this.otherModeOpen()) {
+			log.warn("command mode refused — task mode is open");
+			return void ctx.reply(
+				"📝 Task mode is open. Send /done to close it first, then /command.",
+			);
+		}
 		if (!this.vault.enabled) {
 			log.warn("command mode unavailable — no vault path configured");
 			return void ctx.reply(
@@ -252,7 +265,9 @@ export class CommandSession {
 		);
 	}
 
-	private async finish(ctx: any): Promise<void> {
+	/** Close the session. `/done` is registered by ScribaBot, which routes it to whichever
+	 *  mode is actually open. */
+	async finish(ctx: any): Promise<void> {
 		if (!this.open) return void ctx.reply("Command mode isn't open.");
 		this.close();
 		log.info("command session closed");
