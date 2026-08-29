@@ -663,9 +663,10 @@ export class TasksFlow {
 	 * inheriting any quieter default. (A chat muted in Telegram itself stays muted: no bot
 	 * can override that, there is no API for it.)
 	 *
-	 * It goes out every day, including on a day with nothing on it — silence would be
-	 * indistinguishable from scriba being down, and the whole point is that you can trust
-	 * the 9am message.
+	 * A day with nothing due sends nothing at all: a notification that says "no tasks" is
+	 * an interruption that earns nothing, and the nightly journal summary already keeps
+	 * quiet the same way. A failure is different — that still speaks up, since a morning
+	 * with no summary should only ever mean an empty day.
 	 */
 	async dailySummary(): Promise<void> {
 		const today = plainDate();
@@ -677,6 +678,10 @@ export class TasksFlow {
 				0,
 				`<b>🌅 Your tasks for ${today}</b>`,
 			);
+			if (count === 0) {
+				log.info({ date: today }, "tasks: nothing due today — staying quiet");
+				return;
+			}
 			await this.bot.api.sendMessage(chat, text, {
 				parse_mode: "HTML",
 				reply_markup: kb,

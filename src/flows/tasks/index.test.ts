@@ -353,6 +353,18 @@ test("the morning summary is loud, dated, and its rows tick straight through", a
 	);
 });
 
+test("a day with nothing due sends nothing at all", async () => {
+	const h = harness(
+		[
+			"## Things to do",
+			"- [ ] Something far off #type/todo [due:: 2099-01-01]",
+			"- [x] finish the book #type/todo [due:: 2026-06-14] [completion:: 2026-06-23]",
+		].join("\n"),
+	);
+	await h.flow.dailySummary();
+	assert.deepEqual(h.sent, []);
+});
+
 test("a summary that can't read the notes still says so, loudly", async () => {
 	const h = harness();
 	h.breakReads(true);

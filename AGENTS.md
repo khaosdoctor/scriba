@@ -198,10 +198,11 @@ deployed on the homelab (Coolify). Single user.
   scheduler calls `TasksFlow.dailySummary`, which renders the `day` view — due today, still
   due from before, or starting today — through the same `viewMessage` the lists use, so its
   rows tick straight through to the vault. It is sent with `disable_notification: false`
-  rather than inheriting a default, and it goes out on empty days too: silence is
-  indistinguishable from a dead bot, which is the one thing a daily summary must not be. A
-  chat muted in Telegram itself stays muted — no bot can override that, there is no API
-  for it.
+  rather than inheriting a default — this is the one message meant to interrupt — but a day
+  with nothing due sends nothing at all, the same way the nightly journal summary keeps
+  quiet on a day with no jots. A failure still speaks up, so a silent morning only ever
+  means an empty day. A chat muted in Telegram itself stays muted — no bot can override
+  that, there is no API for it.
 - **Tasks spotted in a jot come out of the enrichment call, not a second one.** The
   enricher already reads every entry, so its JSON carries a `tasks` array beside the
   wikilinks; each one becomes the same confirmation card, with 🚫 Not a task in place of
