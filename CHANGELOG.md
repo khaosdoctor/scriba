@@ -1,3 +1,18 @@
+## [1.39.0](https://github.com/khaosdoctor/scriba/compare/v1.38.0...v1.39.0) (2026-08-29)
+
+
+### Features
+
+* **tasks:** read and write the vault's two task notes ([4880cf3](https://github.com/khaosdoctor/scriba/commit/4880cf33abb7d72ef08b0f22ab52c5d7c36f16e1))
+* **tasks:** spot tasks in your journal entries and offer them as tasks ([872a884](https://github.com/khaosdoctor/scriba/commit/872a884fbc152a36ff93572f5669954f6fdaad48))
+* **tasks:** task mode and the task lists ([2a847ce](https://github.com/khaosdoctor/scriba/commit/2a847ce364499ac8d0befe70d3d0b4ac9c114a7e))
+
+
+### Bug Fixes
+
+* **tasks:** claim a draft before writing it, so a double-tapped ✅ writes once ([7a690ca](https://github.com/khaosdoctor/scriba/commit/7a690ca089c5bf5c77e5c7a9f45c9af0f3260ba6))
+* **tasks:** leave start empty when a task has no planned start ([233b9f4](https://github.com/khaosdoctor/scriba/commit/233b9f415e0292d80f5dff137406f58df2ebbc0e))
+
 ## [1.38.0](https://github.com/khaosdoctor/scriba/compare/v1.37.0...v1.38.0) (2026-08-16)
 
 
@@ -32,11 +47,4 @@
 * **command:** answer command mode in parallel with a live agent feed ([6a7781f](https://github.com/khaosdoctor/scriba/commit/6a7781f583b7945d754397ecaaec48860ac6f5ea))
 * **command:** thread every message under the prompt that caused it ([a256406](https://github.com/khaosdoctor/scriba/commit/a25640682a2108975d99a0945d138dc38224a95f))
 * **jots:** put retry and delete buttons on every failure ([a8e2de8](https://github.com/khaosdoctor/scriba/commit/a8e2de8b21702020d159b044006ea10b19a57ce5))
-
-## [1.34.0](https://github.com/khaosdoctor/scriba/compare/v1.33.0...v1.34.0) (2026-08-12)
-
-
-### Features
-
-* pull the anti-trope list from tropes.fyi ([9e414b9](https://github.com/khaosdoctor/scriba/commit/9e414b98c3e05926a4e8be30c8986cf88ebc9aaf))
 
