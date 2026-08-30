@@ -1,3 +1,15 @@
+## [1.42.0](https://github.com/khaosdoctor/scriba/compare/v1.41.0...v1.42.0) (2026-08-30)
+
+
+### Features
+
+* **menu:** give every screen a Close button that removes it ([e231174](https://github.com/khaosdoctor/scriba/commit/e231174b1935d15ab72f06a63b2f70baac565f0b))
+
+
+### Bug Fixes
+
+* **tasks:** read dates in any language you type, and stop hijacking the compose box ([d61e12c](https://github.com/khaosdoctor/scriba/commit/d61e12c109d6dba4342e41b140fa204af5cbfd35))
+
 ## [1.41.0](https://github.com/khaosdoctor/scriba/compare/v1.40.1...v1.41.0) (2026-08-30)
 
 
@@ -33,11 +45,4 @@
 
 * **tasks:** claim a draft before writing it, so a double-tapped ✅ writes once ([7a690ca](https://github.com/khaosdoctor/scriba/commit/7a690ca089c5bf5c77e5c7a9f45c9af0f3260ba6))
 * **tasks:** leave start empty when a task has no planned start ([233b9f4](https://github.com/khaosdoctor/scriba/commit/233b9f415e0292d80f5dff137406f58df2ebbc0e))
-
-## [1.38.0](https://github.com/khaosdoctor/scriba/compare/v1.37.0...v1.38.0) (2026-08-16)
-
-
-### Features
-
-* **links:** release the enricher-side year linking ([c4d26e6](https://github.com/khaosdoctor/scriba/commit/c4d26e6d37883994b3f39db8495aab5c00dcafc8))
 
