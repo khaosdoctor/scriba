@@ -138,7 +138,7 @@ test("a work task goes to the top of its section, a personal one to the bottom",
 	const work = vault.get(WORK_PATH)!.split("\n");
 	assert.equal(
 		work[work.indexOf("## Other Tasks") + 1],
-		"- [ ] Answer Pavlo (from [[2026-08-29]]) #type/todo/work [due:: 2026-09-04]",
+		"- [ ] Answer Pavlo (from [[2026-08-29]]) #type/todo/work [start:: 2026-09-04] [due:: 2026-09-04]",
 	);
 	// The other sections are untouched.
 	assert.match(

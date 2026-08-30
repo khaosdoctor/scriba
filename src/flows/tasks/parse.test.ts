@@ -100,7 +100,7 @@ test("an empty description and extra fields survive parsing", () => {
 	assert.equal(parseTaskLine("just prose", 0, "work", WORK_TAG), null);
 });
 
-test("renderTaskLine leaves start out when there isn't one", () => {
+test("a task with no start date starts on its deadline", () => {
 	assert.equal(
 		renderTaskLine(
 			{
@@ -112,7 +112,7 @@ test("renderTaskLine leaves start out when there isn't one", () => {
 			TAG,
 			"2026-08-29",
 		),
-		"- [ ] Buy cat sand (from [[2026-08-29]]) #type/todo [due:: 2026-09-02]",
+		"- [ ] Buy cat sand (from [[2026-08-29]]) #type/todo [start:: 2026-09-02] [due:: 2026-09-02]",
 	);
 	assert.equal(
 		renderTaskLine(
@@ -412,7 +412,17 @@ test("the card and the row labels say what's missing", () => {
 	});
 	assert.match(card, /Due: — <i>\(needed\)<\/i>/);
 	assert.match(card, /🏠 Personal/);
-	assert.match(card, /Start: —/); // a task with no planned start says so
+	assert.match(card, /Start: —/); // nothing to start from yet: no deadline either
+	// Given only a deadline, that is when it starts.
+	assert.match(
+		taskCard({
+			description: "x",
+			type: "work",
+			start: null,
+			due: "2026-09-02",
+		}),
+		/Start: 2026-09-02/,
+	);
 	assert.match(
 		taskCard({
 			description: "x",

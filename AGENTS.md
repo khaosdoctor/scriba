@@ -163,7 +163,8 @@ deployed on the homelab (Coolify). Single user.
 - **Tasks live in two vault notes, never in the DB.** A task is a checklist bullet under
   one heading per note — `## Other Tasks` in the work note, `## Things to do` in the
   personal one — tagged (`#type/todo/work`, `#type/todo`) and carrying `[start:: date]`
-  (planned start, optional) and `[due:: date]` (the deadline, mandatory), with
+  (planned start, optional to say — a task given only a deadline starts on it, so both
+  fields are always written) and `[due:: date]` (the deadline, mandatory), with
   `[completion:: date]` stamped on done. Paths, headings, tags and which end a new task
   goes on (work runs newest-first, personal is appended to) are all config. Only the two
   notes are the truth: created tasks are never mirrored into sqlite, so a task edited in

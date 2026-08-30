@@ -258,7 +258,7 @@ export class TasksFlow {
 			.text("✏️ Description", `${TASKS_NS}:d:${id}`)
 			.text(`🔁 ${TYPE_LABEL[row.type]}`, `${TASKS_NS}:t:${id}`)
 			.row()
-			.text(`📅 Start: ${row.start ?? "—"}`, `${TASKS_NS}:s:${id}`)
+			.text(`📅 Start: ${row.start ?? row.due ?? "—"}`, `${TASKS_NS}:s:${id}`)
 			.text(`🏁 Due: ${row.due ?? "needed"}`, `${TASKS_NS}:u:${id}`)
 			.row()
 			.text("✅ Create", `${TASKS_NS}:ok:${id}`)
