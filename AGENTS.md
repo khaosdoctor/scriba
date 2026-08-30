@@ -177,7 +177,11 @@ deployed on the homelab (Coolify). Single user.
   minutes idle) turns each message into a *draft*, shown on a confirmation card whose
   buttons change the description, either date or the type; only ✅ Create writes the note,
   and it refuses a draft with no deadline and asks for one instead. Those questions are
-  force-reply prompts, and each one is **deleted once its answer lands** — a question is
+  plain messages you reply to — deliberately **not** `force_reply`, which points the compose
+  box at the question the moment it arrives and so sends whatever you were already typing as
+  the answer to something you hadn't read (the same reason the habit value questions, the
+  link wizard, the entry-size prompt and the menu's jot edit dropped it too). Each one is
+  **deleted once its answer lands** — a question is
   scaffolding, not conversation, and the card already shows the answer. One that couldn't
   be read stays put (there would be nothing left to reply to), and settling a card clears
   whatever it still had open. The ids are held in memory, like `ScribaBot`'s status-message
@@ -186,12 +190,22 @@ deployed on the homelab (Coolify). Single user.
   bytes of callback data, and a card whose buttons go dead on a restart is worse than one
   that survives it. The split itself is token-free — `chrono-node` finds the date spans and
   the cue word in front of each ("by", "due", "starts", "from") says which date it is; one
-  date is the deadline, since that is the mandatory one. Personal unless the text plainly
+  date is the deadline, since that is the mandatory one. chrono is tried in **en, then pt,
+  then sv**, first locale with a real hit winning: the vault is English, but a task is typed
+  in whatever language it came to mind in, and a task whose date isn't read is a task that
+  stops to ask. The cue and filler word matching uses Unicode lookarounds rather than `\b`,
+  which is ASCII-only in JS and so never closes a word ending in "é" or "å". Personal unless the text plainly
   says work (`for work`, `at work`, `@work`), because a bare "work" is a verb as often as a
   category, and the type button is one tap.
 - **Task mode and command mode never run at once.** Both own the whole message stream, so
   neither opens over the other, and the single `/done` — registered by `ScribaBot`, not by
   either flow — closes whichever is open.
+- **A menu screen is scaffolding, so it cleans itself up.** Every screen `/menu`,
+  `/reprocess` and the task lists render carries one **✖ Close** that deletes the message
+  outright (falling back to clearing its buttons when Telegram won't delete a message older
+  than 48 hours), including the confirmations a wizard branch ends on. `/menu`'s own screens
+  also self-destruct after a minute of no taps; task lists don't — you read those, and the
+  morning summary has to survive until you have worked through it — so Close is how they go.
 - **The task lists are the vault's own Tasks-plugin queries.** Open, overdue, due today,
   this week, the next fortnight, and done by completion date. Every row is a button:
   tapping an open task ticks it in the note, tapping a done one reopens it, and the list

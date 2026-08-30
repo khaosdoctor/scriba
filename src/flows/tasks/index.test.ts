@@ -110,6 +110,9 @@ function harness(
 			return { message_id: nextId++, chat: { id: 7 } };
 		},
 		answerCallbackQuery: async (o?: any) => void answered.push(o?.text ?? ""),
+		deleteMessage: async () => {
+			deleted.push([7, 1]);
+		},
 		editMessageText: async (text: string, opts?: any) => {
 			edited.push({ chat: 7, msg: 1, text, markup: opts?.reply_markup });
 		},
@@ -414,6 +417,17 @@ test("a summary that can't read the notes still says so, loudly", async () => {
 	await h.flow.dailySummary();
 	assert.match(h.sent.at(-1)!.text, /Couldn't put together your task summary/);
 	assert.equal(h.sent.at(-1)!.silent, false);
+});
+
+test("a task screen closes by taking itself out of the chat", async () => {
+	const h = harness();
+	await h.flow.handleTap(h.ctx as any, ["v", "open", "0"]);
+	const labels = h
+		.buttons(h.edited.at(-1)!.markup)
+		.filter((d: string) => d === "tk:close");
+	assert.deepEqual(labels, ["tk:close"]); // every list carries exactly one
+	await h.flow.handleTap(h.ctx as any, ["close"]);
+	assert.deepEqual(h.deleted, [[7, 1]]);
 });
 
 test("jot detection is on by default and the menu toggles it", async () => {

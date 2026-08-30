@@ -465,6 +465,18 @@ export class TasksFlow {
 				return this.tapTick(ctx, action === "k", args);
 			case "det":
 				return this.tapDetection(ctx);
+			case "close":
+				await ctx.answerCallbackQuery();
+				log.info("tasks: screen closed");
+				return void (await ctx.deleteMessage().catch(async () => {
+					// >48h old, or already gone: clear the buttons instead of leaving them
+					// tappable on a message that can no longer be removed.
+					await ctx
+						.editMessageText("🗂 Closed.", {
+							reply_markup: new InlineKeyboard(),
+						})
+						.catch(() => {});
+				}));
 			default:
 				log.warn({ action }, "tasks: unknown callback action");
 				await ctx.answerCallbackQuery();
@@ -612,7 +624,15 @@ export class TasksFlow {
 		for (const v of VIEWS) kb.text(VIEW_LABEL[v], `${TASKS_NS}:v:${v}:0`).row();
 		const on = await taskDetectionEnabled(this.repo);
 		kb.text(`🔎 Spot tasks in jots: ${on ? "on" : "off"}`, `${TASKS_NS}:det`);
-		return kb;
+		return this.withClose(kb);
+	}
+
+	/** Every task screen carries the same way out: one tap that deletes the message. Lists
+	 *  don't self-destruct the way /menu's screens do — you read them, and the morning
+	 *  summary has to survive until you've worked through it — so Close is how they go. */
+	private withClose(kb: InlineKeyboard): InlineKeyboard {
+		const rows = kb.inline_keyboard.filter((r) => r.length > 0);
+		return InlineKeyboard.from(rows).row().text("✖ Close", `${TASKS_NS}:close`);
 	}
 
 	private async showMenu(ctx: any, mode: "edit" | "send"): Promise<void> {
@@ -673,7 +693,7 @@ export class TasksFlow {
 				...shown.map((t, j) => taskListLine(t, p * PAGE + j + 1, today)),
 			].join("\n"),
 		);
-		return { text, kb, count: tasks.length };
+		return { text, kb: this.withClose(kb), count: tasks.length };
 	}
 
 	/** Show a list view, editing the tapped message or sending a fresh one. */

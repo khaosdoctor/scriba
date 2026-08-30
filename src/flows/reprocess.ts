@@ -58,7 +58,7 @@ export class ReprocessCommand {
 		this.bot.command("reprocess", async (ctx) => {
 			log.info("reprocess menu opened");
 			await ctx.reply("🔁 Reprocess — choose scope:", {
-				reply_markup: this.rootMenu(),
+				reply_markup: this.withClose(this.rootMenu()),
 			});
 		});
 	}
@@ -70,7 +70,7 @@ export class ReprocessCommand {
 		await this.bot.api.sendMessage(
 			config.telegram.allowedUserId,
 			"🔁 Reprocess — choose scope:",
-			{ reply_markup: this.rootMenu() },
+			{ reply_markup: this.withClose(this.rootMenu()) },
 		);
 	}
 
@@ -84,7 +84,16 @@ export class ReprocessCommand {
 	}
 
 	private backTo(target: string): InlineKeyboard {
-		return new InlineKeyboard().text("‹ Back", target);
+		return this.withClose(new InlineKeyboard().text("‹ Back", target));
+	}
+
+	/** Every screen carries the same way out: one tap that deletes the message. Empty rows
+	 *  are dropped first, or a keyboard ending in .row() would render a gap above it. */
+	private withClose(kb: InlineKeyboard): InlineKeyboard {
+		const rows = kb.inline_keyboard.filter((r) => r.length > 0);
+		return InlineKeyboard.from(rows)
+			.row()
+			.text("✖ Close", `${REPROCESS_NS}:close`);
 	}
 
 	/** Dispatch a `rp:<action>[:<args>]` callback. */
@@ -94,7 +103,7 @@ export class ReprocessCommand {
 			case "root":
 				await ctx.answerCallbackQuery();
 				await ctx.editMessageText("🔁 Reprocess — choose scope:", {
-					reply_markup: this.rootMenu(),
+					reply_markup: this.withClose(this.rootMenu()),
 				});
 				return;
 			case "noop":
@@ -120,8 +129,18 @@ export class ReprocessCommand {
 			case "go":
 				return this.execute(ctx, args);
 			case "cancel":
+			case "close":
+				// A picker you backed out of is litter — take the whole message away rather
+				// than leaving "Cancelled." in the timeline.
 				await ctx.answerCallbackQuery();
-				await ctx.editMessageText("Cancelled.");
+				await ctx.deleteMessage().catch(async () => {
+					// >48h old, or already gone: leave a tidy, buttonless message instead.
+					await ctx
+						.editMessageText("Cancelled.", {
+							reply_markup: new InlineKeyboard(),
+						})
+						.catch(() => {});
+				});
 				return;
 			default:
 				log.warn({ action }, "reprocess: unknown action");
@@ -205,7 +224,7 @@ export class ReprocessCommand {
 		);
 		await ctx.editMessageText(
 			`📅 Pick a day to reprocess (${MONTHS[month - 1]} ${year}):`,
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -233,7 +252,7 @@ export class ReprocessCommand {
 			.text("Cancel", `${REPROCESS_NS}:cancel`);
 		await ctx.editMessageText(
 			`Reprocess ${pluralize(targets.length, "jot")} from ${date}?`,
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -252,7 +271,7 @@ export class ReprocessCommand {
 		);
 		await ctx.editMessageText(
 			`📆 Pick the range start (${MONTHS[month - 1]} ${year}):`,
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -278,7 +297,7 @@ export class ReprocessCommand {
 		);
 		await ctx.editMessageText(
 			`📆 Start: ${start}. Now pick the range end (${MONTHS[month - 1]} ${year}):`,
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -306,7 +325,7 @@ export class ReprocessCommand {
 		);
 		await ctx.editMessageText(
 			`📆 Start: ${start}. Pick the range end (${MONTHS[month - 1]} ${year}):`,
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -341,7 +360,7 @@ export class ReprocessCommand {
 			.text("Cancel", `${REPROCESS_NS}:cancel`);
 		await ctx.editMessageText(
 			`Reprocess ${pluralize(targets.length, "jot")} from ${lo} to ${hi}?`,
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -372,7 +391,7 @@ export class ReprocessCommand {
 		kb.text("‹ Back", `${REPROCESS_NS}:root`);
 		await ctx.editMessageText(
 			`✉️ Pick a jot to reprocess${page ? ` (page ${page + 1})` : ""}:`,
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -406,7 +425,7 @@ export class ReprocessCommand {
 			.row()
 			.text("Cancel", `${REPROCESS_NS}:cancel`);
 		await ctx.editMessageText(`Reprocess "${jotPreview(jot, 80)}"?${note}`, {
-			reply_markup: kb,
+			reply_markup: this.withClose(kb),
 		});
 	}
 

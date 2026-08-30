@@ -7,6 +7,7 @@ process.env.TELEGRAM_BOT_TOKEN ??= "t";
 process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
 const { MenuController } = await import("./menu.ts");
+const { InlineKeyboard } = await import("grammy");
 
 /** A controller wired to a bot stub that only records deleteMessage calls. */
 function harness() {
@@ -50,4 +51,23 @@ test("each tap restarts the countdown, and closing cancels it", (t) => {
 	menu.cancelExpiry(7, 42);
 	t.mock.timers.tick(120_000);
 	assert.deepEqual(deleted, []);
+});
+
+test("every screen gets a Close button, with no gap above it", () => {
+	const { menu } = harness();
+	// A keyboard that ends with .row() (most of them do) would otherwise render an empty
+	// row between the last button and Close.
+	const kb = new InlineKeyboard().text("a", "menu:a").row();
+	const rows = menu.withClose(kb).inline_keyboard;
+	assert.deepEqual(
+		rows.map((r: any[]) => r.map((b) => b.text)),
+		[["a"], ["✖ Close"]],
+	);
+	// And a Back button never travels alone any more.
+	assert.deepEqual(
+		menu
+			.backTo("menu:root")
+			.inline_keyboard.map((r: any[]) => r.map((b) => b.text)),
+		[["‹ Back"], ["✖ Close"]],
+	);
 });

@@ -179,7 +179,17 @@ export class MenuController {
 	}
 
 	private backTo(target: string): InlineKeyboard {
-		return new InlineKeyboard().text("‹ Back", target);
+		return this.withClose(new InlineKeyboard().text("‹ Back", target));
+	}
+
+	/** Every screen carries the same way out: one tap that deletes the menu message. A
+	 *  control panel is not journal content, and a half-finished flow left three submenus
+	 *  deep is exactly where you want a way out that doesn't mean scrolling back. Empty
+	 *  rows are dropped first — a keyboard built with a trailing .row() would otherwise
+	 *  render a gap above the button. */
+	private withClose(kb: InlineKeyboard): InlineKeyboard {
+		const rows = kb.inline_keyboard.filter((r) => r.length > 0);
+		return InlineKeyboard.from(rows).row().text("✖ Close", "menu:close");
 	}
 
 	/** Run a string-returning admin command from a callback and hand back its text. */
@@ -258,7 +268,7 @@ export class MenuController {
 			case "maint":
 				await ctx.answerCallbackQuery();
 				return ctx.editMessageText("🛠 Maintenance", {
-					reply_markup: this.maintMenu(),
+					reply_markup: this.withClose(this.maintMenu()),
 				});
 			// --- link-rules wizard (see the `lw` block below) ---
 			case "links":
@@ -345,7 +355,9 @@ export class MenuController {
 				.text("All", "menu:stats:all")
 				.row()
 				.text("‹ Back", "menu:root");
-			return ctx.editMessageText("📈 Stats range:", { reply_markup: kb });
+			return ctx.editMessageText("📈 Stats range:", {
+				reply_markup: this.withClose(kb),
+			});
 		}
 		const text = await this.runCmd(ctx, "stats", range);
 		await ctx.editMessageText(text, {
@@ -392,7 +404,7 @@ export class MenuController {
 				"",
 				"Splits land on topic boundaries where there are any, and on sentence ends otherwise. A sentence is never cut in half.",
 			].join("\n"),
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -430,7 +442,7 @@ export class MenuController {
 			.row()
 			.text("‹ Cancel", "menu:maint");
 		await ctx.editMessageText("Requeue every failed jot?", {
-			reply_markup: kb,
+			reply_markup: this.withClose(kb),
 		});
 	}
 
@@ -484,7 +496,7 @@ export class MenuController {
 					? `📇 vault index: ${idx.aliases} alias(es) across ${idx.files} note(s).`
 					: "📇 vault index disabled — nothing is being linked.",
 			].join("\n"),
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -514,7 +526,7 @@ export class MenuController {
 		if (hidden)
 			lines.push("", 'Tap "🗑 Remove a word" to page through all of them.');
 		await ctx.editMessageText(fitTelegram(lines.join("\n")), {
-			reply_markup: kb,
+			reply_markup: this.withClose(kb),
 		});
 	}
 
@@ -544,7 +556,7 @@ export class MenuController {
 				"",
 				`Tap a word to let it be linked again.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`,
 			].join("\n"),
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -600,7 +612,7 @@ export class MenuController {
 				"",
 				`Pick the word whose rejection you want to undo.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`,
 			].join("\n"),
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -639,7 +651,7 @@ export class MenuController {
 				"",
 				`${notes.length} note(s) rejected. Tap one to let "${surface}" link to it again.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`,
 			].join("\n"),
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -704,7 +716,7 @@ export class MenuController {
 					? `${forced.length} pair(s) linked with no judgment call. Tap one to change it.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`
 					: "No always-link pairs yet.",
 			].join("\n"),
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -733,7 +745,7 @@ export class MenuController {
 				"",
 				`"${r.surface}" always links to [[${r.note}]].`,
 			].join("\n"),
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -843,8 +855,20 @@ export class MenuController {
 				: `Nothing in the vault matches "${p.query}". Search again with another part of the title.`,
 		].join("\n");
 
-		if (mode === "edit") return ctx.editMessageText(text, { reply_markup: kb });
+		if (mode === "edit")
+			return ctx.editMessageText(text, { reply_markup: this.withClose(kb) });
 		return this.sendMenu(text, kb);
+	}
+
+	/** A confirmation that closes a wizard branch. It is still part of the menu, so it gets
+	 *  the same Close button and the same countdown — a flow shouldn't leave receipts. */
+	private async replyMenu(
+		ctx: any,
+		text: string,
+		kb: InlineKeyboard,
+	): Promise<void> {
+		const sent = await ctx.reply(text, { reply_markup: this.withClose(kb) });
+		this.scheduleExpiry(sent.chat.id, sent.message_id);
 	}
 
 	/** Send a menu screen of our own (not an edit of a tapped one) and start its countdown. */
@@ -852,7 +876,7 @@ export class MenuController {
 		const sent = await this.bot.api.sendMessage(
 			config.telegram.allowedUserId,
 			text,
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 		this.scheduleExpiry(sent.chat.id, sent.message_id);
 	}
@@ -960,12 +984,11 @@ export class MenuController {
 				}
 				for (const w of words) await repo.addStopword(w);
 				log.info({ words }, "link wizard: never-link words added");
-				return void ctx.reply(`🔇 never linking: ${words.join(", ")}`, {
-					reply_markup: new InlineKeyboard().text(
-						"🔗 Link rules",
-						"menu:links",
-					),
-				});
+				return this.replyMenu(
+					ctx,
+					`🔇 never linking: ${words.join(", ")}`,
+					new InlineKeyboard().text("🔗 Link rules", "menu:links"),
+				);
 			}
 			case "rg": {
 				const words = parseRuleWords(body);
@@ -1017,12 +1040,11 @@ export class MenuController {
 				await repo.delRegisteredLink(r.surface, r.note);
 				await repo.addRegisteredLink(word, r.note);
 				log.info({ from: r.surface, to: word }, "link wizard: pair renamed");
-				return void ctx.reply(`✏️ "${word}" always links to [[${r.note}]]`, {
-					reply_markup: new InlineKeyboard().text(
-						"🔗 Link rules",
-						"menu:links",
-					),
-				});
+				return this.replyMenu(
+					ctx,
+					`✏️ "${word}" always links to [[${r.note}]]`,
+					new InlineKeyboard().text("🔗 Link rules", "menu:links"),
+				);
 			}
 			case "es": {
 				const size = parseEntrySize(body);
@@ -1034,13 +1056,12 @@ export class MenuController {
 				}
 				await repo.setSetting(ENTRY_MAX_CHARS_KEY, String(size));
 				log.info({ size }, "menu: entry size changed");
-				return void ctx.reply(
+				return this.replyMenu(
+					ctx,
 					size
 						? `✂️ entries split above ${size} characters`
 						: "✂️ splitting off — entries stay on one line",
-					{
-						reply_markup: new InlineKeyboard().text("✂️ Entry size", "menu:esz"),
-					},
+					new InlineKeyboard().text("✂️ Entry size", "menu:esz"),
 				);
 			}
 			default:
@@ -1078,7 +1099,7 @@ export class MenuController {
 		await ctx.answerCallbackQuery();
 		const out = await this.runCmd(ctx, name, arg);
 		await ctx.editMessageText(out || "done", {
-			reply_markup: this.maintMenu(),
+			reply_markup: this.withClose(this.maintMenu()),
 		});
 	}
 
@@ -1099,7 +1120,9 @@ export class MenuController {
 			).row();
 		}
 		kb.text("‹ Back", "menu:root");
-		await ctx.editMessageText("🗒 Recent jots:", { reply_markup: kb });
+		await ctx.editMessageText("🗒 Recent jots:", {
+			reply_markup: this.withClose(kb),
+		});
 	}
 
 	private async menuJotDetail(ctx: any, id?: string): Promise<void> {
@@ -1116,7 +1139,9 @@ export class MenuController {
 			.text("🗑 Delete", `menu:jd:${jot.id}`)
 			.row()
 			.text("‹ Back", "menu:jots");
-		await ctx.editMessageText(formatJotDetail(jot), { reply_markup: kb });
+		await ctx.editMessageText(formatJotDetail(jot), {
+			reply_markup: this.withClose(kb),
+		});
 	}
 
 	private async menuJotRetry(ctx: any, id?: string): Promise<void> {
@@ -1140,7 +1165,7 @@ export class MenuController {
 			.text("Cancel", `menu:jot:${id}`);
 		await ctx.editMessageText(
 			`Delete jot ${id}? This removes its line from the journal.`,
-			{ reply_markup: kb },
+			{ reply_markup: this.withClose(kb) },
 		);
 	}
 
@@ -1187,7 +1212,7 @@ export class MenuController {
 		for (const j of jots) kb.text(`🔄 ${j.id}`, `rt:${j.id}`).row();
 		kb.text("‹ Back", "menu:root");
 		await ctx.editMessageText(`⚠️ ${jots.length} failed:\n${lines.join("\n")}`, {
-			reply_markup: kb,
+			reply_markup: this.withClose(kb),
 		});
 	}
 }
