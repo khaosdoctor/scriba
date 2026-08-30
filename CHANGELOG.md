@@ -1,3 +1,10 @@
+## [1.42.1](https://github.com/khaosdoctor/scriba/compare/v1.42.0...v1.42.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* **tasks:** a task with no start date starts on its deadline ([57c2646](https://github.com/khaosdoctor/scriba/commit/57c2646473d8736875e050652bcff726d9c6f457))
+
 ## [1.42.0](https://github.com/khaosdoctor/scriba/compare/v1.41.0...v1.42.0) (2026-08-30)
 
 
@@ -30,19 +37,4 @@
 ### Features
 
 * **tasks:** send a task summary every morning ([970dba2](https://github.com/khaosdoctor/scriba/commit/970dba28a3c0b969ee66d8d09c0489040ffa3b0b))
-
-## [1.39.0](https://github.com/khaosdoctor/scriba/compare/v1.38.0...v1.39.0) (2026-08-29)
-
-
-### Features
-
-* **tasks:** read and write the vault's two task notes ([4880cf3](https://github.com/khaosdoctor/scriba/commit/4880cf33abb7d72ef08b0f22ab52c5d7c36f16e1))
-* **tasks:** spot tasks in your journal entries and offer them as tasks ([872a884](https://github.com/khaosdoctor/scriba/commit/872a884fbc152a36ff93572f5669954f6fdaad48))
-* **tasks:** task mode and the task lists ([2a847ce](https://github.com/khaosdoctor/scriba/commit/2a847ce364499ac8d0befe70d3d0b4ac9c114a7e))
-
-
-### Bug Fixes
-
-* **tasks:** claim a draft before writing it, so a double-tapped ✅ writes once ([7a690ca](https://github.com/khaosdoctor/scriba/commit/7a690ca089c5bf5c77e5c7a9f45c9af0f3260ba6))
-* **tasks:** leave start empty when a task has no planned start ([233b9f4](https://github.com/khaosdoctor/scriba/commit/233b9f415e0292d80f5dff137406f58df2ebbc0e))
 
