@@ -176,7 +176,12 @@ deployed on the homelab (Coolify). Single user.
 - **A message never becomes a task directly.** Task mode (`/task`, closed by `/done` or 15
   minutes idle) turns each message into a *draft*, shown on a confirmation card whose
   buttons change the description, either date or the type; only ✅ Create writes the note,
-  and it refuses a draft with no deadline and asks for one instead. Drafts live in the
+  and it refuses a draft with no deadline and asks for one instead. Those questions are
+  force-reply prompts, and each one is **deleted once its answer lands** — a question is
+  scaffolding, not conversation, and the card already shows the answer. One that couldn't
+  be read stays put (there would be nothing left to reply to), and settling a card clears
+  whatever it still had open. The ids are held in memory, like `ScribaBot`'s status-message
+  map: a restart forgets at most one unanswered prompt. Drafts live in the
   `task_drafts` table rather than in memory: a description can't ride in Telegram's 64
   bytes of callback data, and a card whose buttons go dead on a restart is worse than one
   that survives it. The split itself is token-free — `chrono-node` finds the date spans and

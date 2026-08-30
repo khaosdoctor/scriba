@@ -29,6 +29,7 @@ function harness(
 	const sent: Sent[] = [];
 	const edited: Edited[] = [];
 	const answered: string[] = [];
+	const deleted: [number, number][] = [];
 	let nextId = 100;
 	const bot = {
 		api: {
@@ -48,6 +49,9 @@ function harness(
 				opts?: any,
 			) => {
 				edited.push({ chat, msg, text, markup: opts?.reply_markup });
+			},
+			deleteMessage: async (chat: number, msg: number) => {
+				deleted.push([chat, msg]);
 			},
 		},
 		command: () => {},
@@ -117,6 +121,7 @@ function harness(
 		sent,
 		edited,
 		answered,
+		deleted,
 		drafts,
 		vault,
 		ctx,
@@ -199,26 +204,62 @@ test("a reply to a date prompt is read, and a bad one is refused", async () => {
 	assert.equal(h.flow.isTaskPrompt(prompt), true);
 	assert.equal(h.flow.isTaskPrompt("just a message"), false);
 
-	await h.flow.handleReply(
-		{ ...h.ctx, message: { text: "2026-09-15" } } as any,
-		prompt,
-	);
+	const reply = (text: string) =>
+		({
+			...h.ctx,
+			message: { text, reply_to_message: { message_id: 99 } },
+		}) as any;
+
+	await h.flow.handleReply(reply("2026-09-15"), prompt);
 	assert.equal(h.drafts.get(id).due, "2026-09-15");
 
-	await h.flow.handleReply(
-		{ ...h.ctx, message: { text: "banana" } } as any,
-		prompt,
-	);
+	await h.flow.handleReply(reply("banana"), prompt);
 	assert.equal(h.drafts.get(id).due, "2026-09-15"); // unchanged
 	assert.match(h.sent.at(-1)!.text, /couldn't read that as a date/);
 
 	// The deadline is the mandatory one, so it can't be cleared.
-	await h.flow.handleReply(
-		{ ...h.ctx, message: { text: "none" } } as any,
-		prompt,
-	);
+	await h.flow.handleReply(reply("none"), prompt);
 	assert.equal(h.drafts.get(id).due, "2026-09-15");
 	assert.match(h.sent.at(-1)!.text, /needs a deadline/);
+});
+
+test("an answered prompt is taken back out of the chat, an unanswerable one stays", async () => {
+	const h = harness();
+	await h.flow.handle(h.ctx as any, "buy milk");
+	const id = draftId(h.drafts);
+	// ✅ with no deadline asks for one; that question is the message being replied to.
+	await h.flow.handleTap(h.ctx as any, ["ok", id]);
+	const asked = h.sent.at(-1)!;
+	assert.match(asked.text, /When is it due\?/);
+	const promptId = 100; // the harness numbers its messages from 100
+	const reply = (text: string) =>
+		({
+			...h.ctx,
+			message: { text, reply_to_message: { message_id: promptId } },
+		}) as any;
+
+	// A date it can't read leaves the question standing — there'd be nothing to reply to.
+	await h.flow.handleReply(reply("banana"), asked.text);
+	assert.deepEqual(h.deleted, []);
+
+	// A date it can read answers the question, so the question goes.
+	await h.flow.handleReply(reply("next friday"), asked.text);
+	assert.deepEqual(h.deleted, [[7, promptId]]);
+});
+
+test("settling a card clears the questions still hanging off it", async () => {
+	const h = harness();
+	await h.flow.suggest(
+		{ description: "Call the vet", type: "personal", start: null, due: null },
+		"jot12345",
+		"2026-08-20",
+	);
+	const id = draftId(h.drafts);
+	// The suggestion asked for a deadline; dropping the card takes the question with it.
+	assert.match(h.sent.at(-1)!.text, /When is it due\?/);
+	await h.flow.handleTap(h.ctx as any, ["x", id]);
+	assert.equal(h.deleted.length, 1);
+	assert.equal(h.drafts.get(id).status, "dismissed");
 });
 
 test("a suggestion from a jot carries the jot's day and asks for a missing deadline", async () => {

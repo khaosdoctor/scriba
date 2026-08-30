@@ -75,6 +75,12 @@ export function parseTaskPromptRef(
 export class TasksFlow {
 	private open = false;
 	private idleTimer?: NodeJS.Timeout;
+	/** draftId -> the force-reply prompts still on screen for it. A question is scaffolding,
+	 *  not conversation: once it's answered (or the card settles) it comes back out of the
+	 *  chat, leaving the card as the only record.
+	 *  ponytail: in-memory, like ScribaBot's status-message map. A restart forgets at most
+	 *  one unanswered prompt, which is a stale question rather than a broken one. */
+	private prompts = new Map<string, number[]>();
 
 	constructor(
 		private bot: Bot,
@@ -334,9 +340,52 @@ export class TasksFlow {
 		};
 		const [text, placeholder] = prompts[field];
 		log.info({ draft: row.id, field }, "task: prompting for a field");
-		await this.bot.api.sendMessage(row.chat_id, text, {
-			reply_markup: { force_reply: true, input_field_placeholder: placeholder },
-		});
+		const msg = await this.bot.api
+			.sendMessage(row.chat_id, text, {
+				reply_markup: {
+					force_reply: true,
+					input_field_placeholder: placeholder,
+				},
+			})
+			.catch((err) => {
+				log.warn({ err, draft: row.id, field }, "task: prompt failed to send");
+				return null;
+			});
+		if (msg)
+			this.prompts.set(row.id, [
+				...(this.prompts.get(row.id) ?? []),
+				msg.message_id,
+			]);
+	}
+
+	/** Take a prompt back out of the chat once it has done its job. Best-effort: a message
+	 *  older than 48 hours, or already gone, can't be deleted and isn't worth complaining
+	 *  about. */
+	private async dropPrompt(
+		row: TaskDraftRow,
+		messageId: number,
+	): Promise<void> {
+		const left = (this.prompts.get(row.id) ?? []).filter(
+			(id) => id !== messageId,
+		);
+		if (left.length) this.prompts.set(row.id, left);
+		else this.prompts.delete(row.id);
+		await this.bot.api
+			.deleteMessage(row.chat_id, messageId)
+			.catch((err) =>
+				log.debug(
+					{ err, draft: row.id, messageId },
+					"task: prompt already gone",
+				),
+			);
+	}
+
+	/** Clear every prompt still open for a draft — it has been created or dropped, so
+	 *  nothing is waiting on an answer any more. */
+	private async clearPrompts(row: TaskDraftRow): Promise<void> {
+		for (const id of this.prompts.get(row.id) ?? [])
+			await this.dropPrompt(row, id);
+		this.prompts.delete(row.id);
 	}
 
 	/** True when `text` is one of this flow's force-reply prompts. */
@@ -357,10 +406,17 @@ export class TasksFlow {
 			return void ctx.reply("That task is already settled.");
 		}
 		const body = String(ctx.message?.text ?? "").trim();
+		// The prompt goes only once its answer lands: one that couldn't be read has to stay
+		// on screen, or there'd be nothing left to reply to.
+		const answered = ctx.message?.reply_to_message?.message_id;
+		const done = async () => {
+			if (answered) await this.dropPrompt(row, answered);
+		};
 		if (ref.field === "d") {
 			if (!body) return void ctx.reply("Send the task text and I'll use it.");
 			await this.repo.updateTaskDraft(row.id, { description: body });
 			log.info({ draft: row.id }, "task: description changed");
+			await done();
 			return this.redraw({ ...row, description: body }, this.headerFor(row));
 		}
 		const date = parseTaskDate(body, plainDate());
@@ -379,6 +435,7 @@ export class TasksFlow {
 		const patch = ref.field === "s" ? { start: date } : { due: date };
 		await this.repo.updateTaskDraft(row.id, patch);
 		log.info({ draft: row.id, field: ref.field, date }, "task: date changed");
+		await done();
 		return this.redraw({ ...row, ...patch }, this.headerFor(row));
 	}
 
@@ -489,6 +546,7 @@ export class TasksFlow {
 				{ draft: row.id, type: row.type, due: row.due },
 				"task created from a card",
 			);
+			await this.clearPrompts(row);
 			await this.settle(
 				row,
 				[
@@ -522,6 +580,7 @@ export class TasksFlow {
 			status: dismissed ? "dismissed" : "cancelled",
 		});
 		log.info({ draft: row.id, source: row.source }, "task draft dropped");
+		await this.clearPrompts(row);
 		await this.settle(
 			row,
 			dismissed
