@@ -1,3 +1,10 @@
+## [1.43.0](https://github.com/khaosdoctor/scriba/compare/v1.42.1...v1.43.0) (2026-08-30)
+
+
+### Features
+
+* **tasks:** add /taskadd, a task in one message ([9c4cc18](https://github.com/khaosdoctor/scriba/commit/9c4cc1891b6a28c74631dd3ababcb14c8d243d53))
+
 ## [1.42.1](https://github.com/khaosdoctor/scriba/compare/v1.42.0...v1.42.1) (2026-08-30)
 
 
@@ -30,11 +37,4 @@
 ### Bug Fixes
 
 * **tasks:** keep quiet on a morning with nothing due ([fcfb954](https://github.com/khaosdoctor/scriba/commit/fcfb9541ddc7ffee31ad5e3530add87db26c3d30))
-
-## [1.40.0](https://github.com/khaosdoctor/scriba/compare/v1.39.0...v1.40.0) (2026-08-29)
-
-
-### Features
-
-* **tasks:** send a task summary every morning ([970dba2](https://github.com/khaosdoctor/scriba/commit/970dba28a3c0b969ee66d8d09c0489040ffa3b0b))
 
