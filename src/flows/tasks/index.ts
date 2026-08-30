@@ -3,10 +3,12 @@ import { config } from "../../config.ts";
 import { escapeHtml, fitTelegram, makeJotId } from "../../core.ts";
 import type { Repository, TaskDraftRow, TaskType } from "../../db.ts";
 import { logger } from "../../log.ts";
+import type { Enricher } from "../../services/enrich.ts";
 import type { TaskStore } from "../../services/tasks.ts";
 import { plainDate } from "../../time.ts";
 import {
 	detectionEnabled,
+	draftFromDetection,
 	filterTasks,
 	isTaskType,
 	parseTaskDate,
@@ -49,7 +51,11 @@ export async function taskDetectionEnabled(repo: Repository): Promise<boolean> {
 	return detectionEnabled(await repo.getSetting(TASK_DETECTION_KEY));
 }
 
-/** Which change prompt a force-reply is answering — the marker rides in the prompt's own
+/** Marker in `/taskadd`'s "what's the task?" prompt, used when the command arrived with no
+ *  text of its own. It carries no draft id — there is no draft yet. */
+export const TASK_ADD_REF = "(tk:add)";
+
+/** Which change prompt a reply is answering — the marker rides in the prompt's own
  *  text, the same trick the habits flow and the link wizard use. */
 export function parseTaskPromptRef(
 	text: string,
@@ -86,6 +92,9 @@ export class TasksFlow {
 		private bot: Bot,
 		private repo: Repository,
 		private store: TaskStore,
+		/** Reads a `/taskadd` line into a task. Enrichment is the only thing in this flow
+		 *  that spends a token — everything else is deterministic. */
+		private enricher: Enricher,
 		/** Command mode owns the message stream too; the two never run at once. */
 		private commandOpen: () => boolean,
 	) {}
@@ -93,6 +102,71 @@ export class TasksFlow {
 	register(): void {
 		this.bot.command("task", (ctx) => this.start(ctx));
 		this.bot.command("tasks", (ctx) => this.slashTasks(ctx));
+		this.bot.command("taskadd", (ctx) => this.slashTaskAdd(ctx));
+	}
+
+	/**
+	 * `/taskadd <anything>` — one task, one message, no mode to open or close. The line goes
+	 * to the enricher, which is better than the cue-word parser at messy phrasing, at
+	 * languages chrono has no rules for, and at telling a description from its timing. What
+	 * comes back is the same confirmation card task mode uses, so nothing is written until
+	 * you say so. With nothing after the command, it asks for the line instead.
+	 */
+	private async slashTaskAdd(ctx: any): Promise<void> {
+		const text = String(ctx.match ?? "").trim();
+		if (!text) {
+			log.info("/taskadd with no text — asking for it");
+			return void (await ctx.reply(
+				`📝 Reply to this message with the task — say when it's due in your own words. ${TASK_ADD_REF}`,
+			));
+		}
+		return this.quickAdd(ctx, text);
+	}
+
+	/**
+	 * Read one line into a draft and put its card up. The model does the comprehension; the
+	 * timing it reports is still resolved by chrono against today, so nothing depends on it
+	 * knowing what day it is. If the call fails (usage out, network), the token-free parser
+	 * takes over rather than leaving you with nothing — a rougher split beats no task.
+	 */
+	private async quickAdd(ctx: any, text: string): Promise<void> {
+		const today = plainDate();
+		const chatId = ctx.chat?.id ?? config.telegram.allowedUserId;
+		let draft: TaskDraft;
+		try {
+			draft = draftFromDetection(await this.enricher.extractTask(text), today);
+			log.info(
+				{
+					chars: text.length,
+					due: draft.due,
+					start: draft.start,
+					type: draft.type,
+				},
+				"/taskadd: read by the enricher",
+			);
+		} catch (err) {
+			draft = parseTaskDraft(text, today);
+			log.warn(
+				{ err, due: draft.due },
+				"/taskadd: enricher unavailable — fell back to the token-free parser",
+			);
+		}
+		if (!draft.description.trim()) {
+			log.warn({ text }, "/taskadd: nothing to do in that line");
+			return void ctx.reply(
+				"I couldn't find anything to do in that — try “/taskadd buy cat sand next week”.",
+			);
+		}
+		const row = await this.saveDraft(draft, {
+			source: "mode",
+			jotId: null,
+			sourceDate: today,
+			chatId,
+		});
+		await this.sendCard(row, "📝 New task");
+		// Same rule as a suggestion from a jot: the deadline is the one field it can't do
+		// without, so ask for it now rather than at ✅.
+		if (!row.due) await this.promptField(row, "u");
 	}
 
 	isOpen(): boolean {
@@ -378,13 +452,24 @@ export class TasksFlow {
 		this.prompts.delete(row.id);
 	}
 
-	/** True when `text` is one of this flow's force-reply prompts. */
+	/** True when `text` is one of this flow's own prompts. */
 	isTaskPrompt(text: string): boolean {
-		return parseTaskPromptRef(text) !== null;
+		return text.includes(TASK_ADD_REF) || parseTaskPromptRef(text) !== null;
 	}
 
-	/** Route a reply to the change prompt that asked for it. */
+	/** Route a reply to the prompt that asked for it. */
 	async handleReply(ctx: any, prompt: string): Promise<void> {
+		// `/taskadd` with nothing after it: the reply itself is the task.
+		if (prompt.includes(TASK_ADD_REF)) {
+			const body = String(ctx.message?.text ?? "").trim();
+			if (!body) return void ctx.reply("Send the task and I'll read it.");
+			const asked = ctx.message?.reply_to_message?.message_id;
+			if (asked)
+				await this.bot.api
+					.deleteMessage(ctx.chat?.id ?? config.telegram.allowedUserId, asked)
+					.catch(() => {});
+			return this.quickAdd(ctx, body);
+		}
 		const ref = parseTaskPromptRef(prompt);
 		if (!ref) return;
 		const row = await this.repo.getTaskDraft(ref.id);

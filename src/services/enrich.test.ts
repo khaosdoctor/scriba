@@ -456,6 +456,40 @@ test("a response with no tasks field is a response with no tasks", async () => {
 	assert.equal(out.text, "plain day");
 });
 
+test("extractTask reads a line into a task, timing left as the author's words", async () => {
+	const { fn, calls } = fakeQuery([
+		{
+			type: "result",
+			subtype: "success",
+			structured_output: {
+				description: "Answer Pavlo about the Hive review",
+				due: "next friday",
+				type: "work",
+			},
+		},
+	]);
+	const out = await new Enricher(undefined, fn).extractTask(
+		"gotta answer pavlo re hive by next friday",
+	);
+	assert.deepEqual(out, {
+		description: "Answer Pavlo about the Hive review",
+		due: "next friday",
+		type: "work",
+	});
+	// The dates come back as phrases: chrono resolves them, so the model is never asked
+	// what today is.
+	assert.equal(calls[0]!.options.outputFormat.type, "json_schema");
+	assert.match(calls[0]!.options.systemPrompt, /do NOT calculate anything/);
+});
+
+test("extractTask fails loudly when nothing usable comes back", async () => {
+	const { fn } = fakeQuery([assistantText("sorry, I can't do that")]);
+	await assert.rejects(
+		() => new Enricher(undefined, fn).extractTask("buy milk"),
+		/no usable JSON/,
+	);
+});
+
 test("editText and describeImage don't request structured output", async () => {
 	const { fn: editFn, calls: editCalls } = fakeQuery([assistantText("edited")]);
 	await new Enricher(undefined, editFn).editText("old", "fix it");

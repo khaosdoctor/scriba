@@ -101,7 +101,20 @@ function harness(
 			insert: "bottom",
 		},
 	});
-	const flow = new TasksFlow(bot as any, repo as any, store, () => false);
+	// The enricher is the one collaborator that spends a token; the harness makes its
+	// answer (and its failure) something a test can choose.
+	let extract: (text: string) => Promise<any> = async (text) => ({
+		description: text,
+		type: "personal",
+	});
+	const enricher = { extractTask: (t: string) => extract(t) };
+	const flow = new TasksFlow(
+		bot as any,
+		repo as any,
+		store,
+		enricher as any,
+		() => false,
+	);
 
 	const ctx = {
 		chat: { id: 7 },
@@ -132,6 +145,9 @@ function harness(
 		settings,
 		breakReads: (v: boolean) => {
 			broken = v;
+		},
+		setExtract: (fn: (text: string) => Promise<any>) => {
+			extract = fn;
 		},
 	};
 }
@@ -417,6 +433,49 @@ test("a summary that can't read the notes still says so, loudly", async () => {
 	await h.flow.dailySummary();
 	assert.match(h.sent.at(-1)!.text, /Couldn't put together your task summary/);
 	assert.equal(h.sent.at(-1)!.silent, false);
+});
+
+test("/taskadd reads one line through the enricher and shows the card", async () => {
+	const h = harness();
+	h.setExtract(async () => ({
+		description: "Answer Pavlo about the Hive review",
+		due: "next friday",
+		type: "work",
+	}));
+	await (h.flow as any).quickAdd(
+		h.ctx,
+		"gotta answer pavlo re hive by next friday",
+	);
+	const d = h.drafts.get(draftId(h.drafts));
+	assert.equal(d.description, "Answer Pavlo about the Hive review");
+	assert.equal(d.type, "work");
+	assert.match(d.due, /^\d{4}-\d{2}-\d{2}$/); // the phrase was resolved, not stored
+	assert.equal(d.status, "pending");
+	assert.match(h.sent.at(-1)!.text, /📝 New task/);
+	assert.match(h.sent.at(-1)!.text, /Answer Pavlo about the Hive review/);
+});
+
+test("/taskadd falls back to the token-free parser when the model is down", async () => {
+	const h = harness();
+	h.setExtract(async () => {
+		throw new Error("usage exhausted");
+	});
+	await (h.flow as any).quickAdd(h.ctx, "buy cat sand next week");
+	const d = h.drafts.get(draftId(h.drafts));
+	assert.equal(d.description, "buy cat sand");
+	assert.match(d.due, /^\d{4}-\d{2}-\d{2}$/);
+	assert.match(h.sent.at(-1)!.text, /📝 New task/);
+});
+
+test("/taskadd with no timing asks for the deadline straight away", async () => {
+	const h = harness();
+	h.setExtract(async () => ({
+		description: "Renew the passport",
+		type: "personal",
+	}));
+	await (h.flow as any).quickAdd(h.ctx, "renew the passport");
+	assert.equal(h.drafts.get(draftId(h.drafts)).due, null);
+	assert.match(h.sent.at(-1)!.text, /with the due date/);
 });
 
 test("a task screen closes by taking itself out of the chat", async () => {

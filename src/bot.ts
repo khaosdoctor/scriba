@@ -148,6 +148,7 @@ export class ScribaBot implements BotServices {
 			this.bot,
 			repo,
 			new TaskStore(obsidian, config.tasks),
+			enricher,
 			() => this.command.isOpen(),
 		);
 		this.command.setBusyCheck(() => this.tasks.isOpen());
@@ -205,6 +206,10 @@ export class ScribaBot implements BotServices {
 				{
 					command: "task",
 					description: "Turn every message into a task (/done to close)",
+				},
+				{
+					command: "taskadd",
+					description: "Add one task in one message: /taskadd <what and when>",
 				},
 				{
 					command: "tasks",

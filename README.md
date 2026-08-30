@@ -25,6 +25,7 @@ write to one Obsidian vault.
 - Edit a jot by replying to it: `s/old/new/`, `replace X with Y`, freeform, or `/delete`.
 - Retries failed jots up to 10 times. If it gives up, it posts the jot un-enriched with a retry button.
 - **Task mode.** `/task` turns every message into a task — "review the RFC by next friday", "buy cat sand next week" — split into a description, a start date and a deadline, with the type (work or personal) picked from what you said. Nothing is written until you confirm the card, whose buttons change any of it. `/done` closes the mode.
+- **One-message tasks.** `/taskadd finish the slides by thursday` reads the line with the model — messy phrasing, any language — and shows you the same card to confirm. `/taskadd` on its own asks for the line.
 - **Task lists.** `/tasks` shows what's open, overdue, due today, due this week or in the next fortnight, and what's done. Every row is a button: tapping an open task ticks it off in the vault, tapping a done one reopens it.
 - **A task summary every morning.** At `TASKS_TIME` (09:00 by default) scriba sends what's due today plus anything still overdue, with the same tickable rows. It's an explicitly non-silent message, so it always notifies; a day with nothing due sends nothing.
 - **It spots tasks in your journal.** Say you need to do something in a jot and it offers to make a task of it, on the same card — including asking when it's due, since a journal entry is often vague about that. Switch it off from the task menu if you'd rather it didn't.

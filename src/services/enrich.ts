@@ -84,6 +84,38 @@ const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules
 Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}], "tasks": [{"description":"...","due":"...","type":"personal"}]}
 Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
 
+const TASK_SYSTEM = `You turn one line of text into a task for a personal task list. Rules:
+- "description": what has to be done, in English, as a short instruction. Keep the author's own specifics — names, links, numbers, [[wikilinks]] — verbatim. Leave the timing words out of it.
+- "due" is the deadline and "start" is when work on it begins. Copy each one VERBATIM from the line, exactly as the author phrased the timing ("next friday", "amanhã", "by the 15th", "på fredag"). Do NOT convert them to a date and do NOT calculate anything: you are not told what today is. Omit a field entirely when the line says nothing about it — never invent one.
+- The one exception: if the line already gives an explicit calendar date, give it as YYYY-MM-DD.
+- A line that mentions only one time is giving you a deadline: put it in "due", not "start".
+- "type": "work" when the line is plainly about the author's job, otherwise "personal".
+Your entire response must be exactly one JSON object and nothing else: {"description": "...", "due": "...", "start": "...", "type": "personal"}
+Do not write any preamble, explanation or commentary. The first character of your response must be "{" and the last character must be "}".`;
+
+const detectedTaskSchema = z.object({
+	description: z.string(),
+	start: z.string().optional(),
+	due: z.string().optional(),
+	type: z.string().optional(),
+});
+
+/** JSON Schema twin of detectedTaskSchema, for the SDK's outputFormat. */
+const TASK_OUTPUT_FORMAT: OutputFormat = {
+	type: "json_schema",
+	schema: {
+		type: "object",
+		properties: {
+			description: { type: "string" },
+			start: { type: "string" },
+			due: { type: "string" },
+			type: { type: "string", enum: ["work", "personal"] },
+		},
+		required: ["description", "type"],
+		additionalProperties: false,
+	},
+};
+
 /** Validates the agent's structured_output payload (the SDK's outputFormat already
  *  constrains the shape server-side; this guards against schema drift and the
  *  Groq fallback, which has no native structured-output support). */
@@ -273,6 +305,46 @@ export class Enricher {
 			tasks: parsed.tasks ?? [],
 			usage,
 		};
+	}
+
+	/**
+	 * One line in, one task out: `/taskadd`'s reading of what you typed. The model's job is
+	 * comprehension — pulling the thing to do apart from when it is due, in whatever
+	 * language and however messily it was phrased — and explicitly NOT date arithmetic: it
+	 * reports the author's own words for the timing and chrono resolves them, the same rule
+	 * the jot suggestions follow. An explicit calendar date comes back as YYYY-MM-DD, which
+	 * needs no resolving either way.
+	 */
+	async extractTask(text: string): Promise<DetectedTask> {
+		const prompt = `Line:\n"""${fence(text)}"""`;
+		log.info({ chars: text.length }, "extractTask: calling agent");
+		const { text: raw, structuredOutput } = await this.run(
+			prompt,
+			TASK_SYSTEM,
+			[
+				{ role: "system", content: TASK_SYSTEM },
+				{ role: "user", content: prompt },
+			],
+			TASK_OUTPUT_FORMAT,
+		);
+		const parsed =
+			(structuredOutput !== undefined
+				? detectedTaskSchema.safeParse(structuredOutput)
+				: { success: false as const, data: undefined }
+			).data ?? detectedTaskSchema.safeParse(this.extractJson(raw)).data;
+		if (!parsed?.description)
+			throw new Error(
+				`task extraction returned no usable JSON: ${raw.slice(0, 200)}`,
+			);
+		log.info(
+			{
+				due: parsed.due ?? null,
+				start: parsed.start ?? null,
+				type: parsed.type,
+			},
+			"extractTask: agent responded",
+		);
+		return parsed;
 	}
 
 	/** Vision: caption an image that arrived without one. Returns a short caption. */

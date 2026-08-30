@@ -198,6 +198,15 @@ deployed on the homelab (Coolify). Single user.
   which is ASCII-only in JS and so never closes a word ending in "é" or "å". Personal unless the text plainly
   says work (`for work`, `at work`, `@work`), because a bare "work" is a verb as often as a
   category, and the type button is one tap.
+- **`/taskadd <line>` is the one-message version**, for when opening a mode is more
+  ceremony than the task is worth. The line goes to the enricher rather than the cue-word
+  parser (`Enricher.extractTask`): it reads messy phrasing, languages chrono has no rules
+  for, and the seam between a description and its timing far better than word lookups can.
+  The model still never does date arithmetic — it reports the author's own words and chrono
+  resolves them, the same contract the jot suggestions follow — and a failed call falls back
+  to `parseTaskDraft`, since a rougher split beats no task. What comes back is the same
+  confirmation card, so a fast add is still nothing written until you tap ✅. Bare
+  `/taskadd` asks for the line, and that question deletes itself once answered.
 - **Task mode and command mode never run at once.** Both own the whole message stream, so
   neither opens over the other, and the single `/done` — registered by `ScribaBot`, not by
   either flow — closes whichever is open.
