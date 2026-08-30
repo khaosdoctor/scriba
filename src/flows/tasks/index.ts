@@ -324,29 +324,19 @@ export class TasksFlow {
 		row: TaskDraftRow,
 		field: "d" | "s" | "u",
 	): Promise<void> {
-		const prompts: Record<typeof field, [string, string]> = {
-			d: [
-				`✏️ What should the task say? (tk:d:${row.id})`,
-				"the task, in your words",
-			],
-			s: [
-				`📅 When do you start it? A date, “next monday”, or “none” to leave it to the deadline. (tk:s:${row.id})`,
-				"next monday",
-			],
-			u: [
-				`🏁 When is it due? A date or something like “next friday” — this one it needs. (tk:u:${row.id})`,
-				"next friday",
-			],
+		const prompts: Record<typeof field, string> = {
+			d: `✏️ Reply to this message with what the task should say. (tk:d:${row.id})`,
+			s: `📅 Reply to this message with the start date — a date, “next monday”, or “none” to leave it to the deadline. (tk:s:${row.id})`,
+			u: `🏁 Reply to this message with the due date — a date, or something like “next friday”. This one it needs. (tk:u:${row.id})`,
 		};
-		const [text, placeholder] = prompts[field];
+		const text = prompts[field];
 		log.info({ draft: row.id, field }, "task: prompting for a field");
+		// Deliberately NOT a force_reply: that points the compose box at this message the
+		// moment it arrives, so a message you were already halfway through typing goes out
+		// as the answer to a question you hadn't read yet. Replying by hand is one extra
+		// tap; having your jot swallowed by a date prompt is worse.
 		const msg = await this.bot.api
-			.sendMessage(row.chat_id, text, {
-				reply_markup: {
-					force_reply: true,
-					input_field_placeholder: placeholder,
-				},
-			})
+			.sendMessage(row.chat_id, text)
 			.catch((err) => {
 				log.warn({ err, draft: row.id, field }, "task: prompt failed to send");
 				return null;

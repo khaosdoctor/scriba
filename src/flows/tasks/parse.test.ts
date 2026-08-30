@@ -269,6 +269,36 @@ test("work is only work when it's said plainly", () => {
 	);
 });
 
+test("a date is found whatever language the task was typed in", () => {
+	// The vault is English, but a task is typed in whatever language it came to mind in —
+	// and chrono only reads the locale it is handed.
+	assert.deepEqual(parseTaskDraft("Comprar ração amanhã", TODAY), {
+		description: "Comprar ração",
+		type: "personal",
+		start: null,
+		due: "2026-08-30",
+	});
+	assert.deepEqual(parseTaskDraft("pagar a conta até sexta", TODAY), {
+		description: "pagar a conta",
+		type: "personal",
+		start: null,
+		due: "2026-09-04",
+	});
+	assert.deepEqual(parseTaskDraft("köp kattsand imorgon", TODAY), {
+		description: "köp kattsand",
+		type: "personal",
+		start: null,
+		due: "2026-08-30",
+	});
+	assert.equal(
+		parseTaskDraft("boka tvättstugan på fredag", TODAY).description,
+		"boka tvättstugan",
+	);
+	// …and the change prompts read the same languages.
+	assert.equal(parseTaskDate("amanhã", TODAY), "2026-08-30");
+	assert.equal(parseTaskDate("imorgon", TODAY), "2026-08-30");
+});
+
 test("a task with no date at all keeps its whole text", () => {
 	assert.deepEqual(parseTaskDraft("buy milk", TODAY), {
 		description: "buy milk",

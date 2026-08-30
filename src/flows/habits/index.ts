@@ -100,10 +100,11 @@ export class HabitsCommand {
 		const lead = header ? `${header}\n\n` : "";
 		if (habit.field) {
 			// Value habit: the reply's text carries the answer; the marker routes it back.
+			// No force_reply: it aims the compose box at this question as soon as it lands,
+			// so a jot you were already typing gets sent as the habit's value instead.
 			await this.bot.api.sendMessage(
 				config.telegram.allowedUserId,
-				`${lead}🌱 ${habit.label}? Reply with a value.\n(hb:${date}:${habit.index})`,
-				{ reply_markup: { force_reply: true } },
+				`${lead}🌱 ${habit.label}? Reply to this message with a value.\n(hb:${date}:${habit.index})`,
 			);
 			return;
 		}

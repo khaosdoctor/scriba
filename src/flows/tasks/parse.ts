@@ -282,6 +282,13 @@ function skipBlank(lines: string[], from: number, end: number): number {
 // journal), and the cue word in front of each span says which date it is. Anything it gets
 // wrong is one tap away on the confirmation card, which is why this never needs a model.
 
+/** The languages a task might be typed in: the vault is English, but a task typed into
+ *  Telegram is typed in whatever language it came to mind in, and chrono only reads the
+ *  locale you hand it. English first (it's the common case and the least surprising), then
+ *  the two the owner actually writes in. The first locale to find a real date wins, so a
+ *  sentence is never half-read by two parsers. */
+const LOCALES = [chrono.en.casual, chrono.pt.casual, chrono.sv.casual];
+
 const START_CUES = [
 	"start",
 	"starts",
@@ -290,6 +297,19 @@ const START_CUES = [
 	"begins",
 	"beginning",
 	"from",
+	// pt / sv
+	"começa",
+	"comeca",
+	"começo",
+	"comeco",
+	"iniciar",
+	"início",
+	"inicio",
+	"desde",
+	"börjar",
+	"borjar",
+	"från",
+	"fran",
 ];
 const DUE_CUES = [
 	"due",
@@ -304,6 +324,16 @@ const DUE_CUES = [
 	"finish",
 	"finishes",
 	"for",
+	// pt / sv
+	"até",
+	"ate",
+	"prazo",
+	"vence",
+	"entregar",
+	"terminar",
+	"senast",
+	"till",
+	"innan",
 ];
 /** Phrases that mean "this one is work". Deliberately narrow: a bare "work" is a verb as
  *  often as a category ("work on the guitar"), and the type toggle is one tap. */
@@ -312,8 +342,11 @@ const WORK_CUE =
 const PERSONAL_CUE =
 	/(^|\s)(personal|at home|@personal|#personal)(\s|$|[.,;!?])/i;
 /** Left over once the dates and cues come out ("pay rent by the end of" → "pay rent"). */
+// `\b` is ASCII-only in JS, so it doesn't close a word ending in "é" or "å" — the
+// boundaries here are Unicode letter/digit lookarounds instead, or "até" and "på" would
+// never be recognised as the filler they are.
 const TAIL_FILLER =
-	/[\s,.;:—-]*\b(by|due|on|at|in|from|starting|start|starts|begin|begins|until|till|before|the|end|ends|of|for|and|then|to)\b[\s,.;:—-]*$/i;
+	/[\s,.;:—-]*(?<![\p{L}\p{N}])(by|due|on|at|in|from|starting|start|starts|begin|begins|until|till|before|the|end|ends|of|for|and|then|to|até|ate|para|pra|em|na|no|de|do|da|dia|que|senast|innan|på|pa|den|i)(?![\p{L}\p{N}])[\s,.;:—-]*$/iu;
 
 /** A chrono hit that pins down an actual day, rather than a bare clock time ("at 7pm"). */
 function isDateLike(r: chrono.ParsedResult): boolean {
@@ -325,10 +358,23 @@ function isDateLike(r: chrono.ParsedResult): boolean {
 	);
 }
 
+/** Date spans in a line, from the first locale that finds any. A bare clock time is not a
+ *  date and never counts (see isDateLike). */
+function dateHits(text: string, ref: Date): chrono.ParsedResult[] {
+	for (const parser of LOCALES) {
+		const hits = parser
+			.parse(text, ref, { forwardDate: true })
+			.filter(isDateLike);
+		if (hits.length) return hits;
+	}
+	return [];
+}
+
 /** The cue word immediately before a date span, if there is one. */
 function cueBefore(text: string, index: number): "start" | "due" | null {
 	const before = text.slice(Math.max(0, index - 16), index).toLowerCase();
-	const word = before.match(/([a-z]+)[\s,:-]*$/)?.[1];
+	// Unicode-aware: the cue may be "até" or "från", whose last letter [a-z] doesn't match.
+	const word = before.match(/(\p{L}+)[\s,:-]*$/u)?.[1];
 	if (!word) return null;
 	if (START_CUES.includes(word)) return "start";
 	if (DUE_CUES.includes(word)) return "due";
@@ -353,9 +399,7 @@ function trimTail(s: string): string {
  */
 export function parseTaskDraft(text: string, today = plainDate()): TaskDraft {
 	const ref = dateFromIso(today);
-	const hits = chrono.en.casual
-		.parse(text, ref, { forwardDate: true })
-		.filter(isDateLike);
+	const hits = dateHits(text, ref);
 
 	let start: string | null = null;
 	let due: string | null = null;
@@ -430,9 +474,7 @@ export function parseTaskDate(
 	if (["none", "clear", "no", "-", "remove", "off"].includes(lower))
 		return null;
 	if (DATE_RE.test(s)) return s;
-	const hit = chrono.en.casual
-		.parse(s, dateFromIso(today), { forwardDate: true })
-		.find(isDateLike);
+	const hit = dateHits(s, dateFromIso(today))[0];
 	return hit ? plainDate(hit.start.date().getTime()) : undefined;
 }
 

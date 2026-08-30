@@ -413,12 +413,11 @@ export class MenuController {
 	private async promptEntrySize(ctx: any): Promise<void> {
 		await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
 		log.info("menu: prompting for a custom entry size");
+		// No force_reply anywhere in the menu: it points the compose box at the prompt the
+		// instant it arrives, so a message already being typed is sent as the answer.
 		await this.bot.api.sendMessage(
 			config.telegram.allowedUserId,
-			`✂️ How many characters may one journal entry be? 40–4000, or "off" to stop splitting. ${WIZARD_ENTRYSIZE_REF}`,
-			{
-				reply_markup: { force_reply: true, input_field_placeholder: "280" },
-			},
+			`✂️ Reply to this message with how many characters one journal entry may be: 40–4000, or "off" to stop splitting. ${WIZARD_ENTRYSIZE_REF}`,
 		);
 	}
 
@@ -789,32 +788,15 @@ export class MenuController {
 		await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
 		log.info({ kind, gi }, "link wizard: prompting");
 		const word = this.pending?.words[this.pending.i];
-		const prompts: Record<typeof kind, [string, string]> = {
-			sw: [
-				`➕ Which word(s) should never be linked? One per line, or comma-separated. ${WIZARD_STOPWORD_REF}`,
-				"gym, mom",
-			],
-			rg: [
-				`➕ Which word(s) should always link? One per line, or comma-separated — spaces are fine, and I'll ask for each one's note next. ${WIZARD_REGISTER_REF}`,
-				"Priscilla, Path Of Exile",
-			],
-			rgn: [
-				`🔎 Search the vault for the note${word ? ` "${word}" should link to` : ""}. Reply with any part of its title. ${WIZARD_NOTE_REF}`,
-				"part of the title",
-			],
-			rgm: [
-				`✍️ Reply with the exact title of the note${word ? ` "${word}" should link to` : ""} — it doesn't have to exist yet. ${WIZARD_NEWNOTE_REF}`,
-				"Exact note title",
-			],
-			rgw: [
-				`✏️ Reply with the new word for this pair. ${`(${WIZARD_RENAME_REF}:${gi})`}`,
-				"the new word",
-			],
+		const prompts: Record<typeof kind, string> = {
+			sw: `➕ Reply to this message with the word(s) that should never be linked. One per line, or comma-separated. ${WIZARD_STOPWORD_REF}`,
+			rg: `➕ Reply to this message with the word(s) that should always link. One per line, or comma-separated — spaces are fine, and I'll ask for each one's note next. ${WIZARD_REGISTER_REF}`,
+			rgn: `🔎 Search the vault for the note${word ? ` "${word}" should link to` : ""}. Reply to this message with any part of its title. ${WIZARD_NOTE_REF}`,
+			rgm: `✍️ Reply to this message with the exact title of the note${word ? ` "${word}" should link to` : ""} — it doesn't have to exist yet. ${WIZARD_NEWNOTE_REF}`,
+			rgw: `✏️ Reply to this message with the new word for this pair. ${`(${WIZARD_RENAME_REF}:${gi})`}`,
 		};
-		const [text, placeholder] = prompts[kind];
-		await this.bot.api.sendMessage(config.telegram.allowedUserId, text, {
-			reply_markup: { force_reply: true, input_field_placeholder: placeholder },
-		});
+		const text = prompts[kind];
+		await this.bot.api.sendMessage(config.telegram.allowedUserId, text);
 	}
 
 	/** The note picker: search results from the vault index as tappable rows. This is the
@@ -1185,12 +1167,6 @@ export class MenuController {
 		const sent = await this.bot.api.sendMessage(
 			config.telegram.allowedUserId,
 			`✏️ Reply to this message with your edit for ${id} (or "delete" to remove it).`,
-			{
-				reply_markup: {
-					force_reply: true,
-					input_field_placeholder: "your edit…",
-				},
-			},
 		);
 		await deps.repo.mapMessage(sent.message_id, id);
 	}

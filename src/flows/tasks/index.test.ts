@@ -191,8 +191,10 @@ test("✅ refuses a task with no deadline and asks for one", async () => {
 	await h.flow.handleTap(h.ctx as any, ["ok", id]);
 	assert.equal(h.drafts.get(id).status, "pending");
 	assert.match(h.answered.at(-1)!, /needs a due date/);
-	assert.match(h.sent.at(-1)!.text, /When is it due\?.*\(tk:u:/s);
-	assert.equal(h.sent.at(-1)!.markup.force_reply, true);
+	assert.match(h.sent.at(-1)!.text, /with the due date.*\(tk:u:/s);
+	// Not a force_reply: it would aim the compose box at this prompt and swallow whatever
+	// message was already being typed.
+	assert.equal(h.sent.at(-1)!.markup, undefined);
 });
 
 test("a reply to a date prompt is read, and a bad one is refused", async () => {
@@ -230,7 +232,7 @@ test("an answered prompt is taken back out of the chat, an unanswerable one stay
 	// ✅ with no deadline asks for one; that question is the message being replied to.
 	await h.flow.handleTap(h.ctx as any, ["ok", id]);
 	const asked = h.sent.at(-1)!;
-	assert.match(asked.text, /When is it due\?/);
+	assert.match(asked.text, /with the due date/);
 	const promptId = 100; // the harness numbers its messages from 100
 	const reply = (text: string) =>
 		({
@@ -256,7 +258,7 @@ test("settling a card clears the questions still hanging off it", async () => {
 	);
 	const id = draftId(h.drafts);
 	// The suggestion asked for a deadline; dropping the card takes the question with it.
-	assert.match(h.sent.at(-1)!.text, /When is it due\?/);
+	assert.match(h.sent.at(-1)!.text, /with the due date/);
 	await h.flow.handleTap(h.ctx as any, ["x", id]);
 	assert.equal(h.deleted.length, 1);
 	assert.equal(h.drafts.get(id).status, "dismissed");
@@ -279,7 +281,7 @@ test("a suggestion from a jot carries the jot's day and asks for a missing deadl
 		h.sent[0]!.markup.inline_keyboard.flat().at(-1).text,
 		"🚫 Not a task",
 	);
-	assert.match(h.sent[1]!.text, /When is it due\?/);
+	assert.match(h.sent[1]!.text, /with the due date/);
 
 	await h.flow.handleTap(h.ctx as any, ["x", d.id]);
 	assert.equal(h.drafts.get(d.id).status, "dismissed");
