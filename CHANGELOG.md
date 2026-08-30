@@ -1,3 +1,10 @@
+## [1.41.0](https://github.com/khaosdoctor/scriba/compare/v1.40.1...v1.41.0) (2026-08-30)
+
+
+### Features
+
+* **tasks:** take a prompt back out of the chat once it's answered ([bbd28c6](https://github.com/khaosdoctor/scriba/commit/bbd28c66898d9ee8a80628c5340ae871422c4884))
+
 ## [1.40.1](https://github.com/khaosdoctor/scriba/compare/v1.40.0...v1.40.1) (2026-08-29)
 
 
@@ -33,16 +40,4 @@
 ### Features
 
 * **links:** release the enricher-side year linking ([c4d26e6](https://github.com/khaosdoctor/scriba/commit/c4d26e6d37883994b3f39db8495aab5c00dcafc8))
-
-## [1.37.0](https://github.com/khaosdoctor/scriba/compare/v1.36.0...v1.37.0) (2026-08-16)
-
-
-### Features
-
-* **links:** link years to the vault's year notes, and name headings ([c776501](https://github.com/khaosdoctor/scriba/commit/c776501f5f5d7dae4d21abdc314d7ad82571dde4))
-
-
-### Bug Fixes
-
-* **command:** give up on a turn that stops producing anything ([137f070](https://github.com/khaosdoctor/scriba/commit/137f070ebb21d7a5579ec959b07b010ed7ac99d5))
 
