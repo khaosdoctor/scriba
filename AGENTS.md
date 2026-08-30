@@ -178,10 +178,14 @@ deployed on the homelab (Coolify). Single user.
   minutes idle) turns each message into a *draft*, shown on a confirmation card whose
   buttons change the description, either date or the type; only ✅ Create writes the note,
   and it refuses a draft with no deadline and asks for one instead. Those questions are
-  plain messages you reply to — deliberately **not** `force_reply`, which points the compose
-  box at the question the moment it arrives and so sends whatever you were already typing as
-  the answer to something you hadn't read (the same reason the habit value questions, the
-  link wizard, the entry-size prompt and the menu's jot edit dropped it too). Each one is
+  messages you reply to, and **only a question you opened by tapping a button gets a
+  `force_reply`**. That flag points the compose box at the question the moment it arrives,
+  which is fine right after a tap (you can't have been mid-message) and is how a jot gets
+  sent as a date when the question arrived on its own — so a task suggested from a jot, a
+  `/taskadd` line with no timing, and the nightly habit review ask without it, while the
+  card's own buttons, the link wizard, the entry-size prompt and the menu's jot edit keep
+  it. The habit review follows the same rule mid-flow: the question after a Yes/No tap
+  grabs the compose box, the one after a typed answer doesn't. Each one is
   **deleted once its answer lands** — a question is
   scaffolding, not conversation, and the card already shows the answer. One that couldn't
   be read stays put (there would be nothing left to reply to), and settling a card clears

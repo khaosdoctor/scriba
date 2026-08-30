@@ -75,6 +75,11 @@ export class HabitsCommand {
 		date: string,
 		fromIndex: number,
 		header = "",
+		/** True when this question follows a button press: you just tapped, so pointing the
+		 *  compose box at it can't swallow a message you were already writing. A question
+		 *  that arrives on its own (the nightly review, or the next one after a typed
+		 *  answer) never does. */
+		fromTap = false,
 	): Promise<void> {
 		const daily = await this.obsidian.readDailyNote(date);
 		if (!daily) {
@@ -100,11 +105,10 @@ export class HabitsCommand {
 		const lead = header ? `${header}\n\n` : "";
 		if (habit.field) {
 			// Value habit: the reply's text carries the answer; the marker routes it back.
-			// No force_reply: it aims the compose box at this question as soon as it lands,
-			// so a jot you were already typing gets sent as the habit's value instead.
 			await this.bot.api.sendMessage(
 				config.telegram.allowedUserId,
 				`${lead}🌱 ${habit.label}? Reply to this message with a value.\n(hb:${date}:${habit.index})`,
+				fromTap ? { reply_markup: { force_reply: true } } : {},
 			);
 			return;
 		}
@@ -154,7 +158,7 @@ export class HabitsCommand {
 			await ctx.editMessageText(`❌ ${habit.label}`);
 		}
 		await ctx.answerCallbackQuery();
-		await this.ask(date, index + 1);
+		await this.ask(date, index + 1, "", true); // straight off a button press
 	}
 
 	/** Handle a text reply to a value habit's question: fill the field, mark done, advance. */

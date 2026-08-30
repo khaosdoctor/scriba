@@ -211,9 +211,9 @@ test("✅ refuses a task with no deadline and asks for one", async () => {
 	assert.equal(h.drafts.get(id).status, "pending");
 	assert.match(h.answered.at(-1)!, /needs a due date/);
 	assert.match(h.sent.at(-1)!.text, /with the due date.*\(tk:u:/s);
-	// Not a force_reply: it would aim the compose box at this prompt and swallow whatever
-	// message was already being typed.
-	assert.equal(h.sent.at(-1)!.markup, undefined);
+	// Straight off the ✅ button, so the compose box is pointed at it: you just tapped, you
+	// can't have been mid-message.
+	assert.equal(h.sent.at(-1)!.markup.force_reply, true);
 });
 
 test("a reply to a date prompt is read, and a bad one is refused", async () => {
@@ -476,6 +476,34 @@ test("/taskadd with no timing asks for the deadline straight away", async () => 
 	await (h.flow as any).quickAdd(h.ctx, "renew the passport");
 	assert.equal(h.drafts.get(draftId(h.drafts)).due, null);
 	assert.match(h.sent.at(-1)!.text, /with the due date/);
+});
+
+test("a question nobody asked for never grabs the compose box", async () => {
+	// The two unprompted cases: a task spotted in a jot, and a /taskadd line with no timing.
+	// A force_reply here is how a message meant for the journal ends up sent as a date.
+	const h = harness();
+	await h.flow.suggest(
+		{ description: "Call the vet", type: "personal", start: null, due: null },
+		"jot12345",
+		"2026-08-20",
+	);
+	assert.match(h.sent.at(-1)!.text, /with the due date/);
+	assert.equal(h.sent.at(-1)!.markup, undefined);
+
+	const q = harness();
+	q.setExtract(async () => ({
+		description: "Renew the passport",
+		type: "personal",
+	}));
+	await (q.flow as any).quickAdd(q.ctx, "renew the passport");
+	assert.match(q.sent.at(-1)!.text, /with the due date/);
+	assert.equal(q.sent.at(-1)!.markup, undefined);
+
+	// …but the same question opened from the 🏁 button does.
+	const t = harness();
+	await t.flow.handle(t.ctx as any, "buy milk");
+	await t.flow.handleTap(t.ctx as any, ["u", draftId(t.drafts)]);
+	assert.equal(t.sent.at(-1)!.markup.force_reply, true);
 });
 
 test("a task screen closes by taking itself out of the chat", async () => {

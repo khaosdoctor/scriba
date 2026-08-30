@@ -393,10 +393,20 @@ export class TasksFlow {
 			);
 	}
 
-	/** Ask for one field by force-reply; the marker in the prompt routes the answer back. */
+	/**
+	 * Ask for one field; the marker in the prompt routes the answer back.
+	 *
+	 * `fromTap` says the question is the direct result of a button press, and it is the only
+	 * case that gets a force_reply: you just tapped, so you cannot have been halfway through
+	 * typing something else, and pointing the compose box at the question saves you finding
+	 * it. A question that arrives unasked — a suggestion from a jot, a `/taskadd` line with
+	 * no timing — never does, because that is exactly how a message meant for the journal
+	 * gets sent as a date.
+	 */
 	private async promptField(
 		row: TaskDraftRow,
 		field: "d" | "s" | "u",
+		fromTap = false,
 	): Promise<void> {
 		const prompts: Record<typeof field, string> = {
 			d: `✏️ Reply to this message with what the task should say. (tk:d:${row.id})`,
@@ -405,12 +415,12 @@ export class TasksFlow {
 		};
 		const text = prompts[field];
 		log.info({ draft: row.id, field }, "task: prompting for a field");
-		// Deliberately NOT a force_reply: that points the compose box at this message the
-		// moment it arrives, so a message you were already halfway through typing goes out
-		// as the answer to a question you hadn't read yet. Replying by hand is one extra
-		// tap; having your jot swallowed by a date prompt is worse.
 		const msg = await this.bot.api
-			.sendMessage(row.chat_id, text)
+			.sendMessage(
+				row.chat_id,
+				text,
+				fromTap ? { reply_markup: { force_reply: true } } : {},
+			)
 			.catch((err) => {
 				log.warn({ err, draft: row.id, field }, "task: prompt failed to send");
 				return null;
@@ -598,7 +608,7 @@ export class TasksFlow {
 		const row = await this.liveDraft(ctx, id);
 		if (!row) return;
 		await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
-		await this.promptField(row, field);
+		await this.promptField(row, field, true);
 	}
 
 	private async tapToggleType(ctx: any, id?: string): Promise<void> {
@@ -617,7 +627,7 @@ export class TasksFlow {
 		if (!row.due) {
 			log.warn({ draft: row.id }, "task: create refused — no deadline");
 			await ctx.answerCallbackQuery({ text: "it needs a due date first" });
-			return this.promptField(row, "u");
+			return this.promptField(row, "u", true);
 		}
 		// Claim it before writing anything: two fast taps both see a pending draft, and only
 		// the one that wins the compare-and-swap may put a line in the note.

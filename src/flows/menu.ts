@@ -425,11 +425,13 @@ export class MenuController {
 	private async promptEntrySize(ctx: any): Promise<void> {
 		await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
 		log.info("menu: prompting for a custom entry size");
-		// No force_reply anywhere in the menu: it points the compose box at the prompt the
-		// instant it arrives, so a message already being typed is sent as the answer.
+		// Every prompt in the menu is opened by a button press, so the compose box can be
+		// pointed at it safely: you just tapped, you weren't halfway through a jot. Prompts
+		// that arrive unasked (a task suggested from a jot, a habit review) never do this.
 		await this.bot.api.sendMessage(
 			config.telegram.allowedUserId,
 			`✂️ Reply to this message with how many characters one journal entry may be: 40–4000, or "off" to stop splitting. ${WIZARD_ENTRYSIZE_REF}`,
+			{ reply_markup: { force_reply: true } },
 		);
 	}
 
@@ -808,7 +810,9 @@ export class MenuController {
 			rgw: `✏️ Reply to this message with the new word for this pair. ${`(${WIZARD_RENAME_REF}:${gi})`}`,
 		};
 		const text = prompts[kind];
-		await this.bot.api.sendMessage(config.telegram.allowedUserId, text);
+		await this.bot.api.sendMessage(config.telegram.allowedUserId, text, {
+			reply_markup: { force_reply: true }, // opened by a tap — see promptEntrySize
+		});
 	}
 
 	/** The note picker: search results from the vault index as tappable rows. This is the
@@ -1192,6 +1196,7 @@ export class MenuController {
 		const sent = await this.bot.api.sendMessage(
 			config.telegram.allowedUserId,
 			`✏️ Reply to this message with your edit for ${id} (or "delete" to remove it).`,
+			{ reply_markup: { force_reply: true } }, // opened by a tap — see promptEntrySize
 		);
 		await deps.repo.mapMessage(sent.message_id, id);
 	}
