@@ -1,3 +1,10 @@
+## [1.43.1](https://github.com/khaosdoctor/scriba/compare/v1.43.0...v1.43.1) (2026-08-30)
+
+
+### Bug Fixes
+
+* **prompts:** point the compose box at a question only when a button opened it ([939b28c](https://github.com/khaosdoctor/scriba/commit/939b28c2a850885dbb8f98a681c020805441464c))
+
 ## [1.43.0](https://github.com/khaosdoctor/scriba/compare/v1.42.1...v1.43.0) (2026-08-30)
 
 
@@ -30,11 +37,4 @@
 ### Features
 
 * **tasks:** take a prompt back out of the chat once it's answered ([bbd28c6](https://github.com/khaosdoctor/scriba/commit/bbd28c66898d9ee8a80628c5340ae871422c4884))
-
-## [1.40.1](https://github.com/khaosdoctor/scriba/compare/v1.40.0...v1.40.1) (2026-08-29)
-
-
-### Bug Fixes
-
-* **tasks:** keep quiet on a morning with nothing due ([fcfb954](https://github.com/khaosdoctor/scriba/commit/fcfb9541ddc7ffee31ad5e3530add87db26c3d30))
 
