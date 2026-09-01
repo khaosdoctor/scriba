@@ -299,6 +299,30 @@ test("a date is found whatever language the task was typed in", () => {
 	assert.equal(parseTaskDate("imorgon", TODAY), "2026-08-30");
 });
 
+test("anything not plainly work is personal", () => {
+	// The model may only push a task towards work; everything else falls back to what the
+	// text says, which defaults to personal.
+	assert.equal(
+		draftFromDetection(
+			{ description: "Renew the passport", type: "work" },
+			TODAY,
+		).type,
+		"work",
+	);
+	for (const type of ["Work", "WORK", "professional", "", undefined])
+		assert.equal(
+			draftFromDetection({ description: "Renew the passport", type }, TODAY)
+				.type,
+			"personal",
+			`type ${JSON.stringify(type)} should fall back to personal`,
+		);
+	// …unless the text itself says work, in which case the fallback finds it.
+	assert.equal(
+		draftFromDetection({ description: "Fix the deploy for work" }, TODAY).type,
+		"work",
+	);
+});
+
 test("a task with no date at all keeps its whole text", () => {
 	assert.deepEqual(parseTaskDraft("buy milk", TODAY), {
 		description: "buy milk",

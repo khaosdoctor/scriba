@@ -201,7 +201,9 @@ deployed on the homelab (Coolify). Single user.
   stops to ask. The cue and filler word matching uses Unicode lookarounds rather than `\b`,
   which is ASCII-only in JS and so never closes a word ending in "é" or "å". Personal unless the text plainly
   says work (`for work`, `at work`, `@work`), because a bare "work" is a verb as often as a
-  category, and the type button is one tap.
+  category, and the type button is one tap. That default holds for the model-read paths too:
+  `/taskadd` and the jot suggestions may only push a task *towards* work, and anything else
+  they answer — including nothing — lands on what the text itself says.
 - **`/taskadd <line>` is the one-message version**, for when opening a mode is more
   ceremony than the task is worth. The line goes to the enricher rather than the cue-word
   parser (`Enricher.extractTask`): it reads messy phrasing, languages chrono has no rules

@@ -50,6 +50,11 @@ export interface TaskDraft {
 	due: string | null;
 }
 
+/** What a task is unless something plainly says otherwise. A bare "work" is a verb as often
+ *  as a category, and getting it wrong puts the task in the wrong note — so anything that
+ *  isn't clearly work is personal, and the type button is one tap. */
+export const DEFAULT_TASK_TYPE: TaskType = "personal";
+
 export const TYPE_LABEL: Record<TaskType, string> = {
 	work: "🏢 Work",
 	personal: "🏠 Personal",
@@ -454,7 +459,9 @@ export function parseTaskDraft(text: string, today = plainDate()): TaskDraft {
 		description = `${description.slice(0, s)} ${description.slice(e)}`;
 
 	const type: TaskType =
-		WORK_CUE.test(text) && !PERSONAL_CUE.test(text) ? "work" : "personal";
+		WORK_CUE.test(text) && !PERSONAL_CUE.test(text)
+			? "work"
+			: DEFAULT_TASK_TYPE;
 	description = description
 		.replace(WORK_CUE, " ")
 		.replace(PERSONAL_CUE, " ")
@@ -525,7 +532,9 @@ export function draftFromDetection(
 	}
 	return {
 		description: base.description || detected.description.trim(),
-		type: isTaskType(detected.type) ? detected.type : base.type,
+		// The model only gets to say "work" — anything else it comes back with, including
+		// nothing at all, falls to what the text itself says, and that defaults to personal.
+		type: detected.type === "work" ? "work" : base.type,
 		start,
 		due,
 	};
