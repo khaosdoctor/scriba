@@ -1,3 +1,10 @@
+## [1.43.2](https://github.com/khaosdoctor/scriba/compare/v1.43.1...v1.43.2) (2026-09-01)
+
+
+### Bug Fixes
+
+* **tasks:** personal is the default type on the model-read paths too ([030e4df](https://github.com/khaosdoctor/scriba/commit/030e4df029100ccfa85e827b059ab0084245885d))
+
 ## [1.43.1](https://github.com/khaosdoctor/scriba/compare/v1.43.0...v1.43.1) (2026-08-30)
 
 
@@ -30,11 +37,4 @@
 ### Bug Fixes
 
 * **tasks:** read dates in any language you type, and stop hijacking the compose box ([d61e12c](https://github.com/khaosdoctor/scriba/commit/d61e12c109d6dba4342e41b140fa204af5cbfd35))
-
-## [1.41.0](https://github.com/khaosdoctor/scriba/compare/v1.40.1...v1.41.0) (2026-08-30)
-
-
-### Features
-
-* **tasks:** take a prompt back out of the chat once it's answered ([bbd28c6](https://github.com/khaosdoctor/scriba/commit/bbd28c66898d9ee8a80628c5340ae871422c4884))
 
