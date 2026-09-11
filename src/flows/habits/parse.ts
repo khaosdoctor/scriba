@@ -103,3 +103,15 @@ export function parseHabitRef(
 	if (!m) return null;
 	return { date: m[1]!, index: Number(m[2]) };
 }
+
+/** Check if the `habitsReviewed` frontmatter field is set to `true` for this note. */
+export function isHabitsReviewed(note: string): boolean {
+	const m = note.match(/^---\n([\s\S]*?)\n---/);
+	if (!m) return false;
+	return /^habitsReviewed:\s*true\s*$/m.test(m[1]!);
+}
+
+/** A value-habit answer must be a number (integer or decimal). */
+export function isNumericValue(s: string): boolean {
+	return /^-?\d+(\.\d+)?$/.test(s.trim());
+}

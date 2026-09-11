@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { completeHabitLine, parseHabitRef, parseHabits } from "./parse.ts";
+import {
+	completeHabitLine,
+	isHabitsReviewed,
+	isNumericValue,
+	parseHabitRef,
+	parseHabits,
+} from "./parse.ts";
 
 const HABITS_NOTE = [
 	"## Habits",
@@ -63,4 +69,34 @@ test("parseHabitRef extracts the day + index from a question, or null", () => {
 		},
 	);
 	assert.equal(parseHabitRef("just a normal edit reply"), null);
+});
+
+test("isHabitsReviewed detects the frontmatter flag", () => {
+	assert.equal(
+		isHabitsReviewed(
+			"---\nhabitsReviewed: true\ntags: [daily]\n---\n\n## Habits\n",
+		),
+		true,
+	);
+	assert.equal(
+		isHabitsReviewed("---\ntags: [daily]\n---\n\n## Habits\n"),
+		false,
+	);
+	assert.equal(isHabitsReviewed("## Habits\n- [ ] Read\n"), false);
+	assert.equal(isHabitsReviewed("---\nhabitsReviewed: false\n---\n"), false);
+});
+
+test("isNumericValue accepts numbers and rejects text", () => {
+	assert.equal(isNumericValue("42"), true);
+	assert.equal(isNumericValue("3.5"), true);
+	assert.equal(isNumericValue("-1"), true);
+	assert.equal(isNumericValue("0"), true);
+	assert.equal(isNumericValue(" 7 "), true);
+	assert.equal(isNumericValue("abc"), false);
+	assert.equal(isNumericValue("12 pages"), false);
+	assert.equal(isNumericValue(""), false);
+	assert.equal(
+		isNumericValue("Sometimes I think I am just floating in the day"),
+		false,
+	);
 });
