@@ -1,3 +1,10 @@
+## [1.44.0](https://github.com/khaosdoctor/scriba/compare/v1.43.2...v1.44.0) (2026-09-11)
+
+
+### Features
+
+* **habits:** button-driven review flow with numeric validation and double-review guard ([a2cfb65](https://github.com/khaosdoctor/scriba/commit/a2cfb6543ee1dc497bcb4b920576d9e49a7dad2f))
+
 ## [1.43.2](https://github.com/khaosdoctor/scriba/compare/v1.43.1...v1.43.2) (2026-09-01)
 
 
@@ -25,16 +32,4 @@
 ### Bug Fixes
 
 * **tasks:** a task with no start date starts on its deadline ([57c2646](https://github.com/khaosdoctor/scriba/commit/57c2646473d8736875e050652bcff726d9c6f457))
-
-## [1.42.0](https://github.com/khaosdoctor/scriba/compare/v1.41.0...v1.42.0) (2026-08-30)
-
-
-### Features
-
-* **menu:** give every screen a Close button that removes it ([e231174](https://github.com/khaosdoctor/scriba/commit/e231174b1935d15ab72f06a63b2f70baac565f0b))
-
-
-### Bug Fixes
-
-* **tasks:** read dates in any language you type, and stop hijacking the compose box ([d61e12c](https://github.com/khaosdoctor/scriba/commit/d61e12c109d6dba4342e41b140fa204af5cbfd35))
 
