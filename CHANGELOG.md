@@ -1,3 +1,10 @@
+## [1.45.0](https://github.com/khaosdoctor/scriba/compare/v1.44.0...v1.45.0) (2026-09-22)
+
+
+### Features
+
+* **voice:** optional LLM transcript cleanup with user pick ([#11](https://github.com/khaosdoctor/scriba/issues/11)) ([e03e981](https://github.com/khaosdoctor/scriba/commit/e03e981a6ce076daf0474b6d23fc9c1603ba8ebc))
+
 ## [1.44.0](https://github.com/khaosdoctor/scriba/compare/v1.43.2...v1.44.0) (2026-09-11)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * **tasks:** add /taskadd, a task in one message ([9c4cc18](https://github.com/khaosdoctor/scriba/commit/9c4cc1891b6a28c74631dd3ababcb14c8d243d53))
-
-## [1.42.1](https://github.com/khaosdoctor/scriba/compare/v1.42.0...v1.42.1) (2026-08-30)
-
-
-### Bug Fixes
-
-* **tasks:** a task with no start date starts on its deadline ([57c2646](https://github.com/khaosdoctor/scriba/commit/57c2646473d8736875e050652bcff726d9c6f457))
 
