@@ -1,3 +1,10 @@
+## [1.46.1](https://github.com/khaosdoctor/scriba/compare/v1.46.0...v1.46.1) (2026-09-22)
+
+
+### Bug Fixes
+
+* **deps:** patch undici high-severity vulnerabilities ([#13](https://github.com/khaosdoctor/scriba/issues/13)) ([7cab122](https://github.com/khaosdoctor/scriba/commit/7cab12261619c87134196fe17676b44ff6c8f5e7))
+
 ## [1.46.0](https://github.com/khaosdoctor/scriba/compare/v1.45.0...v1.46.0) (2026-09-22)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * **tasks:** personal is the default type on the model-read paths too ([030e4df](https://github.com/khaosdoctor/scriba/commit/030e4df029100ccfa85e827b059ab0084245885d))
-
-## [1.43.1](https://github.com/khaosdoctor/scriba/compare/v1.43.0...v1.43.1) (2026-08-30)
-
-
-### Bug Fixes
-
-* **prompts:** point the compose box at a question only when a button opened it ([939b28c](https://github.com/khaosdoctor/scriba/commit/939b28c2a850885dbb8f98a681c020805441464c))
 
