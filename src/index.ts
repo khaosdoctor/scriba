@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import { ScribaBot } from "./bot.ts";
 import { config } from "./config.ts";
-import { formatDeployNotice } from "./core.ts";
+import {
+	ENRICH_MODEL_KEY,
+	formatDeployNotice,
+	VOICE_FIX_MODEL_KEY,
+} from "./core.ts";
 import { Repository } from "./db.ts";
 import { logger } from "./log.ts";
 import { JotProcessor } from "./runtime/processor.ts";
@@ -45,6 +49,13 @@ async function main(): Promise<void> {
 	const unstuck = await repo.resetProcessing(); // crash recovery: unstick jots claimed by a dead run
 	log.info({ requeued: unstuck }, "crash recovery done");
 
+	// 2b. Seed DB-backed model settings from env vars (first boot only — the DB
+	// value wins from then on, changed at runtime via /menu).
+	if (!(await repo.getSetting(ENRICH_MODEL_KEY)))
+		await repo.setSetting(ENRICH_MODEL_KEY, config.enrich.model);
+	if (!(await repo.getSetting(VOICE_FIX_MODEL_KEY)))
+		await repo.setSetting(VOICE_FIX_MODEL_KEY, config.voiceFix.model);
+
 	// 3. build services
 	const obsidian = new ObsidianClient(config.obsidian);
 	// A /transcriber choice persisted in the DB overrides the TRANSCRIBER env default;
@@ -68,8 +79,9 @@ async function main(): Promise<void> {
 			config.transcription.mode,
 		);
 	}
+	const enrichModel = await repo.getSetting(ENRICH_MODEL_KEY);
 	const enricher = new Enricher(
-		config.enrich.model,
+		enrichModel ?? config.enrich.model,
 		undefined,
 		config.enrich.groqApiKey
 			? { apiKey: config.enrich.groqApiKey, model: config.enrich.fallbackModel }
@@ -77,7 +89,7 @@ async function main(): Promise<void> {
 	);
 	log.info(
 		{
-			model: config.enrich.model,
+			model: enrichModel ?? config.enrich.model,
 			fallback: config.enrich.groqApiKey ? config.enrich.fallbackModel : "none",
 		},
 		config.enrich.groqApiKey
@@ -107,7 +119,6 @@ async function main(): Promise<void> {
 		enricher,
 		links,
 		bot,
-		config.voiceFix.model,
 	);
 	bot.setProcessor(processor);
 	// Warn in Telegram when enrichment switches models (primary unavailable ⇄

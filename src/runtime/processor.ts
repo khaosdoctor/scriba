@@ -18,6 +18,7 @@ import {
 	retryNotice,
 	splitEntry,
 	VOICE_FIX_KEY,
+	VOICE_FIX_MODEL_KEY,
 	voiceFixEnabled,
 } from "../core.ts";
 import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
@@ -91,7 +92,6 @@ export class JotProcessor {
 		private enricher: Enricher,
 		private links: LinkIndex,
 		private bot: BotServices,
-		private voiceFixModel?: string,
 	) {}
 
 	async processBatch(ids: string[]): Promise<void> {
@@ -156,10 +156,11 @@ export class JotProcessor {
 			}
 			// Voice fix: when enabled, ask a stronger model to lightly clean the transcript
 			// and let the user pick between original and proposed before enrichment proceeds.
+			const vfModel = await this.repo.getSetting(VOICE_FIX_MODEL_KEY);
 			if (
 				jot.kind === "audio" &&
 				jot.transcript?.trim() &&
-				this.voiceFixModel &&
+				vfModel &&
 				voiceFixEnabled(await this.repo.getSetting(VOICE_FIX_KEY))
 			) {
 				const original = jot.transcript.trim();
@@ -167,10 +168,7 @@ export class JotProcessor {
 					id,
 					`🎤 <i>${escapeHtml(original)}</i>\n\n🔧 Checking transcript…`,
 				);
-				const proposed = await this.enricher.fixTranscript(
-					original,
-					this.voiceFixModel,
-				);
+				const proposed = await this.enricher.fixTranscript(original, vfModel);
 				await this.repo.updateJot(id, { proposed_text: proposed });
 				// Only ask when there's an actual difference.
 				if (proposed !== original) {
