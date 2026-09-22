@@ -1,3 +1,10 @@
+## [1.46.0](https://github.com/khaosdoctor/scriba/compare/v1.45.0...v1.46.0) (2026-09-22)
+
+
+### Features
+
+* **menu:** DB-backed model settings with menu pickers + bump agent SDK ([#12](https://github.com/khaosdoctor/scriba/issues/12)) ([b7a59d2](https://github.com/khaosdoctor/scriba/commit/b7a59d2893f31268959b33b3b72e8d663032b802))
+
 ## [1.45.0](https://github.com/khaosdoctor/scriba/compare/v1.44.0...v1.45.0) (2026-09-22)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * **prompts:** point the compose box at a question only when a button opened it ([939b28c](https://github.com/khaosdoctor/scriba/commit/939b28c2a850885dbb8f98a681c020805441464c))
-
-## [1.43.0](https://github.com/khaosdoctor/scriba/compare/v1.42.1...v1.43.0) (2026-08-30)
-
-
-### Features
-
-* **tasks:** add /taskadd, a task in one message ([9c4cc18](https://github.com/khaosdoctor/scriba/commit/9c4cc1891b6a28c74631dd3ababcb14c8d243d53))
 
