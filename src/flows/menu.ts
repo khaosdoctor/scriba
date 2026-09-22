@@ -4,6 +4,7 @@ import { config } from "../config.ts";
 import {
 	cleanNoteTitle,
 	distinctSurfaces,
+	ENRICH_MODEL_KEY,
 	ENTRY_MAX_CHARS_KEY,
 	entryMaxChars,
 	fitTelegram,
@@ -16,13 +17,16 @@ import {
 	previewList,
 	STATUS_ICON,
 	VOICE_FIX_KEY,
+	VOICE_FIX_MODEL_KEY,
 	voiceFixEnabled,
+	WIZARD_ENRICH_MODEL_REF,
 	WIZARD_ENTRYSIZE_REF,
 	WIZARD_NEWNOTE_REF,
 	WIZARD_NOTE_REF,
 	WIZARD_REGISTER_REF,
 	WIZARD_RENAME_REF,
 	WIZARD_STOPWORD_REF,
+	WIZARD_VOICEFIX_MODEL_REF,
 } from "../core.ts";
 import type { Jot } from "../db.ts";
 import { logger } from "../log.ts";
@@ -33,6 +37,12 @@ import type { ReprocessCommand } from "./reprocess.ts";
 import type { TasksFlow } from "./tasks/index.ts";
 
 const log = logger("menu");
+
+const MODEL_PRESETS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"];
+
+function shortModel(m: string): string {
+	return m.replace("claude-", "").replace("-4-5", " 4.5").replace("-5", " 5");
+}
 
 /** The interactive /menu control panel — a callback-driven entry point layered over the
  *  slash commands, not a replacement. Every leaf reuses an existing command (via runCmd)
@@ -142,10 +152,11 @@ export class MenuController {
 	}
 
 	private async rootMenu(): Promise<InlineKeyboard> {
+		const repo = this.getDeps().repo;
 		const size = await this.entrySize();
-		const vfOn = voiceFixEnabled(
-			await this.getDeps().repo.getSetting(VOICE_FIX_KEY),
-		);
+		const vfOn = voiceFixEnabled(await repo.getSetting(VOICE_FIX_KEY));
+		const enrichModel = (await repo.getSetting(ENRICH_MODEL_KEY)) ?? "?";
+		const vfModel = (await repo.getSetting(VOICE_FIX_MODEL_KEY)) ?? "?";
 		return new InlineKeyboard()
 			.text("📊 Rate today", "menu:rate")
 			.text("🌱 Review habits", "menu:habits")
@@ -167,6 +178,9 @@ export class MenuController {
 			.text(`✂️ Entry size: ${size ? `${size} chars` : "off"}`, "menu:esz")
 			.row()
 			.text(`🔧 Voice fix: ${vfOn ? "on" : "off"}`, "menu:vfix")
+			.row()
+			.text(`🧠 Enrich: ${shortModel(enrichModel)}`, "menu:em")
+			.text(`🎤 VF model: ${shortModel(vfModel)}`, "menu:vfm")
 			.row()
 			.text("🔗 Link rules", "menu:links")
 			.text("🛠 Maintenance", "menu:maint")
@@ -270,6 +284,20 @@ export class MenuController {
 				return this.entrySizeMenu(ctx);
 			case "vfix":
 				return this.menuToggleVoiceFix(ctx);
+			case "em":
+				await ctx.answerCallbackQuery();
+				return this.modelPickerMenu(ctx, "enrich");
+			case "vfm":
+				await ctx.answerCallbackQuery();
+				return this.modelPickerMenu(ctx, "voiceFix");
+			case "ems":
+				return this.setModel(ctx, "enrich", arg);
+			case "vfs":
+				return this.setModel(ctx, "voiceFix", arg);
+			case "emc":
+				return this.promptModel(ctx, "enrich");
+			case "vfc":
+				return this.promptModel(ctx, "voiceFix");
 			case "ess":
 				return this.setEntrySize(ctx, arg);
 			case "esc":
@@ -396,6 +424,67 @@ export class MenuController {
 		await ctx.editMessageText("🗂 scriba control menu", {
 			reply_markup: await this.rootMenu(),
 		});
+	}
+
+	// --- model pickers ---
+
+	private async modelPickerMenu(
+		ctx: any,
+		which: "enrich" | "voiceFix",
+	): Promise<void> {
+		const key = which === "enrich" ? ENRICH_MODEL_KEY : VOICE_FIX_MODEL_KEY;
+		const cbPrefix = which === "enrich" ? "ems" : "vfs";
+		const customCb = which === "enrich" ? "emc" : "vfc";
+		const label =
+			which === "enrich" ? "🧠 Enrichment model" : "🎤 Voice fix model";
+		const current = await this.getDeps().repo.getSetting(key);
+		log.info({ which, current }, "menu: model picker");
+		const kb = new InlineKeyboard();
+		for (const m of MODEL_PRESETS) {
+			kb.text(
+				`${m === current ? "✅ " : ""}${shortModel(m)}`,
+				`menu:${cbPrefix}:${m}`,
+			).row();
+		}
+		kb.text("✍️ Type a model", `menu:${customCb}`).row();
+		kb.text("‹ Back", "menu:root");
+		await ctx.editMessageText(`${label}\n\nCurrent: ${current ?? "not set"}`, {
+			reply_markup: this.withClose(kb),
+		});
+	}
+
+	private async setModel(
+		ctx: any,
+		which: "enrich" | "voiceFix",
+		model?: string,
+	): Promise<void> {
+		if (!model?.trim()) {
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		const key = which === "enrich" ? ENRICH_MODEL_KEY : VOICE_FIX_MODEL_KEY;
+		const label = which === "enrich" ? "enrichment" : "voice fix";
+		const { repo, enricher } = this.getDeps();
+		await repo.setSetting(key, model);
+		if (which === "enrich") enricher.setModel(model);
+		log.info({ which, model }, "menu: model changed");
+		await ctx.answerCallbackQuery({ text: `${label}: ${shortModel(model)}` });
+		return this.modelPickerMenu(ctx, which);
+	}
+
+	private async promptModel(
+		ctx: any,
+		which: "enrich" | "voiceFix",
+	): Promise<void> {
+		await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
+		const label = which === "enrich" ? "enrichment" : "voice fix";
+		const ref =
+			which === "enrich" ? WIZARD_ENRICH_MODEL_REF : WIZARD_VOICEFIX_MODEL_REF;
+		log.info({ which }, "menu: prompting for a custom model");
+		await this.bot.api.sendMessage(
+			config.telegram.allowedUserId,
+			`🧠 Reply with the model ID for ${label} (e.g. claude-sonnet-5): ${ref}`,
+			{ reply_markup: { force_reply: true } },
+		);
 	}
 
 	// --- entry size ---
@@ -1087,6 +1176,28 @@ export class MenuController {
 						? `✂️ entries split above ${size} characters`
 						: "✂️ splitting off — entries stay on one line",
 					new InlineKeyboard().text("✂️ Entry size", "menu:esz"),
+				);
+			}
+			case "em":
+			case "vfm": {
+				const model = body.trim();
+				if (!model) {
+					log.warn({ body }, "menu: empty model reply");
+					return void ctx.reply("Send a model ID (e.g. claude-sonnet-5).");
+				}
+				const which = p.kind === "em" ? "enrich" : "voiceFix";
+				const key = which === "enrich" ? ENRICH_MODEL_KEY : VOICE_FIX_MODEL_KEY;
+				const label = which === "enrich" ? "enrichment" : "voice fix";
+				await repo.setSetting(key, model);
+				if (which === "enrich") this.getDeps().enricher.setModel(model);
+				log.info({ which, model }, "menu: model changed via text");
+				return this.replyMenu(
+					ctx,
+					`🧠 ${label} model: ${model}`,
+					new InlineKeyboard().text(
+						which === "enrich" ? "🧠 Enrich model" : "🎤 VF model",
+						which === "enrich" ? "menu:em" : "menu:vfm",
+					),
 				);
 			}
 			default:

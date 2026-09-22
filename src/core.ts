@@ -300,6 +300,11 @@ export const ENTRY_MAX_CHARS_KEY = "entryMaxChars";
  *  Unset or anything other than "on" means off: the feature is opt-in. */
 export const VOICE_FIX_KEY = "fixVoiceTranscript";
 
+/** `settings` keys for runtime model overrides. Env vars seed the DB at boot;
+ *  the DB value wins from then on. Changed from /menu. */
+export const ENRICH_MODEL_KEY = "enrichModel";
+export const VOICE_FIX_MODEL_KEY = "voiceFixModel";
+
 export function voiceFixEnabled(raw: string | undefined): boolean {
 	return raw === "on";
 }
@@ -952,6 +957,8 @@ export const WIZARD_RENAME_REF = "lw:rgw";
 /** Marker in the "type an entry size" prompt — the same force-reply trick, for the one
  *  setting whose value is a free number rather than one of a handful of presets. */
 export const WIZARD_ENTRYSIZE_REF = "(es:n)";
+export const WIZARD_ENRICH_MODEL_REF = "(md:em)";
+export const WIZARD_VOICEFIX_MODEL_REF = "(md:vfm)";
 
 /** Which wizard prompt a reply is answering, if any. */
 export type WizardPrompt =
@@ -960,10 +967,14 @@ export type WizardPrompt =
 	| { kind: "rgn" }
 	| { kind: "rgm" }
 	| { kind: "rgw"; index: number }
-	| { kind: "es" };
+	| { kind: "es" }
+	| { kind: "em" }
+	| { kind: "vfm" };
 
 export function parseWizardRef(text: string): WizardPrompt | null {
 	if (text.includes(WIZARD_ENTRYSIZE_REF)) return { kind: "es" };
+	if (text.includes(WIZARD_ENRICH_MODEL_REF)) return { kind: "em" };
+	if (text.includes(WIZARD_VOICEFIX_MODEL_REF)) return { kind: "vfm" };
 	// `rgn`/`rgw`/`rgm` before `rg` — alternation is first-match, and `rg` prefixes them all.
 	const m = text.match(/\(lw:(sw|rgn|rgw|rgm|rg)(?::(\d+))?\)/);
 	if (!m) return null;

@@ -178,6 +178,7 @@ export class ScribaBot implements BotServices {
 			repo: this.repo,
 			queue: this.queue,
 			processor: this.processor,
+			enricher: this.enricher,
 			transcriber: this.transcriber,
 			links: this.links,
 			github: this.github,

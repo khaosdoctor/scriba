@@ -207,6 +207,12 @@ export class Enricher {
 		private groqChatFn: GroqChatFn = groqChat,
 	) {}
 
+	/** Change the primary enrichment model at runtime (called when the user picks a
+	 *  new model from /menu). The next enrichment call uses the new value. */
+	setModel(model: string): void {
+		this.model = model;
+	}
+
 	/** Late-wired (bot exists after the enricher): called on each model switch so the
 	 *  bot can warn the user in Telegram. Failures here never break enrichment. */
 	setSwitchNotifier(
