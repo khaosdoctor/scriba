@@ -17,14 +17,15 @@ RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev --no-audit --no-fund
 # Strip runtime-dead weight before it ever hits a layer:
 #  - better-sqlite3 ships 24M of C source + build intermediates; only the compiled .node is
 #    needed at runtime.
-#  - the agent SDK bundles ripgrep for 5 platforms, but scriba runs it with allowedTools:[]
-#    (tools never spawn), so keep only the one platform this image runs on.
+#  - older agent SDK versions bundle ripgrep for 5 platforms; prune to x64-linux if present.
 RUN cd node_modules/better-sqlite3 \
  && rm -rf deps src build/Release/obj build/Release/obj.target build/Release/.deps \
            build/Release/sqlite3.a build/Release/test_extension.node \
  && cd /app \
- && find node_modules/@anthropic-ai/claude-agent-sdk/vendor/ripgrep -mindepth 1 -maxdepth 1 \
-         -type d ! -name x64-linux -exec rm -rf {} +
+ && if [ -d node_modules/@anthropic-ai/claude-agent-sdk/vendor/ripgrep ]; then \
+      find node_modules/@anthropic-ai/claude-agent-sdk/vendor/ripgrep -mindepth 1 -maxdepth 1 \
+           -type d ! -name x64-linux -exec rm -rf {} +; \
+    fi
 
 # Same pin as the builder — the addon is compiled there and must run against this exact Node.
 FROM node:24.18.1-alpine
