@@ -1,3 +1,10 @@
+## [1.46.2](https://github.com/khaosdoctor/scriba/compare/v1.46.1...v1.46.2) (2026-09-22)
+
+
+### Bug Fixes
+
+* **docker:** guard ripgrep prune for SDK versions without vendored binaries ([#15](https://github.com/khaosdoctor/scriba/issues/15)) ([567c208](https://github.com/khaosdoctor/scriba/commit/567c20852e824f98843d06519fc9e5cafa530095))
+
 ## [1.46.1](https://github.com/khaosdoctor/scriba/compare/v1.46.0...v1.46.1) (2026-09-22)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * **habits:** button-driven review flow with numeric validation and double-review guard ([a2cfb65](https://github.com/khaosdoctor/scriba/commit/a2cfb6543ee1dc497bcb4b920576d9e49a7dad2f))
-
-## [1.43.2](https://github.com/khaosdoctor/scriba/compare/v1.43.1...v1.43.2) (2026-09-01)
-
-
-### Bug Fixes
-
-* **tasks:** personal is the default type on the model-read paths too ([030e4df](https://github.com/khaosdoctor/scriba/commit/030e4df029100ccfa85e827b059ab0084245885d))
 
