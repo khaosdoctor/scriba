@@ -16,6 +16,7 @@ const jot = (over: Partial<Jot> = {}): Jot =>
 		attempts: 0,
 		raw_text: "a thought",
 		transcript: null,
+		proposed_text: null,
 		asset_path: null,
 		file_id: null,
 		note_path: "notes/daily notes/2026-08-16.md",

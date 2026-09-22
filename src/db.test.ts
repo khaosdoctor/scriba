@@ -16,6 +16,7 @@ function sampleJot(id: string): Jot {
 		time: "10:00:00",
 		raw_text: "hi",
 		transcript: null,
+		proposed_text: null,
 		asset_path: null,
 		file_id: null,
 		status: "pending",

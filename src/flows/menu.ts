@@ -15,6 +15,8 @@ import {
 	parseWizardRef,
 	previewList,
 	STATUS_ICON,
+	VOICE_FIX_KEY,
+	voiceFixEnabled,
 	WIZARD_ENTRYSIZE_REF,
 	WIZARD_NEWNOTE_REF,
 	WIZARD_NOTE_REF,
@@ -141,6 +143,9 @@ export class MenuController {
 
 	private async rootMenu(): Promise<InlineKeyboard> {
 		const size = await this.entrySize();
+		const vfOn = voiceFixEnabled(
+			await this.getDeps().repo.getSetting(VOICE_FIX_KEY),
+		);
 		return new InlineKeyboard()
 			.text("📊 Rate today", "menu:rate")
 			.text("🌱 Review habits", "menu:habits")
@@ -160,6 +165,8 @@ export class MenuController {
 			.text(`🎙 Transcriber: ${this.getDeps().transcriber.mode}`, "menu:tx")
 			.row()
 			.text(`✂️ Entry size: ${size ? `${size} chars` : "off"}`, "menu:esz")
+			.row()
+			.text(`🔧 Voice fix: ${vfOn ? "on" : "off"}`, "menu:vfix")
 			.row()
 			.text("🔗 Link rules", "menu:links")
 			.text("🛠 Maintenance", "menu:maint")
@@ -261,6 +268,8 @@ export class MenuController {
 			case "esz":
 				await ctx.answerCallbackQuery();
 				return this.entrySizeMenu(ctx);
+			case "vfix":
+				return this.menuToggleVoiceFix(ctx);
 			case "ess":
 				return this.setEntrySize(ctx, arg);
 			case "esc":
@@ -372,6 +381,18 @@ export class MenuController {
 		log.info({ next }, "menu: toggling transcriber");
 		const out = await this.runCmd(ctx, "transcriber", next);
 		await ctx.answerCallbackQuery({ text: out.slice(0, 200) });
+		await ctx.editMessageText("🗂 scriba control menu", {
+			reply_markup: await this.rootMenu(),
+		});
+	}
+
+	private async menuToggleVoiceFix(ctx: any): Promise<void> {
+		const repo = this.getDeps().repo;
+		const on = voiceFixEnabled(await repo.getSetting(VOICE_FIX_KEY));
+		const next = on ? "off" : "on";
+		await repo.setSetting(VOICE_FIX_KEY, next);
+		log.info({ next }, "menu: voice fix toggled");
+		await ctx.answerCallbackQuery({ text: `Voice fix ${next}` });
 		await ctx.editMessageText("🗂 scriba control menu", {
 			reply_markup: await this.rootMenu(),
 		});

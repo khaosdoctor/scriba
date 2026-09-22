@@ -84,6 +84,14 @@ const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules
 Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}], "tasks": [{"description":"...","due":"...","type":"personal"}]}
 Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
 
+const VOICE_FIX_SYSTEM = `You lightly clean up a voice-to-text transcript for a personal journal. Rules:
+- Fix obvious transcription errors, filler words (um, uh, like, you know), false starts, and repeated words.
+- Correct grammar and punctuation so it reads as natural written text.
+- KEEP the speaker's own words, vocabulary, and meaning. Do not paraphrase, summarise, or rewrite.
+- Do not add information, context, or commentary. Do not change the tone or voice.
+- If the transcript is already clean, return it unchanged.
+- Return ONLY the cleaned text, nothing else — no preamble, no explanation.`;
+
 const TASK_SYSTEM = `You turn one line of text into a task for a personal task list. Rules:
 - "description": what has to be done, in English, as a short instruction. Keep the author's own specifics — names, links, numbers, [[wikilinks]] — verbatim. Leave the timing words out of it.
 - "due" is the deadline and "start" is when work on it begins. Copy each one VERBATIM from the line, exactly as the author phrased the timing ("next friday", "amanhã", "by the 15th", "på fredag"). Do NOT convert them to a date and do NOT calculate anything: you are not told what today is. Omit a field entirely when the line says nothing about it — never invent one.
@@ -389,6 +397,32 @@ export class Enricher {
 		}
 	}
 
+	/**
+	 * Lightly fix a voice transcript: remove filler words, fix false starts and garbled
+	 * phrases, correct grammar — but keep the speaker's own words and meaning. Returns
+	 * the cleaned text, or the original unchanged when the model has nothing to fix.
+	 */
+	async fixTranscript(text: string, model: string): Promise<string> {
+		const prompt = `Voice transcript to clean up:\n"""${fence(text)}"""\n\nReturn ONLY the cleaned text, nothing else.`;
+		log.info({ chars: text.length, model }, "fixTranscript: calling agent");
+		const { text: fixed } = await this.run(
+			prompt,
+			VOICE_FIX_SYSTEM,
+			[
+				{ role: "system", content: VOICE_FIX_SYSTEM },
+				{ role: "user", content: prompt },
+			],
+			undefined,
+			model,
+		);
+		const result = fixed.trim() || text;
+		log.info(
+			{ originalChars: text.length, fixedChars: result.length },
+			"fixTranscript: done",
+		);
+		return result;
+	}
+
 	/** Apply a freeform edit instruction to an existing journal line's text. */
 	async editText(current: string, instruction: string): Promise<string> {
 		const prompt = `Current journal text:\n"""${fence(current)}"""\n\nEdit instruction: ${fence(instruction)}\n\nReturn ONLY the edited text, nothing else. Preserve voice and any [[wikilinks]] unless the edit changes them.`;
@@ -408,6 +442,7 @@ export class Enricher {
 		systemPrompt?: string,
 		groqMessages?: GroqMessage[],
 		outputFormat?: OutputFormat,
+		modelOverride?: string,
 	): Promise<{
 		text: string;
 		usage: { input: number; output: number };
@@ -417,13 +452,14 @@ export class Enricher {
 			let text = "";
 			let structuredOutput: unknown;
 			const usage = { input: 0, output: 0 };
+			const effectiveModel = modelOverride ?? this.model;
 			const stream = this.query({
 				prompt: prompt as any,
 				options: {
 					maxTurns: 1,
 					allowedTools: [],
 					...(systemPrompt ? { systemPrompt } : {}),
-					...(this.model ? { model: this.model } : {}),
+					...(effectiveModel ? { model: effectiveModel } : {}),
 					...(outputFormat ? { outputFormat } : {}),
 				},
 			});

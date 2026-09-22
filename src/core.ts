@@ -296,6 +296,14 @@ export const DEFAULT_ENTRY_MAX_CHARS = 280;
 /** `settings` key holding the entry-size cap (set from /menu, survives a restart). */
 export const ENTRY_MAX_CHARS_KEY = "entryMaxChars";
 
+/** `settings` key for the voice-fix feature (set from /menu, survives a restart).
+ *  Unset or anything other than "on" means off: the feature is opt-in. */
+export const VOICE_FIX_KEY = "fixVoiceTranscript";
+
+export function voiceFixEnabled(raw: string | undefined): boolean {
+	return raw === "on";
+}
+
 /** The `entryMaxChars` setting as a number: 0 disables splitting, anything unusable (unset,
  *  blank, not a whole number) falls back to the default. */
 export function entryMaxChars(raw: string | undefined): number {

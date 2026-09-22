@@ -10,6 +10,7 @@ import {
 	distinctSurfaces,
 	editConfirmation,
 	entitiesToMarkdown,
+	escapeHtml,
 	fitTelegram,
 	isBlank,
 	isEditableJot,
@@ -112,6 +113,12 @@ export class ScribaBot implements BotServices {
 	// ponytail: in-memory. On restart the map is empty and status() just posts a fresh
 	// message; nothing is lost. Persist it only if that ever proves annoying.
 	private statusMsgs = new Map<string, number>();
+	// Voice-fix choice: jotId -> resolve callback. The processor awaits this promise while
+	// the user picks between original and proposed transcript.
+	private voiceFixPending = new Map<
+		string,
+		(choice: "original" | "proposed") => void
+	>();
 
 	constructor(
 		private repo: Repository,
@@ -289,6 +296,48 @@ export class ScribaBot implements BotServices {
 		jotDate: string,
 	): Promise<void> {
 		await this.tasks.suggest(draft, jotId, jotDate);
+	}
+
+	/** Show both transcript versions and wait for the user to pick one. Returns
+	 *  'original' or 'proposed'. Times out to 'original' after 5 minutes. */
+	async awaitVoiceFix(
+		jotId: string,
+		original: string,
+		proposed: string,
+	): Promise<"original" | "proposed"> {
+		const kb = new InlineKeyboard()
+			.text("📝 Use original", `vf:o:${jotId}`)
+			.text("✨ Use fixed", `vf:p:${jotId}`);
+		const html = [
+			"<b>Original transcript:</b>",
+			`<i>${escapeHtml(original)}</i>`,
+			"",
+			"<b>Proposed fix:</b>",
+			`<i>${escapeHtml(proposed)}</i>`,
+		].join("\n");
+		await this.status(jotId, html, undefined as any);
+		// Replace the keyboard on the status message (status() with no opts clears it,
+		// so we edit again with the choice buttons).
+		const chat = config.telegram.allowedUserId;
+		const msgId = this.statusMsgs.get(jotId);
+		if (msgId) {
+			await this.bot.api
+				.editMessageReplyMarkup(chat, msgId, { reply_markup: kb })
+				.catch(() => {});
+		}
+		return new Promise<"original" | "proposed">((resolve) => {
+			this.voiceFixPending.set(jotId, resolve);
+			// 5-minute timeout: fall back to original so processing never stalls.
+			setTimeout(
+				() => {
+					if (this.voiceFixPending.delete(jotId)) {
+						log.info({ jotId }, "voice fix: timed out, using original");
+						resolve("original");
+					}
+				},
+				5 * 60 * 1000,
+			);
+		});
 	}
 
 	/** Create-or-edit the one live status message for a jot. First call sends it and
@@ -689,6 +738,7 @@ export class ScribaBot implements BotServices {
 			time,
 			raw_text: src.rawText ?? null,
 			transcript: null,
+			proposed_text: null,
 			asset_path: null,
 			file_id: src.fileId ?? null,
 			status: "pending",
@@ -931,6 +981,7 @@ export class ScribaBot implements BotServices {
 		const [ns, ...rest] = String(ctx.callbackQuery.data).split(":");
 		log.debug({ data: ctx.callbackQuery.data }, "button pressed");
 		if (ns === "menu") return this.menu.handleCallback(ctx, rest);
+		if (ns === "vf") return this.handleVoiceFix(ctx, rest[0], rest[1]);
 		if (ns === "rt") return this.handleRetry(ctx, rest[0]);
 		if (ns === "un") return this.handleRemove(ctx, rest[0], "undo");
 		if (ns === "dl") return this.handleRemove(ctx, rest[0], "discard");
@@ -992,6 +1043,30 @@ export class ScribaBot implements BotServices {
 		this.queue.add(jotId);
 		await ctx.answerCallbackQuery({ text: "retrying" });
 		await ctx.editMessageText("🔄 retrying…");
+	}
+
+	/** Voice-fix button: `vf:o:<jotId>` picks original, `vf:p:<jotId>` picks proposed. */
+	private async handleVoiceFix(
+		ctx: any,
+		verdict?: string,
+		jotId?: string,
+	): Promise<void> {
+		if (!jotId || !verdict) return void ctx.answerCallbackQuery();
+		const resolve = this.voiceFixPending.get(jotId);
+		if (!resolve) {
+			log.warn(
+				{ jotId },
+				"voice fix: no pending choice (timed out or duplicate)",
+			);
+			return void ctx.answerCallbackQuery({ text: "expired" });
+		}
+		this.voiceFixPending.delete(jotId);
+		const choice = verdict === "p" ? "proposed" : "original";
+		log.info({ jotId, choice }, "voice fix: user picked");
+		await ctx.answerCallbackQuery({
+			text: choice === "proposed" ? "using fixed version" : "keeping original",
+		});
+		resolve(choice);
 	}
 
 	/** Interactive /unreject. `ur:s:<si>` shows the notes rejected for surface `si`;
