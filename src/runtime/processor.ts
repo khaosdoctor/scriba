@@ -17,6 +17,8 @@ import {
 	replaceAnchorLine,
 	retryNotice,
 	splitEntry,
+	VOICE_FIX_KEY,
+	voiceFixEnabled,
 } from "../core.ts";
 import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
 import {
@@ -65,6 +67,11 @@ export interface BotServices {
 	// Propose a task the enricher spotted in a jot — the same confirmation card task mode
 	// uses, so a suggestion is edited and created exactly like one typed by hand.
 	askTask: (draft: TaskDraft, jotId: string, jotDate: string) => Promise<void>;
+	awaitVoiceFix: (
+		jotId: string,
+		original: string,
+		proposed: string,
+	) => Promise<"original" | "proposed">;
 	downloadFile: (fileId: string) => Promise<DownloadedFile>;
 	onJotDone: (jotId: string) => Promise<void>; // apply edits queued while processing
 	react: (
@@ -84,6 +91,7 @@ export class JotProcessor {
 		private enricher: Enricher,
 		private links: LinkIndex,
 		private bot: BotServices,
+		private voiceFixModel?: string,
 	) {}
 
 	async processBatch(ids: string[]): Promise<void> {
@@ -138,12 +146,45 @@ export class JotProcessor {
 		await this.bot.typing(); // best-effort "typing…" so the user sees work is underway
 		await this.bot.status(id, STARTING[loaded.kind]); // live status message, edited in place from here on
 		try {
-			const jot = await this.ensureMedia(loaded);
+			let jot = await this.ensureMedia(loaded);
 			// Voice notes: show the transcript the moment it exists, then the enriching step.
 			if (jot.kind === "audio" && jot.transcript?.trim()) {
 				await this.bot.status(
 					id,
 					`🎤 <i>${escapeHtml(jot.transcript.trim())}</i>\n\n✨ Weaving it into your journal…`,
+				);
+			}
+			// Voice fix: when enabled, ask a stronger model to lightly clean the transcript
+			// and let the user pick between original and proposed before enrichment proceeds.
+			if (
+				jot.kind === "audio" &&
+				jot.transcript?.trim() &&
+				this.voiceFixModel &&
+				voiceFixEnabled(await this.repo.getSetting(VOICE_FIX_KEY))
+			) {
+				const original = jot.transcript.trim();
+				await this.bot.status(
+					id,
+					`🎤 <i>${escapeHtml(original)}</i>\n\n🔧 Checking transcript…`,
+				);
+				const proposed = await this.enricher.fixTranscript(
+					original,
+					this.voiceFixModel,
+				);
+				await this.repo.updateJot(id, { proposed_text: proposed });
+				// Only ask when there's an actual difference.
+				if (proposed !== original) {
+					const choice = await this.bot.awaitVoiceFix(id, original, proposed);
+					const winner = choice === "proposed" ? proposed : original;
+					jot = { ...jot, transcript: winner };
+					await this.repo.updateJot(id, { transcript: winner });
+					log.info({ id, choice }, `voice fix: user picked ${choice}`);
+				} else {
+					log.info({ id }, "voice fix: no change proposed");
+				}
+				await this.bot.status(
+					id,
+					`🎤 <i>${escapeHtml(jot.transcript!.trim())}</i>\n\n✨ Weaving it into your journal…`,
 				);
 			}
 			// Fold in any squashed followers (jots sharing this leader's anchor): transcribe
@@ -536,6 +577,7 @@ export class JotProcessor {
 			kind: "text",
 			raw_text: text,
 			transcript: null,
+			proposed_text: null,
 			asset_path: null, // the media stays on the parent's line, embedded once
 			file_id: null,
 			status: "done",

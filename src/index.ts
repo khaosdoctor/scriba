@@ -107,6 +107,7 @@ async function main(): Promise<void> {
 		enricher,
 		links,
 		bot,
+		config.voiceFix.model,
 	);
 	bot.setProcessor(processor);
 	// Warn in Telegram when enrichment switches models (primary unavailable ⇄

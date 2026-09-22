@@ -81,6 +81,10 @@ const envSchema = z
 		AGENT_MODEL: z.string().default("claude-haiku-4-5"),
 		ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
 
+		// Voice-fix: when enabled, a second model lightly cleans the transcript before
+		// enrichment. Sonnet by default — haiku paraphrases too aggressively.
+		VOICE_FIX_MODEL: z.string().default("claude-sonnet-5"),
+
 		// /command runs an agent over the vault: research, judgement about an existing note's
 		// shape, and writing that has to read like the owner. Haiku is the wrong tool for
 		// that, so command mode gets its own (stronger) model.
@@ -145,6 +149,9 @@ export const config = {
 		fallbackModel: env.ENRICH_FALLBACK_MODEL,
 		// Reuses the transcription Groq key; empty ⇒ fallback disabled.
 		groqApiKey: env.GROQ_API_KEY ?? "",
+	},
+	voiceFix: {
+		model: env.VOICE_FIX_MODEL,
 	},
 	command: {
 		model: env.COMMAND_MODEL,

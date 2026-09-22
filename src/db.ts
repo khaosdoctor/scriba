@@ -62,6 +62,7 @@ export interface Jot {
 	time: string;
 	raw_text: string | null;
 	transcript: string | null;
+	proposed_text: string | null;
 	asset_path: string | null;
 	file_id: string | null;
 	status: JotStatus;
