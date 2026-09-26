@@ -9,7 +9,6 @@ import { stats } from "./stats.ts";
 import { status } from "./status.ts";
 import { stopword } from "./stopword.ts";
 import { sweep } from "./sweep.ts";
-import { transcriber } from "./transcriber.ts";
 import type { Command } from "./types.ts";
 import { unreject } from "./unreject.ts";
 import { unstick } from "./unstick.ts";
@@ -30,7 +29,6 @@ export const commands: Command[] = [
 	stopword,
 	rejections,
 	unreject,
-	transcriber,
 ];
 // help closes over the array, so it lists itself and every command added above.
 commands.push(makeHelp(commands));

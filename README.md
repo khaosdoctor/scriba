@@ -13,14 +13,14 @@ write to one Obsidian vault.
 - **Your vault looks like mine.** Daily notes under `notes/daily notes`, a `## Journal` heading to write under, a `## Habits` checklist, a daily-note template, an assets folder. All configurable (see [Environment](#environment)), but the defaults match my vault. 
 - **Tasks live in two notes.** One for work, one for personal, each keeping its tasks as a checklist under a single heading, tagged, with `[start:: yyyy-mm-dd]` (optional) and `[due:: yyyy-mm-dd]` (the deadline) — the shape the Obsidian Tasks plugin queries. Paths, headings and tags are configurable.
 - **The vault is in English.** Anything you send in another language is translated on the way in.
-- **You have a Claude subscription** (an OAuth token, not an API key). Enrichment runs on it and falls back to a free Groq model when the subscription runs out.
+- **You have a Claude subscription** (an OAuth token, not an API key). Enrichment runs on haiku, falls back to sonnet, then to a free Groq model when the subscription runs out.
 - **It runs as one always-on process.** Long polling, because it's simpler
 - **Deployed on Coolify** because the GH Actions here triggers a deploy due to Coolify's weird caching of Docker image tags. If you don't want that, just disable the actions
 
 ## What it does
 
 - Writes a placeholder the instant a message arrives, then fills it in place. 
-- Transcribes voice locally with Parakeet (default) or remotely with Groq.
+- Transcribes voice with Groq, falling back to the local Parakeet sidecar.
 - Adds contextual `[[wikilinks]]`. Ambiguous ones you confirm with a button
 - Edit a jot by replying to it: `s/old/new/`, `replace X with Y`, freeform, or `/delete`.
 - Retries failed jots up to 10 times. If it gives up, it posts the jot un-enriched with a retry button.
@@ -46,7 +46,7 @@ a Telegram bot, and a Claude subscription.
 6. **Run it.** `docker compose up -d` starts scriba and the transcription sidecar. 
 7. **Say hi.** Message your bot. It should write to today's note. If nothing shows up, check `docker compose logs -f scriba`.
 
-Prefer Groq over the local sidecar? Set `TRANSCRIBER=remote`, add `GROQ_API_KEY`, and run just `docker compose up -d scriba`.
+Set `GROQ_API_KEY` to transcribe with Groq first; without it every voice note goes to the sidecar.
 
 ## Commands
 

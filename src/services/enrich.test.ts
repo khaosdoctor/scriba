@@ -390,6 +390,78 @@ test("warns once when switching to the fallback and once when usage recovers", a
 	assert.equal(groq.calls.length, 2); // fallback used for the two failing calls only
 });
 
+/** A query fn that fails for every model in `downModels` and answers `text` otherwise,
+ *  recording which model each call asked for. */
+function modelQuery(downModels: Set<string>, text: string) {
+	const models: string[] = [];
+	const fn = ((req: any) => {
+		const model = req.options.model;
+		models.push(model);
+		async function* gen() {
+			if (downModels.has(model)) throw new Error(`${model} down`);
+			yield {
+				type: "assistant",
+				message: { content: [{ type: "text", text }] },
+			};
+		}
+		return gen();
+	}) as unknown as QueryFn;
+	return { fn, models };
+}
+
+test("chain runs haiku → sonnet → groq, each only when the one before fails", async () => {
+	const down = new Set(["claude-haiku-4-5"]);
+	const q = modelQuery(down, '{"text":"from claude","ambiguous":[]}');
+	const groq = fakeGroq('{"text":"from groq","ambiguous":[]}');
+	const enricher = new Enricher(
+		"claude-haiku-4-5",
+		q.fn,
+		{ apiKey: "k", model: "openai/gpt-oss-120b" },
+		groq.fn,
+		"claude-sonnet-5",
+	);
+	const switches: string[] = [];
+	enricher.setSwitchNotifier((to, model) => {
+		switches.push(`${to}:${model}`);
+	});
+
+	// haiku down → sonnet answers
+	const a = await enricher.enrich({ text: "a", candidates: [] });
+	assert.equal(a.text, "from claude");
+	assert.deepEqual(q.models, ["claude-haiku-4-5", "claude-sonnet-5"]);
+
+	// both Claude models down → groq answers
+	down.add("claude-sonnet-5");
+	const b = await enricher.enrich({ text: "b", candidates: [] });
+	assert.equal(b.text, "from groq");
+	assert.equal(groq.calls.length, 1);
+
+	// everything back → haiku answers, no backup call
+	down.clear();
+	q.models.length = 0;
+	await enricher.enrich({ text: "c", candidates: [] });
+	assert.deepEqual(q.models, ["claude-haiku-4-5"]);
+
+	assert.deepEqual(switches, [
+		"fallback:claude-sonnet-5",
+		"fallback:openai/gpt-oss-120b",
+		"primary:claude-haiku-4-5",
+	]);
+});
+
+test("backup model equal to the chosen one is not tried twice", async () => {
+	const q = modelQuery(new Set(["claude-sonnet-5"]), "x");
+	const enricher = new Enricher(
+		"claude-sonnet-5",
+		q.fn,
+		undefined,
+		undefined,
+		"claude-sonnet-5",
+	);
+	await assert.rejects(() => enricher.editText("old", "fix"), /sonnet-5 down/);
+	assert.deepEqual(q.models, ["claude-sonnet-5"]);
+});
+
 test("enrich requests structured output and uses it directly, skipping text parsing", async () => {
 	const { fn, calls } = fakeQuery([
 		{

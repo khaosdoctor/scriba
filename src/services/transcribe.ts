@@ -3,7 +3,7 @@ import { logger } from "../log.ts";
 
 const log = logger("transcribe");
 
-/** Voice note bytes → English text. Two implementations, chosen by config. */
+/** Voice note bytes → text. Groq first, the Parakeet sidecar when Groq fails. */
 export interface Transcriber {
 	transcribe(bytes: Uint8Array, ext: string): Promise<string>;
 }
@@ -64,53 +64,43 @@ export class ParakeetTranscriber implements Transcriber {
 	}
 }
 
-export type TranscriberMode = "local" | "remote";
+/** Tries each backend in order, moving on when one throws. Remote first (Groq also
+ *  translates to English), then the always-on local Parakeet sidecar. */
+export class FallbackTranscriber implements Transcriber {
+	constructor(private backends: { name: string; t: Transcriber }[]) {}
 
-export interface TranscriberConfig {
-	mode: TranscriberMode; // validated as the enum in config.ts
+	/** Backend order for /status, e.g. "groq → parakeet". */
+	get chain(): string {
+		return this.backends.map((b) => b.name).join(" → ");
+	}
+
+	async transcribe(bytes: Uint8Array, ext: string): Promise<string> {
+		let lastErr: unknown = new Error("no transcriber configured");
+		for (const { name, t } of this.backends) {
+			try {
+				return await t.transcribe(bytes, ext);
+			} catch (err) {
+				lastErr = err;
+				log.warn({ err, backend: name }, "transcriber failed, trying next");
+			}
+		}
+		throw lastErr;
+	}
+}
+
+/** Groq when a key is set, then Parakeet. */
+export function buildTranscriber(cfg: {
 	groqApiKey: string;
 	parakeetUrl: string;
-}
-
-function build(mode: TranscriberMode, cfg: TranscriberConfig): Transcriber {
-	if (mode === "local") {
-		if (!cfg.parakeetUrl) throw new Error("no PARAKEET_URL configured");
-		return new ParakeetTranscriber(cfg.parakeetUrl);
-	}
-	if (!cfg.groqApiKey)
-		throw new Error("GROQ_API_KEY not set — remote transcription unavailable");
-	return new GroqTranscriber(cfg.groqApiKey);
-}
-
-/** A Transcriber whose backend can be swapped at runtime by /transcriber. Delegates
- *  every call to the current backend; setMode rebuilds it (and throws, leaving the old
- *  one in place, if the target backend's creds are missing). */
-export class TranscriberSwitch implements Transcriber {
-	private current: Transcriber;
-	private modeVal: TranscriberMode;
-
-	constructor(
-		private cfg: TranscriberConfig,
-		mode: TranscriberMode = cfg.mode,
-	) {
-		this.modeVal = mode;
-		this.current = build(mode, cfg);
-		log.info({ mode }, "transcriber switch initialised");
-	}
-
-	get mode(): TranscriberMode {
-		return this.modeVal;
-	}
-
-	/** Swap backend. Throws (mode unchanged) if the target's creds aren't configured. */
-	setMode(mode: TranscriberMode): void {
-		if (mode === this.modeVal) return;
-		this.current = build(mode, this.cfg); // throws before we mutate modeVal
-		this.modeVal = mode;
-		log.info({ mode }, "transcriber switched");
-	}
-
-	transcribe(bytes: Uint8Array, ext: string): Promise<string> {
-		return this.current.transcribe(bytes, ext);
-	}
+}): FallbackTranscriber {
+	const backends = [];
+	if (cfg.groqApiKey)
+		backends.push({ name: "groq", t: new GroqTranscriber(cfg.groqApiKey) });
+	backends.push({
+		name: "parakeet",
+		t: new ParakeetTranscriber(cfg.parakeetUrl),
+	});
+	const out = new FallbackTranscriber(backends);
+	log.info({ chain: out.chain }, "transcriber ready");
+	return out;
 }

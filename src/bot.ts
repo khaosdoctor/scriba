@@ -46,7 +46,7 @@ import type { GithubReleases } from "./services/github.ts";
 import type { LinkIndex } from "./services/links.ts";
 import type { ObsidianClient } from "./services/obsidian.ts";
 import { TaskStore } from "./services/tasks.ts";
-import type { TranscriberSwitch } from "./services/transcribe.ts";
+import type { FallbackTranscriber } from "./services/transcribe.ts";
 import { VaultTools } from "./services/vault.ts";
 import { plainDate, plainTime } from "./time.ts";
 
@@ -124,7 +124,7 @@ export class ScribaBot implements BotServices {
 		private repo: Repository,
 		private obsidian: ObsidianClient,
 		private enricher: Enricher,
-		private transcriber: TranscriberSwitch,
+		private transcriber: FallbackTranscriber,
 		private links: LinkIndex,
 		private github: GithubReleases,
 		private version: string,

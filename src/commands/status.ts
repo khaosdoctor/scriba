@@ -12,7 +12,7 @@ export const status: Command = {
 		return formatStatus({
 			counts: await d.repo.statusCounts(),
 			queueDepth: d.queue.depth,
-			transcriber: d.transcriber.mode,
+			transcriber: d.transcriber.chain,
 			links: d.links.stats(),
 			version: d.version,
 			sha: d.sha,
