@@ -173,8 +173,6 @@ export class MenuController {
 			.row()
 			.text("⚠️ Failed queue", "menu:failed")
 			.row()
-			.text(`🎙 Transcriber: ${this.getDeps().transcriber.mode}`, "menu:tx")
-			.row()
 			.text(`✂️ Entry size: ${size ? `${size} chars` : "off"}`, "menu:esz")
 			.row()
 			.text(`🔧 Voice fix: ${vfOn ? "on" : "off"}`, "menu:vfix")
@@ -277,8 +275,6 @@ export class MenuController {
 				return this.menuInfo(ctx, "status", "", "menu:root");
 			case "failed":
 				return this.menuFailed(ctx);
-			case "tx":
-				return this.menuToggleTranscriber(ctx);
 			case "esz":
 				await ctx.answerCallbackQuery();
 				return this.entrySizeMenu(ctx);
@@ -399,18 +395,6 @@ export class MenuController {
 		const text = await this.runCmd(ctx, "stats", range);
 		await ctx.editMessageText(text, {
 			reply_markup: this.backTo("menu:stats"),
-		});
-	}
-
-	/** Flip the transcriber to the other backend (persisted) and re-render the root. */
-	private async menuToggleTranscriber(ctx: any): Promise<void> {
-		const next =
-			this.getDeps().transcriber.mode === "local" ? "remote" : "local";
-		log.info({ next }, "menu: toggling transcriber");
-		const out = await this.runCmd(ctx, "transcriber", next);
-		await ctx.answerCallbackQuery({ text: out.slice(0, 200) });
-		await ctx.editMessageText("🗂 scriba control menu", {
-			reply_markup: await this.rootMenu(),
 		});
 	}
 

@@ -25,9 +25,14 @@ deployed on the homelab (Coolify). Single user.
 - **No tokens for control flow.** Batch timing, retry classification, candidate filtering,
   language routing must not call the model. The agent is only for enrichment, translation,
   image captioning, and freeform edits.
-- **Vault is English.** Voice is transcribed by the local Parakeet sidecar (default) or
-  Groq (`TRANSCRIBER=remote`); non-English is translated in (Groq `/translations`, or the
-  enricher for local voice + all text).
+- **Vault is English.** Voice is transcribed by Groq when `GROQ_API_KEY` is set, and by
+  the always-on Parakeet sidecar when Groq fails or there is no key
+  (`FallbackTranscriber`); non-English is translated in (Groq `/translations`, or the
+  enricher for Parakeet voice + all text).
+- **Every model call falls back remote → local.** Enrichment tries the chosen Claude
+  model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model, and
+  posts the jot un-enriched when all three fail. The user is told once per change of step,
+  not per jot. Vision has no Groq step.
 - **Four jot kinds.** `text`/`audio` carry enrichable text (audio is transcribed).
   An **image's caption is the entry text**, enriched and wikilinked like any other jot —
   what you type alongside the photo is the jot, not the embed's alt (Telegram's Bot API

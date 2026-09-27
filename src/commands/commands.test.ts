@@ -72,11 +72,7 @@ function deps(over: Record<string, any> = {}) {
 			...over.queue,
 		},
 		processor: { retrySweep: track("retrySweep"), ...over.processor },
-		transcriber: {
-			mode: "local",
-			setMode: (m: string) => void calls.push(`setMode(${m})`),
-			...over.transcriber,
-		},
+		transcriber: { chain: "groq → parakeet", ...over.transcriber },
 	};
 	return d as unknown as Deps & { calls: string[] };
 }
@@ -224,42 +220,6 @@ test("/stopword list paginates, and a bad subcommand gets usage", async () => {
 		await byName("stopword").run({} as any, "list", deps()),
 		"(none)",
 	);
-});
-
-test("/transcriber shows the mode, sets a valid one, and refuses the rest", async () => {
-	assert.equal(
-		await byName("transcriber").run({} as any, "", deps()),
-		"transcriber: local",
-	);
-	assert.equal(
-		await byName("transcriber").run({} as any, "sideways", deps()),
-		"usage: /transcriber [local|remote]",
-	);
-
-	const ok = deps();
-	assert.equal(
-		await byName("transcriber").run({} as any, " REMOTE ", ok),
-		"🎙 transcriber → remote",
-	);
-	assert.ok(ok.calls.includes("setMode(remote)"));
-	// Persisted, or the mode silently reverts on the next restart.
-	assert.ok(ok.calls.includes("setSetting(transcriber,remote)"));
-});
-
-test("/transcriber leaves the setting alone when the switch refuses", async () => {
-	const d = deps({
-		transcriber: {
-			mode: "local",
-			setMode: () => {
-				throw new Error("GROQ_API_KEY is not set");
-			},
-		},
-	});
-	assert.equal(
-		await byName("transcriber").run({} as any, "remote", d),
-		"⚠️ GROQ_API_KEY is not set",
-	);
-	assert.ok(!d.calls.some((c) => c.startsWith("setSetting")));
 });
 
 test("/jot needs an id and reports one that isn't there", async () => {

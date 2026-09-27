@@ -5,7 +5,7 @@ import type { FlushQueue } from "../runtime/queue.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { GithubReleases } from "../services/github.ts";
 import type { LinkIndex } from "../services/links.ts";
-import type { TranscriberSwitch } from "../services/transcribe.ts";
+import type { FallbackTranscriber } from "../services/transcribe.ts";
 
 /** Everything the admin commands act on. The bot assembles this per invocation. */
 export interface Deps {
@@ -13,7 +13,7 @@ export interface Deps {
 	queue: FlushQueue;
 	processor: JotProcessor;
 	enricher: Enricher;
-	transcriber: TranscriberSwitch;
+	transcriber: FallbackTranscriber;
 	links: LinkIndex;
 	github: GithubReleases;
 	version: string;

@@ -16,10 +16,7 @@ import { Enricher } from "./services/enrich.ts";
 import { GithubReleases } from "./services/github.ts";
 import { LinkIndex } from "./services/links.ts";
 import { ObsidianClient } from "./services/obsidian.ts";
-import {
-	type TranscriberMode,
-	TranscriberSwitch,
-} from "./services/transcribe.ts";
+import { buildTranscriber } from "./services/transcribe.ts";
 
 const log = logger("main");
 
@@ -34,7 +31,6 @@ async function main(): Promise<void> {
 	log.info(
 		{
 			dbPath: config.dbPath,
-			transcriber: config.transcription.mode,
 			vaultIndex: config.vaultPath ?? "(none — REST fallback)",
 			port: config.telegram.port,
 			logLevel: process.env.LOG_LEVEL ?? "debug",
@@ -58,27 +54,7 @@ async function main(): Promise<void> {
 
 	// 3. build services
 	const obsidian = new ObsidianClient(config.obsidian);
-	// A /transcriber choice persisted in the DB overrides the TRANSCRIBER env default;
-	// fall back to the env mode if the saved one can't be built (e.g. its creds are gone).
-	const savedMode = (await repo.getSetting("transcriber")) as
-		| TranscriberMode
-		| undefined;
-	let transcriber: TranscriberSwitch;
-	try {
-		transcriber = new TranscriberSwitch(
-			config.transcription,
-			savedMode ?? config.transcription.mode,
-		);
-	} catch (e) {
-		log.warn(
-			{ err: e, savedMode },
-			"saved transcriber mode unusable — falling back to env default",
-		);
-		transcriber = new TranscriberSwitch(
-			config.transcription,
-			config.transcription.mode,
-		);
-	}
+	const transcriber = buildTranscriber(config.transcription);
 	const enrichModel = await repo.getSetting(ENRICH_MODEL_KEY);
 	const enricher = new Enricher(
 		enrichModel ?? config.enrich.model,
@@ -86,15 +62,18 @@ async function main(): Promise<void> {
 		config.enrich.groqApiKey
 			? { apiKey: config.enrich.groqApiKey, model: config.enrich.fallbackModel }
 			: undefined,
+		undefined,
+		config.enrich.backupModel,
 	);
 	log.info(
 		{
 			model: enrichModel ?? config.enrich.model,
+			backup: config.enrich.backupModel,
 			fallback: config.enrich.groqApiKey ? config.enrich.fallbackModel : "none",
 		},
 		config.enrich.groqApiKey
-			? "enricher ready with Groq fallback"
-			: "enricher ready — no GROQ_API_KEY, jots post un-enriched when the primary model is unavailable",
+			? "enricher ready with Claude backup and Groq fallback"
+			: "enricher ready — no GROQ_API_KEY, jots post un-enriched when both Claude models are unavailable",
 	);
 	const links = new LinkIndex(config.vaultPath);
 	links.start();
@@ -128,8 +107,8 @@ async function main(): Promise<void> {
 	enricher.setSwitchNotifier((to, model, err) =>
 		bot.notify(
 			to === "fallback"
-				? `⚠️ Claude is unavailable — enrichment switched to the free fallback model (${model}). Quality may drop until it's back.\nReason: ${err instanceof Error ? err.message : String(err)}`
-				: `✅ Claude is back — enrichment switched back to ${model}.`,
+				? `⚠️ Enrichment switched to fallback model ${model}. Quality may drop until the chosen model is back.\nReason: ${err instanceof Error ? err.message : String(err)}`
+				: `✅ Enrichment is back on ${model}.`,
 		),
 	);
 	const queue = new FlushQueue({

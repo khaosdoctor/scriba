@@ -191,9 +191,9 @@ const fence = (s: string): string => s.replaceAll('"""', "");
 /** Enrichment via the Claude Agent SDK on subscription auth (CLAUDE_CODE_OAUTH_TOKEN
  *  in the environment) — no API key. One call per jot. */
 export class Enricher {
-	// Which model the last call ran on. Flips only on a *transition*, so the user is
-	// warned once when usage runs out and once when it comes back — not per jot.
-	private usingFallback = false;
+	// Which step of the chain the last call ran on (0 = the chosen model). The user is
+	// warned only when it changes: once on the way down, once on recovery, not per jot.
+	private tier = 0;
 	private notifySwitch?: (
 		to: "fallback" | "primary",
 		model: string,
@@ -205,6 +205,8 @@ export class Enricher {
 		private query: QueryFn = sdkQuery,
 		private fallback?: EnrichFallback,
 		private groqChatFn: GroqChatFn = groqChat,
+		// Second Claude model, tried before Groq when the chosen one fails.
+		private backupModel?: string,
 	) {}
 
 	/** Change the primary enrichment model at runtime (called when the user picks a
@@ -439,10 +441,10 @@ export class Enricher {
 		return text.trim() || current;
 	}
 
-	/** Single-turn agent call; collects assistant text and token usage. When the
-	 *  subscription SDK errors (usage exhausted, overload, network) and a Groq fallback
-	 *  is configured, retries the same request on the free model. `groqMessages` is the
-	 *  same prompt in OpenAI chat shape — omit it to keep a call SDK-only. */
+	/** Single-turn call down the fallback chain: the chosen Claude model, then the backup
+	 *  Claude model, then the free Groq model. Each step runs only when the one before it
+	 *  throws (usage exhausted, overload, network). `groqMessages` is the same prompt in
+	 *  OpenAI chat shape — omit it to keep a call Claude-only (vision has no Groq model). */
 	private async run(
 		prompt: unknown,
 		systemPrompt?: string,
@@ -454,81 +456,102 @@ export class Enricher {
 		usage: { input: number; output: number };
 		structuredOutput?: unknown;
 	}> {
-		try {
-			let text = "";
-			let structuredOutput: unknown;
-			const usage = { input: 0, output: 0 };
-			const effectiveModel = modelOverride ?? this.model;
-			const stream = this.query({
-				prompt: prompt as any,
-				options: {
-					maxTurns: 1,
-					allowedTools: [],
-					...(systemPrompt ? { systemPrompt } : {}),
-					...(effectiveModel ? { model: effectiveModel } : {}),
-					...(outputFormat ? { outputFormat } : {}),
-				},
-			});
-			for await (const msg of stream as AsyncIterable<any>) {
-				if (msg.type === "assistant") {
-					for (const b of msg.message?.content ?? [])
-						if (b.type === "text") text += b.text;
-					const u = msg.message?.usage;
-					if (u) {
-						usage.input += u.input_tokens ?? 0;
-						usage.output += u.output_tokens ?? 0;
-					}
-				} else if (msg.type === "result") {
-					// A named error subtype (e.g. error_max_structured_output_retries) means
-					// the SDK already retried against the schema server-side and gave up —
-					// treat it as a failed call so the Groq fallback / give-up path kicks in.
-					if (msg.subtype && msg.subtype !== "success")
-						throw new Error(
-							`agent gave up producing a usable result (${msg.subtype})`,
-						);
-					if (typeof msg.result === "string" && !text) text = msg.result;
-					if (msg.structured_output !== undefined)
-						structuredOutput = msg.structured_output;
-				}
-			}
-			// SDK worked. If we were on the fallback, the primary model recovered — flip
-			// back + warn. (The earlier failure may or may not have been usage exhaustion —
-			// see the `err` logged when we switched to fallback for the actual cause.)
-			if (this.usingFallback) {
-				this.usingFallback = false;
-				log.info(
-					{ model: this.model ?? "default" },
-					"enrich: primary model recovered — switching back from Groq fallback",
+		const first = modelOverride ?? this.model;
+		const models = [first];
+		if (this.backupModel && this.backupModel !== first)
+			models.push(this.backupModel);
+		let lastErr: unknown;
+		for (const [tier, model] of models.entries()) {
+			try {
+				const out = await this.runSdk(
+					prompt,
+					systemPrompt,
+					outputFormat,
+					model,
 				);
-				await this.announce("primary", this.model ?? "default");
-			}
-			return { text, usage, structuredOutput };
-		} catch (err) {
-			if (!this.fallback || !groqMessages) throw err;
-			if (!this.usingFallback) {
-				this.usingFallback = true;
+				await this.settle(tier, model ?? "default");
+				return out;
+			} catch (err) {
+				lastErr = err;
 				log.warn(
-					{ err, fallbackModel: this.fallback.model },
-					"enrich: subscription SDK failed — switching to the free Groq model",
-				);
-				await this.announce("fallback", this.fallback.model, err);
-			} else {
-				log.warn(
-					{ err, fallbackModel: this.fallback.model },
-					"enrich: agent SDK still failing — staying on the free Groq model",
+					{ err, model: model ?? "default" },
+					"enrich: Claude call failed",
 				);
 			}
-			const out = await this.groqChatFn(
-				this.fallback.apiKey,
-				this.fallback.model,
-				groqMessages,
-			);
-			log.info(
-				{ model: this.fallback.model, usage: out.usage },
-				"enrich: Groq fallback done",
-			);
-			return out;
 		}
+		if (!this.fallback || !groqMessages) throw lastErr;
+		await this.settle(models.length, this.fallback.model, lastErr);
+		const out = await this.groqChatFn(
+			this.fallback.apiKey,
+			this.fallback.model,
+			groqMessages,
+		);
+		log.info(
+			{ model: this.fallback.model, usage: out.usage },
+			"enrich: Groq fallback done",
+		);
+		return out;
+	}
+
+	/** Record which step of the chain answered; warn the user only when that changes. */
+	private async settle(
+		tier: number,
+		model: string,
+		err?: unknown,
+	): Promise<void> {
+		if (tier === this.tier) return;
+		log.warn({ from: this.tier, to: tier, model }, "enrich: switching model");
+		this.tier = tier;
+		await this.announce(tier === 0 ? "primary" : "fallback", model, err);
+	}
+
+	/** One Claude Agent SDK call; collects assistant text and token usage. */
+	private async runSdk(
+		prompt: unknown,
+		systemPrompt: string | undefined,
+		outputFormat: OutputFormat | undefined,
+		model: string | undefined,
+	): Promise<{
+		text: string;
+		usage: { input: number; output: number };
+		structuredOutput?: unknown;
+	}> {
+		let text = "";
+		let structuredOutput: unknown;
+		const usage = { input: 0, output: 0 };
+		const stream = this.query({
+			prompt: prompt as any,
+			options: {
+				maxTurns: 1,
+				allowedTools: [],
+				...(systemPrompt ? { systemPrompt } : {}),
+				...(model ? { model } : {}),
+				...(outputFormat ? { outputFormat } : {}),
+			},
+		});
+		for await (const msg of stream as AsyncIterable<any>) {
+			if (msg.type === "assistant") {
+				for (const b of msg.message?.content ?? [])
+					if (b.type === "text") text += b.text;
+				const u = msg.message?.usage;
+				if (u) {
+					usage.input += u.input_tokens ?? 0;
+					usage.output += u.output_tokens ?? 0;
+				}
+			} else if (msg.type === "result") {
+				// A named error subtype (e.g. error_max_structured_output_retries) means
+				// the SDK already retried against the schema server-side and gave up —
+				// treat it as a failed call so the next step in the chain kicks in.
+				if (msg.subtype && msg.subtype !== "success")
+					throw new Error(
+						`agent gave up producing a usable result (${msg.subtype})`,
+					);
+				if (typeof msg.result === "string" && !text) text = msg.result;
+				if (msg.structured_output !== undefined)
+					structuredOutput = msg.structured_output;
+			}
+		}
+		return { text, usage, structuredOutput };
 	}
 
 	// The agent returns free-form text: usually clean JSON, occasionally wrapped in a
