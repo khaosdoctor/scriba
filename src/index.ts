@@ -12,7 +12,7 @@ import { logger } from "./log.ts";
 import { JotProcessor } from "./runtime/processor.ts";
 import { FlushQueue } from "./runtime/queue.ts";
 import { Scheduler } from "./runtime/scheduler.ts";
-import { Enricher } from "./services/enrich.ts";
+import { Enricher, type EnrichFallback } from "./services/enrich.ts";
 import { GithubReleases } from "./services/github.ts";
 import { LinkIndex } from "./services/links.ts";
 import { ObsidianClient } from "./services/obsidian.ts";
@@ -56,12 +56,24 @@ async function main(): Promise<void> {
   const obsidian = new ObsidianClient(config.obsidian);
   const transcriber = buildTranscriber(config.transcription);
   const enrichModel = await repo.getSetting(ENRICH_MODEL_KEY);
+  const fallbacks: EnrichFallback[] = [];
+  if (config.enrich.groqApiKey)
+    fallbacks.push({
+      apiKey: config.enrich.groqApiKey,
+      model: config.enrich.fallbackModel,
+      name: "Groq",
+    });
+  if (config.enrich.opencodeApiKey)
+    fallbacks.push({
+      apiKey: config.enrich.opencodeApiKey,
+      model: config.enrich.opencodeModel,
+      baseUrl: "https://opencode.ai/zen/go/v1",
+      name: "OpenCode",
+    });
   const enricher = new Enricher(
     enrichModel ?? config.enrich.model,
     undefined,
-    config.enrich.groqApiKey
-      ? { apiKey: config.enrich.groqApiKey, model: config.enrich.fallbackModel }
-      : undefined,
+    fallbacks,
     undefined,
     config.enrich.backupModel,
   );
@@ -69,11 +81,11 @@ async function main(): Promise<void> {
     {
       model: enrichModel ?? config.enrich.model,
       backup: config.enrich.backupModel,
-      fallback: config.enrich.groqApiKey ? config.enrich.fallbackModel : "none",
+      fallbacks: fallbacks.map((f) => f.name ?? f.model),
     },
-    config.enrich.groqApiKey
-      ? "enricher ready with Claude backup and Groq fallback"
-      : "enricher ready — no GROQ_API_KEY, jots post un-enriched when both Claude models are unavailable",
+    fallbacks.length
+      ? `enricher ready with ${fallbacks.length} chat fallback(s)`
+      : "enricher ready — no chat fallbacks, jots post un-enriched when both Claude models are unavailable",
   );
   const links = new LinkIndex(config.vaultPath);
   links.start();

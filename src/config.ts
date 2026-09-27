@@ -80,6 +80,10 @@ const envSchema = z.object({
   AGENT_MODEL: z.string().default("claude-haiku-4-5"),
   ENRICH_BACKUP_MODEL: z.string().default("claude-sonnet-5"),
   ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
+  // OpenCode Go: OpenAI-compatible fallback after Groq. Requires an API key from
+  // opencode.ai/go. The model runs through OpenCode's proxy, not direct DeepSeek.
+  OPENCODE_API_KEY: z.string().optional(),
+  OPENCODE_FALLBACK_MODEL: z.string().default("deepseek-v4.1-flash"),
 
   // Voice-fix: when enabled, a second model lightly cleans the transcript before
   // enrichment. Sonnet by default — haiku paraphrases too aggressively.
@@ -142,6 +146,8 @@ export const config = {
     fallbackModel: env.ENRICH_FALLBACK_MODEL,
     // Reuses the transcription Groq key; empty ⇒ fallback disabled.
     groqApiKey: env.GROQ_API_KEY ?? "",
+    opencodeApiKey: env.OPENCODE_API_KEY ?? "",
+    opencodeModel: env.OPENCODE_FALLBACK_MODEL,
   },
   voiceFix: {
     model: env.VOICE_FIX_MODEL,
