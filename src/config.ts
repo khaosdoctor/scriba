@@ -15,9 +15,8 @@ const envSchema = z.object({
 	// Voice goes to Groq when a key is set, and to the Parakeet sidecar (always up) when
 	// Groq fails or there is no key.
 	GROQ_API_KEY: z.string().optional(),
-	PARAKEET_URL: z
-		.string()
-		.default("http://parakeet:5092/v1/audio/transcriptions"),
+	// Parakeet is the last step for voice, so a blank or broken URL fails at boot.
+	PARAKEET_URL: z.url().default("http://parakeet:5092/v1/audio/transcriptions"),
 
 	OBSIDIAN_API_URL: z
 		.string()

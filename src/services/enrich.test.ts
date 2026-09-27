@@ -462,6 +462,35 @@ test("backup model equal to the chosen one is not tried twice", async () => {
 	assert.deepEqual(q.models, ["claude-sonnet-5"]);
 });
 
+test("an unusable answer moves down the chain like a failed call", async () => {
+	const models: string[] = [];
+	const fn = ((req: any) => {
+		const model = req.options.model;
+		models.push(model);
+		const text =
+			model === "claude-haiku-4-5"
+				? "sorry, no JSON here"
+				: '{"text":"from sonnet","ambiguous":[]}';
+		async function* gen() {
+			yield {
+				type: "assistant",
+				message: { content: [{ type: "text", text }] },
+			};
+		}
+		return gen();
+	}) as unknown as QueryFn;
+	const enricher = new Enricher(
+		"claude-haiku-4-5",
+		fn,
+		undefined,
+		undefined,
+		"claude-sonnet-5",
+	);
+	const res = await enricher.enrich({ text: "a", candidates: [] });
+	assert.equal(res.text, "from sonnet");
+	assert.deepEqual(models, ["claude-haiku-4-5", "claude-sonnet-5"]);
+});
+
 test("enrich requests structured output and uses it directly, skipping text parsing", async () => {
 	const { fn, calls } = fakeQuery([
 		{

@@ -38,6 +38,10 @@ test("groq key and an explicit PARAKEET_URL are passed through", async () => {
 	assert.equal(config.transcription.parakeetUrl, "http://custom/asr");
 });
 
+test("a blank PARAKEET_URL fails at boot", async () => {
+	await assert.rejects(load({ PARAKEET_URL: "" }), /Invalid configuration/);
+});
+
 test("OBSIDIAN_INSECURE_TLS defaults off and parses to boolean", async () => {
 	const { config } = await load({});
 	assert.equal(config.obsidian.insecureTls, false);

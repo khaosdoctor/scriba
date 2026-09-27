@@ -17,6 +17,13 @@ export interface EnrichFallback {
  *  text turns, or a content-part array for the vision (image) turn. */
 type GroqMessage = { role: "system" | "user"; content: unknown };
 
+/** One model call's raw answer, before the caller reads it. */
+type SdkOut = {
+	text: string;
+	usage: { input: number; output: number };
+	structuredOutput?: unknown;
+};
+
 /** The Groq chat call, injectable for tests (mirrors the SDK `query` seam). */
 export type GroqChatFn = (
 	apiKey: string,
@@ -272,7 +279,8 @@ export class Enricher {
 			},
 			"enrich: calling agent",
 		);
-		const { text, usage, structuredOutput } = await this.run(
+		// Parsed inside the chain: an unusable answer moves on to the next model.
+		return this.run(
 			prompt,
 			SYSTEM,
 			[
@@ -280,8 +288,17 @@ export class Enricher {
 				{ role: "user", content: prompt },
 			],
 			ENRICH_OUTPUT_FORMAT,
+			undefined,
+			({ text, usage, structuredOutput }) =>
+				this.parseEnriched(text, usage, structuredOutput),
 		);
+	}
 
+	private parseEnriched(
+		text: string,
+		usage: { input: number; output: number },
+		structuredOutput: unknown,
+	): EnrichResult {
 		// Prefer the SDK's schema-validated structured output (only the primary model
 		// supports it — the SDK retries internally before giving up). Fall back to
 		// scraping JSON out of the free-text response for the Groq path, or for the rare
@@ -334,7 +351,7 @@ export class Enricher {
 	async extractTask(text: string): Promise<DetectedTask> {
 		const prompt = `Line:\n"""${fence(text)}"""`;
 		log.info({ chars: text.length }, "extractTask: calling agent");
-		const { text: raw, structuredOutput } = await this.run(
+		return this.run(
 			prompt,
 			TASK_SYSTEM,
 			[
@@ -342,7 +359,12 @@ export class Enricher {
 				{ role: "user", content: prompt },
 			],
 			TASK_OUTPUT_FORMAT,
+			undefined,
+			({ text, structuredOutput }) => this.parseTask(text, structuredOutput),
 		);
+	}
+
+	private parseTask(raw: string, structuredOutput: unknown): DetectedTask {
 		const parsed =
 			(structuredOutput !== undefined
 				? detectedTaskSchema.safeParse(structuredOutput)
@@ -443,19 +465,17 @@ export class Enricher {
 
 	/** Single-turn call down the fallback chain: the chosen Claude model, then the backup
 	 *  Claude model, then the free Groq model. Each step runs only when the one before it
-	 *  throws (usage exhausted, overload, network). `groqMessages` is the same prompt in
-	 *  OpenAI chat shape — omit it to keep a call Claude-only (vision has no Groq model). */
-	private async run(
+	 *  throws (usage exhausted, overload, network) or answers something `parse` rejects.
+	 *  `groqMessages` is the same prompt in OpenAI chat shape — omit it to keep a call
+	 *  Claude-only (vision has no Groq model). */
+	private async run<T = SdkOut>(
 		prompt: unknown,
 		systemPrompt?: string,
 		groqMessages?: GroqMessage[],
 		outputFormat?: OutputFormat,
 		modelOverride?: string,
-	): Promise<{
-		text: string;
-		usage: { input: number; output: number };
-		structuredOutput?: unknown;
-	}> {
+		parse: (out: SdkOut) => T = (out) => out as T,
+	): Promise<T> {
 		const first = modelOverride ?? this.model;
 		const models = [first];
 		if (this.backupModel && this.backupModel !== first)
@@ -463,11 +483,8 @@ export class Enricher {
 		let lastErr: unknown;
 		for (const [tier, model] of models.entries()) {
 			try {
-				const out = await this.runSdk(
-					prompt,
-					systemPrompt,
-					outputFormat,
-					model,
+				const out = parse(
+					await this.runSdk(prompt, systemPrompt, outputFormat, model),
 				);
 				await this.settle(tier, model ?? "default");
 				return out;
@@ -490,7 +507,7 @@ export class Enricher {
 			{ model: this.fallback.model, usage: out.usage },
 			"enrich: Groq fallback done",
 		);
-		return out;
+		return parse(out);
 	}
 
 	/** Record which step of the chain answered; warn the user only when that changes. */
@@ -511,11 +528,7 @@ export class Enricher {
 		systemPrompt: string | undefined,
 		outputFormat: OutputFormat | undefined,
 		model: string | undefined,
-	): Promise<{
-		text: string;
-		usage: { input: number; output: number };
-		structuredOutput?: unknown;
-	}> {
+	): Promise<SdkOut> {
 		let text = "";
 		let structuredOutput: unknown;
 		const usage = { input: 0, output: 0 };
