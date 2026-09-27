@@ -1,3 +1,10 @@
+## [1.48.0](https://github.com/khaosdoctor/scriba/compare/v1.47.2...v1.48.0) (2026-09-27)
+
+
+### Features
+
+* **enrich:** add OpenCode Go/DeepSeek Flash as enrichment fallback ([#17](https://github.com/khaosdoctor/scriba/issues/17)) ([4ccdaa0](https://github.com/khaosdoctor/scriba/commit/4ccdaa05a01115b08623674077d94b2d0911fb9a))
+
 ## [1.47.2](https://github.com/khaosdoctor/scriba/compare/v1.47.1...v1.47.2) (2026-09-27)
 
 
@@ -26,11 +33,4 @@
 ### Bug Fixes
 
 * **docker:** guard ripgrep prune for SDK versions without vendored binaries ([#15](https://github.com/khaosdoctor/scriba/issues/15)) ([567c208](https://github.com/khaosdoctor/scriba/commit/567c20852e824f98843d06519fc9e5cafa530095))
-
-## [1.46.1](https://github.com/khaosdoctor/scriba/compare/v1.46.0...v1.46.1) (2026-09-22)
-
-
-### Bug Fixes
-
-* **deps:** patch undici high-severity vulnerabilities ([#13](https://github.com/khaosdoctor/scriba/issues/13)) ([7cab122](https://github.com/khaosdoctor/scriba/commit/7cab12261619c87134196fe17676b44ff6c8f5e7))
 
