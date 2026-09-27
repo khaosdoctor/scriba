@@ -1,3 +1,11 @@
+## [1.47.2](https://github.com/khaosdoctor/scriba/compare/v1.47.1...v1.47.2) (2026-09-27)
+
+
+### Bug Fixes
+
+* **tasks:** lowercase work notes folder ([97c7cbe](https://github.com/khaosdoctor/scriba/commit/97c7cbe6057c6a7bb217e1363c661aaf6ba426ff))
+* **tasks:** point work note default to notes/Work notes ([8074a82](https://github.com/khaosdoctor/scriba/commit/8074a829429114e8188e975edd873819e32b49a7))
+
 ## [1.47.1](https://github.com/khaosdoctor/scriba/compare/v1.47.0...v1.47.1) (2026-09-27)
 
 
@@ -25,11 +33,4 @@
 ### Bug Fixes
 
 * **deps:** patch undici high-severity vulnerabilities ([#13](https://github.com/khaosdoctor/scriba/issues/13)) ([7cab122](https://github.com/khaosdoctor/scriba/commit/7cab12261619c87134196fe17676b44ff6c8f5e7))
-
-## [1.46.0](https://github.com/khaosdoctor/scriba/compare/v1.45.0...v1.46.0) (2026-09-22)
-
-
-### Features
-
-* **menu:** DB-backed model settings with menu pickers + bump agent SDK ([#12](https://github.com/khaosdoctor/scriba/issues/12)) ([b7a59d2](https://github.com/khaosdoctor/scriba/commit/b7a59d2893f31268959b33b3b72e8d663032b802))
 
