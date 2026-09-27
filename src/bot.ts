@@ -4,30 +4,30 @@ import { commands, type Deps } from "./commands/index.ts";
 import { UNREJECT_NS } from "./commands/unreject.ts";
 import { config } from "./config.ts";
 import {
-	anchorLine,
-	assetEmbed,
-	deleteAnchorLine,
-	distinctSurfaces,
-	editConfirmation,
-	entitiesToMarkdown,
-	escapeHtml,
-	fitTelegram,
-	isBlank,
-	isEditableJot,
-	journalLine,
-	makeJotId,
-	parseLiteralEdit,
-	placeholderLine,
-	replaceAnchorLine,
-	stripJournalLine,
-	withinSquashWindow,
+  anchorLine,
+  assetEmbed,
+  deleteAnchorLine,
+  distinctSurfaces,
+  editConfirmation,
+  entitiesToMarkdown,
+  escapeHtml,
+  fitTelegram,
+  isBlank,
+  isEditableJot,
+  journalLine,
+  makeJotId,
+  parseLiteralEdit,
+  placeholderLine,
+  replaceAnchorLine,
+  stripJournalLine,
+  withinSquashWindow,
 } from "./core.ts";
 import type { Jot, JotKind, Repository } from "./db.ts";
 import { COMMAND_NS, CommandSession } from "./flows/command.ts";
 import {
-	HABITS_NS,
-	HabitsCommand,
-	parseHabitRef,
+  HABITS_NS,
+  HabitsCommand,
+  parseHabitRef,
 } from "./flows/habits/index.ts";
 import { MenuController } from "./flows/menu.ts";
 import { RATING_NS, RatingCommand } from "./flows/rating.ts";
@@ -36,9 +36,9 @@ import { TASKS_NS, TasksFlow } from "./flows/tasks/index.ts";
 import type { TaskDraft } from "./flows/tasks/parse.ts";
 import { logger } from "./log.ts";
 import type {
-	BotServices,
-	DownloadedFile,
-	JotProcessor,
+  BotServices,
+  DownloadedFile,
+  JotProcessor,
 } from "./runtime/processor.ts";
 import type { FlushQueue } from "./runtime/queue.ts";
 import type { Enricher } from "./services/enrich.ts";
@@ -53,21 +53,21 @@ import { plainDate, plainTime } from "./time.ts";
 const log = logger("bot");
 
 const MIME: Record<string, string> = {
-	oga: "audio/ogg",
-	ogg: "audio/ogg",
-	opus: "audio/ogg",
-	mp3: "audio/mpeg",
-	m4a: "audio/mp4",
-	wav: "audio/wav",
-	flac: "audio/flac",
-	jpg: "image/jpeg",
-	jpeg: "image/jpeg",
-	png: "image/png",
-	webp: "image/webp",
-	gif: "image/gif",
-	mp4: "video/mp4",
-	mov: "video/quicktime",
-	webm: "video/webm",
+  oga: "audio/ogg",
+  ogg: "audio/ogg",
+  opus: "audio/ogg",
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  wav: "audio/wav",
+  flac: "audio/flac",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+  gif: "image/gif",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  webm: "video/webm",
 };
 
 /** Set (in place of ✍) on a squashed follower's message, marking it as slated to merge
@@ -82,1090 +82,1090 @@ const MERGE_EMOJI = "🤝" as const;
  *  fails gets `retry` and `discard` — every failure is a decision, and both halves of it
  *  should be one tap away rather than a command you have to remember. */
 export type StatusButtons = {
-	retry?: boolean;
-	undo?: boolean;
-	discard?: boolean;
+  retry?: boolean;
+  undo?: boolean;
+  discard?: boolean;
 };
 
 /** The failure pair, side by side under the message: run it again now, or take it out of
  *  the journal for good. Empty (which clears any existing keyboard) when neither is asked
  *  for, so a message that's no longer actionable stops offering actions. */
 function jotButtons(jotId: string, opts?: StatusButtons): InlineKeyboard {
-	const kb = new InlineKeyboard();
-	if (opts?.retry) kb.text("🔄 Retry", `rt:${jotId}`);
-	if (opts?.discard) kb.text("🗑 Delete", `dl:${jotId}`);
-	return kb;
+  const kb = new InlineKeyboard();
+  if (opts?.retry) kb.text("🔄 Retry", `rt:${jotId}`);
+  if (opts?.discard) kb.text("🗑 Delete", `dl:${jotId}`);
+  return kb;
 }
 
 /** All Telegram wiring. Long polling, no webhook. Implements BotServices so the
  *  processor can notify, ask link questions, download files, and apply queued edits. */
 export class ScribaBot implements BotServices {
-	private bot: Bot;
-	private queue!: FlushQueue;
-	private rating: RatingCommand;
-	private habits: HabitsCommand;
-	private menu: MenuController;
-	private reprocess: ReprocessCommand;
-	private command: CommandSession;
-	private tasks: TasksFlow;
-	private processor!: JotProcessor;
-	// jotId -> the live status message we edit in place through the jot's lifecycle.
-	// ponytail: in-memory. On restart the map is empty and status() just posts a fresh
-	// message; nothing is lost. Persist it only if that ever proves annoying.
-	private statusMsgs = new Map<string, number>();
-	// Voice-fix choice: jotId -> resolve callback. The processor awaits this promise while
-	// the user picks between original and proposed transcript.
-	private voiceFixPending = new Map<
-		string,
-		(choice: "original" | "proposed") => void
-	>();
+  private bot: Bot;
+  private queue!: FlushQueue;
+  private rating: RatingCommand;
+  private habits: HabitsCommand;
+  private menu: MenuController;
+  private reprocess: ReprocessCommand;
+  private command: CommandSession;
+  private tasks: TasksFlow;
+  private processor!: JotProcessor;
+  // jotId -> the live status message we edit in place through the jot's lifecycle.
+  // ponytail: in-memory. On restart the map is empty and status() just posts a fresh
+  // message; nothing is lost. Persist it only if that ever proves annoying.
+  private statusMsgs = new Map<string, number>();
+  // Voice-fix choice: jotId -> resolve callback. The processor awaits this promise while
+  // the user picks between original and proposed transcript.
+  private voiceFixPending = new Map<
+    string,
+    (choice: "original" | "proposed") => void
+  >();
 
-	constructor(
-		private repo: Repository,
-		private obsidian: ObsidianClient,
-		private enricher: Enricher,
-		private transcriber: FallbackTranscriber,
-		private links: LinkIndex,
-		private github: GithubReleases,
-		private version: string,
-		private sha: string,
-		private startedAt: number,
-	) {
-		this.bot = new Bot(config.telegram.token);
-		this.rating = new RatingCommand(this.bot, repo, obsidian);
-		this.habits = new HabitsCommand(this.bot, obsidian);
-		this.reprocess = new ReprocessCommand(this.bot, repo);
-		this.menu = new MenuController(
-			this.bot,
-			this.rating,
-			this.habits,
-			this.reprocess,
-			() => this.deps(),
-			(jot) => this.deleteJot(jot),
-		);
-		// /command: an agent session scoped to the vault. It gets no built-in tool that could
-		// reach the host — see flows/command.ts.
-		this.command = new CommandSession(
-			this.bot,
-			new VaultTools(config.vaultPath || null, obsidian),
-		);
-		// /task: every message becomes a task in one of the two task notes instead of a jot.
-		// It and command mode both own the message stream, so neither opens over the other.
-		this.tasks = new TasksFlow(
-			this.bot,
-			repo,
-			new TaskStore(obsidian, config.tasks),
-			enricher,
-			() => this.command.isOpen(),
-		);
-		this.command.setBusyCheck(() => this.tasks.isOpen());
-		this.menu.setTasks(this.tasks);
-		this.registerHandlers();
-	}
+  constructor(
+    private repo: Repository,
+    private obsidian: ObsidianClient,
+    private enricher: Enricher,
+    private transcriber: FallbackTranscriber,
+    private links: LinkIndex,
+    private github: GithubReleases,
+    private version: string,
+    private sha: string,
+    private startedAt: number,
+  ) {
+    this.bot = new Bot(config.telegram.token);
+    this.rating = new RatingCommand(this.bot, repo, obsidian);
+    this.habits = new HabitsCommand(this.bot, obsidian);
+    this.reprocess = new ReprocessCommand(this.bot, repo);
+    this.menu = new MenuController(
+      this.bot,
+      this.rating,
+      this.habits,
+      this.reprocess,
+      () => this.deps(),
+      (jot) => this.deleteJot(jot),
+    );
+    // /command: an agent session scoped to the vault. It gets no built-in tool that could
+    // reach the host — see flows/command.ts.
+    this.command = new CommandSession(
+      this.bot,
+      new VaultTools(config.vaultPath || null, obsidian),
+    );
+    // /task: every message becomes a task in one of the two task notes instead of a jot.
+    // It and command mode both own the message stream, so neither opens over the other.
+    this.tasks = new TasksFlow(
+      this.bot,
+      repo,
+      new TaskStore(obsidian, config.tasks),
+      enricher,
+      () => this.command.isOpen(),
+    );
+    this.command.setBusyCheck(() => this.tasks.isOpen());
+    this.menu.setTasks(this.tasks);
+    this.registerHandlers();
+  }
 
-	/** Break the wiring cycle: queue + processor are created after this bot (which they need). */
-	setQueue(queue: FlushQueue): void {
-		this.queue = queue;
-		this.reprocess.setQueue(queue);
-	}
-	setProcessor(processor: JotProcessor): void {
-		this.processor = processor;
-	}
+  /** Break the wiring cycle: queue + processor are created after this bot (which they need). */
+  setQueue(queue: FlushQueue): void {
+    this.queue = queue;
+    this.reprocess.setQueue(queue);
+  }
+  setProcessor(processor: JotProcessor): void {
+    this.processor = processor;
+  }
 
-	/** Assemble what the admin commands act on. */
-	private deps(): Deps {
-		return {
-			repo: this.repo,
-			queue: this.queue,
-			processor: this.processor,
-			enricher: this.enricher,
-			transcriber: this.transcriber,
-			links: this.links,
-			github: this.github,
-			version: this.version,
-			sha: this.sha,
-			startedAt: this.startedAt,
-		};
-	}
+  /** Assemble what the admin commands act on. */
+  private deps(): Deps {
+    return {
+      repo: this.repo,
+      queue: this.queue,
+      processor: this.processor,
+      enricher: this.enricher,
+      transcriber: this.transcriber,
+      links: this.links,
+      github: this.github,
+      version: this.version,
+      sha: this.sha,
+      startedAt: this.startedAt,
+    };
+  }
 
-	/** Start long polling. Returns immediately; polling runs in the background. */
-	async start(): Promise<void> {
-		// Populate the `/` command menu Telegram shows in the compose box.
-		await this.bot.api
-			.setMyCommands([
-				{ command: "start", description: "What scriba does" },
-				{ command: "menu", description: "Open the interactive control menu" },
-				{
-					command: "rate",
-					description: "Rate a day 1–10 (today, or /rate YYYY-MM-DD)",
-				},
-				{
-					command: "habits",
-					description: "Review habits (yesterday, or /habits YYYY-MM-DD)",
-				},
-				{
-					command: "reprocess",
-					description: "Reprocess jots — a day, a date range, or one jot",
-				},
-				{
-					command: "command",
-					description: "Open a vault assistant session (/done to close)",
-				},
-				{
-					command: "task",
-					description: "Turn every message into a task (/done to close)",
-				},
-				{
-					command: "taskadd",
-					description: "Add one task in one message: /taskadd <what and when>",
-				},
-				{
-					command: "tasks",
-					description: "List your tasks — open, today, this week, done",
-				},
-				{
-					command: "done",
-					description: "Close the vault assistant or task session",
-				},
-				{
-					command: "delete",
-					description: "Reply to a journal message with /delete to remove it",
-				},
-				...commands.map((c) => ({
-					command: c.name,
-					description: c.description,
-				})),
-			])
-			.catch((e) => log.warn({ err: e }, "setMyCommands failed"));
-		void this.bot.start({
-			allowed_updates: [
-				"message",
-				"edited_message",
-				"callback_query",
-				"message_reaction",
-			],
-			onStart: (me) =>
-				log.info({ username: me.username }, "telegram long polling started"),
-		});
-	}
-	async stop(): Promise<void> {
-		await this.bot.stop();
-	}
+  /** Start long polling. Returns immediately; polling runs in the background. */
+  async start(): Promise<void> {
+    // Populate the `/` command menu Telegram shows in the compose box.
+    await this.bot.api
+      .setMyCommands([
+        { command: "start", description: "What scriba does" },
+        { command: "menu", description: "Open the interactive control menu" },
+        {
+          command: "rate",
+          description: "Rate a day 1–10 (today, or /rate YYYY-MM-DD)",
+        },
+        {
+          command: "habits",
+          description: "Review habits (yesterday, or /habits YYYY-MM-DD)",
+        },
+        {
+          command: "reprocess",
+          description: "Reprocess jots — a day, a date range, or one jot",
+        },
+        {
+          command: "command",
+          description: "Open a vault assistant session (/done to close)",
+        },
+        {
+          command: "task",
+          description: "Turn every message into a task (/done to close)",
+        },
+        {
+          command: "taskadd",
+          description: "Add one task in one message: /taskadd <what and when>",
+        },
+        {
+          command: "tasks",
+          description: "List your tasks — open, today, this week, done",
+        },
+        {
+          command: "done",
+          description: "Close the vault assistant or task session",
+        },
+        {
+          command: "delete",
+          description: "Reply to a journal message with /delete to remove it",
+        },
+        ...commands.map((c) => ({
+          command: c.name,
+          description: c.description,
+        })),
+      ])
+      .catch((e) => log.warn({ err: e }, "setMyCommands failed"));
+    void this.bot.start({
+      allowed_updates: [
+        "message",
+        "edited_message",
+        "callback_query",
+        "message_reaction",
+      ],
+      onStart: (me) =>
+        log.info({ username: me.username }, "telegram long polling started"),
+    });
+  }
+  async stop(): Promise<void> {
+    await this.bot.stop();
+  }
 
-	// --- BotServices ---
-	async notify(text: string): Promise<void> {
-		log.debug({ text }, "notify user");
-		await this.bot.api.sendMessage(config.telegram.allowedUserId, text);
-	}
+  // --- BotServices ---
+  async notify(text: string): Promise<void> {
+    log.debug({ text }, "notify user");
+    await this.bot.api.sendMessage(config.telegram.allowedUserId, text);
+  }
 
-	/** Nightly rating prompt (the scheduler calls this). Delegates to the rating command. */
-	async promptRating(date: string): Promise<void> {
-		await this.rating.prompt(date);
-	}
+  /** Nightly rating prompt (the scheduler calls this). Delegates to the rating command. */
+  async promptRating(date: string): Promise<void> {
+    await this.rating.prompt(date);
+  }
 
-	/** Nightly habit review prompt (the scheduler calls this). Delegates to the habits command. */
-	async promptHabits(date: string): Promise<void> {
-		await this.habits.prompt(date);
-	}
+  /** Nightly habit review prompt (the scheduler calls this). Delegates to the habits command. */
+  async promptHabits(date: string): Promise<void> {
+    await this.habits.prompt(date);
+  }
 
-	/** Morning task summary (the scheduler calls this). Delegates to the task flow. */
-	async promptTaskSummary(): Promise<void> {
-		await this.tasks.dailySummary();
-	}
+  /** Morning task summary (the scheduler calls this). Delegates to the task flow. */
+  async promptTaskSummary(): Promise<void> {
+    await this.tasks.dailySummary();
+  }
 
-	async askLink(
-		pendingId: string,
-		surface: string,
-		note: string,
-	): Promise<void> {
-		log.debug({ pendingId, surface, note }, "asking user to confirm link");
-		const kb = new InlineKeyboard()
-			.text("Yes", `lk:y:${pendingId}`)
-			.text("No", `lk:n:${pendingId}`);
-		await this.bot.api.sendMessage(
-			config.telegram.allowedUserId,
-			`Link "${surface}" → [[${note}]]?`,
-			{ reply_markup: kb },
-		);
-	}
+  async askLink(
+    pendingId: string,
+    surface: string,
+    note: string,
+  ): Promise<void> {
+    log.debug({ pendingId, surface, note }, "asking user to confirm link");
+    const kb = new InlineKeyboard()
+      .text("Yes", `lk:y:${pendingId}`)
+      .text("No", `lk:n:${pendingId}`);
+    await this.bot.api.sendMessage(
+      config.telegram.allowedUserId,
+      `Link "${surface}" → [[${note}]]?`,
+      { reply_markup: kb },
+    );
+  }
 
-	/** Propose a task the enricher spotted in a jot: the same confirmation card task mode
-	 *  uses, so a suggestion is edited and created exactly like one you typed yourself. */
-	async askTask(
-		draft: TaskDraft,
-		jotId: string,
-		jotDate: string,
-	): Promise<void> {
-		await this.tasks.suggest(draft, jotId, jotDate);
-	}
+  /** Propose a task the enricher spotted in a jot: the same confirmation card task mode
+   *  uses, so a suggestion is edited and created exactly like one you typed yourself. */
+  async askTask(
+    draft: TaskDraft,
+    jotId: string,
+    jotDate: string,
+  ): Promise<void> {
+    await this.tasks.suggest(draft, jotId, jotDate);
+  }
 
-	/** Show both transcript versions and wait for the user to pick one. Returns
-	 *  'original' or 'proposed'. Times out to 'original' after 5 minutes. */
-	async awaitVoiceFix(
-		jotId: string,
-		original: string,
-		proposed: string,
-	): Promise<"original" | "proposed"> {
-		const kb = new InlineKeyboard()
-			.text("📝 Use original", `vf:o:${jotId}`)
-			.text("✨ Use fixed", `vf:p:${jotId}`);
-		const html = [
-			"<b>Original transcript:</b>",
-			`<i>${escapeHtml(original)}</i>`,
-			"",
-			"<b>Proposed fix:</b>",
-			`<i>${escapeHtml(proposed)}</i>`,
-		].join("\n");
-		await this.status(jotId, html, undefined as any);
-		// Replace the keyboard on the status message (status() with no opts clears it,
-		// so we edit again with the choice buttons).
-		const chat = config.telegram.allowedUserId;
-		const msgId = this.statusMsgs.get(jotId);
-		if (msgId) {
-			await this.bot.api
-				.editMessageReplyMarkup(chat, msgId, { reply_markup: kb })
-				.catch(() => {});
-		}
-		return new Promise<"original" | "proposed">((resolve) => {
-			this.voiceFixPending.set(jotId, resolve);
-			// 5-minute timeout: fall back to original so processing never stalls.
-			setTimeout(
-				() => {
-					if (this.voiceFixPending.delete(jotId)) {
-						log.info({ jotId }, "voice fix: timed out, using original");
-						resolve("original");
-					}
-				},
-				5 * 60 * 1000,
-			);
-		});
-	}
+  /** Show both transcript versions and wait for the user to pick one. Returns
+   *  'original' or 'proposed'. Times out to 'original' after 5 minutes. */
+  async awaitVoiceFix(
+    jotId: string,
+    original: string,
+    proposed: string,
+  ): Promise<"original" | "proposed"> {
+    const kb = new InlineKeyboard()
+      .text("📝 Use original", `vf:o:${jotId}`)
+      .text("✨ Use fixed", `vf:p:${jotId}`);
+    const html = [
+      "<b>Original transcript:</b>",
+      `<i>${escapeHtml(original)}</i>`,
+      "",
+      "<b>Proposed fix:</b>",
+      `<i>${escapeHtml(proposed)}</i>`,
+    ].join("\n");
+    await this.status(jotId, html, undefined as any);
+    // Replace the keyboard on the status message (status() with no opts clears it,
+    // so we edit again with the choice buttons).
+    const chat = config.telegram.allowedUserId;
+    const msgId = this.statusMsgs.get(jotId);
+    if (msgId) {
+      await this.bot.api
+        .editMessageReplyMarkup(chat, msgId, { reply_markup: kb })
+        .catch(() => {});
+    }
+    return new Promise<"original" | "proposed">((resolve) => {
+      this.voiceFixPending.set(jotId, resolve);
+      // 5-minute timeout: fall back to original so processing never stalls.
+      setTimeout(
+        () => {
+          if (this.voiceFixPending.delete(jotId)) {
+            log.info({ jotId }, "voice fix: timed out, using original");
+            resolve("original");
+          }
+        },
+        5 * 60 * 1000,
+      );
+    });
+  }
 
-	/** Create-or-edit the one live status message for a jot. First call sends it and
-	 *  remembers the message id; later calls edit that same message in place, so the
-	 *  chat reads as a clean audit trail instead of a stream of notifications.
-	 *  `undo: true` attaches an undo button; `retry`/`discard` attach the failure pair;
-	 *  otherwise any button is cleared. */
-	async status(
-		jotId: string,
-		html: string,
-		opts?: StatusButtons,
-	): Promise<void> {
-		const reply_markup = opts?.undo
-			? new InlineKeyboard().text("↩️ Undo", `un:${jotId}`)
-			: jotButtons(jotId, opts);
-		const chat = config.telegram.allowedUserId;
-		const existing = this.statusMsgs.get(jotId);
-		if (existing) {
-			try {
-				await this.bot.api.editMessageText(chat, existing, html, {
-					parse_mode: "HTML",
-					reply_markup,
-				});
-				log.debug({ jotId, messageId: existing }, "status edited");
-				return;
-			} catch (err) {
-				log.warn(
-					{ jotId, messageId: existing, err },
-					"status edit failed — sending a fresh one",
-				);
-			}
-		}
-		const msg = await this.bot.api.sendMessage(chat, html, {
-			parse_mode: "HTML",
-			reply_markup,
-		});
-		this.statusMsgs.set(jotId, msg.message_id);
-		// Map the bot's status message to the jot too, so a reply to it edits the jot
-		// just like a reply to the original message (e.g. the transcribed audio note).
-		await this.repo.mapMessage(msg.message_id, jotId);
-		log.debug({ jotId, messageId: msg.message_id }, "status message sent");
-	}
+  /** Create-or-edit the one live status message for a jot. First call sends it and
+   *  remembers the message id; later calls edit that same message in place, so the
+   *  chat reads as a clean audit trail instead of a stream of notifications.
+   *  `undo: true` attaches an undo button; `retry`/`discard` attach the failure pair;
+   *  otherwise any button is cleared. */
+  async status(
+    jotId: string,
+    html: string,
+    opts?: StatusButtons,
+  ): Promise<void> {
+    const reply_markup = opts?.undo
+      ? new InlineKeyboard().text("↩️ Undo", `un:${jotId}`)
+      : jotButtons(jotId, opts);
+    const chat = config.telegram.allowedUserId;
+    const existing = this.statusMsgs.get(jotId);
+    if (existing) {
+      try {
+        await this.bot.api.editMessageText(chat, existing, html, {
+          parse_mode: "HTML",
+          reply_markup,
+        });
+        log.debug({ jotId, messageId: existing }, "status edited");
+        return;
+      } catch (err) {
+        log.warn(
+          { jotId, messageId: existing, err },
+          "status edit failed — sending a fresh one",
+        );
+      }
+    }
+    const msg = await this.bot.api.sendMessage(chat, html, {
+      parse_mode: "HTML",
+      reply_markup,
+    });
+    this.statusMsgs.set(jotId, msg.message_id);
+    // Map the bot's status message to the jot too, so a reply to it edits the jot
+    // just like a reply to the original message (e.g. the transcribed audio note).
+    await this.repo.mapMessage(msg.message_id, jotId);
+    log.debug({ jotId, messageId: msg.message_id }, "status message sent");
+  }
 
-	/** Delete a jot's live status message, if it has one. Best-effort: used on a squash
-	 *  to collapse any stray per-follower message into the leader's single confirmation. */
-	async deleteStatus(jotId: string): Promise<void> {
-		const messageId = this.statusMsgs.get(jotId);
-		if (!messageId) return;
-		this.statusMsgs.delete(jotId);
-		await this.repo.unmapMessage(messageId); // no stale reply-map to a gone message
-		try {
-			await this.bot.api.deleteMessage(
-				config.telegram.allowedUserId,
-				messageId,
-			);
-			log.info({ jotId, messageId }, "deleted stray status message (squash)");
-		} catch (err) {
-			log.warn({ jotId, messageId, err }, "failed to delete status message");
-		}
-	}
+  /** Delete a jot's live status message, if it has one. Best-effort: used on a squash
+   *  to collapse any stray per-follower message into the leader's single confirmation. */
+  async deleteStatus(jotId: string): Promise<void> {
+    const messageId = this.statusMsgs.get(jotId);
+    if (!messageId) return;
+    this.statusMsgs.delete(jotId);
+    await this.repo.unmapMessage(messageId); // no stale reply-map to a gone message
+    try {
+      await this.bot.api.deleteMessage(
+        config.telegram.allowedUserId,
+        messageId,
+      );
+      log.info({ jotId, messageId }, "deleted stray status message (squash)");
+    } catch (err) {
+      log.warn({ jotId, messageId, err }, "failed to delete status message");
+    }
+  }
 
-	/** Swap the intake reaction on a jot's message to reflect its outcome.
-	 *  Telegram only allows a fixed emoji set for reactions, so ⏳/✅/❌ aren't
-	 *  available — ✍ (received), 👌 (done), 🤔 (retrying), 😱 (failed) are the closest. */
-	async react(
-		jotId: string,
-		state: "done" | "failed" | "retrying",
-	): Promise<void> {
-		const messageId = await this.repo.messageForJot(jotId);
-		if (!messageId) return;
-		const emoji = state === "done" ? "👌" : state === "retrying" ? "🤔" : "😱";
-		await this.bot.api
-			.setMessageReaction(config.telegram.allowedUserId, messageId, [
-				{ type: "emoji", emoji },
-			])
-			.catch(() => {});
-	}
+  /** Swap the intake reaction on a jot's message to reflect its outcome.
+   *  Telegram only allows a fixed emoji set for reactions, so ⏳/✅/❌ aren't
+   *  available — ✍ (received), 👌 (done), 🤔 (retrying), 😱 (failed) are the closest. */
+  async react(
+    jotId: string,
+    state: "done" | "failed" | "retrying",
+  ): Promise<void> {
+    const messageId = await this.repo.messageForJot(jotId);
+    if (!messageId) return;
+    const emoji = state === "done" ? "👌" : state === "retrying" ? "🤔" : "😱";
+    await this.bot.api
+      .setMessageReaction(config.telegram.allowedUserId, messageId, [
+        { type: "emoji", emoji },
+      ])
+      .catch(() => {});
+  }
 
-	/** Best-effort "typing…" chat action. Telegram clears it after ~5s on its own. */
-	async typing(): Promise<void> {
-		await this.bot.api
-			.sendChatAction(config.telegram.allowedUserId, "typing")
-			.catch(() => {});
-	}
+  /** Best-effort "typing…" chat action. Telegram clears it after ~5s on its own. */
+  async typing(): Promise<void> {
+    await this.bot.api
+      .sendChatAction(config.telegram.allowedUserId, "typing")
+      .catch(() => {});
+  }
 
-	async downloadFile(fileId: string): Promise<DownloadedFile> {
-		const file = await this.bot.api.getFile(fileId);
-		if (!file.file_path) throw new Error(`no file_path for ${fileId}`);
-		const res = await fetch(
-			`https://api.telegram.org/file/bot${config.telegram.token}/${file.file_path}`,
-		);
-		if (!res.ok) throw new Error(`telegram file download: ${res.status}`);
-		const bytes = new Uint8Array(await res.arrayBuffer());
-		const ext = (extname(file.file_path).slice(1) || "bin").toLowerCase();
-		log.debug({ fileId, ext, bytes: bytes.length }, "downloaded telegram file");
-		return { bytes, ext, mime: MIME[ext] ?? "application/octet-stream" };
-	}
+  async downloadFile(fileId: string): Promise<DownloadedFile> {
+    const file = await this.bot.api.getFile(fileId);
+    if (!file.file_path) throw new Error(`no file_path for ${fileId}`);
+    const res = await fetch(
+      `https://api.telegram.org/file/bot${config.telegram.token}/${file.file_path}`,
+    );
+    if (!res.ok) throw new Error(`telegram file download: ${res.status}`);
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    const ext = (extname(file.file_path).slice(1) || "bin").toLowerCase();
+    log.debug({ fileId, ext, bytes: bytes.length }, "downloaded telegram file");
+    return { bytes, ext, mime: MIME[ext] ?? "application/octet-stream" };
+  }
 
-	/** Apply edits that were queued while this jot was still processing. */
-	async onJotDone(jotId: string): Promise<void> {
-		const edits = await this.repo.queuedEdits(jotId);
-		if (!edits.length) return;
-		const jot = await this.repo.getJot(jotId);
-		if (!jot) return;
-		log.info(
-			{ jotId, count: edits.length },
-			"applying edits queued during processing",
-		);
-		const confirmation = await this.applyEdits(jot, edits);
-		await this.repo.clearQueuedEdits(jotId); // clear only after apply succeeds, so a throw doesn't lose them
-		// Edit the jot's own status message in place rather than posting a new one — the
-		// chat keeps a single, already-updated message per jot instead of the stale
-		// "done" confirmation sitting alongside a separate "edited" one.
-		await this.status(
-			jotId,
-			`${confirmation}\n(applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""})`,
-			{ undo: true },
-		);
-	}
+  /** Apply edits that were queued while this jot was still processing. */
+  async onJotDone(jotId: string): Promise<void> {
+    const edits = await this.repo.queuedEdits(jotId);
+    if (!edits.length) return;
+    const jot = await this.repo.getJot(jotId);
+    if (!jot) return;
+    log.info(
+      { jotId, count: edits.length },
+      "applying edits queued during processing",
+    );
+    const confirmation = await this.applyEdits(jot, edits);
+    await this.repo.clearQueuedEdits(jotId); // clear only after apply succeeds, so a throw doesn't lose them
+    // Edit the jot's own status message in place rather than posting a new one — the
+    // chat keeps a single, already-updated message per jot instead of the stale
+    // "done" confirmation sitting alongside a separate "edited" one.
+    await this.status(
+      jotId,
+      `${confirmation}\n(applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""})`,
+      { undo: true },
+    );
+  }
 
-	// --- handlers ---
-	private registerHandlers(): void {
-		// Surface handler errors back to the user instead of dying silently.
-		this.bot.catch(async (err) => {
-			const msg =
-				err.error instanceof Error ? err.error.message : String(err.error);
-			log.error({ err: err.error }, "bot handler error");
-			// A failed menu/button tap: stop the button's spinner with a toast and stop here.
-			// Otherwise it spins forever and bot.catch posts jot-intake copy that doesn't fit.
-			if (err.ctx.callbackQuery) {
-				await err.ctx
-					.answerCallbackQuery({ text: `⚠️ ${msg}`.slice(0, 200) })
-					.catch(() => {});
-				return;
-			}
-			// If the failing message already has a jot row (intake persists it before the
-			// network write that usually throws here), offer the same 🔄 Retry / 🗑 Delete pair
-			// the processor's failures carry. No jot → plain error (e.g. a command failure).
-			const messageId = err.ctx.message?.message_id;
-			const jotId = messageId
-				? await this.repo.jotForMessage(messageId).catch(() => undefined)
-				: undefined;
-			const reply_markup = jotId
-				? jotButtons(jotId, { retry: true, discard: true })
-				: undefined;
-			await err.ctx
-				.reply(`⚠️ Couldn't save that: ${msg}`, { reply_markup })
-				.catch(() => {});
-		});
+  // --- handlers ---
+  private registerHandlers(): void {
+    // Surface handler errors back to the user instead of dying silently.
+    this.bot.catch(async (err) => {
+      const msg =
+        err.error instanceof Error ? err.error.message : String(err.error);
+      log.error({ err: err.error }, "bot handler error");
+      // A failed menu/button tap: stop the button's spinner with a toast and stop here.
+      // Otherwise it spins forever and bot.catch posts jot-intake copy that doesn't fit.
+      if (err.ctx.callbackQuery) {
+        await err.ctx
+          .answerCallbackQuery({ text: `⚠️ ${msg}`.slice(0, 200) })
+          .catch(() => {});
+        return;
+      }
+      // If the failing message already has a jot row (intake persists it before the
+      // network write that usually throws here), offer the same 🔄 Retry / 🗑 Delete pair
+      // the processor's failures carry. No jot → plain error (e.g. a command failure).
+      const messageId = err.ctx.message?.message_id;
+      const jotId = messageId
+        ? await this.repo.jotForMessage(messageId).catch(() => undefined)
+        : undefined;
+      const reply_markup = jotId
+        ? jotButtons(jotId, { retry: true, discard: true })
+        : undefined;
+      await err.ctx
+        .reply(`⚠️ Couldn't save that: ${msg}`, { reply_markup })
+        .catch(() => {});
+    });
 
-		// single-user allowlist — everyone else is ignored
-		this.bot.use(async (ctx, next) => {
-			if (ctx.from?.id === config.telegram.allowedUserId) await next();
-		});
+    // single-user allowlist — everyone else is ignored
+    this.bot.use(async (ctx, next) => {
+      if (ctx.from?.id === config.telegram.allowedUserId) await next();
+    });
 
-		this.bot.command("start", (ctx) =>
-			ctx.reply(
-				"scriba ready. Send text or a voice note to journal. /help for admin commands.",
-			),
-		);
-		this.rating.register();
-		this.habits.register();
-		this.reprocess.register();
+    this.bot.command("start", (ctx) =>
+      ctx.reply(
+        "scriba ready. Send text or a voice note to journal. /help for admin commands.",
+      ),
+    );
+    this.rating.register();
+    this.habits.register();
+    this.reprocess.register();
 
-		// Admin commands (single-user, so the allowlist above is the only auth needed).
-		for (const cmd of commands) {
-			this.bot.command(cmd.name, async (ctx) => {
-				const out = await cmd.run(ctx, String(ctx.match ?? ""), this.deps());
-				// Every string-returning command funnels through here, so this is the one
-				// place that has to survive an oversized reply. Commands that can grow
-				// paginate themselves; fitTelegram is the backstop that turns a rejected
-				// send into a labelled cut.
-				if (typeof out === "string") await ctx.reply(fitTelegram(out));
-			});
-		}
+    // Admin commands (single-user, so the allowlist above is the only auth needed).
+    for (const cmd of commands) {
+      this.bot.command(cmd.name, async (ctx) => {
+        const out = await cmd.run(ctx, String(ctx.match ?? ""), this.deps());
+        // Every string-returning command funnels through here, so this is the one
+        // place that has to survive an oversized reply. Commands that can grow
+        // paginate themselves; fitTelegram is the backstop that turns a rejected
+        // send into a labelled cut.
+        if (typeof out === "string") await ctx.reply(fitTelegram(out));
+      });
+    }
 
-		// Reply to a jot's message with /delete to remove its journal line. This is the
-		// explicit counterpart to clearing the message text (an actual Telegram delete is
-		// never delivered to bots, so there's nothing to hook).
-		this.bot.command("delete", (ctx) => this.handleDeleteCommand(ctx));
+    // Reply to a jot's message with /delete to remove its journal line. This is the
+    // explicit counterpart to clearing the message text (an actual Telegram delete is
+    // never delivered to bots, so there's nothing to hook).
+    this.bot.command("delete", (ctx) => this.handleDeleteCommand(ctx));
 
-		// Interactive control menu — an entry point layered over the slash commands, not a
-		// replacement. Every leaf reuses an existing command or flow (see MenuController).
-		this.menu.register();
-		this.command.register();
-		this.tasks.register();
+    // Interactive control menu — an entry point layered over the slash commands, not a
+    // replacement. Every leaf reuses an existing command or flow (see MenuController).
+    this.menu.register();
+    this.command.register();
+    this.tasks.register();
 
-		// One /done for both message-stream modes: it closes whichever is actually open, so
-		// there's a single command to remember rather than one per mode.
-		this.bot.command("done", async (ctx) => {
-			if (this.tasks.isOpen()) return this.tasks.finish(ctx);
-			return this.command.finish(ctx);
-		});
+    // One /done for both message-stream modes: it closes whichever is actually open, so
+    // there's a single command to remember rather than one per mode.
+    this.bot.command("done", async (ctx) => {
+      if (this.tasks.isOpen()) return this.tasks.finish(ctx);
+      return this.command.finish(ctx);
+    });
 
-		this.bot.on("message:text", async (ctx) => {
-			if (ctx.message.text.startsWith("/")) return;
-			// Command mode takes the whole message stream while it's open, so a prompt meant for
-			// the vault assistant never lands in the journal as a jot.
-			if (this.command.isOpen())
-				return this.command.handle(ctx, ctx.message.text);
-			if (ctx.message.reply_to_message) {
-				// A reply to a habit value question routes to the habit flow, not a jot edit.
-				const prompt = ctx.message.reply_to_message.text ?? "";
-				if (parseHabitRef(prompt)) return this.habits.handleReply(ctx);
-				// Likewise a reply to one of the link wizard's add-a-rule prompts.
-				if (this.menu.isWizardPrompt(prompt))
-					return this.menu.handleWizardReply(ctx, prompt);
-				// …and a reply to a task card's change prompt, which can arrive whether or
-				// not task mode is open (a jot suggestion asks for its deadline outright).
-				if (this.tasks.isTaskPrompt(prompt))
-					return this.tasks.handleReply(ctx, prompt);
-				// Anything else replied to while task mode is open is another task, not an
-				// edit to some jot — task mode owns the stream, replies included.
-				if (this.tasks.isOpen())
-					return this.tasks.handle(ctx, ctx.message.text);
-				return this.handleEdit(ctx);
-			}
-			// Task mode takes the rest of the stream: the message becomes a task, not a jot.
-			if (this.tasks.isOpen()) return this.tasks.handle(ctx, ctx.message.text);
-			const markdown = entitiesToMarkdown(
-				ctx.message.text,
-				ctx.message.entities,
-			);
-			await this.intake(ctx, "text", { rawText: markdown });
-		});
+    this.bot.on("message:text", async (ctx) => {
+      if (ctx.message.text.startsWith("/")) return;
+      // Command mode takes the whole message stream while it's open, so a prompt meant for
+      // the vault assistant never lands in the journal as a jot.
+      if (this.command.isOpen())
+        return this.command.handle(ctx, ctx.message.text);
+      if (ctx.message.reply_to_message) {
+        // A reply to a habit value question routes to the habit flow, not a jot edit.
+        const prompt = ctx.message.reply_to_message.text ?? "";
+        if (parseHabitRef(prompt)) return this.habits.handleReply(ctx);
+        // Likewise a reply to one of the link wizard's add-a-rule prompts.
+        if (this.menu.isWizardPrompt(prompt))
+          return this.menu.handleWizardReply(ctx, prompt);
+        // …and a reply to a task card's change prompt, which can arrive whether or
+        // not task mode is open (a jot suggestion asks for its deadline outright).
+        if (this.tasks.isTaskPrompt(prompt))
+          return this.tasks.handleReply(ctx, prompt);
+        // Anything else replied to while task mode is open is another task, not an
+        // edit to some jot — task mode owns the stream, replies included.
+        if (this.tasks.isOpen())
+          return this.tasks.handle(ctx, ctx.message.text);
+        return this.handleEdit(ctx);
+      }
+      // Task mode takes the rest of the stream: the message becomes a task, not a jot.
+      if (this.tasks.isOpen()) return this.tasks.handle(ctx, ctx.message.text);
+      const markdown = entitiesToMarkdown(
+        ctx.message.text,
+        ctx.message.entities,
+      );
+      await this.intake(ctx, "text", { rawText: markdown });
+    });
 
-		this.bot.on("message:voice", (ctx) =>
-			this.tasks.isOpen()
-				? this.spokenTask(ctx, ctx.message.voice.file_id)
-				: this.intake(ctx, "audio", { fileId: ctx.message.voice.file_id }),
-		);
-		this.bot.on("message:audio", (ctx) =>
-			this.tasks.isOpen()
-				? this.spokenTask(ctx, ctx.message.audio.file_id)
-				: this.intake(ctx, "audio", { fileId: ctx.message.audio.file_id }),
-		);
+    this.bot.on("message:voice", (ctx) =>
+      this.tasks.isOpen()
+        ? this.spokenTask(ctx, ctx.message.voice.file_id)
+        : this.intake(ctx, "audio", { fileId: ctx.message.voice.file_id }),
+    );
+    this.bot.on("message:audio", (ctx) =>
+      this.tasks.isOpen()
+        ? this.spokenTask(ctx, ctx.message.audio.file_id)
+        : this.intake(ctx, "audio", { fileId: ctx.message.audio.file_id }),
+    );
 
-		// Image/video are attachments: saved and embedded, caption kept, not transcribed.
-		// `return` the promise so a rejection reaches bot.catch (a fire-and-forget arrow
-		// would swallow it and leave the ✍ reaction stuck forever).
-		this.bot.on("message:photo", (ctx) =>
-			this.intakeMedia(ctx, "image", ctx.message.photo.at(-1)!.file_id),
-		);
-		this.bot.on("message:video", (ctx) =>
-			this.intakeMedia(ctx, "video", ctx.message.video.file_id),
-		);
-		this.bot.on("message:video_note", (ctx) =>
-			this.intake(ctx, "video", { fileId: ctx.message.video_note.file_id }),
-		);
+    // Image/video are attachments: saved and embedded, caption kept, not transcribed.
+    // `return` the promise so a rejection reaches bot.catch (a fire-and-forget arrow
+    // would swallow it and leave the ✍ reaction stuck forever).
+    this.bot.on("message:photo", (ctx) =>
+      this.intakeMedia(ctx, "image", ctx.message.photo.at(-1)!.file_id),
+    );
+    this.bot.on("message:video", (ctx) =>
+      this.intakeMedia(ctx, "video", ctx.message.video.file_id),
+    );
+    this.bot.on("message:video_note", (ctx) =>
+      this.intake(ctx, "video", { fileId: ctx.message.video_note.file_id }),
+    );
 
-		// Edited text messages — edit the jot in place if already processed,
-		// otherwise queue the edit for when processing finishes.
-		this.bot.on("edited_message:text", (ctx) => {
-			if (ctx.editedMessage.text.startsWith("/")) return;
-			return this.applyMessageEdit(
-				ctx,
-				entitiesToMarkdown(ctx.editedMessage.text, ctx.editedMessage.entities),
-			);
-		});
+    // Edited text messages — edit the jot in place if already processed,
+    // otherwise queue the edit for when processing finishes.
+    this.bot.on("edited_message:text", (ctx) => {
+      if (ctx.editedMessage.text.startsWith("/")) return;
+      return this.applyMessageEdit(
+        ctx,
+        entitiesToMarkdown(ctx.editedMessage.text, ctx.editedMessage.entities),
+      );
+    });
 
-		// Edited captions on media — treat same as text edits for the jot text.
-		this.bot.on("edited_message:caption", (ctx) =>
-			this.applyMessageEdit(
-				ctx,
-				entitiesToMarkdown(
-					ctx.editedMessage.caption ?? "",
-					ctx.editedMessage.caption_entities,
-				),
-			),
-		);
+    // Edited captions on media — treat same as text edits for the jot text.
+    this.bot.on("edited_message:caption", (ctx) =>
+      this.applyMessageEdit(
+        ctx,
+        entitiesToMarkdown(
+          ctx.editedMessage.caption ?? "",
+          ctx.editedMessage.caption_entities,
+        ),
+      ),
+    );
 
-		this.bot.on("callback_query:data", (ctx) => this.handleButton(ctx));
+    this.bot.on("callback_query:data", (ctx) => this.handleButton(ctx));
 
-		// The user tapping 🤝 on a squashed follower's message — the merge opt-out.
-		this.bot.on("message_reaction", (ctx) => this.handleMergeReaction(ctx));
+    // The user tapping 🤝 on a squashed follower's message — the merge opt-out.
+    this.bot.on("message_reaction", (ctx) => this.handleMergeReaction(ctx));
 
-		this.bot.on("message", (ctx) =>
-			ctx.reply("scriba handles text, voice, images, and video for now."),
-		);
-	}
+    this.bot.on("message", (ctx) =>
+      ctx.reply("scriba handles text, voice, images, and video for now."),
+    );
+  }
 
-	// Edit an existing jot in place if it's already processed, otherwise queue
-	// the edit for when processing finishes. Clearing the message to empty/whitespace
-	// is the delete gesture (Telegram never delivers an actual message delete), so a
-	// blank edit removes the journal line instead of replacing it.
-	private async applyMessageEdit(ctx: any, markdown: string): Promise<void> {
-		const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
-		if (!jotId) return;
-		const jot = await this.repo.getJot(jotId);
-		if (!jot) return;
-		const blank = isBlank(markdown);
-		if (!isEditableJot(jot.status)) {
-			// "delete" is the instruction applyEdits recognises when onJotDone drains the
-			// queue, so an in-flight jot is deleted the moment its line is first written.
-			log.info(
-				{ jotId, status: jot.status, blank },
-				`${blank ? "delete" : "edit"} queued (jot still processing)`,
-			);
-			await this.repo.queueEdit(jotId, blank ? "delete" : markdown);
-			return void ctx.reply(
-				blank
-					? "⏳ still processing — I'll remove it once it's done."
-					: "⏳ still processing — I'll apply that edit once it's done.",
-			);
-		}
-		// Both branches edit the jot's own status message in place (this.status) rather
-		// than posting a new reply, so the chat ends up with the single, already-updated
-		// message instead of the stale confirmation sitting alongside a fresh one.
-		if (blank) {
-			log.info({ jotId }, "edited message cleared — removing journal line");
-			await this.status(jotId, "🗑️ got it — removing…");
-			return void this.status(jotId, await this.deleteJot(jot));
-		}
-		log.info({ jotId, text: markdown }, "applying edit to processed jot");
-		await this.status(jotId, "✍️ got your edit — applying…");
-		await this.status(jotId, await this.replaceJotText(jot, markdown), {
-			undo: true,
-		});
-	}
+  // Edit an existing jot in place if it's already processed, otherwise queue
+  // the edit for when processing finishes. Clearing the message to empty/whitespace
+  // is the delete gesture (Telegram never delivers an actual message delete), so a
+  // blank edit removes the journal line instead of replacing it.
+  private async applyMessageEdit(ctx: any, markdown: string): Promise<void> {
+    const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
+    if (!jotId) return;
+    const jot = await this.repo.getJot(jotId);
+    if (!jot) return;
+    const blank = isBlank(markdown);
+    if (!isEditableJot(jot.status)) {
+      // "delete" is the instruction applyEdits recognises when onJotDone drains the
+      // queue, so an in-flight jot is deleted the moment its line is first written.
+      log.info(
+        { jotId, status: jot.status, blank },
+        `${blank ? "delete" : "edit"} queued (jot still processing)`,
+      );
+      await this.repo.queueEdit(jotId, blank ? "delete" : markdown);
+      return void ctx.reply(
+        blank
+          ? "⏳ still processing — I'll remove it once it's done."
+          : "⏳ still processing — I'll apply that edit once it's done.",
+      );
+    }
+    // Both branches edit the jot's own status message in place (this.status) rather
+    // than posting a new reply, so the chat ends up with the single, already-updated
+    // message instead of the stale confirmation sitting alongside a fresh one.
+    if (blank) {
+      log.info({ jotId }, "edited message cleared — removing journal line");
+      await this.status(jotId, "🗑️ got it — removing…");
+      return void this.status(jotId, await this.deleteJot(jot));
+    }
+    log.info({ jotId, text: markdown }, "applying edit to processed jot");
+    await this.status(jotId, "✍️ got your edit — applying…");
+    await this.status(jotId, await this.replaceJotText(jot, markdown), {
+      undo: true,
+    });
+  }
 
-	/** A voice note sent while task mode is open. It is transcribed like any other voice
-	 *  jot and then read as a task — dictating a task is the whole point of task mode being
-	 *  a mode rather than a command with arguments. */
-	private async spokenTask(ctx: any, fileId: string): Promise<void> {
-		await ctx.react("✍").catch(() => {});
-		const file = await this.downloadFile(fileId);
-		const text = await this.transcriber.transcribe(file.bytes, file.ext);
-		log.info({ chars: text.length }, "task mode: voice note transcribed");
-		await this.tasks.handle(ctx, text);
-	}
+  /** A voice note sent while task mode is open. It is transcribed like any other voice
+   *  jot and then read as a task — dictating a task is the whole point of task mode being
+   *  a mode rather than a command with arguments. */
+  private async spokenTask(ctx: any, fileId: string): Promise<void> {
+    await ctx.react("✍").catch(() => {});
+    const file = await this.downloadFile(fileId);
+    const text = await this.transcriber.transcribe(file.bytes, file.ext);
+    log.info({ chars: text.length }, "task mode: voice note transcribed");
+    await this.tasks.handle(ctx, text);
+  }
 
-	/** Attachment intake (image/video): save + embed the file, keeping the caption as the
-	 *  jot's text (an image's caption is the entry itself; a video's is its embed display).
-	 *  Returns the intake promise so a rejection reaches bot.catch. */
-	private intakeMedia(ctx: any, kind: JotKind, fileId: string): Promise<void> {
-		const markdown = entitiesToMarkdown(
-			ctx.message.caption ?? "",
-			ctx.message.caption_entities,
-		);
-		return this.intake(ctx, kind, { fileId, rawText: markdown });
-	}
+  /** Attachment intake (image/video): save + embed the file, keeping the caption as the
+   *  jot's text (an image's caption is the entry itself; a video's is its embed display).
+   *  Returns the intake promise so a rejection reaches bot.catch. */
+  private intakeMedia(ctx: any, kind: JotKind, fileId: string): Promise<void> {
+    const markdown = entitiesToMarkdown(
+      ctx.message.caption ?? "",
+      ctx.message.caption_entities,
+    );
+    return this.intake(ctx, kind, { fileId, rawText: markdown });
+  }
 
-	private async intake(
-		ctx: any,
-		kind: JotKind,
-		src: { rawText?: string; fileId?: string },
-	): Promise<void> {
-		const epochMs = ctx.message.date * 1000;
-		const id = makeJotId();
-		const date = plainDate(epochMs);
-		const time = plainTime(epochMs);
-		// dailyPath is pure (no REST call), so the row can be persisted even when Obsidian is
-		// down. ensureDailyNote + the placeholder write happen after, and writeLine recreates
-		// the note on flush, so a failed placeholder self-heals.
-		const notePath = this.obsidian.dailyPath(date);
+  private async intake(
+    ctx: any,
+    kind: JotKind,
+    src: { rawText?: string; fileId?: string },
+  ): Promise<void> {
+    const epochMs = ctx.message.date * 1000;
+    const id = makeJotId();
+    const date = plainDate(epochMs);
+    const time = plainTime(epochMs);
+    // dailyPath is pure (no REST call), so the row can be persisted even when Obsidian is
+    // down. ensureDailyNote + the placeholder write happen after, and writeLine recreates
+    // the note on flush, so a failed placeholder self-heals.
+    const notePath = this.obsidian.dailyPath(date);
 
-		// Squash a rapid burst: a text/voice jot arriving within the squash window of the
-		// previous still-pending text/voice jot in this note folds into that jot's line —
-		// it shares the leader's anchor and skips its own placeholder, so the processor
-		// (which groups by anchor) enriches them into one line. Ordering never changes: the
-		// leader's placeholder is already in place. Attach-only kinds never squash. Decided
-		// before the ack reaction below, so a squashed follower gets the 🤝 marker on the
-		// same react() call instead of a second round-trip.
-		let anchor = id;
-		let squashed = false;
-		if (kind === "text" || kind === "audio") {
-			const prev = await this.repo.lastPendingEnrichableJot(notePath);
-			if (
-				prev &&
-				withinSquashWindow(prev.received_at, epochMs, config.squash.windowMs)
-			) {
-				anchor = prev.anchor;
-				squashed = true;
-				log.info(
-					{ id, into: anchor, gapMs: epochMs - prev.received_at },
-					"jot squashed into open run",
-				);
-			}
-		}
+    // Squash a rapid burst: a text/voice jot arriving within the squash window of the
+    // previous still-pending text/voice jot in this note folds into that jot's line —
+    // it shares the leader's anchor and skips its own placeholder, so the processor
+    // (which groups by anchor) enriches them into one line. Ordering never changes: the
+    // leader's placeholder is already in place. Attach-only kinds never squash. Decided
+    // before the ack reaction below, so a squashed follower gets the 🤝 marker on the
+    // same react() call instead of a second round-trip.
+    let anchor = id;
+    let squashed = false;
+    if (kind === "text" || kind === "audio") {
+      const prev = await this.repo.lastPendingEnrichableJot(notePath);
+      if (
+        prev &&
+        withinSquashWindow(prev.received_at, epochMs, config.squash.windowMs)
+      ) {
+        anchor = prev.anchor;
+        squashed = true;
+        log.info(
+          { id, into: anchor, gapMs: epochMs - prev.received_at },
+          "jot squashed into open run",
+        );
+      }
+    }
 
-		// Ack receipt with a reaction (✍ = received/awaiting) — best-effort, intake
-		// proceeds if it fails. Swapped to 👌/😱 by react() once processing settles. A
-		// squashed follower gets 🤝 instead, marking it for merge; reacting with 🤝
-		// yourself pulls it back out (handleMergeReaction). Telegram bots can set only one
-		// reaction per message (non-Premium) — setting both here would silently no-op.
-		await ctx.react(squashed ? MERGE_EMOJI : "✍").catch(() => {});
-		log.info(
-			{ id, kind, date, time, hasFile: !!src.fileId, hasText: !!src.rawText },
-			"jot received",
-		);
+    // Ack receipt with a reaction (✍ = received/awaiting) — best-effort, intake
+    // proceeds if it fails. Swapped to 👌/😱 by react() once processing settles. A
+    // squashed follower gets 🤝 instead, marking it for merge; reacting with 🤝
+    // yourself pulls it back out (handleMergeReaction). Telegram bots can set only one
+    // reaction per message (non-Premium) — setting both here would silently no-op.
+    await ctx.react(squashed ? MERGE_EMOJI : "✍").catch(() => {});
+    log.info(
+      { id, kind, date, time, hasFile: !!src.fileId, hasText: !!src.rawText },
+      "jot received",
+    );
 
-		const now = Date.now();
-		const jot: Jot = {
-			id,
-			kind,
-			note_path: notePath,
-			anchor,
-			time,
-			raw_text: src.rawText ?? null,
-			transcript: null,
-			proposed_text: null,
-			asset_path: null,
-			file_id: src.fileId ?? null,
-			status: "pending",
-			attempts: 0,
-			error: null,
-			received_at: epochMs,
-			updated_at: now,
-		};
-		// Insert the DB row (pending) BEFORE writing the placeholder line. A crash between the
-		// two then leaves a row with no line — which self-heals, since writeLine falls back to
-		// appendJournalLine on a missing anchor. The reverse (a line with no row) would orphan
-		// a placeholder no sweep can find.
-		await this.repo.insertJot(jot);
-		// Map the message BEFORE the network write below so the jot is retryable even if the
-		// placeholder write throws (Obsidian down): bot.catch finds this jot by message id and
-		// offers a retry button. Queueing stays last so ordering matches the normal path.
-		await this.repo.mapMessage(ctx.message.message_id, id);
-		// A squashed follower reuses the leader's placeholder — writing its own would add a
-		// second line the processor would then have to reconcile away.
-		if (squashed) {
-			log.debug({ id, anchor }, "squashed — reusing leader placeholder");
-		} else {
-			await this.obsidian.ensureDailyNote(date);
-			await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
-			log.debug({ id, notePath }, "placeholder line written");
-		}
-		this.queue.add(id);
-		log.debug({ id }, "jot queued for flush");
-	}
+    const now = Date.now();
+    const jot: Jot = {
+      id,
+      kind,
+      note_path: notePath,
+      anchor,
+      time,
+      raw_text: src.rawText ?? null,
+      transcript: null,
+      proposed_text: null,
+      asset_path: null,
+      file_id: src.fileId ?? null,
+      status: "pending",
+      attempts: 0,
+      error: null,
+      received_at: epochMs,
+      updated_at: now,
+    };
+    // Insert the DB row (pending) BEFORE writing the placeholder line. A crash between the
+    // two then leaves a row with no line — which self-heals, since writeLine falls back to
+    // appendJournalLine on a missing anchor. The reverse (a line with no row) would orphan
+    // a placeholder no sweep can find.
+    await this.repo.insertJot(jot);
+    // Map the message BEFORE the network write below so the jot is retryable even if the
+    // placeholder write throws (Obsidian down): bot.catch finds this jot by message id and
+    // offers a retry button. Queueing stays last so ordering matches the normal path.
+    await this.repo.mapMessage(ctx.message.message_id, id);
+    // A squashed follower reuses the leader's placeholder — writing its own would add a
+    // second line the processor would then have to reconcile away.
+    if (squashed) {
+      log.debug({ id, anchor }, "squashed — reusing leader placeholder");
+    } else {
+      await this.obsidian.ensureDailyNote(date);
+      await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
+      log.debug({ id, notePath }, "placeholder line written");
+    }
+    this.queue.add(id);
+    log.debug({ id }, "jot queued for flush");
+  }
 
-	/** The user tapping 🤝 on a squashed follower's own message — opting it out of the
-	 *  merge. Only takes effect while the jot is still pending; `unsquash` is the
-	 *  compare-and-swap that enforces that atomically, so a tap racing the leader's flush
-	 *  loses cleanly rather than double-posting the follower's text. */
-	private async handleMergeReaction(ctx: any): Promise<void> {
-		if (!ctx.reactions().emojiAdded.includes(MERGE_EMOJI)) return;
-		const messageId = ctx.messageReaction?.message_id;
-		const jotId = messageId
-			? await this.repo.jotForMessage(messageId)
-			: undefined;
-		if (!jotId) return;
-		const jot = await this.repo.getJot(jotId);
-		if (!jot || jot.anchor === jot.id) return; // not a squashed follower, nothing to opt out of
-		if (!(await this.repo.unsquash(jotId))) {
-			log.info(
-				{ jotId },
-				"merge opt-out too late — already folded into the leader",
-			);
-			await this.notify("🤝 too late — that one's already merged in.");
-			return;
-		}
-		log.info(
-			{ jotId, formerLeader: jot.anchor },
-			"merge opt-out — jot pulled back into its own line",
-		);
-		await this.obsidian.ensureDailyNote(plainDate(jot.received_at));
-		await this.obsidian.appendJournalLine(
-			plainDate(jot.received_at),
-			placeholderLine(jot.time, jotId),
-		);
-		await ctx.react("✍").catch(() => {});
-	}
+  /** The user tapping 🤝 on a squashed follower's own message — opting it out of the
+   *  merge. Only takes effect while the jot is still pending; `unsquash` is the
+   *  compare-and-swap that enforces that atomically, so a tap racing the leader's flush
+   *  loses cleanly rather than double-posting the follower's text. */
+  private async handleMergeReaction(ctx: any): Promise<void> {
+    if (!ctx.reactions().emojiAdded.includes(MERGE_EMOJI)) return;
+    const messageId = ctx.messageReaction?.message_id;
+    const jotId = messageId
+      ? await this.repo.jotForMessage(messageId)
+      : undefined;
+    if (!jotId) return;
+    const jot = await this.repo.getJot(jotId);
+    if (!jot || jot.anchor === jot.id) return; // not a squashed follower, nothing to opt out of
+    if (!(await this.repo.unsquash(jotId))) {
+      log.info(
+        { jotId },
+        "merge opt-out too late — already folded into the leader",
+      );
+      await this.notify("🤝 too late — that one's already merged in.");
+      return;
+    }
+    log.info(
+      { jotId, formerLeader: jot.anchor },
+      "merge opt-out — jot pulled back into its own line",
+    );
+    await this.obsidian.ensureDailyNote(plainDate(jot.received_at));
+    await this.obsidian.appendJournalLine(
+      plainDate(jot.received_at),
+      placeholderLine(jot.time, jotId),
+    );
+    await ctx.react("✍").catch(() => {});
+  }
 
-	private async handleEdit(ctx: any): Promise<void> {
-		const jotId = await this.repo.jotForMessage(
-			ctx.message.reply_to_message.message_id,
-		);
-		if (!jotId) return void ctx.reply("Can't find that jot to edit.");
-		const jot = await this.repo.getJot(jotId);
-		if (!jot) return void ctx.reply("Jot not found.");
-		const instruction: string = ctx.message.text;
+  private async handleEdit(ctx: any): Promise<void> {
+    const jotId = await this.repo.jotForMessage(
+      ctx.message.reply_to_message.message_id,
+    );
+    if (!jotId) return void ctx.reply("Can't find that jot to edit.");
+    const jot = await this.repo.getJot(jotId);
+    if (!jot) return void ctx.reply("Jot not found.");
+    const instruction: string = ctx.message.text;
 
-		// Editable only once a line exists (done or abandoned); otherwise it still needs
-		// processing, so queue the edit and let onJotDone apply it after.
-		if (!isEditableJot(jot.status)) {
-			log.info(
-				{ jotId, status: jot.status },
-				"edit queued (jot still processing)",
-			);
-			await this.repo.queueEdit(jotId, instruction);
-			return void ctx.reply(
-				"⏳ still processing — I'll apply that edit once it's done.",
-			);
-		}
-		log.info({ jotId, instruction }, "applying edit");
-		// Edit the jot's own status message in place rather than posting a new reply, so
-		// the chat ends up with the single, already-updated message instead of the stale
-		// confirmation sitting alongside a fresh one.
-		const applied = await this.applyEdits(jot, [instruction]);
-		// A freeform instruction can itself be "delete this", so only offer Undo when the
-		// entry is actually still in the journal.
-		const after = await this.repo.getJot(jotId);
-		await this.status(jotId, applied, { undo: after?.status === "done" });
-	}
+    // Editable only once a line exists (done or abandoned); otherwise it still needs
+    // processing, so queue the edit and let onJotDone apply it after.
+    if (!isEditableJot(jot.status)) {
+      log.info(
+        { jotId, status: jot.status },
+        "edit queued (jot still processing)",
+      );
+      await this.repo.queueEdit(jotId, instruction);
+      return void ctx.reply(
+        "⏳ still processing — I'll apply that edit once it's done.",
+      );
+    }
+    log.info({ jotId, instruction }, "applying edit");
+    // Edit the jot's own status message in place rather than posting a new reply, so
+    // the chat ends up with the single, already-updated message instead of the stale
+    // confirmation sitting alongside a fresh one.
+    const applied = await this.applyEdits(jot, [instruction]);
+    // A freeform instruction can itself be "delete this", so only offer Undo when the
+    // entry is actually still in the journal.
+    const after = await this.repo.getJot(jotId);
+    await this.status(jotId, applied, { undo: after?.status === "done" });
+  }
 
-	/** Apply one or more edit instructions to a jot's line, merged into a single write
-	 *  (and a single agent call for the freeform ones). Returns a short status. */
-	private async applyEdits(jot: Jot, instructions: string[]): Promise<string> {
-		// Delete short-circuits to deleteJot (which takes the note lock itself) BEFORE we
-		// acquire it here — locking here and then calling deleteJot would deadlock on the path.
-		if (instructions.some((i) => i.trim().toLowerCase() === "delete"))
-			return this.deleteJot(jot);
-		const result = await this.obsidian.withNoteLock(jot.note_path, async () => {
-			const note = await this.obsidian.readNote(jot.note_path);
-			const line = anchorLine(note, jot.anchor);
-			if (!line) return null;
+  /** Apply one or more edit instructions to a jot's line, merged into a single write
+   *  (and a single agent call for the freeform ones). Returns a short status. */
+  private async applyEdits(jot: Jot, instructions: string[]): Promise<string> {
+    // Delete short-circuits to deleteJot (which takes the note lock itself) BEFORE we
+    // acquire it here — locking here and then calling deleteJot would deadlock on the path.
+    if (instructions.some((i) => i.trim().toLowerCase() === "delete"))
+      return this.deleteJot(jot);
+    const result = await this.obsidian.withNoteLock(jot.note_path, async () => {
+      const note = await this.obsidian.readNote(jot.note_path);
+      const line = anchorLine(note, jot.anchor);
+      if (!line) return null;
 
-			let text = stripJournalLine(line, jot.time);
-			const freeform: string[] = [];
-			for (const ins of instructions) {
-				const lit = parseLiteralEdit(ins);
-				if (lit)
-					text = text.replaceAll(lit.old, lit.new); // deterministic, free
-				else freeform.push(ins);
-			}
-			// Merge all freeform edits into one agent call rather than one per instruction.
-			if (freeform.length)
-				text = await this.enricher.editText(text, freeform.join("; then "));
+      let text = stripJournalLine(line, jot.time);
+      const freeform: string[] = [];
+      for (const ins of instructions) {
+        const lit = parseLiteralEdit(ins);
+        if (lit)
+          text = text.replaceAll(lit.old, lit.new); // deterministic, free
+        else freeform.push(ins);
+      }
+      // Merge all freeform edits into one agent call rather than one per instruction.
+      if (freeform.length)
+        text = await this.enricher.editText(text, freeform.join("; then "));
 
-			const out = replaceAnchorLine(
-				note,
-				jot.anchor,
-				journalLine(jot.time, text, jot.anchor),
-			);
-			if (out) await this.obsidian.writeNote(jot.note_path, out);
-			return text;
-		});
-		if (result === null) return "Couldn't find that line in the note.";
-		await this.syncEditedSource(jot, result);
-		return editConfirmation(jot.time, result);
-	}
+      const out = replaceAnchorLine(
+        note,
+        jot.anchor,
+        journalLine(jot.time, text, jot.anchor),
+      );
+      if (out) await this.obsidian.writeNote(jot.note_path, out);
+      return text;
+    });
+    if (result === null) return "Couldn't find that line in the note.";
+    await this.syncEditedSource(jot, result);
+    return editConfirmation(jot.time, result);
+  }
 
-	/** Replace a jot's entire text content (for edited messages, not instructions). The new
-	 *  text is only the message's text/caption, so a media jot's embed is re-appended —
-	 *  editing an image's caption must not drop the image out of the note. */
-	private async replaceJotText(jot: Jot, newText: string): Promise<string> {
-		const content = [newText, assetEmbed(jot)].filter(Boolean).join(" ");
-		const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
-			const note = await this.obsidian.readNote(jot.note_path);
-			const replaced = replaceAnchorLine(
-				note,
-				jot.anchor,
-				journalLine(jot.time, content, jot.anchor),
-			);
-			if (replaced) await this.obsidian.writeNote(jot.note_path, replaced);
-			return replaced;
-		});
-		if (!out) return "Couldn't find that line in the note.";
-		await this.syncEditedSource(jot, newText);
-		return editConfirmation(jot.time, newText);
-	}
+  /** Replace a jot's entire text content (for edited messages, not instructions). The new
+   *  text is only the message's text/caption, so a media jot's embed is re-appended —
+   *  editing an image's caption must not drop the image out of the note. */
+  private async replaceJotText(jot: Jot, newText: string): Promise<string> {
+    const content = [newText, assetEmbed(jot)].filter(Boolean).join(" ");
+    const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
+      const note = await this.obsidian.readNote(jot.note_path);
+      const replaced = replaceAnchorLine(
+        note,
+        jot.anchor,
+        journalLine(jot.time, content, jot.anchor),
+      );
+      if (replaced) await this.obsidian.writeNote(jot.note_path, replaced);
+      return replaced;
+    });
+    if (!out) return "Couldn't find that line in the note.";
+    await this.syncEditedSource(jot, newText);
+    return editConfirmation(jot.time, newText);
+  }
 
-	/** Fold a corrected line's text back into the jot's own source field (`transcript` for
-	 *  audio, `raw_text` for text) so a later /reprocess builds on the fix instead of
-	 *  reverting to the original mis-transcription/typo — e.g. correcting a voice note's
-	 *  "bake" to "cake" via `s/bake/cake/` used to only touch the journal line; reprocessing
-	 *  afterwards re-transcribed the same audio and lost the fix. Scoped to a standalone
-	 *  jot (not a squashed leader/follower): a squashed line is several jots' sources
-	 *  combined into one, so there's no single field to fold the edited text back into
-	 *  without duplicating or dropping a follower's content. */
-	private async syncEditedSource(jot: Jot, text: string): Promise<void> {
-		if (jot.kind !== "audio" && jot.kind !== "text") return;
-		if (jot.anchor !== jot.id) return; // squashed follower — no single source to update
-		if ((await this.repo.groupFollowers(jot.id)).length > 0) return; // squashed leader
-		const field = jot.kind === "audio" ? "transcript" : "raw_text";
-		await this.repo.updateJot(jot.id, { [field]: text });
-		log.info(
-			{ jotId: jot.id, field },
-			"edit folded back into jot source for future reprocessing",
-		);
-	}
+  /** Fold a corrected line's text back into the jot's own source field (`transcript` for
+   *  audio, `raw_text` for text) so a later /reprocess builds on the fix instead of
+   *  reverting to the original mis-transcription/typo — e.g. correcting a voice note's
+   *  "bake" to "cake" via `s/bake/cake/` used to only touch the journal line; reprocessing
+   *  afterwards re-transcribed the same audio and lost the fix. Scoped to a standalone
+   *  jot (not a squashed leader/follower): a squashed line is several jots' sources
+   *  combined into one, so there's no single field to fold the edited text back into
+   *  without duplicating or dropping a follower's content. */
+  private async syncEditedSource(jot: Jot, text: string): Promise<void> {
+    if (jot.kind !== "audio" && jot.kind !== "text") return;
+    if (jot.anchor !== jot.id) return; // squashed follower — no single source to update
+    if ((await this.repo.groupFollowers(jot.id)).length > 0) return; // squashed leader
+    const field = jot.kind === "audio" ? "transcript" : "raw_text";
+    await this.repo.updateJot(jot.id, { [field]: text });
+    log.info(
+      { jotId: jot.id, field },
+      "edit folded back into jot source for future reprocessing",
+    );
+  }
 
-	/** Remove a jot's line from its daily note and mark it deleted (a terminal state, so a
-	 *  retry sweep never resurrects it). Shared by the blank-edit path and /delete. */
-	private async deleteJot(jot: Jot): Promise<string> {
-		const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
-			const note = await this.obsidian.readNote(jot.note_path);
-			const removed = deleteAnchorLine(note, jot.anchor);
-			if (removed !== null)
-				await this.obsidian.writeNote(jot.note_path, removed);
-			return removed;
-		});
-		// Line already gone (double delete, or removed by hand in Obsidian)? Still mark it
-		// deleted so the record matches reality — the user's intent is satisfied.
-		if (out === null)
-			log.warn(
-				{ jotId: jot.id, anchor: jot.anchor },
-				"delete: anchored line not found — marking deleted anyway",
-			);
-		await this.repo.markDeleted(jot.id);
-		// A squashed line is several jots sharing one anchor, so removing it takes the
-		// followers' text with it — mark them deleted too rather than leave rows pointing at
-		// a line that no longer exists.
-		for (const f of await this.repo.groupFollowers(jot.id))
-			await this.repo.markDeleted(f.id);
-		if (out !== null) log.info({ jotId: jot.id }, "journal line deleted");
-		return "🗑️ removed that from your journal.";
-	}
+  /** Remove a jot's line from its daily note and mark it deleted (a terminal state, so a
+   *  retry sweep never resurrects it). Shared by the blank-edit path and /delete. */
+  private async deleteJot(jot: Jot): Promise<string> {
+    const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
+      const note = await this.obsidian.readNote(jot.note_path);
+      const removed = deleteAnchorLine(note, jot.anchor);
+      if (removed !== null)
+        await this.obsidian.writeNote(jot.note_path, removed);
+      return removed;
+    });
+    // Line already gone (double delete, or removed by hand in Obsidian)? Still mark it
+    // deleted so the record matches reality — the user's intent is satisfied.
+    if (out === null)
+      log.warn(
+        { jotId: jot.id, anchor: jot.anchor },
+        "delete: anchored line not found — marking deleted anyway",
+      );
+    await this.repo.markDeleted(jot.id);
+    // A squashed line is several jots sharing one anchor, so removing it takes the
+    // followers' text with it — mark them deleted too rather than leave rows pointing at
+    // a line that no longer exists.
+    for (const f of await this.repo.groupFollowers(jot.id))
+      await this.repo.markDeleted(f.id);
+    if (out !== null) log.info({ jotId: jot.id }, "journal line deleted");
+    return "🗑️ removed that from your journal.";
+  }
 
-	/** /delete: reply to a jot's message to remove its journal line. Mirrors the reply-edit
-	 *  flow — queues the delete if the jot is still processing. */
-	private async handleDeleteCommand(ctx: any): Promise<void> {
-		const reply = ctx.message?.reply_to_message;
-		if (!reply) {
-			log.warn("delete command without a reply target");
-			return void ctx.reply(
-				"Reply to a journal message with /delete to remove that line.",
-			);
-		}
-		const jotId = await this.repo.jotForMessage(reply.message_id);
-		if (!jotId) {
-			log.warn(
-				{ messageId: reply.message_id },
-				"delete: no jot for that message",
-			);
-			return void ctx.reply("Can't find a jot for that message.");
-		}
-		const jot = await this.repo.getJot(jotId);
-		if (!jot) {
-			log.warn({ jotId }, "delete: jot not found");
-			return void ctx.reply("Jot not found.");
-		}
-		if (!isEditableJot(jot.status)) {
-			log.info(
-				{ jotId, status: jot.status },
-				"delete queued (jot still processing)",
-			);
-			await this.repo.queueEdit(jotId, "delete");
-			return void ctx.reply(
-				"⏳ still processing — I'll remove it once it's done.",
-			);
-		}
-		log.info({ jotId }, "delete command — removing journal line");
-		// Edit the jot's own status message in place — see applyMessageEdit's blank-edit
-		// branch for why (single up-to-date message, not a stale one plus a new one).
-		await this.status(jotId, await this.deleteJot(jot));
-	}
+  /** /delete: reply to a jot's message to remove its journal line. Mirrors the reply-edit
+   *  flow — queues the delete if the jot is still processing. */
+  private async handleDeleteCommand(ctx: any): Promise<void> {
+    const reply = ctx.message?.reply_to_message;
+    if (!reply) {
+      log.warn("delete command without a reply target");
+      return void ctx.reply(
+        "Reply to a journal message with /delete to remove that line.",
+      );
+    }
+    const jotId = await this.repo.jotForMessage(reply.message_id);
+    if (!jotId) {
+      log.warn(
+        { messageId: reply.message_id },
+        "delete: no jot for that message",
+      );
+      return void ctx.reply("Can't find a jot for that message.");
+    }
+    const jot = await this.repo.getJot(jotId);
+    if (!jot) {
+      log.warn({ jotId }, "delete: jot not found");
+      return void ctx.reply("Jot not found.");
+    }
+    if (!isEditableJot(jot.status)) {
+      log.info(
+        { jotId, status: jot.status },
+        "delete queued (jot still processing)",
+      );
+      await this.repo.queueEdit(jotId, "delete");
+      return void ctx.reply(
+        "⏳ still processing — I'll remove it once it's done.",
+      );
+    }
+    log.info({ jotId }, "delete command — removing journal line");
+    // Edit the jot's own status message in place — see applyMessageEdit's blank-edit
+    // branch for why (single up-to-date message, not a stale one plus a new one).
+    await this.status(jotId, await this.deleteJot(jot));
+  }
 
-	private async handleButton(ctx: any): Promise<void> {
-		const [ns, ...rest] = String(ctx.callbackQuery.data).split(":");
-		log.debug({ data: ctx.callbackQuery.data }, "button pressed");
-		if (ns === "menu") return this.menu.handleCallback(ctx, rest);
-		if (ns === "vf") return this.handleVoiceFix(ctx, rest[0], rest[1]);
-		if (ns === "rt") return this.handleRetry(ctx, rest[0]);
-		if (ns === "un") return this.handleRemove(ctx, rest[0], "undo");
-		if (ns === "dl") return this.handleRemove(ctx, rest[0], "discard");
-		if (ns === COMMAND_NS) return this.command.handleTap(ctx, rest);
-		if (ns === TASKS_NS) return this.tasks.handleTap(ctx, rest);
-		if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
-		if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
-		if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
-		if (ns === HABITS_NS)
-			return this.habits.handleTap(ctx, rest[0], rest[1], rest[2]);
-		if (ns === REPROCESS_NS) return this.reprocess.handleTap(ctx, rest);
-		await ctx.answerCallbackQuery();
-	}
+  private async handleButton(ctx: any): Promise<void> {
+    const [ns, ...rest] = String(ctx.callbackQuery.data).split(":");
+    log.debug({ data: ctx.callbackQuery.data }, "button pressed");
+    if (ns === "menu") return this.menu.handleCallback(ctx, rest);
+    if (ns === "vf") return this.handleVoiceFix(ctx, rest[0], rest[1]);
+    if (ns === "rt") return this.handleRetry(ctx, rest[0]);
+    if (ns === "un") return this.handleRemove(ctx, rest[0], "undo");
+    if (ns === "dl") return this.handleRemove(ctx, rest[0], "discard");
+    if (ns === COMMAND_NS) return this.command.handleTap(ctx, rest);
+    if (ns === TASKS_NS) return this.tasks.handleTap(ctx, rest);
+    if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
+    if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
+    if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
+    if (ns === HABITS_NS)
+      return this.habits.handleTap(ctx, rest[0], rest[1], rest[2]);
+    if (ns === REPROCESS_NS) return this.reprocess.handleTap(ctx, rest);
+    await ctx.answerCallbackQuery();
+  }
 
-	/** ↩️ Undo on a finished jot, 🗑 Delete on a failed one — the same teardown either way:
-	 *  pull the line back out of the journal and put the jot in a state the retry sweep
-	 *  won't resurrect. Same as `/delete`, one tap away while the entry is on screen. */
-	private async handleRemove(
-		ctx: any,
-		jotId: string | undefined,
-		source: "undo" | "discard",
-	): Promise<void> {
-		const jot = jotId ? await this.repo.getJot(jotId) : undefined;
-		if (!jot) {
-			log.warn({ jotId, source }, "remove: jot is gone");
-			return void ctx.answerCallbackQuery({ text: "gone" });
-		}
-		if (jot.status === "deleted") {
-			log.warn({ jotId, source }, "remove: already removed");
-			return void ctx.answerCallbackQuery({
-				text: source === "undo" ? "already undone" : "already deleted",
-			});
-		}
-		log.info({ jotId, source, status: jot.status }, "jot removal requested");
-		await ctx.answerCallbackQuery({
-			text: source === "undo" ? "undoing" : "deleting",
-		});
-		const result = await this.deleteJot(jot);
-		// status() with no opts clears the buttons, so a second tap can't re-run it.
-		await this.status(jot.id, result);
-	}
+  /** ↩️ Undo on a finished jot, 🗑 Delete on a failed one — the same teardown either way:
+   *  pull the line back out of the journal and put the jot in a state the retry sweep
+   *  won't resurrect. Same as `/delete`, one tap away while the entry is on screen. */
+  private async handleRemove(
+    ctx: any,
+    jotId: string | undefined,
+    source: "undo" | "discard",
+  ): Promise<void> {
+    const jot = jotId ? await this.repo.getJot(jotId) : undefined;
+    if (!jot) {
+      log.warn({ jotId, source }, "remove: jot is gone");
+      return void ctx.answerCallbackQuery({ text: "gone" });
+    }
+    if (jot.status === "deleted") {
+      log.warn({ jotId, source }, "remove: already removed");
+      return void ctx.answerCallbackQuery({
+        text: source === "undo" ? "already undone" : "already deleted",
+      });
+    }
+    log.info({ jotId, source, status: jot.status }, "jot removal requested");
+    await ctx.answerCallbackQuery({
+      text: source === "undo" ? "undoing" : "deleting",
+    });
+    const result = await this.deleteJot(jot);
+    // status() with no opts clears the buttons, so a second tap can't re-run it.
+    await this.status(jot.id, result);
+  }
 
-	/** 🔄 Retry on a failed jot's status message: reset its attempts and queue it now,
-	 *  rather than waiting for the sweep. */
-	private async handleRetry(ctx: any, jotId?: string): Promise<void> {
-		const jot = jotId ? await this.repo.getJot(jotId) : undefined;
-		if (!jotId || !jot) {
-			log.warn({ jotId }, "retry: jot is gone");
-			return void ctx.answerCallbackQuery({ text: "gone" });
-		}
-		// 🗑 Delete sits right next to this button, so a stray tap must not put back the
-		// line the user just took out.
-		if (jot.status === "deleted") {
-			log.warn({ jotId }, "retry: jot was deleted");
-			return void ctx.answerCallbackQuery({ text: "deleted — not retrying" });
-		}
-		log.info({ jotId, status: jot.status }, "manual retry requested");
-		await this.repo.resetForRetry(jotId);
-		this.queue.add(jotId);
-		await ctx.answerCallbackQuery({ text: "retrying" });
-		await ctx.editMessageText("🔄 retrying…");
-	}
+  /** 🔄 Retry on a failed jot's status message: reset its attempts and queue it now,
+   *  rather than waiting for the sweep. */
+  private async handleRetry(ctx: any, jotId?: string): Promise<void> {
+    const jot = jotId ? await this.repo.getJot(jotId) : undefined;
+    if (!jotId || !jot) {
+      log.warn({ jotId }, "retry: jot is gone");
+      return void ctx.answerCallbackQuery({ text: "gone" });
+    }
+    // 🗑 Delete sits right next to this button, so a stray tap must not put back the
+    // line the user just took out.
+    if (jot.status === "deleted") {
+      log.warn({ jotId }, "retry: jot was deleted");
+      return void ctx.answerCallbackQuery({ text: "deleted — not retrying" });
+    }
+    log.info({ jotId, status: jot.status }, "manual retry requested");
+    await this.repo.resetForRetry(jotId);
+    this.queue.add(jotId);
+    await ctx.answerCallbackQuery({ text: "retrying" });
+    await ctx.editMessageText("🔄 retrying…");
+  }
 
-	/** Voice-fix button: `vf:o:<jotId>` picks original, `vf:p:<jotId>` picks proposed. */
-	private async handleVoiceFix(
-		ctx: any,
-		verdict?: string,
-		jotId?: string,
-	): Promise<void> {
-		if (!jotId || !verdict) return void ctx.answerCallbackQuery();
-		const resolve = this.voiceFixPending.get(jotId);
-		if (!resolve) {
-			log.warn(
-				{ jotId },
-				"voice fix: no pending choice (timed out or duplicate)",
-			);
-			return void ctx.answerCallbackQuery({ text: "expired" });
-		}
-		this.voiceFixPending.delete(jotId);
-		const choice = verdict === "p" ? "proposed" : "original";
-		log.info({ jotId, choice }, "voice fix: user picked");
-		await ctx.answerCallbackQuery({
-			text: choice === "proposed" ? "using fixed version" : "keeping original",
-		});
-		resolve(choice);
-	}
+  /** Voice-fix button: `vf:o:<jotId>` picks original, `vf:p:<jotId>` picks proposed. */
+  private async handleVoiceFix(
+    ctx: any,
+    verdict?: string,
+    jotId?: string,
+  ): Promise<void> {
+    if (!jotId || !verdict) return void ctx.answerCallbackQuery();
+    const resolve = this.voiceFixPending.get(jotId);
+    if (!resolve) {
+      log.warn(
+        { jotId },
+        "voice fix: no pending choice (timed out or duplicate)",
+      );
+      return void ctx.answerCallbackQuery({ text: "expired" });
+    }
+    this.voiceFixPending.delete(jotId);
+    const choice = verdict === "p" ? "proposed" : "original";
+    log.info({ jotId, choice }, "voice fix: user picked");
+    await ctx.answerCallbackQuery({
+      text: choice === "proposed" ? "using fixed version" : "keeping original",
+    });
+    resolve(choice);
+  }
 
-	/** Interactive /unreject. `ur:s:<si>` shows the notes rejected for surface `si`;
-	 *  `ur:p:<si>:<ni>` undoes that surface→note rejection. Indices are positions in the
-	 *  deterministically ordered rejection list, re-derived on each tap so no state is
-	 *  held between messages. A shifted index (rejection changed meanwhile) answers
-	 *  "expired" rather than undoing the wrong pair. */
-	private async handleUnreject(ctx: any, rest: string[]): Promise<void> {
-		const [step, ...idx] = rest;
-		const list = await this.repo.rejectionList();
-		const surfaces = distinctSurfaces(list);
-		const surface = surfaces[Number(idx[0])];
-		if (surface === undefined) {
-			log.warn({ step, idx }, "unreject: surface index out of range");
-			return void ctx.answerCallbackQuery({ text: "expired" });
-		}
-		const notes = list.filter((r) => r.surface === surface).map((r) => r.note);
+  /** Interactive /unreject. `ur:s:<si>` shows the notes rejected for surface `si`;
+   *  `ur:p:<si>:<ni>` undoes that surface→note rejection. Indices are positions in the
+   *  deterministically ordered rejection list, re-derived on each tap so no state is
+   *  held between messages. A shifted index (rejection changed meanwhile) answers
+   *  "expired" rather than undoing the wrong pair. */
+  private async handleUnreject(ctx: any, rest: string[]): Promise<void> {
+    const [step, ...idx] = rest;
+    const list = await this.repo.rejectionList();
+    const surfaces = distinctSurfaces(list);
+    const surface = surfaces[Number(idx[0])];
+    if (surface === undefined) {
+      log.warn({ step, idx }, "unreject: surface index out of range");
+      return void ctx.answerCallbackQuery({ text: "expired" });
+    }
+    const notes = list.filter((r) => r.surface === surface).map((r) => r.note);
 
-		if (step === "s") {
-			log.info({ surface, notes: notes.length }, "unreject: surface picked");
-			const kb = new InlineKeyboard();
-			notes.forEach((n, ni) => {
-				kb.text(n, `${UNREJECT_NS}:p:${idx[0]}:${ni}`).row();
-			});
-			await ctx.answerCallbackQuery();
-			return void ctx.editMessageText(`Unreject "${surface}" → which note?`, {
-				reply_markup: kb,
-			});
-		}
+    if (step === "s") {
+      log.info({ surface, notes: notes.length }, "unreject: surface picked");
+      const kb = new InlineKeyboard();
+      notes.forEach((n, ni) => {
+        kb.text(n, `${UNREJECT_NS}:p:${idx[0]}:${ni}`).row();
+      });
+      await ctx.answerCallbackQuery();
+      return void ctx.editMessageText(`Unreject "${surface}" → which note?`, {
+        reply_markup: kb,
+      });
+    }
 
-		if (step === "p") {
-			const note = notes[Number(idx[1])];
-			if (note === undefined) {
-				log.warn({ surface, idx }, "unreject: note index out of range");
-				return void ctx.answerCallbackQuery({ text: "expired" });
-			}
-			const n = await this.repo.unreject(surface, note);
-			log.info({ surface, note, removed: n }, "unreject via menu");
-			await ctx.answerCallbackQuery({
-				text: n ? "unrejected" : "already gone",
-			});
-			return void ctx.editMessageText(
-				n
-					? `↩️ "${surface}" may link to [[${note}]] again`
-					: `no rejection for "${surface}" → [[${note}]]`,
-			);
-		}
+    if (step === "p") {
+      const note = notes[Number(idx[1])];
+      if (note === undefined) {
+        log.warn({ surface, idx }, "unreject: note index out of range");
+        return void ctx.answerCallbackQuery({ text: "expired" });
+      }
+      const n = await this.repo.unreject(surface, note);
+      log.info({ surface, note, removed: n }, "unreject via menu");
+      await ctx.answerCallbackQuery({
+        text: n ? "unrejected" : "already gone",
+      });
+      return void ctx.editMessageText(
+        n
+          ? `↩️ "${surface}" may link to [[${note}]] again`
+          : `no rejection for "${surface}" → [[${note}]]`,
+      );
+    }
 
-		await ctx.answerCallbackQuery();
-	}
+    await ctx.answerCallbackQuery();
+  }
 
-	private async handleLink(
-		ctx: any,
-		verd?: string,
-		pid?: string,
-	): Promise<void> {
-		if (!pid) return void ctx.answerCallbackQuery();
-		const rec = await this.repo.takePendingLink(pid);
-		if (!rec) return void ctx.answerCallbackQuery({ text: "expired" });
+  private async handleLink(
+    ctx: any,
+    verd?: string,
+    pid?: string,
+  ): Promise<void> {
+    if (!pid) return void ctx.answerCallbackQuery();
+    const rec = await this.repo.takePendingLink(pid);
+    if (!rec) return void ctx.answerCallbackQuery({ text: "expired" });
 
-		if (verd === "n") {
-			log.info(
-				{ surface: rec.surface, note: rec.note },
-				"link rejected — learning it",
-			);
-			await this.repo.reject(rec.surface, rec.note);
-			await ctx.answerCallbackQuery({ text: "won't link again" });
-			return void ctx.editMessageText(
-				`✋ "${rec.surface}" ✗ [[${rec.note}]] (won't ask again)`,
-			);
-		}
+    if (verd === "n") {
+      log.info(
+        { surface: rec.surface, note: rec.note },
+        "link rejected — learning it",
+      );
+      await this.repo.reject(rec.surface, rec.note);
+      await ctx.answerCallbackQuery({ text: "won't link again" });
+      return void ctx.editMessageText(
+        `✋ "${rec.surface}" ✗ [[${rec.note}]] (won't ask again)`,
+      );
+    }
 
-		let applied = false;
-		const jot = await this.repo.getJot(rec.jot_id);
-		if (jot) {
-			const note = await this.obsidian.readNote(jot.note_path);
-			const line = anchorLine(note, jot.anchor);
-			const linked = line?.replace(
-				rec.surface,
-				`[[${rec.note}|${rec.surface}]]`,
-			);
-			if (line && linked && linked !== line) {
-				const out = replaceAnchorLine(note, jot.anchor, linked);
-				if (out) {
-					await this.obsidian.writeNote(jot.note_path, out);
-					applied = true;
-				}
-			}
-		}
-		log.info(
-			{ surface: rec.surface, note: rec.note, applied },
-			"link confirmation handled",
-		);
-		await ctx.answerCallbackQuery({ text: applied ? "linked" : "no change" });
-		await ctx.editMessageText(
-			applied
-				? `🔗 "${rec.surface}" → [[${rec.note}]]`
-				: `"${rec.surface}": nothing to link`,
-		);
-	}
+    let applied = false;
+    const jot = await this.repo.getJot(rec.jot_id);
+    if (jot) {
+      const note = await this.obsidian.readNote(jot.note_path);
+      const line = anchorLine(note, jot.anchor);
+      const linked = line?.replace(
+        rec.surface,
+        `[[${rec.note}|${rec.surface}]]`,
+      );
+      if (line && linked && linked !== line) {
+        const out = replaceAnchorLine(note, jot.anchor, linked);
+        if (out) {
+          await this.obsidian.writeNote(jot.note_path, out);
+          applied = true;
+        }
+      }
+    }
+    log.info(
+      { surface: rec.surface, note: rec.note, applied },
+      "link confirmation handled",
+    );
+    await ctx.answerCallbackQuery({ text: applied ? "linked" : "no change" });
+    await ctx.editMessageText(
+      applied
+        ? `🔗 "${rec.surface}" → [[${rec.note}]]`
+        : `"${rec.surface}": nothing to link`,
+    );
+  }
 }

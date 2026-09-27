@@ -9,15 +9,15 @@ const log = logger("rejections");
 const PAGE = 40;
 
 export const rejections: Command = {
-	name: "rejections",
-	description: "list learned link-rejections — /rejections [page]",
-	run: async (_ctx, args, d) => {
-		const list = await d.repo.rejectionList();
-		// 1-based on the wire (that's what the footer tells the user to type), 0-based in.
-		const page = Math.max(1, Number(args.trim()) || 1) - 1;
-		log.info({ count: list.length, page }, "/rejections command");
-		if (!list.length) return "(no rejections)";
-		const lines = list.map((r) => `"${r.surface}" ✗ [[${r.note}]]`);
-		return formatListPage(lines, page, PAGE, "/rejections");
-	},
+  name: "rejections",
+  description: "list learned link-rejections — /rejections [page]",
+  run: async (_ctx, args, d) => {
+    const list = await d.repo.rejectionList();
+    // 1-based on the wire (that's what the footer tells the user to type), 0-based in.
+    const page = Math.max(1, Number(args.trim()) || 1) - 1;
+    log.info({ count: list.length, page }, "/rejections command");
+    if (!list.length) return "(no rejections)";
+    const lines = list.map((r) => `"${r.surface}" ✗ [[${r.note}]]`);
+    return formatListPage(lines, page, PAGE, "/rejections");
+  },
 };

@@ -16,19 +16,19 @@ import { version } from "./version.ts";
 
 /** The admin command registry. The bot registers a handler per entry. */
 export const commands: Command[] = [
-	version,
-	changelog,
-	stats,
-	status,
-	failed,
-	jot,
-	flush,
-	retry,
-	sweep,
-	unstick,
-	stopword,
-	rejections,
-	unreject,
+  version,
+  changelog,
+  stats,
+  status,
+  failed,
+  jot,
+  flush,
+  retry,
+  sweep,
+  unstick,
+  stopword,
+  rejections,
+  unreject,
 ];
 // help closes over the array, so it lists itself and every command added above.
 commands.push(makeHelp(commands));

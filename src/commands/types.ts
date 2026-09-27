@@ -9,22 +9,22 @@ import type { FallbackTranscriber } from "../services/transcribe.ts";
 
 /** Everything the admin commands act on. The bot assembles this per invocation. */
 export interface Deps {
-	repo: Repository;
-	queue: FlushQueue;
-	processor: JotProcessor;
-	enricher: Enricher;
-	transcriber: FallbackTranscriber;
-	links: LinkIndex;
-	github: GithubReleases;
-	version: string;
-	sha: string;
-	startedAt: number;
+  repo: Repository;
+  queue: FlushQueue;
+  processor: JotProcessor;
+  enricher: Enricher;
+  transcriber: FallbackTranscriber;
+  links: LinkIndex;
+  github: GithubReleases;
+  version: string;
+  sha: string;
+  startedAt: number;
 }
 
 /** One admin command. `run` returns a string to auto-reply with, or does its own reply
  *  on `ctx` (e.g. inline keyboards) and returns void. */
 export interface Command {
-	name: string;
-	description: string;
-	run(ctx: Context, args: string, deps: Deps): Promise<string | void>;
+  name: string;
+  description: string;
+  run(ctx: Context, args: string, deps: Deps): Promise<string | void>;
 }

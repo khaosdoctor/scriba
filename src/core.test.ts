@@ -1,72 +1,72 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-	AGENT_UPDATE_CHARS,
-	anchorLine,
-	assetEmbed,
-	candidates,
-	cleanNoteTitle,
-	clipUpdate,
-	combineEnrichSource,
-	DEFAULT_ENTRY_MAX_CHARS,
-	deleteAnchorLine,
-	distinctSurfaces,
-	doneMessage,
-	donePreview,
-	editConfirmation,
-	enrichableSource,
-	entitiesToMarkdown,
-	entryMaxChars,
-	escapeHtml,
-	feedMessage,
-	fitFeed,
-	fitTelegram,
-	forcedCandidates,
-	formatDeployNotice,
-	formatDuration,
-	formatJotDetail,
-	formatListPage,
-	formatReleaseList,
-	formatReleaseNote,
-	formatStats,
-	formatStatus,
-	formatToolCall,
-	gaveUpMessage,
-	htmlToText,
-	insertJournalLine,
-	isBlank,
-	isEditableJot,
-	isInsideRoot,
-	isRecoverable,
-	jotPreview,
-	journalLine,
-	linkDateWords,
-	makeJotId,
-	monthGrid,
-	noteSuggestions,
-	parseEntrySize,
-	parseLiteralEdit,
-	parseRuleWords,
-	parseWizardRef,
-	placeholderLine,
-	pluralize,
-	previewList,
-	queuedNotice,
-	replaceAnchorLine,
-	reprocessTargets,
-	retryNotice,
-	setFrontmatterValue,
-	splitEntry,
-	stripJournalLine,
-	TELEGRAM_LIMIT,
-	thoughtIcon,
-	tokenize,
-	toolIcon,
-	WIZARD_ENTRYSIZE_REF,
-	WIZARD_NOTE_REF,
-	WIZARD_REGISTER_REF,
-	WIZARD_STOPWORD_REF,
-	withinSquashWindow,
+  AGENT_UPDATE_CHARS,
+  anchorLine,
+  assetEmbed,
+  candidates,
+  cleanNoteTitle,
+  clipUpdate,
+  combineEnrichSource,
+  DEFAULT_ENTRY_MAX_CHARS,
+  deleteAnchorLine,
+  distinctSurfaces,
+  doneMessage,
+  donePreview,
+  editConfirmation,
+  enrichableSource,
+  entitiesToMarkdown,
+  entryMaxChars,
+  escapeHtml,
+  feedMessage,
+  fitFeed,
+  fitTelegram,
+  forcedCandidates,
+  formatDeployNotice,
+  formatDuration,
+  formatJotDetail,
+  formatListPage,
+  formatReleaseList,
+  formatReleaseNote,
+  formatStats,
+  formatStatus,
+  formatToolCall,
+  gaveUpMessage,
+  htmlToText,
+  insertJournalLine,
+  isBlank,
+  isEditableJot,
+  isInsideRoot,
+  isRecoverable,
+  jotPreview,
+  journalLine,
+  linkDateWords,
+  makeJotId,
+  monthGrid,
+  noteSuggestions,
+  parseEntrySize,
+  parseLiteralEdit,
+  parseRuleWords,
+  parseWizardRef,
+  placeholderLine,
+  pluralize,
+  previewList,
+  queuedNotice,
+  replaceAnchorLine,
+  reprocessTargets,
+  retryNotice,
+  setFrontmatterValue,
+  splitEntry,
+  stripJournalLine,
+  TELEGRAM_LIMIT,
+  thoughtIcon,
+  tokenize,
+  toolIcon,
+  WIZARD_ENTRYSIZE_REF,
+  WIZARD_NOTE_REF,
+  WIZARD_REGISTER_REF,
+  WIZARD_STOPWORD_REF,
+  withinSquashWindow,
 } from "./core.ts";
 import type { Jot, StatsRow } from "./db.ts";
 import type { ReleaseNote } from "./services/github.ts";
@@ -74,1125 +74,1125 @@ import type { ReleaseNote } from "./services/github.ts";
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
 
 test("withinSquashWindow: rolling gap folds jots within the window, splits past it", () => {
-	assert.equal(withinSquashWindow(1000, 12000, 15000), true); // 11s gap ≤ 15s
-	assert.equal(withinSquashWindow(1000, 16001, 15000), false); // 15.001s gap > 15s
-	assert.equal(withinSquashWindow(1000, 16000, 15000), true); // exactly 15s
-	assert.equal(withinSquashWindow(1000, 2000, 0), false); // window 0 disables
+  assert.equal(withinSquashWindow(1000, 12000, 15000), true); // 11s gap ≤ 15s
+  assert.equal(withinSquashWindow(1000, 16001, 15000), false); // 15.001s gap > 15s
+  assert.equal(withinSquashWindow(1000, 16000, 15000), true); // exactly 15s
+  assert.equal(withinSquashWindow(1000, 2000, 0), false); // window 0 disables
 });
 
 test("combineEnrichSource joins parts, dropping blanks", () => {
-	assert.equal(
-		combineEnrichSource(["first", "  ", "second", ""]),
-		"first\nsecond",
-	);
-	assert.equal(combineEnrichSource([]), "");
-	assert.equal(combineEnrichSource([" solo "]), "solo");
+  assert.equal(
+    combineEnrichSource(["first", "  ", "second", ""]),
+    "first\nsecond",
+  );
+  assert.equal(combineEnrichSource([]), "");
+  assert.equal(combineEnrichSource([" solo "]), "solo");
 });
 
 test("setFrontmatterValue replaces an existing field in place", () => {
-	const note = "---\noverallRating: 5\ntags: [daily]\n---\n\n## Journal\n";
-	assert.equal(
-		setFrontmatterValue(note, "overallRating", 8),
-		"---\noverallRating: 8\ntags: [daily]\n---\n\n## Journal\n",
-	);
+  const note = "---\noverallRating: 5\ntags: [daily]\n---\n\n## Journal\n";
+  assert.equal(
+    setFrontmatterValue(note, "overallRating", 8),
+    "---\noverallRating: 8\ntags: [daily]\n---\n\n## Journal\n",
+  );
 });
 
 test("setFrontmatterValue inserts a missing field before the closing fence", () => {
-	const note = "---\ntags: [daily]\n---\n\nbody\n";
-	assert.equal(
-		setFrontmatterValue(note, "overallRating", 7),
-		"---\ntags: [daily]\noverallRating: 7\n---\n\nbody\n",
-	);
+  const note = "---\ntags: [daily]\n---\n\nbody\n";
+  assert.equal(
+    setFrontmatterValue(note, "overallRating", 7),
+    "---\ntags: [daily]\noverallRating: 7\n---\n\nbody\n",
+  );
 });
 
 test("setFrontmatterValue writes a string value too (updatedAt on a task note)", () => {
-	const note =
-		"---\ntitle: Todos\nupdatedAt: 2026-08-01T10:00:00Z\n---\n# Todos\n";
-	assert.equal(
-		setFrontmatterValue(note, "updatedAt", "2026-08-29T16:10:02Z"),
-		"---\ntitle: Todos\nupdatedAt: 2026-08-29T16:10:02Z\n---\n# Todos\n",
-	);
+  const note =
+    "---\ntitle: Todos\nupdatedAt: 2026-08-01T10:00:00Z\n---\n# Todos\n";
+  assert.equal(
+    setFrontmatterValue(note, "updatedAt", "2026-08-29T16:10:02Z"),
+    "---\ntitle: Todos\nupdatedAt: 2026-08-29T16:10:02Z\n---\n# Todos\n",
+  );
 });
 
 test("setFrontmatterValue creates frontmatter when the note has none", () => {
-	assert.equal(
-		setFrontmatterValue("# hi\n", "overallRating", 3),
-		"---\noverallRating: 3\n---\n\n# hi\n",
-	);
+  assert.equal(
+    setFrontmatterValue("# hi\n", "overallRating", 3),
+    "---\noverallRating: 3\n---\n\n# hi\n",
+  );
 });
 
 test("ids are fixed 8-char hex", () => {
-	const id = makeJotId();
-	assert.match(id, /^[0-9a-f]{8}$/);
+  const id = makeJotId();
+  assert.match(id, /^[0-9a-f]{8}$/);
 });
 
 test("journal + placeholder lines match the vault house style", () => {
-	assert.equal(
-		journalLine("23:13:18", "hi", "a1b2c3d4"),
-		"- _23:13:18 ::_ hi ^a1b2c3d4",
-	);
-	assert.equal(
-		placeholderLine("09:00:00", "deadbeef"),
-		"- _09:00:00 ::_ ⏳ ^deadbeef",
-	);
+  assert.equal(
+    journalLine("23:13:18", "hi", "a1b2c3d4"),
+    "- _23:13:18 ::_ hi ^a1b2c3d4",
+  );
+  assert.equal(
+    placeholderLine("09:00:00", "deadbeef"),
+    "- _09:00:00 ::_ ⏳ ^deadbeef",
+  );
 });
 
 test("insertJournalLine replaces the empty template bullet on the first jot", () => {
-	const note = "# 2026-07-07\n\n## Journal\n- \n";
-	const out = insertJournalLine(
-		note,
-		"Journal",
-		"- _19:56:31 ::_ ⏳ ^23c78f08",
-	);
-	assert.equal(
-		out,
-		"# 2026-07-07\n\n## Journal\n- _19:56:31 ::_ ⏳ ^23c78f08\n",
-	);
+  const note = "# 2026-07-07\n\n## Journal\n- \n";
+  const out = insertJournalLine(
+    note,
+    "Journal",
+    "- _19:56:31 ::_ ⏳ ^23c78f08",
+  );
+  assert.equal(
+    out,
+    "# 2026-07-07\n\n## Journal\n- _19:56:31 ::_ ⏳ ^23c78f08\n",
+  );
 });
 
 test("insertJournalLine appends right after the last bullet, no blank line", () => {
-	const note = "## Journal\n- _19:56:31 ::_ first ^aaaaaaaa\n";
-	const out = insertJournalLine(
-		note,
-		"Journal",
-		"- _19:57:00 ::_ ⏳ ^bbbbbbbb",
-	);
-	assert.equal(
-		out,
-		"## Journal\n- _19:56:31 ::_ first ^aaaaaaaa\n- _19:57:00 ::_ ⏳ ^bbbbbbbb\n",
-	);
+  const note = "## Journal\n- _19:56:31 ::_ first ^aaaaaaaa\n";
+  const out = insertJournalLine(
+    note,
+    "Journal",
+    "- _19:57:00 ::_ ⏳ ^bbbbbbbb",
+  );
+  assert.equal(
+    out,
+    "## Journal\n- _19:56:31 ::_ first ^aaaaaaaa\n- _19:57:00 ::_ ⏳ ^bbbbbbbb\n",
+  );
 });
 
 test("insertJournalLine stays within the section, before the next heading", () => {
-	const note = "## Journal\n- _10:00:00 ::_ a ^aaaaaaaa\n\n## Notes\n- keep\n";
-	const out = insertJournalLine(
-		note,
-		"Journal",
-		"- _10:01:00 ::_ ⏳ ^bbbbbbbb",
-	);
-	assert.equal(
-		out,
-		"## Journal\n- _10:00:00 ::_ a ^aaaaaaaa\n- _10:01:00 ::_ ⏳ ^bbbbbbbb\n\n## Notes\n- keep\n",
-	);
+  const note = "## Journal\n- _10:00:00 ::_ a ^aaaaaaaa\n\n## Notes\n- keep\n";
+  const out = insertJournalLine(
+    note,
+    "Journal",
+    "- _10:01:00 ::_ ⏳ ^bbbbbbbb",
+  );
+  assert.equal(
+    out,
+    "## Journal\n- _10:00:00 ::_ a ^aaaaaaaa\n- _10:01:00 ::_ ⏳ ^bbbbbbbb\n\n## Notes\n- keep\n",
+  );
 });
 
 test("insertJournalLine inserts right after the heading when the section is empty", () => {
-	const note = "## Journal\n";
-	const out = insertJournalLine(
-		note,
-		"Journal",
-		"- _10:00:00 ::_ ⏳ ^aaaaaaaa",
-	);
-	assert.equal(out, "## Journal\n- _10:00:00 ::_ ⏳ ^aaaaaaaa\n");
+  const note = "## Journal\n";
+  const out = insertJournalLine(
+    note,
+    "Journal",
+    "- _10:00:00 ::_ ⏳ ^aaaaaaaa",
+  );
+  assert.equal(out, "## Journal\n- _10:00:00 ::_ ⏳ ^aaaaaaaa\n");
 });
 
 test("replace/delete/read find the line by anchor and leave others intact", () => {
-	const note = [
-		"## Journal",
-		"- _10:00:00 ::_ first ^aaaaaaaa",
-		"- _10:01:00 ::_ ⏳ ^bbbbbbbb",
-		"- _10:02:00 ::_ third ^cccccccc",
-	].join("\n");
-	const replaced = replaceAnchorLine(
-		note,
-		"bbbbbbbb",
-		"- _10:01:00 ::_ enriched ^bbbbbbbb",
-	);
-	assert.ok(replaced?.includes("enriched ^bbbbbbbb"));
-	assert.ok(replaced?.includes("first ^aaaaaaaa"));
-	assert.ok(!replaced?.includes("⏳"));
-	assert.equal(replaceAnchorLine(note, "ffffffff", "x"), null);
-	assert.equal(anchorLine(note, "cccccccc"), "- _10:02:00 ::_ third ^cccccccc");
+  const note = [
+    "## Journal",
+    "- _10:00:00 ::_ first ^aaaaaaaa",
+    "- _10:01:00 ::_ ⏳ ^bbbbbbbb",
+    "- _10:02:00 ::_ third ^cccccccc",
+  ].join("\n");
+  const replaced = replaceAnchorLine(
+    note,
+    "bbbbbbbb",
+    "- _10:01:00 ::_ enriched ^bbbbbbbb",
+  );
+  assert.ok(replaced?.includes("enriched ^bbbbbbbb"));
+  assert.ok(replaced?.includes("first ^aaaaaaaa"));
+  assert.ok(!replaced?.includes("⏳"));
+  assert.equal(replaceAnchorLine(note, "ffffffff", "x"), null);
+  assert.equal(anchorLine(note, "cccccccc"), "- _10:02:00 ::_ third ^cccccccc");
 
-	const deleted = deleteAnchorLine(note, "aaaaaaaa");
-	assert.ok(!deleted?.includes("aaaaaaaa"));
-	assert.ok(deleted?.includes("cccccccc"));
+  const deleted = deleteAnchorLine(note, "aaaaaaaa");
+  assert.ok(!deleted?.includes("aaaaaaaa"));
+  assert.ok(deleted?.includes("cccccccc"));
 });
 
 test("a split jot writes its own line and its spillover lines in one replace", () => {
-	const note = [
-		"## Journal",
-		"- _10:00:00 ::_ first ^aaaaaaaa",
-		"- _10:01:00 ::_ ⏳ ^bbbbbbbb",
-		"- _10:02:00 ::_ third ^cccccccc",
-	].join("\n");
-	// Each piece is its own jot, so each line carries that jot's own anchor — they go in
-	// together so they land in order, right where the placeholder was.
-	const out = replaceAnchorLine(
-		note,
-		"bbbbbbbb",
-		[
-			"- _10:01:00 ::_ piece one ^bbbbbbbb",
-			"- _10:01:00 ::_ piece two ^11112222",
-		].join("\n"),
-	);
-	assert.equal(
-		out,
-		[
-			"## Journal",
-			"- _10:00:00 ::_ first ^aaaaaaaa",
-			"- _10:01:00 ::_ piece one ^bbbbbbbb",
-			"- _10:01:00 ::_ piece two ^11112222",
-			"- _10:02:00 ::_ third ^cccccccc",
-		].join("\n"),
-	);
-	// The spillover line is an ordinary jot line: it deletes on its own.
-	const deleted = deleteAnchorLine(out ?? "", "11112222");
-	assert.ok(!deleted?.includes("piece two"));
-	assert.ok(deleted?.includes("piece one"));
+  const note = [
+    "## Journal",
+    "- _10:00:00 ::_ first ^aaaaaaaa",
+    "- _10:01:00 ::_ ⏳ ^bbbbbbbb",
+    "- _10:02:00 ::_ third ^cccccccc",
+  ].join("\n");
+  // Each piece is its own jot, so each line carries that jot's own anchor — they go in
+  // together so they land in order, right where the placeholder was.
+  const out = replaceAnchorLine(
+    note,
+    "bbbbbbbb",
+    [
+      "- _10:01:00 ::_ piece one ^bbbbbbbb",
+      "- _10:01:00 ::_ piece two ^11112222",
+    ].join("\n"),
+  );
+  assert.equal(
+    out,
+    [
+      "## Journal",
+      "- _10:00:00 ::_ first ^aaaaaaaa",
+      "- _10:01:00 ::_ piece one ^bbbbbbbb",
+      "- _10:01:00 ::_ piece two ^11112222",
+      "- _10:02:00 ::_ third ^cccccccc",
+    ].join("\n"),
+  );
+  // The spillover line is an ordinary jot line: it deletes on its own.
+  const deleted = deleteAnchorLine(out ?? "", "11112222");
+  assert.ok(!deleted?.includes("piece two"));
+  assert.ok(deleted?.includes("piece one"));
 });
 
 test("replaceAnchorLine takes `$&` in the new text literally", () => {
-	const note = "- _10:00:00 ::_ ⏳ ^aaaaaaaa";
-	assert.equal(
-		replaceAnchorLine(note, "aaaaaaaa", "- _10:00:00 ::_ cost $& up ^aaaaaaaa"),
-		"- _10:00:00 ::_ cost $& up ^aaaaaaaa",
-	);
+  const note = "- _10:00:00 ::_ ⏳ ^aaaaaaaa";
+  assert.equal(
+    replaceAnchorLine(note, "aaaaaaaa", "- _10:00:00 ::_ cost $& up ^aaaaaaaa"),
+    "- _10:00:00 ::_ cost $& up ^aaaaaaaa",
+  );
 });
 
 test("splitEntry keeps short text whole and never cuts a sentence", () => {
-	assert.deepEqual(splitEntry("short one", 280), ["short one"]);
-	assert.deepEqual(splitEntry("  ", 280), []);
-	// Splitting off: length stops mattering.
-	assert.deepEqual(splitEntry("a".repeat(400), 0), ["a".repeat(400)]);
-	// A single sentence over the limit goes out whole rather than being cut.
-	const long = `${"word ".repeat(80)}end.`;
-	assert.deepEqual(splitEntry(long, 100), [long.replace(/\s+/g, " ").trim()]);
+  assert.deepEqual(splitEntry("short one", 280), ["short one"]);
+  assert.deepEqual(splitEntry("  ", 280), []);
+  // Splitting off: length stops mattering.
+  assert.deepEqual(splitEntry("a".repeat(400), 0), ["a".repeat(400)]);
+  // A single sentence over the limit goes out whole rather than being cut.
+  const long = `${"word ".repeat(80)}end.`;
+  assert.deepEqual(splitEntry(long, 100), [long.replace(/\s+/g, " ").trim()]);
 
-	const three = "First one here. Second one here. Third one here.";
-	assert.deepEqual(splitEntry(three, 20), [
-		"First one here.",
-		"Second one here.",
-		"Third one here.",
-	]);
-	// Sentences pack greedily up to the limit.
-	assert.deepEqual(splitEntry(three, 34), [
-		"First one here. Second one here.",
-		"Third one here.",
-	]);
+  const three = "First one here. Second one here. Third one here.";
+  assert.deepEqual(splitEntry(three, 20), [
+    "First one here.",
+    "Second one here.",
+    "Third one here.",
+  ]);
+  // Sentences pack greedily up to the limit.
+  assert.deepEqual(splitEntry(three, 34), [
+    "First one here. Second one here.",
+    "Third one here.",
+  ]);
 });
 
 test("splitEntry splits on topics first and collapses each chunk to one line", () => {
-	const text = "Topic one. Still topic one.\n\nTopic two entirely.";
-	assert.deepEqual(splitEntry(text, 30), [
-		"Topic one. Still topic one.",
-		"Topic two entirely.",
-	]);
-	// Under the limit it stays one entry, newlines and all.
-	assert.deepEqual(splitEntry(text, 280), [
-		"Topic one. Still topic one. Topic two entirely.",
-	]);
-	// An abbreviation isn't a sentence end: "e.g." keeps its lowercase follower.
-	assert.deepEqual(
-		splitEntry("Bought stuff e.g. milk and eggs. Then went home.", 40),
-		["Bought stuff e.g. milk and eggs.", "Then went home."],
-	);
+  const text = "Topic one. Still topic one.\n\nTopic two entirely.";
+  assert.deepEqual(splitEntry(text, 30), [
+    "Topic one. Still topic one.",
+    "Topic two entirely.",
+  ]);
+  // Under the limit it stays one entry, newlines and all.
+  assert.deepEqual(splitEntry(text, 280), [
+    "Topic one. Still topic one. Topic two entirely.",
+  ]);
+  // An abbreviation isn't a sentence end: "e.g." keeps its lowercase follower.
+  assert.deepEqual(
+    splitEntry("Bought stuff e.g. milk and eggs. Then went home.", 40),
+    ["Bought stuff e.g. milk and eggs.", "Then went home."],
+  );
 });
 
 test("doneMessage marks which piece a split jot is", () => {
-	const one = doneMessage("10:00:00", "text", "hi", "a1b2c3d4");
-	assert.ok(!one.includes("part"));
-	const piece = doneMessage("10:00:00", "text", "hi", "a1b2c3d4", 0, {
-		i: 2,
-		of: 3,
-	});
-	assert.ok(piece.includes("✂️ part 2 of 3"));
+  const one = doneMessage("10:00:00", "text", "hi", "a1b2c3d4");
+  assert.ok(!one.includes("part"));
+  const piece = doneMessage("10:00:00", "text", "hi", "a1b2c3d4", 0, {
+    i: 2,
+    of: 3,
+  });
+  assert.ok(piece.includes("✂️ part 2 of 3"));
 });
 
 test("entryMaxChars falls back to the default, parseEntrySize validates input", () => {
-	assert.equal(entryMaxChars(undefined), DEFAULT_ENTRY_MAX_CHARS);
-	assert.equal(entryMaxChars(""), DEFAULT_ENTRY_MAX_CHARS);
-	assert.equal(entryMaxChars("nonsense"), DEFAULT_ENTRY_MAX_CHARS);
-	assert.equal(entryMaxChars("-5"), DEFAULT_ENTRY_MAX_CHARS);
-	assert.equal(entryMaxChars("0"), 0);
-	assert.equal(entryMaxChars("140"), 140);
+  assert.equal(entryMaxChars(undefined), DEFAULT_ENTRY_MAX_CHARS);
+  assert.equal(entryMaxChars(""), DEFAULT_ENTRY_MAX_CHARS);
+  assert.equal(entryMaxChars("nonsense"), DEFAULT_ENTRY_MAX_CHARS);
+  assert.equal(entryMaxChars("-5"), DEFAULT_ENTRY_MAX_CHARS);
+  assert.equal(entryMaxChars("0"), 0);
+  assert.equal(entryMaxChars("140"), 140);
 
-	assert.equal(parseEntrySize("280"), 280);
-	assert.equal(parseEntrySize(" off "), 0);
-	assert.equal(parseEntrySize("0"), 0);
-	assert.equal(parseEntrySize("10"), null); // no sentence fits
-	assert.equal(parseEntrySize("99999"), null);
-	assert.equal(parseEntrySize("lots"), null);
+  assert.equal(parseEntrySize("280"), 280);
+  assert.equal(parseEntrySize(" off "), 0);
+  assert.equal(parseEntrySize("0"), 0);
+  assert.equal(parseEntrySize("10"), null); // no sentence fits
+  assert.equal(parseEntrySize("99999"), null);
+  assert.equal(parseEntrySize("lots"), null);
 });
 
 test("candidates drop stopwords/short aliases and honour rejections", () => {
-	const index = [
-		{ note: "Norway", alias: "no" }, // stopword → dropped
-		{ note: "Norway", alias: "Norway" }, // real → kept
-		{ note: "We (novel)", alias: "We" }, // 2 chars → dropped
-		{ note: "Fume Extractor", alias: "Fume Extractor" }, // multiword → kept
-		{ note: "Lev", alias: "Lev" },
-	];
-	const text =
-		"I said no to visiting Norway but fixed the Fume Extractor for Lev";
-	const got = candidates(text, index, STOP, new Set());
-	assert.deepEqual(got.map((c) => c.note).sort(), [
-		"Fume Extractor",
-		"Lev",
-		"Norway",
-	]);
+  const index = [
+    { note: "Norway", alias: "no" }, // stopword → dropped
+    { note: "Norway", alias: "Norway" }, // real → kept
+    { note: "We (novel)", alias: "We" }, // 2 chars → dropped
+    { note: "Fume Extractor", alias: "Fume Extractor" }, // multiword → kept
+    { note: "Lev", alias: "Lev" },
+  ];
+  const text =
+    "I said no to visiting Norway but fixed the Fume Extractor for Lev";
+  const got = candidates(text, index, STOP, new Set());
+  assert.deepEqual(got.map((c) => c.note).sort(), [
+    "Fume Extractor",
+    "Lev",
+    "Norway",
+  ]);
 
-	const rejected = new Set(["lev Lev"]); // user previously said no to Lev
-	const got2 = candidates(text, index, STOP, rejected);
-	assert.ok(!got2.some((c) => c.note === "Lev"));
+  const rejected = new Set(["lev Lev"]); // user previously said no to Lev
+  const got2 = candidates(text, index, STOP, rejected);
+  assert.ok(!got2.some((c) => c.note === "Lev"));
 });
 
 test("forcedCandidates: matches registered surface->note pairs, ignoring length/stopword rules, marked forced", () => {
-	const registered = [
-		{ surface: "no", note: "Norway" }, // 2 chars + a stopword elsewhere — still forced
-		{ surface: "Fume Extractor", note: "Fume Extractor" }, // multiword
-		{ surface: "gym", note: "Fitness" },
-	];
-	const text = "said no to visiting the Fume Extractor room";
-	const got = forcedCandidates(text, registered);
-	assert.deepEqual(
-		got.map((c) => [c.surface, c.note, c.forced]).sort(),
-		[
-			["Fume Extractor", "Fume Extractor", true],
-			["no", "Norway", true],
-		].sort(),
-	);
+  const registered = [
+    { surface: "no", note: "Norway" }, // 2 chars + a stopword elsewhere — still forced
+    { surface: "Fume Extractor", note: "Fume Extractor" }, // multiword
+    { surface: "gym", note: "Fitness" },
+  ];
+  const text = "said no to visiting the Fume Extractor room";
+  const got = forcedCandidates(text, registered);
+  assert.deepEqual(
+    got.map((c) => [c.surface, c.note, c.forced]).sort(),
+    [
+      ["Fume Extractor", "Fume Extractor", true],
+      ["no", "Norway", true],
+    ].sort(),
+  );
 });
 
 test("linkDateWords turns relative date phrases into daily-note wikilinks", () => {
-	const ref = "2026-07-10"; // a Friday
-	assert.equal(
-		linkDateWords("I did this yesterday", ref),
-		"I did this [[2026-07-09|yesterday]]",
-	);
-	assert.equal(
-		linkDateWords("see you tomorrow", ref),
-		"see you [[2026-07-11|tomorrow]]",
-	);
-	assert.equal(
-		linkDateWords("I went to the beach three weeks ago", ref),
-		"I went to the beach [[2026-06-19|three weeks ago]]",
-	);
-	assert.equal(
-		linkDateWords("in 2 days we ship", ref),
-		"[[2026-07-12|in 2 days]] we ship",
-	);
-	assert.equal(
-		linkDateWords("last month was rough", ref),
-		"[[2026-06-10|last month]] was rough",
-	);
+  const ref = "2026-07-10"; // a Friday
+  assert.equal(
+    linkDateWords("I did this yesterday", ref),
+    "I did this [[2026-07-09|yesterday]]",
+  );
+  assert.equal(
+    linkDateWords("see you tomorrow", ref),
+    "see you [[2026-07-11|tomorrow]]",
+  );
+  assert.equal(
+    linkDateWords("I went to the beach three weeks ago", ref),
+    "I went to the beach [[2026-06-19|three weeks ago]]",
+  );
+  assert.equal(
+    linkDateWords("in 2 days we ship", ref),
+    "[[2026-07-12|in 2 days]] we ship",
+  );
+  assert.equal(
+    linkDateWords("last month was rough", ref),
+    "[[2026-06-10|last month]] was rough",
+  );
 });
 
 test("linkDateWords ignores bare clock times that carry no date", () => {
-	const ref = "2026-07-10";
-	assert.equal(linkDateWords("Call is at 3pm", ref), "Call is at 3pm");
-	assert.equal(linkDateWords("We land at 22:30", ref), "We land at 22:30");
-	assert.equal(linkDateWords("meeting at 9", ref), "meeting at 9");
-	// but a time attached to an actual day keyword still links
-	assert.equal(
-		linkDateWords("Met the doctor at 3pm today", ref),
-		"Met the doctor [[2026-07-10|at 3pm today]]",
-	);
+  const ref = "2026-07-10";
+  assert.equal(linkDateWords("Call is at 3pm", ref), "Call is at 3pm");
+  assert.equal(linkDateWords("We land at 22:30", ref), "We land at 22:30");
+  assert.equal(linkDateWords("meeting at 9", ref), "meeting at 9");
+  // but a time attached to an actual day keyword still links
+  assert.equal(
+    linkDateWords("Met the doctor at 3pm today", ref),
+    "Met the doctor [[2026-07-10|at 3pm today]]",
+  );
 });
 
 test("linkDateWords never links a date word buried inside a bigger word", () => {
-	const ref = "2026-07-10";
-	// "Pokémon" tripped this: JS `\b` is ASCII-only, so é read as a word break and "mon"
-	// looked like a standalone Monday.
-	assert.equal(
-		linkDateWords("played Pokémon all day", ref).includes("[[2026"),
-		false,
-	);
-	assert.equal(
-		linkDateWords("the satsuma is ripe", ref),
-		"the satsuma is ripe",
-	);
-	// the same words on their own still link
-	assert.equal(
-		linkDateWords("shipping it mon", ref),
-		"shipping it [[2026-07-13|mon]]",
-	);
+  const ref = "2026-07-10";
+  // "Pokémon" tripped this: JS `\b` is ASCII-only, so é read as a word break and "mon"
+  // looked like a standalone Monday.
+  assert.equal(
+    linkDateWords("played Pokémon all day", ref).includes("[[2026"),
+    false,
+  );
+  assert.equal(
+    linkDateWords("the satsuma is ripe", ref),
+    "the satsuma is ripe",
+  );
+  // the same words on their own still link
+  assert.equal(
+    linkDateWords("shipping it mon", ref),
+    "shipping it [[2026-07-13|mon]]",
+  );
 });
 
 test('linkDateWords leaves "now" alone but still links "today" in the same sentence', () => {
-	const ref = "2026-07-10";
-	assert.equal(
-		linkDateWords("it's good now, deploy maybe tomorrow, or today", ref),
-		"it's good now, deploy maybe [[2026-07-11|tomorrow]], or [[2026-07-10|today]]",
-	);
-	assert.equal(
-		linkDateWords("just now I fixed it", ref),
-		"just now I fixed it",
-	);
+  const ref = "2026-07-10";
+  assert.equal(
+    linkDateWords("it's good now, deploy maybe tomorrow, or today", ref),
+    "it's good now, deploy maybe [[2026-07-11|tomorrow]], or [[2026-07-10|today]]",
+  );
+  assert.equal(
+    linkDateWords("just now I fixed it", ref),
+    "just now I fixed it",
+  );
 });
 
 test("linkDateWords ignores plain text and never re-links inside a wikilink", () => {
-	const ref = "2026-07-10";
-	assert.equal(linkDateWords("no date words here", ref), "no date words here");
-	assert.equal(linkDateWords("", ref), "");
-	assert.equal(
-		linkDateWords("read [[Monday Blues]] again", ref),
-		"read [[Monday Blues]] again",
-	);
+  const ref = "2026-07-10";
+  assert.equal(linkDateWords("no date words here", ref), "no date words here");
+  assert.equal(linkDateWords("", ref), "");
+  assert.equal(
+    linkDateWords("read [[Monday Blues]] again", ref),
+    "read [[Monday Blues]] again",
+  );
 });
 
 test("literal edit parser handles sed and natural forms, rejects freeform", () => {
-	assert.deepEqual(parseLiteralEdit("s/pot/potentiometer/"), {
-		old: "pot",
-		new: "potentiometer",
-	});
-	assert.deepEqual(parseLiteralEdit("replace pot with potentiometer"), {
-		old: "pot",
-		new: "potentiometer",
-	});
-	assert.deepEqual(parseLiteralEdit('replace "the cat" with "the dog"'), {
-		old: "the cat",
-		new: "the dog",
-	});
-	assert.equal(parseLiteralEdit("make this clearer"), null);
+  assert.deepEqual(parseLiteralEdit("s/pot/potentiometer/"), {
+    old: "pot",
+    new: "potentiometer",
+  });
+  assert.deepEqual(parseLiteralEdit("replace pot with potentiometer"), {
+    old: "pot",
+    new: "potentiometer",
+  });
+  assert.deepEqual(parseLiteralEdit('replace "the cat" with "the dog"'), {
+    old: "the cat",
+    new: "the dog",
+  });
+  assert.equal(parseLiteralEdit("make this clearer"), null);
 });
 
 test("tokenize keeps accented letters", () => {
-	assert.deepEqual(tokenize("Não é fácil"), ["não", "é", "fácil"]);
+  assert.deepEqual(tokenize("Não é fácil"), ["não", "é", "fácil"]);
 });
 
 test("donePreview shows enriched text in full, labels attach-only", () => {
-	assert.equal(donePreview("text", "  went for a run  "), "went for a run");
-	assert.equal(donePreview("audio", "x".repeat(250)), "x".repeat(250));
-	assert.equal(donePreview("image", ""), "image saved to the note");
-	assert.equal(donePreview("video", "  "), "video saved to the note");
-	assert.equal(donePreview("text", ""), "saved");
+  assert.equal(donePreview("text", "  went for a run  "), "went for a run");
+  assert.equal(donePreview("audio", "x".repeat(250)), "x".repeat(250));
+  assert.equal(donePreview("image", ""), "image saved to the note");
+  assert.equal(donePreview("video", "  "), "video saved to the note");
+  assert.equal(donePreview("text", ""), "saved");
 });
 
 test("escapeHtml neutralises Telegram HTML metacharacters", () => {
-	assert.equal(
-		escapeHtml(`a <b> & "c" 'd'`),
-		"a &lt;b&gt; &amp; &quot;c&quot; &#39;d&#39;",
-	);
+  assert.equal(
+    escapeHtml(`a <b> & "c" 'd'`),
+    "a &lt;b&gt; &amp; &quot;c&quot; &#39;d&#39;",
+  );
 });
 
 test("doneMessage blockquotes the time and escapes content", () => {
-	assert.equal(
-		doneMessage("14:32:00", "text", "ran <5k> today", "a1b2c3d4"),
-		"✅ Saved to your journal\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>\n🔖 <code>a1b2c3d4</code>",
-	);
+  assert.equal(
+    doneMessage("14:32:00", "text", "ran <5k> today", "a1b2c3d4"),
+    "✅ Saved to your journal\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>\n🔖 <code>a1b2c3d4</code>",
+  );
 });
 
 test("doneMessage notes a squash only when more than one jot merged", () => {
-	// 0/1 = no merge, no extra line; 2+ appends the squash count.
-	assert.ok(!doneMessage("14:32:00", "text", "x", "a1b2c3d4").includes("🧵"));
-	assert.ok(
-		!doneMessage("14:32:00", "text", "x", "a1b2c3d4", 1).includes("🧵"),
-	);
-	assert.match(
-		doneMessage("14:32:00", "text", "x", "a1b2c3d4", 3),
-		/🧵 3 jots squashed into one entry$/,
-	);
+  // 0/1 = no merge, no extra line; 2+ appends the squash count.
+  assert.ok(!doneMessage("14:32:00", "text", "x", "a1b2c3d4").includes("🧵"));
+  assert.ok(
+    !doneMessage("14:32:00", "text", "x", "a1b2c3d4", 1).includes("🧵"),
+  );
+  assert.match(
+    doneMessage("14:32:00", "text", "x", "a1b2c3d4", 3),
+    /🧵 3 jots squashed into one entry$/,
+  );
 });
 
 test("editConfirmation blockquotes the time and escapes content", () => {
-	assert.equal(
-		editConfirmation("14:32:00", "ran <5k> today"),
-		"✏️ Updated\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>",
-	);
+  assert.equal(
+    editConfirmation("14:32:00", "ran <5k> today"),
+    "✏️ Updated\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>",
+  );
 });
 
 test("editConfirmation falls back to an ellipsis for a blank result (e.g. a delete)", () => {
-	assert.equal(
-		editConfirmation("14:32:00", "   "),
-		"✏️ Updated\n<blockquote>🕒 14:32:00 · …</blockquote>",
-	);
+  assert.equal(
+    editConfirmation("14:32:00", "   "),
+    "✏️ Updated\n<blockquote>🕒 14:32:00 · …</blockquote>",
+  );
 });
 
 test("pluralize suffixes -s for everything but 1", () => {
-	assert.equal(pluralize(1, "jot"), "1 jot");
-	assert.equal(pluralize(0, "jot"), "0 jots");
-	assert.equal(pluralize(3, "jot"), "3 jots");
+  assert.equal(pluralize(1, "jot"), "1 jot");
+  assert.equal(pluralize(0, "jot"), "0 jots");
+  assert.equal(pluralize(3, "jot"), "3 jots");
 });
 
 test("formatDuration picks the two coarsest units", () => {
-	assert.equal(formatDuration(45_000), "45s");
-	assert.equal(formatDuration(90_000), "1m 30s");
-	assert.equal(formatDuration(3 * 3600_000 + 20 * 60_000), "3h 20m");
-	assert.equal(formatDuration(2 * 86400_000 + 5 * 3600_000), "2d 5h");
+  assert.equal(formatDuration(45_000), "45s");
+  assert.equal(formatDuration(90_000), "1m 30s");
+  assert.equal(formatDuration(3 * 3600_000 + 20 * 60_000), "3h 20m");
+  assert.equal(formatDuration(2 * 86400_000 + 5 * 3600_000), "2d 5h");
 });
 
 test("formatStats hides zero outcome tails", () => {
-	const base: StatsRow = {
-		total: 4,
-		text: 3,
-		audio: 1,
-		image: 0,
-		video: 0,
-		done: 4,
-		failed: 0,
-		abandoned: 0,
-		inflight: 0,
-	};
-	const clean = formatStats("today", base);
-	assert.match(clean, /Jots: 4/);
-	assert.match(clean, /voice 1/);
-	assert.equal(clean.includes("failed"), false); // no failures → no tail
-	const withFail = formatStats("today", { ...base, failed: 2, inflight: 1 });
-	assert.match(withFail, /in-flight 1 · failed 2/);
+  const base: StatsRow = {
+    total: 4,
+    text: 3,
+    audio: 1,
+    image: 0,
+    video: 0,
+    done: 4,
+    failed: 0,
+    abandoned: 0,
+    inflight: 0,
+  };
+  const clean = formatStats("today", base);
+  assert.match(clean, /Jots: 4/);
+  assert.match(clean, /voice 1/);
+  assert.equal(clean.includes("failed"), false); // no failures → no tail
+  const withFail = formatStats("today", { ...base, failed: 2, inflight: 1 });
+  assert.match(withFail, /in-flight 1 · failed 2/);
 });
 
 function fakeRelease(over: Partial<ReleaseNote> = {}): ReleaseNote {
-	return {
-		tag: "v1.2.3",
-		version: "1.2.3",
-		name: "v1.2.3",
-		body: "### Bug Fixes\n\n* fixed the thing",
-		url: "https://github.com/khaosdoctor/scriba/releases/tag/v1.2.3",
-		publishedAt: "2026-07-15T20:03:58Z",
-		...over,
-	};
+  return {
+    tag: "v1.2.3",
+    version: "1.2.3",
+    name: "v1.2.3",
+    body: "### Bug Fixes\n\n* fixed the thing",
+    url: "https://github.com/khaosdoctor/scriba/releases/tag/v1.2.3",
+    publishedAt: "2026-07-15T20:03:58Z",
+    ...over,
+  };
 }
 
 test("formatDeployNotice reports version and sha with no release note", () => {
-	const out = formatDeployNotice("1.2.3", "abcdef1234", null);
-	assert.equal(out, "🚀 scriba deployed — 1.2.3 (abcdef1)");
+  const out = formatDeployNotice("1.2.3", "abcdef1234", null);
+  assert.equal(out, "🚀 scriba deployed — 1.2.3 (abcdef1)");
 });
 
 test("formatDeployNotice includes the release body and link when a note is given", () => {
-	const out = formatDeployNotice("1.2.3", "abcdef1234", fakeRelease());
-	assert.match(out, /scriba deployed — 1\.2\.3 \(abcdef1\)/);
-	assert.match(out, /fixed the thing/);
-	assert.match(out, /releases\/tag\/v1\.2\.3/);
+  const out = formatDeployNotice("1.2.3", "abcdef1234", fakeRelease());
+  assert.match(out, /scriba deployed — 1\.2\.3 \(abcdef1\)/);
+  assert.match(out, /fixed the thing/);
+  assert.match(out, /releases\/tag\/v1\.2\.3/);
 });
 
 test("formatReleaseNote shows the release name, body, and link", () => {
-	const out = formatReleaseNote(
-		fakeRelease({ name: "Better fallback errors" }),
-	);
-	assert.match(out, /📋 Better fallback errors/);
-	assert.match(out, /fixed the thing/);
-	assert.match(out, /releases\/tag\/v1\.2\.3/);
+  const out = formatReleaseNote(
+    fakeRelease({ name: "Better fallback errors" }),
+  );
+  assert.match(out, /📋 Better fallback errors/);
+  assert.match(out, /fixed the thing/);
+  assert.match(out, /releases\/tag\/v1\.2\.3/);
 });
 
 test("formatReleaseNote strips conventional-changelog markdown from the body", () => {
-	const body =
-		"### Features\n\n" +
-		"* add /changelog command and put what's new in the deploy notice ([b95325e](https://github.com/khaosdoctor/scriba/commit/b95325e6721e0e63d502c8642208b9cd0a001a4f))\n\n" +
-		"### Bug Fixes\n\n" +
-		"* stop asserting usage exhaustion as the cause of enrichment fallback ([#9](https://github.com/khaosdoctor/scriba/issues/9)) ([ff223cd](https://github.com/khaosdoctor/scriba/commit/ff223cdc1092eaa683352258ddb8eb93abc5fd8b))";
-	const out = formatReleaseNote(fakeRelease({ body }));
-	assert.equal(
-		out,
-		[
-			"📋 v1.2.3",
-			[
-				"Features:",
-				"• add /changelog command and put what's new in the deploy notice",
-			].join("\n"),
-			[
-				"Bug Fixes:",
-				"• stop asserting usage exhaustion as the cause of enrichment fallback",
-			].join("\n"),
-			"https://github.com/khaosdoctor/scriba/releases/tag/v1.2.3",
-		].join("\n\n"),
-	);
-	assert.doesNotMatch(out, /###|\[|\]|\(https/);
+  const body =
+    "### Features\n\n" +
+    "* add /changelog command and put what's new in the deploy notice ([b95325e](https://github.com/khaosdoctor/scriba/commit/b95325e6721e0e63d502c8642208b9cd0a001a4f))\n\n" +
+    "### Bug Fixes\n\n" +
+    "* stop asserting usage exhaustion as the cause of enrichment fallback ([#9](https://github.com/khaosdoctor/scriba/issues/9)) ([ff223cd](https://github.com/khaosdoctor/scriba/commit/ff223cdc1092eaa683352258ddb8eb93abc5fd8b))";
+  const out = formatReleaseNote(fakeRelease({ body }));
+  assert.equal(
+    out,
+    [
+      "📋 v1.2.3",
+      [
+        "Features:",
+        "• add /changelog command and put what's new in the deploy notice",
+      ].join("\n"),
+      [
+        "Bug Fixes:",
+        "• stop asserting usage exhaustion as the cause of enrichment fallback",
+      ].join("\n"),
+      "https://github.com/khaosdoctor/scriba/releases/tag/v1.2.3",
+    ].join("\n\n"),
+  );
+  assert.doesNotMatch(out, /###|\[|\]|\(https/);
 });
 
 test("formatReleaseList summarises releases newest-first, and handles an empty list", () => {
-	const out = formatReleaseList([
-		fakeRelease({ tag: "v1.2.3", publishedAt: "2026-07-15T12:00:00Z" }),
-		fakeRelease({ tag: "v1.2.2", publishedAt: "2026-07-10T12:00:00Z" }),
-	]);
-	assert.match(out, /• v1\.2\.3 \(2026-07-15\)/);
-	assert.match(out, /• v1\.2\.2 \(2026-07-10\)/);
-	assert.equal(formatReleaseList([]), "no releases found");
+  const out = formatReleaseList([
+    fakeRelease({ tag: "v1.2.3", publishedAt: "2026-07-15T12:00:00Z" }),
+    fakeRelease({ tag: "v1.2.2", publishedAt: "2026-07-10T12:00:00Z" }),
+  ]);
+  assert.match(out, /• v1\.2\.3 \(2026-07-15\)/);
+  assert.match(out, /• v1\.2\.2 \(2026-07-10\)/);
+  assert.equal(formatReleaseList([]), "no releases found");
 });
 
 test("formatStatus summarises health", () => {
-	const out = formatStatus({
-		counts: {
-			pending: 1,
-			processing: 1,
-			done: 10,
-			failed: 2,
-			abandoned: 0,
-			deleted: 0,
-		},
-		queueDepth: 3,
-		transcriber: "local",
-		links: { enabled: true, files: 5, aliases: 9 },
-		version: "1.2.3",
-		sha: "abcdef1234",
-		uptimeMs: 90_000,
-	});
-	assert.match(out, /scriba 1\.2\.3 \(abcdef1\)/);
-	assert.match(out, /10 done · 2 in-flight · 2 failed/); // pending+processing = in-flight
-	assert.match(out, /Queue depth: 3/);
-	assert.match(out, /Transcriber: local/);
-	assert.match(out, /5 files \/ 9 aliases/);
+  const out = formatStatus({
+    counts: {
+      pending: 1,
+      processing: 1,
+      done: 10,
+      failed: 2,
+      abandoned: 0,
+      deleted: 0,
+    },
+    queueDepth: 3,
+    transcriber: "local",
+    links: { enabled: true, files: 5, aliases: 9 },
+    version: "1.2.3",
+    sha: "abcdef1234",
+    uptimeMs: 90_000,
+  });
+  assert.match(out, /scriba 1\.2\.3 \(abcdef1\)/);
+  assert.match(out, /10 done · 2 in-flight · 2 failed/); // pending+processing = in-flight
+  assert.match(out, /Queue depth: 3/);
+  assert.match(out, /Transcriber: local/);
+  assert.match(out, /5 files \/ 9 aliases/);
 });
 
 test("formatStatus shows a disabled link index", () => {
-	const out = formatStatus({
-		counts: {
-			pending: 0,
-			processing: 0,
-			done: 0,
-			failed: 0,
-			abandoned: 0,
-			deleted: 0,
-		},
-		queueDepth: 0,
-		transcriber: "remote",
-		links: { enabled: false, files: 0, aliases: 0 },
-		version: "1",
-		sha: "0000000",
-		uptimeMs: 0,
-	});
-	assert.match(out, /Link index: disabled/);
+  const out = formatStatus({
+    counts: {
+      pending: 0,
+      processing: 0,
+      done: 0,
+      failed: 0,
+      abandoned: 0,
+      deleted: 0,
+    },
+    queueDepth: 0,
+    transcriber: "remote",
+    links: { enabled: false, files: 0, aliases: 0 },
+    version: "1",
+    sha: "0000000",
+    uptimeMs: 0,
+  });
+  assert.match(out, /Link index: disabled/);
 });
 
 test("isRecoverable flags transient infra errors, not terminal ones", () => {
-	assert.equal(
-		isRecoverable(new Error("connect ETIMEDOUT 10.0.0.1:443")),
-		true,
-	);
-	assert.equal(
-		isRecoverable(new Error("Request failed with status 503")),
-		true,
-	);
-	assert.equal(isRecoverable(new Error("429 Too Many Requests")), true);
-	assert.equal(isRecoverable(new Error("invalid path")), false);
+  assert.equal(
+    isRecoverable(new Error("connect ETIMEDOUT 10.0.0.1:443")),
+    true,
+  );
+  assert.equal(
+    isRecoverable(new Error("Request failed with status 503")),
+    true,
+  );
+  assert.equal(isRecoverable(new Error("429 Too Many Requests")), true);
+  assert.equal(isRecoverable(new Error("invalid path")), false);
 });
 
 test("stripJournalLine strips the time prefix and anchor suffix", () => {
-	assert.equal(
-		stripJournalLine("- _23:13:18 ::_ hi ^a1b2c3d4", "23:13:18"),
-		"hi",
-	);
-	// A caret inside the text isn't an anchor — journalLine always writes " ^id" at the end.
-	assert.equal(stripJournalLine("- _23:13:18 ::_ 3^2", "23:13:18"), "3^2");
+  assert.equal(
+    stripJournalLine("- _23:13:18 ::_ hi ^a1b2c3d4", "23:13:18"),
+    "hi",
+  );
+  // A caret inside the text isn't an anchor — journalLine always writes " ^id" at the end.
+  assert.equal(stripJournalLine("- _23:13:18 ::_ 3^2", "23:13:18"), "3^2");
 });
 
 test("isBlank treats empty and whitespace-only edits as a delete gesture", () => {
-	assert.equal(isBlank(""), true);
-	assert.equal(isBlank("   "), true);
-	assert.equal(isBlank("\n\t "), true);
-	assert.equal(isBlank("x"), false);
-	assert.equal(isBlank("  hi  "), false);
+  assert.equal(isBlank(""), true);
+  assert.equal(isBlank("   "), true);
+  assert.equal(isBlank("\n\t "), true);
+  assert.equal(isBlank("x"), false);
+  assert.equal(isBlank("  hi  "), false);
 });
 
 test("isEditableJot is true only for done/abandoned (a line exists to edit)", () => {
-	assert.equal(isEditableJot("done"), true);
-	assert.equal(isEditableJot("abandoned"), true);
-	assert.equal(isEditableJot("pending"), false);
-	assert.equal(isEditableJot("processing"), false);
-	assert.equal(isEditableJot("failed"), false);
-	assert.equal(isEditableJot("deleted"), false);
+  assert.equal(isEditableJot("done"), true);
+  assert.equal(isEditableJot("abandoned"), true);
+  assert.equal(isEditableJot("pending"), false);
+  assert.equal(isEditableJot("processing"), false);
+  assert.equal(isEditableJot("failed"), false);
+  assert.equal(isEditableJot("deleted"), false);
 });
 
 test("formatJotDetail shows full text and includes errors", () => {
-	const jot: Jot = {
-		id: "deadbeef",
-		kind: "audio",
-		note_path: "notes/x.md",
-		anchor: "deadbeef",
-		time: "10:00:00",
-		raw_text: null,
-		transcript: "x".repeat(400),
-		proposed_text: null,
-		asset_path: null,
-		file_id: null,
-		status: "failed",
-		attempts: 3,
-		error: "boom",
-		received_at: Date.now(),
-		updated_at: Date.now(),
-	};
-	const out = formatJotDetail(jot);
-	assert.match(out, /deadbeef \[audio\] — failed/);
-	assert.match(out, /Attempts: 3/);
-	assert.match(out, /Error: boom/);
-	assert.ok(out.includes(`Text: ${"x".repeat(400)}`)); // transcript shown in full
+  const jot: Jot = {
+    id: "deadbeef",
+    kind: "audio",
+    note_path: "notes/x.md",
+    anchor: "deadbeef",
+    time: "10:00:00",
+    raw_text: null,
+    transcript: "x".repeat(400),
+    proposed_text: null,
+    asset_path: null,
+    file_id: null,
+    status: "failed",
+    attempts: 3,
+    error: "boom",
+    received_at: Date.now(),
+    updated_at: Date.now(),
+  };
+  const out = formatJotDetail(jot);
+  assert.match(out, /deadbeef \[audio\] — failed/);
+  assert.match(out, /Attempts: 3/);
+  assert.match(out, /Error: boom/);
+  assert.ok(out.includes(`Text: ${"x".repeat(400)}`)); // transcript shown in full
 });
 
 const mediaJot = (over: Partial<Jot>): Jot => ({
-	id: "deadbeef",
-	kind: "image",
-	note_path: "notes/x.md",
-	anchor: "deadbeef",
-	time: "10:00:00",
-	raw_text: null,
-	transcript: null,
-	proposed_text: null,
-	asset_path: null,
-	file_id: null,
-	status: "done",
-	attempts: 0,
-	error: null,
-	received_at: 0,
-	updated_at: 0,
-	...over,
+  id: "deadbeef",
+  kind: "image",
+  note_path: "notes/x.md",
+  anchor: "deadbeef",
+  time: "10:00:00",
+  raw_text: null,
+  transcript: null,
+  proposed_text: null,
+  asset_path: null,
+  file_id: null,
+  status: "done",
+  attempts: 0,
+  error: null,
+  received_at: 0,
+  updated_at: 0,
+  ...over,
 });
 
 test("an image's caption is enrichable entry text; video's is not", () => {
-	// What you type alongside a photo is the jot itself, so it goes through enrichment.
-	assert.equal(
-		enrichableSource(mediaJot({ kind: "image", raw_text: "at the park" })),
-		"at the park",
-	);
-	assert.equal(enrichableSource(mediaJot({ kind: "image" })), "");
-	// Video stays attach-only — its caption is the embed's display text, not entry text.
-	assert.equal(
-		enrichableSource(mediaJot({ kind: "video", raw_text: "clip of the dog" })),
-		"",
-	);
-	assert.equal(
-		enrichableSource(mediaJot({ kind: "audio", transcript: "spoken" })),
-		"spoken",
-	);
-	assert.equal(
-		enrichableSource(mediaJot({ kind: "audio" }), "(failed)"),
-		"(failed)",
-	);
+  // What you type alongside a photo is the jot itself, so it goes through enrichment.
+  assert.equal(
+    enrichableSource(mediaJot({ kind: "image", raw_text: "at the park" })),
+    "at the park",
+  );
+  assert.equal(enrichableSource(mediaJot({ kind: "image" })), "");
+  // Video stays attach-only — its caption is the embed's display text, not entry text.
+  assert.equal(
+    enrichableSource(mediaJot({ kind: "video", raw_text: "clip of the dog" })),
+    "",
+  );
+  assert.equal(
+    enrichableSource(mediaJot({ kind: "audio", transcript: "spoken" })),
+    "spoken",
+  );
+  assert.equal(
+    enrichableSource(mediaJot({ kind: "audio" }), "(failed)"),
+    "(failed)",
+  );
 });
 
 test("assetEmbed gives an image no alias and a video its caption", () => {
-	// Telegram exposes no alt-text field, and the caption is already the entry text — so
-	// an image embeds bare rather than repeating itself inside the link.
-	assert.equal(
-		assetEmbed(
-			mediaJot({
-				kind: "image",
-				raw_text: "at the park",
-				asset_path: "a/b.jpg",
-			}),
-		),
-		"![[a/b.jpg]]",
-	);
-	assert.equal(
-		assetEmbed(
-			mediaJot({ kind: "video", raw_text: "the dog", asset_path: "a/b.mp4" }),
-		),
-		"![[a/b.mp4|the dog]]",
-	);
-	assert.equal(
-		assetEmbed(mediaJot({ kind: "video", asset_path: "a/b.mp4" })),
-		"![[a/b.mp4]]",
-	);
-	assert.equal(assetEmbed(mediaJot({ kind: "text", raw_text: "hi" })), "");
+  // Telegram exposes no alt-text field, and the caption is already the entry text — so
+  // an image embeds bare rather than repeating itself inside the link.
+  assert.equal(
+    assetEmbed(
+      mediaJot({
+        kind: "image",
+        raw_text: "at the park",
+        asset_path: "a/b.jpg",
+      }),
+    ),
+    "![[a/b.jpg]]",
+  );
+  assert.equal(
+    assetEmbed(
+      mediaJot({ kind: "video", raw_text: "the dog", asset_path: "a/b.mp4" }),
+    ),
+    "![[a/b.mp4|the dog]]",
+  );
+  assert.equal(
+    assetEmbed(mediaJot({ kind: "video", asset_path: "a/b.mp4" })),
+    "![[a/b.mp4]]",
+  );
+  assert.equal(assetEmbed(mediaJot({ kind: "text", raw_text: "hi" })), "");
 });
 
 test("htmlToText drops script/style bodies instead of running them", () => {
-	const html = `<html><head><title>t</title><style>body{color:red}</style></head>
+  const html = `<html><head><title>t</title><style>body{color:red}</style></head>
 <body><script>alert('x')</script><h1>Title</h1><p>First &amp; second.</p>
 <ul><li>one</li><li>two</li></ul><div>after</div></body></html>`;
-	const out = htmlToText(html);
-	assert.doesNotMatch(out, /alert|color:red|<[a-z]/i); // no code, no tags left
-	assert.match(out, /Title/);
-	assert.match(out, /First & second\./); // entities decoded
-	// Hex entities too — tropes.fyi serves its list full of &#x27;
-	assert.equal(
-		htmlToText("<p>What&#x27;s new &#8212; ok</p>"),
-		"What's new — ok",
-	);
-	assert.match(out, /- one/);
-	assert.match(out, /after/);
-	assert.doesNotMatch(out, /\n\n\n/); // blank runs collapsed
+  const out = htmlToText(html);
+  assert.doesNotMatch(out, /alert|color:red|<[a-z]/i); // no code, no tags left
+  assert.match(out, /Title/);
+  assert.match(out, /First & second\./); // entities decoded
+  // Hex entities too — tropes.fyi serves its list full of &#x27;
+  assert.equal(
+    htmlToText("<p>What&#x27;s new &#8212; ok</p>"),
+    "What's new — ok",
+  );
+  assert.match(out, /- one/);
+  assert.match(out, /after/);
+  assert.doesNotMatch(out, /\n\n\n/); // blank runs collapsed
 });
 
 test("isInsideRoot accepts the root and its children, rejects siblings", () => {
-	assert.equal(isInsideRoot("/vault", "/vault"), true);
-	assert.equal(isInsideRoot("/vault", "/vault/notes/a.md"), true);
-	assert.equal(isInsideRoot("/vault/", "/vault/a.md"), true);
-	assert.equal(isInsideRoot("/vault", "/vault-other/a.md"), false); // prefix, not child
-	assert.equal(isInsideRoot("/vault", "/etc/passwd"), false);
-	assert.equal(isInsideRoot("", "/vault/a.md"), false);
+  assert.equal(isInsideRoot("/vault", "/vault"), true);
+  assert.equal(isInsideRoot("/vault", "/vault/notes/a.md"), true);
+  assert.equal(isInsideRoot("/vault/", "/vault/a.md"), true);
+  assert.equal(isInsideRoot("/vault", "/vault-other/a.md"), false); // prefix, not child
+  assert.equal(isInsideRoot("/vault", "/etc/passwd"), false);
+  assert.equal(isInsideRoot("", "/vault/a.md"), false);
 });
 
 test("entitiesToMarkdown returns text unchanged when entities is undefined", () => {
-	assert.equal(entitiesToMarkdown("hello world", undefined), "hello world");
+  assert.equal(entitiesToMarkdown("hello world", undefined), "hello world");
 });
 test("entitiesToMarkdown returns text unchanged when entities is empty", () => {
-	assert.equal(entitiesToMarkdown("hello world", []), "hello world");
+  assert.equal(entitiesToMarkdown("hello world", []), "hello world");
 });
 test("entitiesToMarkdown wraps bold in **", () => {
-	assert.equal(
-		entitiesToMarkdown("hello world", [{ type: "bold", offset: 6, length: 5 }]),
-		"hello **world**",
-	);
+  assert.equal(
+    entitiesToMarkdown("hello world", [{ type: "bold", offset: 6, length: 5 }]),
+    "hello **world**",
+  );
 });
 test("entitiesToMarkdown wraps italic in _", () => {
-	assert.equal(
-		entitiesToMarkdown("hello world", [
-			{ type: "italic", offset: 6, length: 5 },
-		]),
-		"hello _world_",
-	);
+  assert.equal(
+    entitiesToMarkdown("hello world", [
+      { type: "italic", offset: 6, length: 5 },
+    ]),
+    "hello _world_",
+  );
 });
 test("entitiesToMarkdown wraps code in backticks", () => {
-	assert.equal(
-		entitiesToMarkdown("I added things to internal", [
-			{ type: "code", offset: 18, length: 8 },
-		]),
-		"I added things to `internal`",
-	);
+  assert.equal(
+    entitiesToMarkdown("I added things to internal", [
+      { type: "code", offset: 18, length: 8 },
+    ]),
+    "I added things to `internal`",
+  );
 });
 test("entitiesToMarkdown wraps strike in ~~", () => {
-	assert.equal(
-		entitiesToMarkdown("hello world", [
-			{ type: "strikethrough", offset: 6, length: 5 },
-		]),
-		"hello ~~world~~",
-	);
+  assert.equal(
+    entitiesToMarkdown("hello world", [
+      { type: "strikethrough", offset: 6, length: 5 },
+    ]),
+    "hello ~~world~~",
+  );
 });
 test("entitiesToMarkdown wraps spoiler in ||", () => {
-	assert.equal(
-		entitiesToMarkdown("hello world", [
-			{ type: "spoiler", offset: 6, length: 5 },
-		]),
-		"hello ||world||",
-	);
+  assert.equal(
+    entitiesToMarkdown("hello world", [
+      { type: "spoiler", offset: 6, length: 5 },
+    ]),
+    "hello ||world||",
+  );
 });
 test("entitiesToMarkdown wraps underline in __", () => {
-	assert.equal(
-		entitiesToMarkdown("hello world", [
-			{ type: "underline", offset: 6, length: 5 },
-		]),
-		"hello __world__",
-	);
+  assert.equal(
+    entitiesToMarkdown("hello world", [
+      { type: "underline", offset: 6, length: 5 },
+    ]),
+    "hello __world__",
+  );
 });
 test("entitiesToMarkdown wraps text_link in Markdown link", () => {
-	assert.equal(
-		entitiesToMarkdown("hello example", [
-			{ type: "text_link", offset: 6, length: 7, url: "https://example.com" },
-		]),
-		"hello [example](https://example.com)",
-	);
+  assert.equal(
+    entitiesToMarkdown("hello example", [
+      { type: "text_link", offset: 6, length: 7, url: "https://example.com" },
+    ]),
+    "hello [example](https://example.com)",
+  );
 });
 test("entitiesToMarkdown wraps pre with language", () => {
-	assert.equal(
-		entitiesToMarkdown("hello world", [
-			{ type: "pre", offset: 6, length: 5, language: "ts" },
-		]),
-		"hello ```ts\nworld\n```",
-	);
+  assert.equal(
+    entitiesToMarkdown("hello world", [
+      { type: "pre", offset: 6, length: 5, language: "ts" },
+    ]),
+    "hello ```ts\nworld\n```",
+  );
 });
 test("entitiesToMarkdown wraps pre without language", () => {
-	assert.equal(
-		entitiesToMarkdown("hello world", [{ type: "pre", offset: 6, length: 5 }]),
-		"hello ```\nworld\n```",
-	);
+  assert.equal(
+    entitiesToMarkdown("hello world", [{ type: "pre", offset: 6, length: 5 }]),
+    "hello ```\nworld\n```",
+  );
 });
 test("entitiesToMarkdown handles multiple entities sorted by offset", () => {
-	const text = "abcboldandcode";
-	assert.equal(
-		entitiesToMarkdown(text, [
-			{ type: "code", offset: 10, length: 4 },
-			{ type: "bold", offset: 3, length: 4 },
-		]),
-		"abc**bold**and`code`",
-	);
+  const text = "abcboldandcode";
+  assert.equal(
+    entitiesToMarkdown(text, [
+      { type: "code", offset: 10, length: 4 },
+      { type: "bold", offset: 3, length: 4 },
+    ]),
+    "abc**bold**and`code`",
+  );
 });
 test("entitiesToMarkdown skips nested entities instead of duplicating text", () => {
-	// bold spanning the whole string with a link nested inside it: keep the
-	// outer formatting, drop the inner one, never re-emit the covered text.
-	assert.equal(
-		entitiesToMarkdown("hello world", [
-			{ type: "bold", offset: 0, length: 11 },
-			{ type: "text_link", offset: 0, length: 5, url: "https://x.com" },
-		]),
-		"**hello world**",
-	);
+  // bold spanning the whole string with a link nested inside it: keep the
+  // outer formatting, drop the inner one, never re-emit the covered text.
+  assert.equal(
+    entitiesToMarkdown("hello world", [
+      { type: "bold", offset: 0, length: 11 },
+      { type: "text_link", offset: 0, length: 5, url: "https://x.com" },
+    ]),
+    "**hello world**",
+  );
 });
 test("entitiesToMarkdown preserves text before the first entity and after the last", () => {
-	assert.equal(
-		entitiesToMarkdown("before code after", [
-			{ type: "code", offset: 7, length: 4 },
-		]),
-		"before `code` after",
-	);
+  assert.equal(
+    entitiesToMarkdown("before code after", [
+      { type: "code", offset: 7, length: 4 },
+    ]),
+    "before `code` after",
+  );
 });
 test("parseWizardRef tells the wizard's prompts apart", () => {
-	assert.deepEqual(parseWizardRef(`add words ${WIZARD_STOPWORD_REF}`), {
-		kind: "sw",
-	});
-	assert.deepEqual(parseWizardRef(`add pairs ${WIZARD_REGISTER_REF}`), {
-		kind: "rg",
-	});
-	// `rg` is a prefix of `rgn`/`rgw` — the longer refs must not be read as a bare `rg`
-	assert.deepEqual(parseWizardRef(`search ${WIZARD_NOTE_REF}`), {
-		kind: "rgn",
-	});
-	assert.deepEqual(parseWizardRef("rename it (lw:rgw:12)"), {
-		kind: "rgw",
-		index: 12,
-	});
-	assert.deepEqual(parseWizardRef(`how long? ${WIZARD_ENTRYSIZE_REF}`), {
-		kind: "es",
-	});
-	assert.equal(parseWizardRef("rename it (lw:rgw)"), null); // index is required
-	assert.equal(parseWizardRef("Rate Exercise (hb:2026-07-29:0)"), null);
-	assert.equal(parseWizardRef(""), null);
+  assert.deepEqual(parseWizardRef(`add words ${WIZARD_STOPWORD_REF}`), {
+    kind: "sw",
+  });
+  assert.deepEqual(parseWizardRef(`add pairs ${WIZARD_REGISTER_REF}`), {
+    kind: "rg",
+  });
+  // `rg` is a prefix of `rgn`/`rgw` — the longer refs must not be read as a bare `rg`
+  assert.deepEqual(parseWizardRef(`search ${WIZARD_NOTE_REF}`), {
+    kind: "rgn",
+  });
+  assert.deepEqual(parseWizardRef("rename it (lw:rgw:12)"), {
+    kind: "rgw",
+    index: 12,
+  });
+  assert.deepEqual(parseWizardRef(`how long? ${WIZARD_ENTRYSIZE_REF}`), {
+    kind: "es",
+  });
+  assert.equal(parseWizardRef("rename it (lw:rgw)"), null); // index is required
+  assert.equal(parseWizardRef("Rate Exercise (hb:2026-07-29:0)"), null);
+  assert.equal(parseWizardRef(""), null);
 });
 
 test("parseRuleWords keeps inner spaces, splits on commas and newlines", () => {
-	assert.deepEqual(parseRuleWords("Priscilla, Path Of Exile"), [
-		"priscilla",
-		"path of exile",
-	]);
-	assert.deepEqual(parseRuleWords(" Gym \n mom\nGYM ,, "), ["gym", "mom"]);
-	assert.deepEqual(parseRuleWords("   "), []);
-	assert.deepEqual(parseRuleWords(`ok, ${"x".repeat(61)}`), ["ok"]);
-	assert.deepEqual(parseRuleWords("a,b,c", 2), ["a", "b"]);
+  assert.deepEqual(parseRuleWords("Priscilla, Path Of Exile"), [
+    "priscilla",
+    "path of exile",
+  ]);
+  assert.deepEqual(parseRuleWords(" Gym \n mom\nGYM ,, "), ["gym", "mom"]);
+  assert.deepEqual(parseRuleWords("   "), []);
+  assert.deepEqual(parseRuleWords(`ok, ${"x".repeat(61)}`), ["ok"]);
+  assert.deepEqual(parseRuleWords("a,b,c", 2), ["a", "b"]);
 });
 
 test("cleanNoteTitle strips wikilink brackets, quotes and stray whitespace", () => {
-	assert.equal(
-		cleanNoteTitle("  [[Priscilla  Rebouças]] "),
-		"Priscilla Rebouças",
-	);
-	assert.equal(cleanNoteTitle('"POE"'), "POE");
-	assert.equal(cleanNoteTitle("   "), "");
+  assert.equal(
+    cleanNoteTitle("  [[Priscilla  Rebouças]] "),
+    "Priscilla Rebouças",
+  );
+  assert.equal(cleanNoteTitle('"POE"'), "POE");
+  assert.equal(cleanNoteTitle("   "), "");
 });
 
 test("noteSuggestions ranks exact over prefix over substring, one row per note", () => {
-	const index = [
-		{ note: "Path Of Exile", alias: "Path Of Exile" },
-		{ note: "Path Of Exile", alias: "POE" }, // same note, second alias
-		{ note: "Pathfinder", alias: "Pathfinder" },
-		{ note: "My POE Build", alias: "My POE Build" },
-		{ note: "Health", alias: "Gym" },
-	];
-	assert.deepEqual(noteSuggestions("poe", index), [
-		"Path Of Exile", // exact alias hit
-		"My POE Build", // substring
-	]);
-	assert.deepEqual(noteSuggestions("path", index), [
-		"Pathfinder", // prefix, shorter alias wins the tie
-		"Path Of Exile",
-	]);
-	assert.deepEqual(noteSuggestions("nothing here", index), []);
-	assert.deepEqual(noteSuggestions("", index), []);
-	assert.equal(noteSuggestions("path", index, 1).length, 1);
+  const index = [
+    { note: "Path Of Exile", alias: "Path Of Exile" },
+    { note: "Path Of Exile", alias: "POE" }, // same note, second alias
+    { note: "Pathfinder", alias: "Pathfinder" },
+    { note: "My POE Build", alias: "My POE Build" },
+    { note: "Health", alias: "Gym" },
+  ];
+  assert.deepEqual(noteSuggestions("poe", index), [
+    "Path Of Exile", // exact alias hit
+    "My POE Build", // substring
+  ]);
+  assert.deepEqual(noteSuggestions("path", index), [
+    "Pathfinder", // prefix, shorter alias wins the tie
+    "Path Of Exile",
+  ]);
+  assert.deepEqual(noteSuggestions("nothing here", index), []);
+  assert.deepEqual(noteSuggestions("", index), []);
+  assert.equal(noteSuggestions("path", index, 1).length, 1);
 });
 
 test("distinctSurfaces dedupes surfaces, preserving list order", () => {
-	assert.deepEqual(
-		distinctSurfaces([
-			{ surface: "gym", note: "Health" },
-			{ surface: "gym", note: "Fitness" },
-			{ surface: "mom", note: "Family" },
-		]),
-		["gym", "mom"],
-	);
+  assert.deepEqual(
+    distinctSurfaces([
+      { surface: "gym", note: "Health" },
+      { surface: "gym", note: "Fitness" },
+      { surface: "mom", note: "Family" },
+    ]),
+    ["gym", "mom"],
+  );
 });
 
 test("jotPreview falls back to (kind) for a captionless attach-only jot", () => {
-	const base = {
-		id: "aaaaaaaa",
-		kind: "image" as const,
-		note_path: "x.md",
-		anchor: "aaaaaaaa",
-		time: "10:00:00",
-		raw_text: null,
-		transcript: null,
-		proposed_text: null,
-		asset_path: null,
-		file_id: null,
-		status: "done" as const,
-		attempts: 0,
-		error: null,
-		received_at: 0,
-		updated_at: 0,
-	};
-	assert.equal(jotPreview(base), "(image)");
-	assert.equal(
-		jotPreview({ ...base, raw_text: "a  sunset\nphoto" }),
-		"a sunset photo",
-	);
-	assert.equal(
-		jotPreview({ ...base, kind: "audio", transcript: "hello there" }, 5),
-		"hello",
-	);
+  const base = {
+    id: "aaaaaaaa",
+    kind: "image" as const,
+    note_path: "x.md",
+    anchor: "aaaaaaaa",
+    time: "10:00:00",
+    raw_text: null,
+    transcript: null,
+    proposed_text: null,
+    asset_path: null,
+    file_id: null,
+    status: "done" as const,
+    attempts: 0,
+    error: null,
+    received_at: 0,
+    updated_at: 0,
+  };
+  assert.equal(jotPreview(base), "(image)");
+  assert.equal(
+    jotPreview({ ...base, raw_text: "a  sunset\nphoto" }),
+    "a sunset photo",
+  );
+  assert.equal(
+    jotPreview({ ...base, kind: "audio", transcript: "hello there" }, 5),
+    "hello",
+  );
 });
 
 test("monthGrid pads a month to full weeks starting Sunday", () => {
-	// July 2026 starts on a Wednesday and has 31 days.
-	const grid = monthGrid(2026, 7);
-	assert.equal(grid[0]!.filter((d) => d === 0).length, 3); // Sun/Mon/Tue padding
-	assert.equal(grid[0]![3], 1); // Wed 1st
-	const flat = grid.flat().filter((d) => d !== 0);
-	assert.deepEqual(
-		flat,
-		Array.from({ length: 31 }, (_, i) => i + 1),
-	);
-	for (const week of grid) assert.equal(week.length, 7);
+  // July 2026 starts on a Wednesday and has 31 days.
+  const grid = monthGrid(2026, 7);
+  assert.equal(grid[0]!.filter((d) => d === 0).length, 3); // Sun/Mon/Tue padding
+  assert.equal(grid[0]![3], 1); // Wed 1st
+  const flat = grid.flat().filter((d) => d !== 0);
+  assert.deepEqual(
+    flat,
+    Array.from({ length: 31 }, (_, i) => i + 1),
+  );
+  for (const week of grid) assert.equal(week.length, 7);
 });
 
 test("reprocessTargets dedupes to leader ids, preserving first-seen order", () => {
-	assert.deepEqual(
-		reprocessTargets([
-			{ anchor: "leader1" },
-			{ anchor: "leader1" }, // follower sharing leader1's anchor
-			{ anchor: "leader2" },
-		]),
-		["leader1", "leader2"],
-	);
+  assert.deepEqual(
+    reprocessTargets([
+      { anchor: "leader1" },
+      { anchor: "leader1" }, // follower sharing leader1's anchor
+      { anchor: "leader2" },
+    ]),
+    ["leader1", "leader2"],
+  );
 });
 
 test("retryNotice says where in the retry cycle a jot is", () => {
-	const out = retryNotice("audio", 2, 10, "fetch failed");
-	assert.match(out, /That audio jot didn't go through \(attempt 2 of 10\)/);
-	assert.match(out, /8 more tries left/);
-	assert.match(out, /<code>fetch failed<\/code>/);
-	// The last try before giving up reads as one, not "1 more tries".
-	assert.match(retryNotice("text", 9, 10, "boom"), /one more try left/);
+  const out = retryNotice("audio", 2, 10, "fetch failed");
+  assert.match(out, /That audio jot didn't go through \(attempt 2 of 10\)/);
+  assert.match(out, /8 more tries left/);
+  assert.match(out, /<code>fetch failed<\/code>/);
+  // The last try before giving up reads as one, not "1 more tries".
+  assert.match(retryNotice("text", 9, 10, "boom"), /one more try left/);
 });
 
 test("gaveUpMessage names the reason and the burst it covers", () => {
-	const out = gaveUpMessage("text", "unrecoverable error", "bad json");
-	assert.match(out, /Gave up on a text jot \(unrecoverable error\)/);
-	assert.match(out, /Posted it un-enriched/);
-	assert.ok(!out.includes("squashed"));
-	assert.match(
-		gaveUpMessage("audio", "no luck after 10 tries", "boom", 3),
-		/🧵 3 jots squashed into one entry/,
-	);
+  const out = gaveUpMessage("text", "unrecoverable error", "bad json");
+  assert.match(out, /Gave up on a text jot \(unrecoverable error\)/);
+  assert.match(out, /Posted it un-enriched/);
+  assert.ok(!out.includes("squashed"));
+  assert.match(
+    gaveUpMessage("audio", "no luck after 10 tries", "boom", 3),
+    /🧵 3 jots squashed into one entry/,
+  );
 });
 
 test("a failure message escapes and caps the error it quotes", () => {
-	// An error is arbitrary text: it must not be able to inject markup…
-	assert.match(
-		retryNotice("text", 1, 10, "<b>nope</b> & co"),
-		/&lt;b&gt;nope&lt;\/b&gt; &amp; co/,
-	);
-	// …nor push the message past Telegram's limit with a whole stack trace.
-	const huge = gaveUpMessage("text", "unrecoverable error", "x".repeat(5000));
-	assert.ok(huge.length < TELEGRAM_LIMIT);
-	assert.match(huge, /x…<\/code>/);
-	assert.match(retryNotice("text", 1, 10, "   "), /no error message/);
+  // An error is arbitrary text: it must not be able to inject markup…
+  assert.match(
+    retryNotice("text", 1, 10, "<b>nope</b> & co"),
+    /&lt;b&gt;nope&lt;\/b&gt; &amp; co/,
+  );
+  // …nor push the message past Telegram's limit with a whole stack trace.
+  const huge = gaveUpMessage("text", "unrecoverable error", "x".repeat(5000));
+  assert.ok(huge.length < TELEGRAM_LIMIT);
+  assert.match(huge, /x…<\/code>/);
+  assert.match(retryNotice("text", 1, 10, "   "), /no error message/);
 });
 
 test("fitTelegram leaves short text alone and labels the cut on long text", () => {
-	assert.equal(fitTelegram("short"), "short");
-	const long = "x".repeat(TELEGRAM_LIMIT + 500);
-	const out = fitTelegram(long);
-	assert.equal(out.length, TELEGRAM_LIMIT);
-	assert.match(out, /cut here/);
-	// The custom limit is honoured too, so the notice can never itself overflow.
-	assert.equal(fitTelegram("y".repeat(300), 200).length, 200);
+  assert.equal(fitTelegram("short"), "short");
+  const long = "x".repeat(TELEGRAM_LIMIT + 500);
+  const out = fitTelegram(long);
+  assert.equal(out.length, TELEGRAM_LIMIT);
+  assert.match(out, /cut here/);
+  // The custom limit is honoured too, so the notice can never itself overflow.
+  assert.equal(fitTelegram("y".repeat(300), 200).length, 200);
 });
 
 test("feedMessage puts the tail under the header", () => {
-	assert.equal(feedMessage("🧭 Working…", []), "🧭 Working…");
-	assert.equal(
-		feedMessage("🧭 Working…", ["📖 read a.md", "✍️ wrote b.md"]),
-		"🧭 Working…\n\n📖 read a.md\n✍️ wrote b.md",
-	);
+  assert.equal(feedMessage("🧭 Working…", []), "🧭 Working…");
+  assert.equal(
+    feedMessage("🧭 Working…", ["📖 read a.md", "✍️ wrote b.md"]),
+    "🧭 Working…\n\n📖 read a.md\n✍️ wrote b.md",
+  );
 });
 
 test("fitFeed drops the oldest lines until the message fits", () => {
-	const lines = Array.from(
-		{ length: 20 },
-		(_, i) => `line ${i} ${"x".repeat(300)}`,
-	);
-	const kept = fitFeed("head", lines);
-	assert.ok(feedMessage("head", kept).length <= TELEGRAM_LIMIT);
-	// The newest survive, the oldest are the ones that go.
-	assert.equal(kept.at(-1), lines.at(-1));
-	assert.ok(!kept.includes(lines[0]!));
-	// Nothing to drop when it already fits.
-	assert.deepEqual(fitFeed("head", ["a", "b"]), ["a", "b"]);
-	assert.deepEqual(fitFeed("head", []), []);
-	// One line over the limit is still shown — something has to be on screen.
-	assert.equal(fitFeed("head", ["y".repeat(5000)]).length, 1);
+  const lines = Array.from(
+    { length: 20 },
+    (_, i) => `line ${i} ${"x".repeat(300)}`,
+  );
+  const kept = fitFeed("head", lines);
+  assert.ok(feedMessage("head", kept).length <= TELEGRAM_LIMIT);
+  // The newest survive, the oldest are the ones that go.
+  assert.equal(kept.at(-1), lines.at(-1));
+  assert.ok(!kept.includes(lines[0]!));
+  // Nothing to drop when it already fits.
+  assert.deepEqual(fitFeed("head", ["a", "b"]), ["a", "b"]);
+  assert.deepEqual(fitFeed("head", []), []);
+  // One line over the limit is still shown — something has to be on screen.
+  assert.equal(fitFeed("head", ["y".repeat(5000)]).length, 1);
 });
 
 test("toolIcon says which tool without the mcp prefix", () => {
-	assert.equal(toolIcon("mcp__vault__vault_read"), "📖");
-	assert.equal(toolIcon("mcp__vault__vault_write"), "✍️");
-	assert.equal(toolIcon("mcp__vault__vault_delete"), "🗑");
-	assert.equal(toolIcon("WebSearch"), "🔎");
-	// An unknown tool still gets a line, just a generic one.
-	assert.equal(toolIcon("mcp__vault__something_new"), "🔧");
+  assert.equal(toolIcon("mcp__vault__vault_read"), "📖");
+  assert.equal(toolIcon("mcp__vault__vault_write"), "✍️");
+  assert.equal(toolIcon("mcp__vault__vault_delete"), "🗑");
+  assert.equal(toolIcon("WebSearch"), "🔎");
+  // An unknown tool still gets a line, just a generic one.
+  assert.equal(toolIcon("mcp__vault__something_new"), "🔧");
 });
 
 test("thoughtIcon reflects what the line is about", () => {
-	assert.equal(thoughtIcon("searching for the meeting note"), "🔍");
-	assert.equal(thoughtIcon("Reading notes/a.md first"), "📖");
-	assert.equal(thoughtIcon("writing the note now"), "✍️");
-	assert.equal(thoughtIcon("deleting the stale one"), "🗑");
-	assert.equal(thoughtIcon("fetching the page"), "🌐");
-	assert.equal(thoughtIcon("that failed, trying again"), "⚠️");
-	assert.equal(thoughtIcon("matching the vault's voice"), "🎨");
-	// Nothing recognisable is still a thought.
-	assert.equal(thoughtIcon("hmm"), "💭");
-	assert.equal(thoughtIcon(""), "💭");
+  assert.equal(thoughtIcon("searching for the meeting note"), "🔍");
+  assert.equal(thoughtIcon("Reading notes/a.md first"), "📖");
+  assert.equal(thoughtIcon("writing the note now"), "✍️");
+  assert.equal(thoughtIcon("deleting the stale one"), "🗑");
+  assert.equal(thoughtIcon("fetching the page"), "🌐");
+  assert.equal(thoughtIcon("that failed, trying again"), "⚠️");
+  assert.equal(thoughtIcon("matching the vault's voice"), "🎨");
+  // Nothing recognisable is still a thought.
+  assert.equal(thoughtIcon("hmm"), "💭");
+  assert.equal(thoughtIcon(""), "💭");
 });
 
 test("clipUpdate flattens to one line and caps the length", () => {
-	assert.equal(clipUpdate("  one\n\ttwo   three "), "one two three");
-	const long = `${"word ".repeat(200)}end`;
-	const out = clipUpdate(long);
-	assert.ok(out.length <= AGENT_UPDATE_CHARS);
-	// The cut lands on a word boundary, so the last word isn't left half-written.
-	assert.match(out, /^(word )+word…$/);
-	// A single unbroken run still gets cut, boundary or not.
-	assert.equal(clipUpdate("x".repeat(500)).length, AGENT_UPDATE_CHARS);
-	assert.equal(clipUpdate("short", 10), "short");
+  assert.equal(clipUpdate("  one\n\ttwo   three "), "one two three");
+  const long = `${"word ".repeat(200)}end`;
+  const out = clipUpdate(long);
+  assert.ok(out.length <= AGENT_UPDATE_CHARS);
+  // The cut lands on a word boundary, so the last word isn't left half-written.
+  assert.match(out, /^(word )+word…$/);
+  // A single unbroken run still gets cut, boundary or not.
+  assert.equal(clipUpdate("x".repeat(500)).length, AGENT_UPDATE_CHARS);
+  assert.equal(clipUpdate("short", 10), "short");
 });
 
 test("formatToolCall names the tool and what it is acting on", () => {
-	assert.equal(
-		formatToolCall("mcp__vault__vault_read", { path: "notes/a.md" }),
-		"vault_read · notes/a.md",
-	);
-	assert.equal(
-		formatToolCall("mcp__vault__vault_search", { query: "kubernetes" }),
-		"vault_search · kubernetes",
-	);
-	// A write carries the whole note; its size is the useful part, never the body.
-	assert.equal(
-		formatToolCall("mcp__vault__vault_write", {
-			path: "notes/a.md",
-			content: "hello",
-		}),
-		"vault_write · notes/a.md (5 chars)",
-	);
-	assert.equal(
-		formatToolCall("WebSearch", { query: "scriba" }),
-		"WebSearch · scriba",
-	);
-	assert.equal(formatToolCall("mcp__vault__vault_list", {}), "vault_list");
-	// A server name with an underscore in it still loses only the prefix.
-	assert.equal(formatToolCall("mcp__my_server__do_it", {}), "do_it");
+  assert.equal(
+    formatToolCall("mcp__vault__vault_read", { path: "notes/a.md" }),
+    "vault_read · notes/a.md",
+  );
+  assert.equal(
+    formatToolCall("mcp__vault__vault_search", { query: "kubernetes" }),
+    "vault_search · kubernetes",
+  );
+  // A write carries the whole note; its size is the useful part, never the body.
+  assert.equal(
+    formatToolCall("mcp__vault__vault_write", {
+      path: "notes/a.md",
+      content: "hello",
+    }),
+    "vault_write · notes/a.md (5 chars)",
+  );
+  assert.equal(
+    formatToolCall("WebSearch", { query: "scriba" }),
+    "WebSearch · scriba",
+  );
+  assert.equal(formatToolCall("mcp__vault__vault_list", {}), "vault_list");
+  // A server name with an underscore in it still loses only the prefix.
+  assert.equal(formatToolCall("mcp__my_server__do_it", {}), "do_it");
 });
 
 test("queuedNotice says how many are ahead", () => {
-	assert.match(queuedNotice(1), /1 message ahead/);
-	assert.match(queuedNotice(3), /3 messages ahead/);
+  assert.match(queuedNotice(1), /1 message ahead/);
+  assert.match(queuedNotice(3), /3 messages ahead/);
 });
 
 test("previewList counts what it leaves out instead of cutting silently", () => {
-	assert.equal(previewList(["a", "b"], 5), "a, b");
-	assert.equal(previewList([], 5), "");
-	assert.equal(previewList(["a", "b", "c", "d"], 2), "a, b … +2 more");
+  assert.equal(previewList(["a", "b"], 5), "a, b");
+  assert.equal(previewList([], 5), "");
+  assert.equal(previewList(["a", "b", "c", "d"], 2), "a, b … +2 more");
 });
 
 test("formatListPage clamps the page and footers what is off screen", () => {
-	const items = Array.from({ length: 5 }, (_, i) => `item${i + 1}`);
-	// One page fits: no footer at all.
-	assert.equal(formatListPage(items, 0, 10, "/x"), items.join("\n"));
+  const items = Array.from({ length: 5 }, (_, i) => `item${i + 1}`);
+  // One page fits: no footer at all.
+  assert.equal(formatListPage(items, 0, 10, "/x"), items.join("\n"));
 
-	const first = formatListPage(items, 0, 2, "/x");
-	assert.match(first, /^item1\nitem2\n\n/);
-	assert.match(first, /Showing 1–2 of 5 · page 1\/3 · next: \/x 2$/);
+  const first = formatListPage(items, 0, 2, "/x");
+  assert.match(first, /^item1\nitem2\n\n/);
+  assert.match(first, /Showing 1–2 of 5 · page 1\/3 · next: \/x 2$/);
 
-	// Last page is short and points back to the start rather than a page that isn't there.
-	const last = formatListPage(items, 2, 2, "/x");
-	assert.match(last, /^item5\n\n/);
-	assert.match(
-		last,
-		/Showing 5–5 of 5 · page 3\/3 · back to the start: \/x 1$/,
-	);
+  // Last page is short and points back to the start rather than a page that isn't there.
+  const last = formatListPage(items, 2, 2, "/x");
+  assert.match(last, /^item5\n\n/);
+  assert.match(
+    last,
+    /Showing 5–5 of 5 · page 3\/3 · back to the start: \/x 1$/,
+  );
 
-	// Out-of-range pages clamp instead of rendering an empty body.
-	assert.equal(formatListPage(items, 99, 2, "/x"), last);
-	assert.equal(formatListPage(items, -3, 2, "/x"), first);
+  // Out-of-range pages clamp instead of rendering an empty body.
+  assert.equal(formatListPage(items, 99, 2, "/x"), last);
+  assert.equal(formatListPage(items, -3, 2, "/x"), first);
 
-	// A custom separator keeps the footer on its own line.
-	assert.match(formatListPage(items, 0, 2, "/x", ", "), /^item1, item2\n\n/);
+  // A custom separator keeps the footer on its own line.
+  assert.match(formatListPage(items, 0, 2, "/x", ", "), /^item1, item2\n\n/);
 });

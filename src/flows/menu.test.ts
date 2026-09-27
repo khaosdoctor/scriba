@@ -11,63 +11,63 @@ const { InlineKeyboard } = await import("grammy");
 
 /** A controller wired to a bot stub that only records deleteMessage calls. */
 function harness() {
-	const deleted: [number, number][] = [];
-	const bot = {
-		api: {
-			deleteMessage: async (chatId: number, msgId: number) => {
-				deleted.push([chatId, msgId]);
-			},
-		},
-	};
-	const menu = new MenuController(
-		bot as any,
-		{} as any,
-		{} as any,
-		{} as any,
-		(() => ({})) as any,
-		(async () => "") as any,
-	) as any;
-	return { menu, deleted };
+  const deleted: [number, number][] = [];
+  const bot = {
+    api: {
+      deleteMessage: async (chatId: number, msgId: number) => {
+        deleted.push([chatId, msgId]);
+      },
+    },
+  };
+  const menu = new MenuController(
+    bot as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    (() => ({})) as any,
+    (async () => "") as any,
+  ) as any;
+  return { menu, deleted };
 }
 
 test("a menu message self-destructs after a minute of no taps", (t) => {
-	t.mock.timers.enable({ apis: ["setTimeout"] });
-	const { menu, deleted } = harness();
-	menu.scheduleExpiry(7, 42);
-	t.mock.timers.tick(59_000);
-	assert.deepEqual(deleted, []);
-	t.mock.timers.tick(2_000);
-	assert.deepEqual(deleted, [[7, 42]]);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { menu, deleted } = harness();
+  menu.scheduleExpiry(7, 42);
+  t.mock.timers.tick(59_000);
+  assert.deepEqual(deleted, []);
+  t.mock.timers.tick(2_000);
+  assert.deepEqual(deleted, [[7, 42]]);
 });
 
 test("each tap restarts the countdown, and closing cancels it", (t) => {
-	t.mock.timers.enable({ apis: ["setTimeout"] });
-	const { menu, deleted } = harness();
-	menu.scheduleExpiry(7, 42);
-	t.mock.timers.tick(50_000);
-	menu.scheduleExpiry(7, 42); // a tap
-	t.mock.timers.tick(50_000); // 100s since the send, 50s since the tap
-	assert.deepEqual(deleted, []);
-	menu.cancelExpiry(7, 42);
-	t.mock.timers.tick(120_000);
-	assert.deepEqual(deleted, []);
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { menu, deleted } = harness();
+  menu.scheduleExpiry(7, 42);
+  t.mock.timers.tick(50_000);
+  menu.scheduleExpiry(7, 42); // a tap
+  t.mock.timers.tick(50_000); // 100s since the send, 50s since the tap
+  assert.deepEqual(deleted, []);
+  menu.cancelExpiry(7, 42);
+  t.mock.timers.tick(120_000);
+  assert.deepEqual(deleted, []);
 });
 
 test("every screen gets a Close button, with no gap above it", () => {
-	const { menu } = harness();
-	// A keyboard that ends with .row() (most of them do) would otherwise render an empty
-	// row between the last button and Close.
-	const kb = new InlineKeyboard().text("a", "menu:a").row();
-	const rows = menu.withClose(kb).inline_keyboard;
-	assert.deepEqual(
-		rows.map((r: any[]) => r.map((b) => b.text)),
-		[["a"], ["✖ Close"]],
-	);
-	// And a Back button never travels alone any more.
-	assert.deepEqual(
-		menu
-			.backTo("menu:root")
-			.inline_keyboard.map((r: any[]) => r.map((b) => b.text)),
-		[["‹ Back"], ["✖ Close"]],
-	);
+  const { menu } = harness();
+  // A keyboard that ends with .row() (most of them do) would otherwise render an empty
+  // row between the last button and Close.
+  const kb = new InlineKeyboard().text("a", "menu:a").row();
+  const rows = menu.withClose(kb).inline_keyboard;
+  assert.deepEqual(
+    rows.map((r: any[]) => r.map((b) => b.text)),
+    [["a"], ["✖ Close"]],
+  );
+  // And a Back button never travels alone any more.
+  assert.deepEqual(
+    menu
+      .backTo("menu:root")
+      .inline_keyboard.map((r: any[]) => r.map((b) => b.text)),
+    [["‹ Back"], ["✖ Close"]],
+  );
 });
