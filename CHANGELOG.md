@@ -1,3 +1,10 @@
+## [1.47.0](https://github.com/khaosdoctor/scriba/compare/v1.46.2...v1.47.0) (2026-09-27)
+
+
+### Features
+
+* fall back haiku -> sonnet -> groq for enrichment and groq -> parakeet for voice ([#16](https://github.com/khaosdoctor/scriba/issues/16)) ([9b26381](https://github.com/khaosdoctor/scriba/commit/9b263815dd8cd8c14564c238ca2ef1d8086efefe))
+
 ## [1.46.2](https://github.com/khaosdoctor/scriba/compare/v1.46.1...v1.46.2) (2026-09-22)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * **voice:** optional LLM transcript cleanup with user pick ([#11](https://github.com/khaosdoctor/scriba/issues/11)) ([e03e981](https://github.com/khaosdoctor/scriba/commit/e03e981a6ce076daf0474b6d23fc9c1603ba8ebc))
-
-## [1.44.0](https://github.com/khaosdoctor/scriba/compare/v1.43.2...v1.44.0) (2026-09-11)
-
-
-### Features
-
-* **habits:** button-driven review flow with numeric validation and double-review guard ([a2cfb65](https://github.com/khaosdoctor/scriba/commit/a2cfb6543ee1dc497bcb4b920576d9e49a7dad2f))
 
