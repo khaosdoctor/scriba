@@ -315,7 +315,7 @@ test("enrich falls back to Groq when the subscription SDK is out of usage", asyn
   const enricher = new Enricher(
     "claude-haiku-4-5",
     failQuery(),
-    { apiKey: "gsk_test", model: "llama-3.3-70b-versatile" },
+    [{ apiKey: "gsk_test", model: "llama-3.3-70b-versatile" }],
     groq.fn,
   );
   const res = await enricher.enrich({ text: "hi Foo", candidates: [] });
@@ -339,7 +339,7 @@ test("editText falls back to Groq when the SDK is out of usage", async () => {
   const enricher = new Enricher(
     "claude-haiku-4-5",
     failQuery(),
-    { apiKey: "gsk_test", model: "openai/gpt-oss-120b" },
+    [{ apiKey: "gsk_test", model: "openai/gpt-oss-120b" }],
     groq.fn,
   );
   const out = await enricher.editText("original", "make it better");
@@ -369,7 +369,7 @@ test("warns once when switching to the fallback and once when usage recovers", a
   const enricher = new Enricher(
     "claude-haiku-4-5",
     flakyQuery(2, '{"text":"ok","ambiguous":[]}'),
-    { apiKey: "k", model: "openai/gpt-oss-120b" },
+    [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
     groq.fn,
   );
   const switches: { to: string; model: string; err?: unknown }[] = [];
@@ -416,7 +416,7 @@ test("chain runs haiku → sonnet → groq, each only when the one before fails"
   const enricher = new Enricher(
     "claude-haiku-4-5",
     q.fn,
-    { apiKey: "k", model: "openai/gpt-oss-120b" },
+    [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
     groq.fn,
     "claude-sonnet-5",
   );
@@ -632,6 +632,44 @@ test("enrich throws when the SDK gives up on structured output (error subtype)",
   );
 });
 
+test("chain tries the second chat fallback when the first one fails", async () => {
+  const calls: { model: string; baseUrl?: string }[] = [];
+  const chatFn: GroqChatFn = async (_key, model, _msgs, baseUrl) => {
+    calls.push({ model, baseUrl });
+    if (model === "groq-model") throw new Error("groq down");
+    return {
+      text: '{"text":"from opencode","ambiguous":[]}',
+      usage: { input: 3, output: 4 },
+    };
+  };
+  const enricher = new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [
+      { apiKey: "gsk", model: "groq-model", name: "Groq" },
+      {
+        apiKey: "oc",
+        model: "deepseek-v4.1-flash",
+        baseUrl: "https://opencode.ai/zen/go/v1",
+        name: "OpenCode",
+      },
+    ],
+    chatFn,
+  );
+  const switches: string[] = [];
+  enricher.setSwitchNotifier((to, model) => {
+    switches.push(`${to}:${model}`);
+  });
+  const out = await enricher.enrich({ text: "a", candidates: [] });
+  assert.equal(out.text, "from opencode");
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0]!.model, "groq-model");
+  assert.equal(calls[0]!.baseUrl, undefined);
+  assert.equal(calls[1]!.model, "deepseek-v4.1-flash");
+  assert.equal(calls[1]!.baseUrl, "https://opencode.ai/zen/go/v1");
+  assert.deepEqual(switches, ["fallback:OpenCode"]);
+});
+
 test("enrich falls back to Groq text-parsing when structured output is exhausted", async () => {
   const groq = fakeGroq('{"text":"rescued by groq","ambiguous":[]}');
   const enricher = new Enricher(
@@ -639,7 +677,7 @@ test("enrich falls back to Groq text-parsing when structured output is exhausted
     fakeQuery([
       { type: "result", subtype: "error_max_structured_output_retries" },
     ]).fn,
-    { apiKey: "gsk_test", model: "llama-3.3-70b-versatile" },
+    [{ apiKey: "gsk_test", model: "llama-3.3-70b-versatile" }],
     groq.fn,
   );
   const out = await enricher.enrich({ text: "x", candidates: [] });

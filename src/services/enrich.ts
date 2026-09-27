@@ -7,10 +7,12 @@ import { logger } from "../log.ts";
 
 export type QueryFn = typeof sdkQuery;
 
-/** Free-model fallback used when the subscription SDK runs out of usage. */
+/** OpenAI-compatible chat fallback used when the subscription SDK runs out of usage. */
 export interface EnrichFallback {
   apiKey: string;
   model: string;
+  baseUrl?: string;
+  name?: string;
 }
 
 /** OpenAI-shaped chat message (what the Groq SDK takes). Content is a string for
@@ -24,15 +26,16 @@ type SdkOut = {
   structuredOutput?: unknown;
 };
 
-/** The Groq chat call, injectable for tests (mirrors the SDK `query` seam). */
+/** OpenAI-compatible chat call, injectable for tests (mirrors the SDK `query` seam). */
 export type GroqChatFn = (
   apiKey: string,
   model: string,
   messages: GroqMessage[],
+  baseUrl?: string,
 ) => Promise<{ text: string; usage: { input: number; output: number } }>;
 
-const groqChat: GroqChatFn = async (apiKey, model, messages) => {
-  const groq = new Groq({ apiKey });
+const groqChat: GroqChatFn = async (apiKey, model, messages, baseUrl) => {
+  const groq = new Groq({ apiKey, ...(baseUrl ? { baseURL: baseUrl } : {}) });
   const res = await groq.chat.completions.create({
     model,
     temperature: 0,
@@ -210,9 +213,9 @@ export class Enricher {
   constructor(
     private model = process.env.AGENT_MODEL,
     private query: QueryFn = sdkQuery,
-    private fallback?: EnrichFallback,
+    private fallbacks: EnrichFallback[] = [],
     private groqChatFn: GroqChatFn = groqChat,
-    // Second Claude model, tried before Groq when the chosen one fails.
+    // Second Claude model, tried before the chat fallbacks when the chosen one fails.
     private backupModel?: string,
   ) {}
 
@@ -496,18 +499,32 @@ export class Enricher {
         );
       }
     }
-    if (!this.fallback || !groqMessages) throw lastErr;
-    await this.settle(models.length, this.fallback.model, lastErr);
-    const out = await this.groqChatFn(
-      this.fallback.apiKey,
-      this.fallback.model,
-      groqMessages,
-    );
-    log.info(
-      { model: this.fallback.model, usage: out.usage },
-      "enrich: Groq fallback done",
-    );
-    return parse(out);
+    if (!groqMessages || this.fallbacks.length === 0) throw lastErr;
+    for (const [i, fb] of this.fallbacks.entries()) {
+      const tier = models.length + i;
+      try {
+        const raw = await this.groqChatFn(
+          fb.apiKey,
+          fb.model,
+          groqMessages,
+          fb.baseUrl,
+        );
+        const out = parse(raw);
+        await this.settle(tier, fb.name ?? fb.model, lastErr);
+        log.info(
+          { model: fb.model, name: fb.name, usage: raw.usage },
+          "enrich: chat fallback done",
+        );
+        return out;
+      } catch (err) {
+        lastErr = err;
+        log.warn(
+          { err, model: fb.model, name: fb.name },
+          "enrich: chat fallback failed",
+        );
+      }
+    }
+    throw lastErr;
   }
 
   /** Record which step of the chain answered; warn the user only when that changes. */
