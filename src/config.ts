@@ -40,7 +40,7 @@ const envSchema = z.object({
   // `[start:: ]` (planned start, optional) and `[due:: ]` (the deadline, mandatory).
   TASKS_WORK_NOTE: z
     .string()
-    .default("notes/Work notes/What's going on at work.md"),
+    .default("notes/work notes/What's going on at work.md"),
   TASKS_WORK_HEADING: z.string().default("Other Tasks"),
   TASKS_WORK_TAG: z.string().default("#type/todo/work"),
   TASKS_WORK_INSERT: z.enum(["top", "bottom"]).default("top"),
