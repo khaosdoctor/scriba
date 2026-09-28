@@ -1,3 +1,10 @@
+## [1.49.0](https://github.com/khaosdoctor/scriba/compare/v1.48.1...v1.49.0) (2026-09-28)
+
+
+### Features
+
+* **health:** probe upstreams and report connection status ([#18](https://github.com/khaosdoctor/scriba/issues/18)) ([c8de09d](https://github.com/khaosdoctor/scriba/commit/c8de09dc199ffafcfc4c9eb229e90d9c82e1c42f))
+
 ## [1.48.1](https://github.com/khaosdoctor/scriba/compare/v1.48.0...v1.48.1) (2026-09-28)
 
 
@@ -26,11 +33,4 @@
 ### Bug Fixes
 
 * **enrich:** treat unusable model output as a failed tier and reject blank PARAKEET_URL at boot ([b7149ee](https://github.com/khaosdoctor/scriba/commit/b7149eec4fe421d6f4e0b133f5260a03262422fd))
-
-## [1.47.0](https://github.com/khaosdoctor/scriba/compare/v1.46.2...v1.47.0) (2026-09-27)
-
-
-### Features
-
-* fall back haiku -> sonnet -> groq for enrichment and groq -> parakeet for voice ([#16](https://github.com/khaosdoctor/scriba/issues/16)) ([9b26381](https://github.com/khaosdoctor/scriba/commit/9b263815dd8cd8c14564c238ca2ef1d8086efefe))
 
