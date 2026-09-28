@@ -1,3 +1,10 @@
+## [1.48.1](https://github.com/khaosdoctor/scriba/compare/v1.48.0...v1.48.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **enrich:** stop raw JSON in the journal and keep jots from hanging ([#19](https://github.com/khaosdoctor/scriba/issues/19)) ([f08f827](https://github.com/khaosdoctor/scriba/commit/f08f827ee8ec71d3e2ef38c58f191eee653d40e2))
+
 ## [1.48.0](https://github.com/khaosdoctor/scriba/compare/v1.47.2...v1.48.0) (2026-09-27)
 
 
@@ -26,11 +33,4 @@
 ### Features
 
 * fall back haiku -> sonnet -> groq for enrichment and groq -> parakeet for voice ([#16](https://github.com/khaosdoctor/scriba/issues/16)) ([9b26381](https://github.com/khaosdoctor/scriba/commit/9b263815dd8cd8c14564c238ca2ef1d8086efefe))
-
-## [1.46.2](https://github.com/khaosdoctor/scriba/compare/v1.46.1...v1.46.2) (2026-09-22)
-
-
-### Bug Fixes
-
-* **docker:** guard ripgrep prune for SDK versions without vendored binaries ([#15](https://github.com/khaosdoctor/scriba/issues/15)) ([567c208](https://github.com/khaosdoctor/scriba/commit/567c20852e824f98843d06519fc9e5cafa530095))
 
