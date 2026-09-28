@@ -80,6 +80,7 @@ async function main(): Promise<void> {
     fallbacks,
     undefined,
     config.enrich.backupModel,
+    config.enrich.timeoutMs,
   );
   log.info(
     {

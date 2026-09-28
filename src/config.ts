@@ -84,6 +84,9 @@ const envSchema = z.object({
   // opencode.ai/go. The model runs through OpenCode's proxy, not direct DeepSeek.
   OPENCODE_GO_API_KEY: z.string().optional(),
   OPENCODE_FALLBACK_MODEL: z.string().default("deepseek-v4.1-flash"),
+  // Cap on one enrichment call, per step of the chain. A call past it counts as a failure
+  // towards that step's circuit breaker, and the next step is tried.
+  ENRICH_TIMEOUT_MS: z.coerce.number().positive().default(15_000),
 
   // Voice-fix: when enabled, a second model lightly cleans the transcript before
   // enrichment. Sonnet by default — haiku paraphrases too aggressively.
@@ -148,6 +151,7 @@ export const config = {
     groqApiKey: env.GROQ_API_KEY ?? "",
     opencodeApiKey: env.OPENCODE_GO_API_KEY ?? "",
     opencodeModel: env.OPENCODE_FALLBACK_MODEL,
+    timeoutMs: env.ENRICH_TIMEOUT_MS,
   },
   voiceFix: {
     model: env.VOICE_FIX_MODEL,
