@@ -1,3 +1,4 @@
+import dns from "node:dns";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import { ScribaBot } from "./bot.ts";
@@ -19,6 +20,9 @@ import { ObsidianClient } from "./services/obsidian.ts";
 import { buildTranscriber } from "./services/transcribe.ts";
 
 const log = logger("main");
+
+// The homelab network has no IPv6 route, so an AAAA answer is a dead end: try A first.
+dns.setDefaultResultOrder("ipv4first");
 
 const { version } = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -116,13 +120,23 @@ async function main(): Promise<void> {
   // recovered). Fires once per transition, not per jot. Late-wired here because the
   // bot exists now. The failure reason (usage exhausted, overload, network blip, bad
   // token, ...) is surfaced inline so the cause is visible without digging through logs.
-  enricher.setSwitchNotifier((to, model, err) =>
-    bot.notify(
-      to === "fallback"
-        ? `⚠️ Enrichment switched to fallback model ${model}. Quality may drop until the chosen model is back.\nReason: ${err instanceof Error ? err.message : String(err)}`
-        : `✅ Enrichment is back on ${model}.`,
-    ),
-  );
+  enricher.setSwitchNotifier((to, model, err) => {
+    const reason = err instanceof Error ? err.message : String(err);
+    switch (to) {
+      case "fallback":
+        return bot.notify(
+          `⚠️ Enrichment switched to fallback model ${model}. Quality may drop until the chosen model is back.\nReason: ${reason}`,
+        );
+      case "primary":
+        return bot.notify(`✅ Enrichment is back on ${model}.`);
+      case "down":
+        return bot.notify(
+          `⏸ Every enrichment model is down, so new jots are held in place. They go into your journal on their own once one is back.\nReason: ${reason}`,
+        );
+      default:
+        return to satisfies never;
+    }
+  });
   const queue = new FlushQueue({
     idleMs: config.flush.idleMs,
     maxBatch: config.flush.maxBatch,

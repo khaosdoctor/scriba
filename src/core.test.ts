@@ -4,6 +4,7 @@ import {
   AGENT_UPDATE_CHARS,
   anchorLine,
   assetEmbed,
+  CircuitBreaker,
   candidates,
   cleanNoteTitle,
   clipUpdate,
@@ -389,6 +390,23 @@ test("linkDateWords ignores bare clock times that carry no date", () => {
   assert.equal(
     linkDateWords("Met the doctor at 3pm today", ref),
     "Met the doctor [[2026-07-10|at 3pm today]]",
+  );
+});
+
+test("linkDateWords leaves a 'for <duration>' span alone", () => {
+  const ref = "2026-09-28";
+  assert.equal(
+    linkDateWords("in the dryer for a week now", ref),
+    "in the dryer for a week now",
+  );
+  assert.equal(
+    linkDateWords("I stayed there for 3 days", ref),
+    "I stayed there for 3 days",
+  );
+  // a real relative date still links
+  assert.equal(
+    linkDateWords("see you in a week", ref),
+    "see you [[2026-10-05|in a week]]",
   );
 });
 
@@ -1248,4 +1266,33 @@ test("unwrapModelPayload leaves ordinary text alone, braces included", () => {
     'She said """hi""" in the middle',
   ])
     assert.equal(unwrapModelPayload({ text }).text, text);
+});
+
+test("CircuitBreaker opens after the threshold, lets one trial through after the cooldown", () => {
+  const t = { now: 0 };
+  const b = new CircuitBreaker(2, 100, () => t.now);
+  b.failure(new Error("a"));
+  assert.equal(b.allows(), true);
+  b.failure(new Error("b"));
+  assert.equal(b.allows(), false);
+  assert.equal((b.lastError as Error).message, "b");
+  t.now = 100;
+  assert.equal(b.allows(), true);
+  // the trial fails: straight back open, no second run-up to the threshold
+  b.failure(new Error("c"));
+  assert.equal(b.allows(), false);
+  t.now = 200;
+  b.success();
+  assert.equal(b.allows(), true);
+  b.failure(new Error("d"));
+  assert.equal(b.allows(), true);
+});
+
+test("isRecoverable covers the OpenAI-shaped SDKs' network errors", () => {
+  assert.equal(isRecoverable(new Error("Connection error.")), true);
+  assert.equal(isRecoverable(new Error("Request timed out.")), true);
+  assert.equal(
+    isRecoverable(new Error("timeout after 15s (claude-haiku-4-5)")),
+    true,
+  );
 });

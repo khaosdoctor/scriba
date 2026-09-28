@@ -2,7 +2,12 @@ import type { OutputFormat } from "@anthropic-ai/claude-agent-sdk";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import Groq from "groq-sdk";
 import { z } from "zod";
-import { type Candidate, parseModelJson, unwrapModelPayload } from "../core.ts";
+import {
+  type Candidate,
+  CircuitBreaker,
+  parseModelJson,
+  unwrapModelPayload,
+} from "../core.ts";
 import { logger } from "../log.ts";
 
 export type QueryFn = typeof sdkQuery;
@@ -32,10 +37,24 @@ export type GroqChatFn = (
   model: string,
   messages: GroqMessage[],
   baseUrl?: string,
+  timeoutMs?: number,
 ) => Promise<{ text: string; usage: { input: number; output: number } }>;
 
-const groqChat: GroqChatFn = async (apiKey, model, messages, baseUrl) => {
-  const groq = new Groq({ apiKey, ...(baseUrl ? { baseURL: baseUrl } : {}) });
+const groqChat: GroqChatFn = async (
+  apiKey,
+  model,
+  messages,
+  baseUrl,
+  timeoutMs,
+) => {
+  // No SDK retries: the next tier is the retry, and three 15s attempts would hold the
+  // jot for 45s before it got there.
+  const groq = new Groq({
+    apiKey,
+    maxRetries: 0,
+    ...(timeoutMs ? { timeout: timeoutMs } : {}),
+    ...(baseUrl ? { baseURL: baseUrl } : {}),
+  });
   const res = await groq.chat.completions.create({
     model,
     temperature: 0,
@@ -51,6 +70,24 @@ const groqChat: GroqChatFn = async (apiKey, model, messages, baseUrl) => {
 };
 
 const log = logger("enrich");
+
+/** Thrown when every step of the chain has its circuit open: nothing is worth calling
+ *  until a cooldown runs out. The processor holds jots on this instead of burning a retry. */
+export class ModelsDownError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `every enrichment model is down (last error: ${cause instanceof Error ? cause.message : String(cause)})`,
+    );
+    this.name = "ModelsDownError";
+  }
+}
+
+// Which step answered last; DOWN when none could.
+const DOWN = -1;
+
+/** What a model-switch notice reports: a move down the chain, a recovery to the chosen
+ *  model, or every step being down at once. */
+export type SwitchTarget = "fallback" | "primary" | "down";
 
 export interface EnrichInput {
   text: string;
@@ -91,8 +128,19 @@ const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules
 - Only you can tell a year from a number that looks like one, which is why this is your job and not a regex: "1500 metres", "3000 steps" and "2000 calories" are quantities, while "in 1500 the city fell" is a year. Judge it from the sentence. Never link a decade ("the 1920s"), a clock time ("19:18"), a version ("1.35.0"), a quantity, or a date that is already a link.
 - TASKS: if the entry says the author still has to DO something — a commitment, an errand, a plan, anything phrased as needing or intending to do it — list it under "tasks". Something already done is not a task, and neither is an idle wish with no intent. Most entries contain none: return an empty list then, and never turn the entry itself into a task.
 - Each task has a "description" (what to do, in English, as a short instruction), an optional "due" and "start", and a "type", which is "personal" unless the entry plainly puts it at work — a colleague, a work project, the office, or the author saying it is for work. Anything you are unsure about is "personal". Copy "due"/"start" VERBATIM from the entry as the author phrased the timing ("next friday", "tomorrow", "by the 15th") — do not convert them to a date, do not calculate anything, and omit them entirely when the entry says nothing about when.
+- "text" is the journal entry itself, plain prose with its wikilinks — never JSON.
+- Each "ambiguous" entry copies one candidate exactly: "surface" is its surface text and "note" is its note name, with no explanation.`;
+
+// Only the chat fallbacks get this: they have no structured output, so JSON-as-text is
+// the answer. Given to the SDK it fights the StructuredOutput tool — haiku writes the
+// JSON as text and runs out of turns, sonnet nests the whole JSON inside "text".
+const ENRICH_JSON_ONLY = `
 Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}], "tasks": [{"description":"...","due":"...","type":"personal"}]}
 Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
+
+/** SDK-side counterpart of the JSON-only tails, for calls that pass an outputFormat. */
+const USE_OUTPUT_TOOL = `
+Give your answer only by calling the StructuredOutput tool, with each field holding its own value. Write no text.`;
 
 const VOICE_FIX_SYSTEM = `You lightly clean up a voice-to-text transcript for a personal journal. Rules:
 - Fix obvious transcription errors, filler words (um, uh, like, you know), false starts, and repeated words.
@@ -107,7 +155,9 @@ const TASK_SYSTEM = `You turn one line of text into a task for a personal task l
 - "due" is the deadline and "start" is when work on it begins. Copy each one VERBATIM from the line, exactly as the author phrased the timing ("next friday", "amanhã", "by the 15th", "på fredag"). Do NOT convert them to a date and do NOT calculate anything: you are not told what today is. Omit a field entirely when the line says nothing about it — never invent one.
 - The one exception: if the line already gives an explicit calendar date, give it as YYYY-MM-DD.
 - A line that mentions only one time is giving you a deadline: put it in "due", not "start".
-- "type": "personal" unless the line plainly puts the task at work — a colleague, a work project, the office, or the author saying it is for work. If you are weighing it up at all, it is "personal": the author sorts work from personal by hand in one tap, and a personal task filed as work goes into the wrong note.
+- "type": "personal" unless the line plainly puts the task at work — a colleague, a work project, the office, or the author saying it is for work. If you are weighing it up at all, it is "personal": the author sorts work from personal by hand in one tap, and a personal task filed as work goes into the wrong note.`;
+
+const TASK_JSON_ONLY = `
 Your entire response must be exactly one JSON object and nothing else: {"description": "...", "due": "...", "start": "...", "type": "personal"}
 Do not write any preamble, explanation or commentary. The first character of your response must be "{" and the last character must be "}".`;
 
@@ -200,10 +250,13 @@ export class Enricher {
   // warned only when it changes: once on the way down, once on recovery, not per jot.
   private tier = 0;
   private notifySwitch?: (
-    to: "fallback" | "primary",
+    to: SwitchTarget,
     model: string,
     err?: unknown,
   ) => void | Promise<void>;
+  // One breaker per step, keyed by model/fallback name, so a step that keeps failing is
+  // skipped outright instead of costing every jot a timeout on the way past it.
+  private breakers = new Map<string, CircuitBreaker>();
 
   constructor(
     private model = process.env.AGENT_MODEL,
@@ -212,7 +265,32 @@ export class Enricher {
     private groqChatFn: GroqChatFn = groqChat,
     // Second Claude model, tried before the chat fallbacks when the chosen one fails.
     private backupModel?: string,
+    // Hard cap on one model call. A call that hangs is a failure like any other.
+    private timeoutMs = 15_000,
+    private now: () => number = Date.now,
   ) {}
+
+  private breaker(name: string): CircuitBreaker {
+    const found = this.breakers.get(name);
+    if (found) return found;
+    const created = new CircuitBreaker(3, 120_000, this.now);
+    this.breakers.set(name, created);
+    return created;
+  }
+
+  /** Names of every step of the chain, in the order they're tried. */
+  private chain(first = this.model): string[] {
+    const models = [first ?? "default"];
+    if (this.backupModel && this.backupModel !== first)
+      models.push(this.backupModel);
+    return [...models, ...this.fallbacks.map((fb) => fb.name ?? fb.model)];
+  }
+
+  /** False while every step's circuit is open: a call now would fail without trying
+   *  anything, so the processor holds jots instead. Token-free. */
+  available(): boolean {
+    return this.chain().some((name) => this.breaker(name).allows());
+  }
 
   /** Change the primary enrichment model at runtime (called when the user picks a
    *  new model from /menu). The next enrichment call uses the new value. */
@@ -224,7 +302,7 @@ export class Enricher {
    *  bot can warn the user in Telegram. Failures here never break enrichment. */
   setSwitchNotifier(
     fn: (
-      to: "fallback" | "primary",
+      to: SwitchTarget,
       model: string,
       err?: unknown,
     ) => void | Promise<void>,
@@ -233,7 +311,7 @@ export class Enricher {
   }
 
   private async announce(
-    to: "fallback" | "primary",
+    to: SwitchTarget,
     model: string,
     err?: unknown,
   ): Promise<void> {
@@ -280,9 +358,9 @@ export class Enricher {
     // Parsed inside the chain: an unusable answer moves on to the next model.
     return this.run(
       prompt,
-      SYSTEM,
+      SYSTEM + USE_OUTPUT_TOOL,
       [
-        { role: "system", content: SYSTEM },
+        { role: "system", content: SYSTEM + ENRICH_JSON_ONLY },
         { role: "user", content: prompt },
       ],
       ENRICH_OUTPUT_FORMAT,
@@ -371,9 +449,9 @@ export class Enricher {
     log.info({ chars: text.length }, "extractTask: calling agent");
     return this.run(
       prompt,
-      TASK_SYSTEM,
+      TASK_SYSTEM + USE_OUTPUT_TOOL,
       [
-        { role: "system", content: TASK_SYSTEM },
+        { role: "system", content: TASK_SYSTEM + TASK_JSON_ONLY },
         { role: "user", content: prompt },
       ],
       TASK_OUTPUT_FORMAT,
@@ -498,48 +576,59 @@ export class Enricher {
     const models = [first];
     if (this.backupModel && this.backupModel !== first)
       models.push(this.backupModel);
+    const steps: { name: string; call: () => Promise<SdkOut> }[] = [
+      ...models.map((model) => ({
+        name: model ?? "default",
+        call: () => this.runSdk(prompt, systemPrompt, outputFormat, model),
+      })),
+      ...(groqMessages
+        ? this.fallbacks.map((fb) => ({
+            name: fb.name ?? fb.model,
+            call: () =>
+              this.groqChatFn(
+                fb.apiKey,
+                fb.model,
+                groqMessages,
+                fb.baseUrl,
+                this.timeoutMs,
+              ),
+          }))
+        : []),
+    ];
     let lastErr: unknown;
-    for (const [tier, model] of models.entries()) {
-      try {
-        const out = parse(
-          await this.runSdk(prompt, systemPrompt, outputFormat, model),
-        );
-        await this.settle(tier, model ?? "default");
-        return out;
-      } catch (err) {
-        lastErr = err;
-        log.warn(
-          { err, model: model ?? "default" },
-          "enrich: Claude call failed",
-        );
+    for (const [tier, step] of steps.entries()) {
+      const breaker = this.breaker(step.name);
+      if (!breaker.allows()) {
+        lastErr ??= breaker.lastError;
+        log.debug({ step: step.name }, "enrich: circuit open, skipping step");
+        continue;
       }
-    }
-    if (!groqMessages || this.fallbacks.length === 0) throw lastErr;
-    for (const [i, fb] of this.fallbacks.entries()) {
-      const tier = models.length + i;
       try {
-        const raw = await this.groqChatFn(
-          fb.apiKey,
-          fb.model,
-          groqMessages,
-          fb.baseUrl,
-        );
+        const raw = await step.call();
         const out = parse(raw);
-        await this.settle(tier, fb.name ?? fb.model, lastErr);
+        breaker.success();
+        await this.settle(tier, step.name, lastErr);
         log.info(
-          { model: fb.model, name: fb.name, usage: raw.usage },
-          "enrich: chat fallback done",
+          { step: step.name, tier, usage: raw.usage },
+          "enrich: step answered",
         );
         return out;
       } catch (err) {
+        breaker.failure(err);
         lastErr = err;
-        log.warn(
-          { err, model: fb.model, name: fb.name },
-          "enrich: chat fallback failed",
-        );
+        log.warn({ err, step: step.name, tier }, "enrich: step failed");
       }
     }
-    throw lastErr;
+    if (this.available()) throw lastErr;
+    if (this.tier !== DOWN) {
+      log.error(
+        { err: lastErr },
+        "enrich: every model is down — holding jots until one is back",
+      );
+      this.tier = DOWN;
+      await this.announce("down", "", lastErr);
+    }
+    throw new ModelsDownError(lastErr);
   }
 
   /** Record which step of the chain answered; warn the user only when that changes. */
@@ -561,14 +650,58 @@ export class Enricher {
     outputFormat: OutputFormat | undefined,
     model: string | undefined,
   ): Promise<SdkOut> {
+    // The abort kills the CLI subprocess; the race is what guarantees this returns even
+    // if the stream never ends after it.
+    const abortController = new AbortController();
+    const timer = setTimeout(
+      () =>
+        abortController.abort(
+          new Error(
+            `timeout after ${this.timeoutMs / 1000}s (${model ?? "default"})`,
+          ),
+        ),
+      this.timeoutMs,
+    );
+    const timedOut = new Promise<never>((_, reject) =>
+      abortController.signal.addEventListener(
+        "abort",
+        () => reject(abortController.signal.reason),
+        { once: true },
+      ),
+    );
+    const consume = this.consume(
+      prompt,
+      systemPrompt,
+      outputFormat,
+      model,
+      abortController,
+    );
+    consume.catch(() => {}); // after a timeout nothing awaits it; a late throw is noise
+    try {
+      return await Promise.race([consume, timedOut]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async consume(
+    prompt: unknown,
+    systemPrompt: string | undefined,
+    outputFormat: OutputFormat | undefined,
+    model: string | undefined,
+    abortController: AbortController,
+  ): Promise<SdkOut> {
     let text = "";
     let structuredOutput: unknown;
     const usage = { input: 0, output: 0 };
     const stream = this.query({
       prompt: prompt as any,
       options: {
-        maxTurns: 1,
+        // The StructuredOutput tool call is a turn of its own, plus one for the SDK to
+        // re-ask a model that answered in text instead.
+        maxTurns: outputFormat ? 3 : 1,
         allowedTools: [],
+        abortController,
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(model ? { model } : {}),
         ...(outputFormat ? { outputFormat } : {}),

@@ -64,9 +64,46 @@ export function makeJotId(): string {
 /** Errors worth retrying (transient infra); anything else is treated as unrecoverable. */
 export function isRecoverable(err: unknown): boolean {
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return /timeout|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
+  // "connection error" / "timed out" are the OpenAI-shaped SDKs' (Groq, OpenCode) words
+  // for the same network failures.
+  return /timeout|timed out|connection error|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
     m,
   );
+}
+
+/**
+ * Per-upstream circuit breaker, token-free. `threshold` failures in a row open it for
+ * `cooldownMs`, during which `allows()` is false and callers skip straight to the next
+ * option. Once the cooldown is up one trial call is let through: success closes it, a
+ * failure opens it for another cooldown.
+ */
+export class CircuitBreaker {
+  private failures = 0;
+  private openUntil = 0;
+  lastError: unknown;
+
+  constructor(
+    private threshold = 3,
+    private cooldownMs = 120_000,
+    private now: () => number = Date.now,
+  ) {}
+
+  allows(): boolean {
+    return this.now() >= this.openUntil;
+  }
+
+  success(): void {
+    this.failures = 0;
+    this.openUntil = 0;
+    this.lastError = undefined;
+  }
+
+  failure(err: unknown): void {
+    this.failures++;
+    this.lastError = err;
+    if (this.failures >= this.threshold)
+      this.openUntil = this.now() + this.cooldownMs;
+  }
 }
 
 /** A jot's line can be edited/deleted only once it exists in the note: done, or abandoned
@@ -248,6 +285,12 @@ export function retryNotice(
   const left = Math.max(0, max - attempts);
   const more = left === 1 ? "one more try" : `${left} more tries`;
   return `⚠️ That ${kind} jot didn't go through (attempt ${attempts} of ${max}). I'll try again on my own — ${more} left, or decide it now.\n${errorBlock(error)}`;
+}
+
+/** Status line for a jot held back because every enrichment model is down. It keeps its
+ *  place in the note and isn't charged a retry; the sweep picks it up once one is back. */
+export function heldNotice(kind: JotKind): string {
+  return `⏸ Every enrichment model is down right now, so this ${kind} jot is waiting. It goes into your journal on its own once one is back.`;
 }
 
 /** Status line once a jot is given up on. The text is in the note un-enriched, so what's
@@ -549,11 +592,14 @@ export function linkDateWords(text: string, referenceDate: string): string {
   // parse to have actually pinned down a day/weekday/month before linking it. "now" gets
   // the same certain-day treatment (it resolves to today) but reads as "this moment", not
   // a day reference, so it's excluded by its casual-reference tag rather than linked.
+  // "for a week" / "for 3 days" is a duration, but chrono resolves it to a date that far
+  // ahead ("been in the dryer for a week now" became next Monday), so it isn't linked.
   const isDateLike = (r: chrono.ParsedResult) =>
     (r.start.isCertain("day") ||
       r.start.isCertain("weekday") ||
       r.start.isCertain("month")) &&
-    !r.start.tags().has("casualReference/now");
+    !r.start.tags().has("casualReference/now") &&
+    !/^for\s/i.test(r.text);
   // chrono leans on `\b`, which is ASCII-only in JS: in "Pokémon" the accented é counts as
   // a non-word char, so "mon" looks like a standalone weekday and the word gets a Monday
   // link spliced into the middle of it. Re-check both edges against a Unicode letter/digit
