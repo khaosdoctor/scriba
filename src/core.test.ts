@@ -685,7 +685,7 @@ test("formatHealth renders one line per upstream", () => {
   ]);
 });
 
-test("formatHealth caps a long error and handles no upstreams", () => {
+test("formatHealth caps a long error", () => {
   const out = formatHealth(
     [
       {
@@ -702,7 +702,6 @@ test("formatHealth caps a long error and handles no upstreams", () => {
   assert.ok(out.split("\n")[1]!.length < 180);
   // one failed probe is a warning, not green
   assert.ok(out.split("\n")[1]!.startsWith("🟡 obsidian"));
-  assert.equal(formatHealth([], 0), "Upstreams:\nnone probed");
 });
 
 test("modelsUrlFor swaps the transcription path for the model listing", () => {

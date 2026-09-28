@@ -926,7 +926,6 @@ export interface UpstreamStatus {
  *  since a fetch error can carry a whole cause chain. */
 export function formatHealth(rows: UpstreamStatus[], now: number): string {
   const lines = ["Upstreams:"];
-  if (!rows.length) lines.push("none probed");
   for (const r of rows) {
     // 🟡 is one failed probe: an error on show, but not yet the two that make it down.
     const dot = !r.up ? "🔴" : r.failures ? "🟡" : "🟢";

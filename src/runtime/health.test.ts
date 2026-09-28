@@ -80,7 +80,8 @@ test("upstreams skips Groq and OpenCode without a key", () => {
 });
 
 test("upstreams sends each key only to its own host", () => {
-  const list = upstreams(all, new Agent());
+  const agent = new Agent();
+  const list = upstreams(all, agent);
   const byName = new Map(list.map((u) => [u.name, u]));
   // the whole entry: the key's host, the key, and the 2xx a rejected key fails on
   assert.deepEqual(byName.get("groq"), {
@@ -98,6 +99,9 @@ test("upstreams sends each key only to its own host", () => {
   assert.equal(byName.get("anthropic")?.headers, undefined);
   assert.equal(byName.get("telegram")?.headers, undefined);
   assert.equal(byName.get("parakeet")?.url, "http://parakeet:5092/v1/models");
+  // Obsidian goes through the client's own dispatcher (its TLS decision), nobody else does
+  assert.equal(byName.get("obsidian")?.dispatcher, agent);
+  assert.equal(byName.get("groq")?.dispatcher, undefined);
 });
 
 // The owner's hard rule: a health check never spends a token. Every probe URL has to be
@@ -191,7 +195,8 @@ test("a failing notifier never throws out of a round", async () => {
   await m.check();
   await m.check();
   assert.equal(upOf(m, "dead"), false);
-  assert.match(m.snapshot()[0]!.error ?? "", /fetch failed/);
+  // the cause is what says why: undici's own message is only "fetch failed"
+  assert.match(m.snapshot()[0]!.error ?? "", /^fetch failed: \S/);
 });
 
 test("start probes on a timer and stop ends it", async () => {
