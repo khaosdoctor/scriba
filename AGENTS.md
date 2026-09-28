@@ -37,7 +37,9 @@ deployed on the homelab (Coolify). Single user.
 - **No model call waits forever, and a dead step is skipped.** Each call is capped at
   `ENRICH_TIMEOUT_MS` (15s): the SDK gets an `AbortController` and the answer is raced
   against it, the chat fallbacks get the same cap with SDK retries off (the next step is
-  the retry). Each step has a `CircuitBreaker` (`core.ts`, token-free): three transient
+  the retry). SDK calls run with extended thinking off (`thinking: { type: "disabled" }`):
+  linking a line needs none, and haiku's default thinking took 6-7s of a ~9-15s call. Each
+  step has a `CircuitBreaker` (`core.ts`, token-free): three transient
   failures in a row (`isRecoverable`: timeouts, 5xx, 429, network) and the step is skipped
   for two minutes, then one trial call decides. An unusable answer or a rejected key still
   moves down the chain but never trips a breaker, so it can't hold jots behind a failure no
