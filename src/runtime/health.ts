@@ -60,7 +60,10 @@ export function upstreams(t: HealthTargets, obsidian: Dispatcher): Upstream[] {
 /** A fetch error's own message says only "fetch failed"; the cause says why. */
 function describe(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
-  if (err.cause instanceof Error) return `${err.message}: ${err.cause.message}`;
+  // A dual-stack connect failure's cause is an AggregateError with an empty message;
+  // its code (ECONNREFUSED…) is then the only reason there is.
+  if (err.cause instanceof Error)
+    return `${err.message}: ${err.cause.message || (err.cause as NodeJS.ErrnoException).code}`;
   return err.message;
 }
 

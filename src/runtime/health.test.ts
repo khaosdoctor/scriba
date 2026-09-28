@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 import { Agent } from "undici";
+import { OPENCODE_BASE_URL } from "../core.ts";
 import { HealthMonitor, type Upstream, upstreams } from "./health.ts";
 
 /**
@@ -81,11 +82,19 @@ test("upstreams skips Groq and OpenCode without a key", () => {
 test("upstreams sends each key only to its own host", () => {
   const list = upstreams(all, new Agent());
   const byName = new Map(list.map((u) => [u.name, u]));
-  assert.equal(byName.get("groq")?.headers?.Authorization, "Bearer gsk-test");
-  assert.equal(
-    byName.get("opencode")?.headers?.Authorization,
-    "Bearer oc-test",
-  );
+  // the whole entry: the key's host, the key, and the 2xx a rejected key fails on
+  assert.deepEqual(byName.get("groq"), {
+    name: "groq",
+    url: "https://api.groq.com/openai/v1/models",
+    headers: { Authorization: "Bearer gsk-test" },
+    requireOk: true,
+  });
+  assert.deepEqual(byName.get("opencode"), {
+    name: "opencode",
+    url: `${OPENCODE_BASE_URL}/models`,
+    headers: { Authorization: "Bearer oc-test" },
+    requireOk: true,
+  });
   assert.equal(byName.get("anthropic")?.headers, undefined);
   assert.equal(byName.get("telegram")?.headers, undefined);
   assert.equal(byName.get("parakeet")?.url, "http://parakeet:5092/v1/models");
