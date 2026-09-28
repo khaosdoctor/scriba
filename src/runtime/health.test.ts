@@ -108,13 +108,15 @@ test("no probe targets an endpoint that generates anything", () => {
   }
 });
 
-test("a probe is a GET with no body", async () => {
+test("a probe is a GET with no body, carrying its target's headers", async () => {
   seen.length = 0;
-  const { m } = monitor([{ name: "a", url: `${base}/ok` }]);
+  const { m } = monitor([
+    { name: "a", url: `${base}/ok`, headers: { Authorization: "Bearer k" } },
+  ]);
   await m.check();
   assert.deepEqual(
-    seen.map((s) => [s.method, s.body]),
-    [["GET", 0]],
+    seen.map((s) => [s.method, s.body, s.auth]),
+    [["GET", 0, "Bearer k"]],
   );
 });
 

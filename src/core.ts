@@ -928,7 +928,9 @@ export function formatHealth(rows: UpstreamStatus[], now: number): string {
   const lines = ["Upstreams:"];
   if (!rows.length) lines.push("none probed");
   for (const r of rows) {
-    const parts = [`${r.up ? "🟢" : "🔴"} ${r.name}`];
+    // 🟡 is one failed probe: an error on show, but not yet the two that make it down.
+    const dot = !r.up ? "🔴" : r.failures ? "🟡" : "🟢";
+    const parts = [`${dot} ${r.name}`];
     if (!r.up) parts.push(`down ${formatDuration(now - r.since)}`);
     parts.push(r.latencyMs === null ? "not probed yet" : `${r.latencyMs} ms`);
     if (r.error) parts.push(clipUpdate(r.error, 120));

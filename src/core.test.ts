@@ -700,6 +700,8 @@ test("formatHealth caps a long error and handles no upstreams", () => {
     0,
   );
   assert.ok(out.split("\n")[1]!.length < 180);
+  // one failed probe is a warning, not green
+  assert.ok(out.split("\n")[1]!.startsWith("🟡 obsidian"));
   assert.equal(formatHealth([], 0), "Upstreams:\nnone probed");
 });
 

@@ -38,6 +38,7 @@ export function upstreams(t: HealthTargets, obsidian: Dispatcher): Upstream[] {
     { name: "anthropic", url: "https://api.anthropic.com" },
     { name: "telegram", url: "https://api.telegram.org" },
     { name: "obsidian", url: `${t.obsidianUrl}/`, dispatcher: obsidian },
+    { name: "parakeet", url: modelsUrlFor(t.parakeetUrl) },
   ];
   if (t.groqApiKey)
     list.push({
@@ -53,8 +54,6 @@ export function upstreams(t: HealthTargets, obsidian: Dispatcher): Upstream[] {
       headers: { Authorization: `Bearer ${t.opencodeApiKey}` },
       requireOk: true,
     });
-  if (t.parakeetUrl)
-    list.push({ name: "parakeet", url: modelsUrlFor(t.parakeetUrl) });
   return list;
 }
 
