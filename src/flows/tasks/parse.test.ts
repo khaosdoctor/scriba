@@ -224,6 +224,12 @@ test("one date is the deadline", () => {
   });
 });
 
+test("a 'for <duration>' span is how long, not when", () => {
+  const d = parseTaskDraft("water the plants for a week by friday", TODAY);
+  assert.equal(d.due, "2026-09-04");
+  assert.equal(d.start, null);
+});
+
 test("cue words label the dates", () => {
   assert.deepEqual(parseTaskDraft("review the RFC by next friday", TODAY), {
     description: "review the RFC",

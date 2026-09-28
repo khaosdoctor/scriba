@@ -578,6 +578,24 @@ const wikilinkRe = /\[\[.*?\]\]/g;
  * relative to that entry's day. Token-free (chrono-node is a deterministic parser, not
  * a model call) and never touches text already inside an existing `[[wikilink]]`.
  */
+/**
+ * A chrono hit that pins down an actual day. chrono also matches bare times ("at 3pm",
+ * "meeting at 9") by defaulting the day to the reference date — a clock time, not a date
+ * — so the parse must have fixed a day/weekday/month. "now" resolves to today but reads as
+ * "this moment", so its casual-reference tag rules it out. "for a week" / "for 3 days" is
+ * a duration that chrono resolves to a day that far ahead ("been in the dryer for a week
+ * now" became next Monday), so it's out too.
+ */
+export function isDateLike(r: chrono.ParsedResult): boolean {
+  return (
+    (r.start.isCertain("day") ||
+      r.start.isCertain("weekday") ||
+      r.start.isCertain("month")) &&
+    !r.start.tags().has("casualReference/now") &&
+    !/^for\s/i.test(r.text)
+  );
+}
+
 export function linkDateWords(text: string, referenceDate: string): string {
   if (!text.trim()) return text;
   const linkSpans = [...text.matchAll(wikilinkRe)].map(
@@ -587,19 +605,6 @@ export function linkDateWords(text: string, referenceDate: string): string {
     linkSpans.some(([s, e]) => start < e && end > s);
 
   const ref = dateFromIso(referenceDate);
-  // chrono also matches bare times ("at 3pm", "meeting at 9") by defaulting the day to
-  // the reference date — that's not a date word, it's a clock time, so require the
-  // parse to have actually pinned down a day/weekday/month before linking it. "now" gets
-  // the same certain-day treatment (it resolves to today) but reads as "this moment", not
-  // a day reference, so it's excluded by its casual-reference tag rather than linked.
-  // "for a week" / "for 3 days" is a duration, but chrono resolves it to a date that far
-  // ahead ("been in the dryer for a week now" became next Monday), so it isn't linked.
-  const isDateLike = (r: chrono.ParsedResult) =>
-    (r.start.isCertain("day") ||
-      r.start.isCertain("weekday") ||
-      r.start.isCertain("month")) &&
-    !r.start.tags().has("casualReference/now") &&
-    !/^for\s/i.test(r.text);
   // chrono leans on `\b`, which is ASCII-only in JS: in "Pokémon" the accented é counts as
   // a non-word char, so "mon" looks like a standalone weekday and the word gets a Monday
   // link spliced into the middle of it. Re-check both edges against a Unicode letter/digit

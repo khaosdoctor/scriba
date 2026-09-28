@@ -491,9 +491,10 @@ export class JotProcessor {
       "every enrichment model is down — jot held until one is back",
     );
     if (jot.error === HELD) return;
-    await this.repo.updateJot(jot.id, { error: HELD });
+    // Marked only once the notice is out, so a failed send is tried again next sweep.
     await this.bot
       .status(jot.id, heldNotice(jot.kind), { discard: true })
+      .then(() => this.repo.updateJot(jot.id, { error: HELD }))
       .catch((err) =>
         log.warn({ id: jot.id, err }, "could not post the held notice"),
       );
