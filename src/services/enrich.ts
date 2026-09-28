@@ -5,6 +5,7 @@ import { z } from "zod";
 import {
   type Candidate,
   CircuitBreaker,
+  isRecoverable,
   parseModelJson,
   unwrapModelPayload,
 } from "../core.ts";
@@ -47,8 +48,8 @@ const groqChat: GroqChatFn = async (
   baseUrl,
   timeoutMs,
 ) => {
-  // No SDK retries: the next tier is the retry, and three 15s attempts would hold the
-  // jot for 45s before it got there.
+  // No SDK retries: the next tier is the retry, and three timed-out attempts would hold
+  // the jot three times as long before it got there.
   const groq = new Groq({
     apiKey,
     maxRetries: 0,
@@ -254,8 +255,8 @@ export class Enricher {
     model: string,
     err?: unknown,
   ) => void | Promise<void>;
-  // One breaker per step, keyed by model/fallback name, so a step that keeps failing is
-  // skipped outright instead of costing every jot a timeout on the way past it.
+  // One breaker per step, keyed by model/fallback name, so a step that keeps timing out
+  // or erroring is skipped outright instead of costing every jot a wait on the way past.
   private breakers = new Map<string, CircuitBreaker>();
 
   constructor(
@@ -278,12 +279,20 @@ export class Enricher {
     return created;
   }
 
-  /** Names of every step of the chain, in the order they're tried. */
-  private chain(first = this.model): string[] {
-    const models = [first ?? "default"];
+  /** The Claude steps: `first`, then the backup model when it's a different one. */
+  private models(first = this.model): (string | undefined)[] {
     if (this.backupModel && this.backupModel !== first)
-      models.push(this.backupModel);
-    return [...models, ...this.fallbacks.map((fb) => fb.name ?? fb.model)];
+      return [first, this.backupModel];
+    return [first];
+  }
+
+  /** Names of every step of the chain, in the order they're tried. These are the
+   *  breaker keys, so `run` names its steps the same way. */
+  private chain(): string[] {
+    return [
+      ...this.models().map((model) => model ?? "default"),
+      ...this.fallbacks.map((fb) => fb.name ?? fb.model),
+    ];
   }
 
   /** False while every step's circuit is open: a call now would fail without trying
@@ -379,61 +388,48 @@ export class Enricher {
     // supports it — the SDK retries internally before giving up). Fall back to
     // scraping JSON out of the free-text response for the Groq path, or for the rare
     // case the structured payload doesn't match our schema.
-    let parsed: {
-      text?: string;
-      ambiguous?: Candidate[];
-      tasks?: DetectedTask[];
-    } | null = null;
-    if (structuredOutput !== undefined) {
-      const result = enrichedPayloadSchema.safeParse(structuredOutput);
-      if (result.success) parsed = result.data;
-      else
-        log.warn(
-          { err: result.error, structuredOutput },
-          "enrich: structured_output failed schema validation, falling back to text parsing",
-        );
-    }
-    if (!parsed) parsed = this.extractJson(text);
+    const structured =
+      structuredOutput === undefined
+        ? undefined
+        : enrichedPayloadSchema.safeParse(structuredOutput);
+    if (structured && !structured.success)
+      log.warn(
+        { err: structured.error, structuredOutput },
+        "enrich: structured_output failed schema validation, falling back to text parsing",
+      );
+    const raw: Record<string, unknown> | null =
+      structured?.data ?? parseModelJson(text);
 
-    if (typeof parsed?.text !== "string" || !parsed.text.trim())
+    if (typeof raw?.text !== "string" || !raw.text.trim())
       throw new Error(
         `enrichment returned no usable JSON: ${text.slice(0, 200)}`,
       );
     // A model can nest the whole answer inside "text" or echo the prompt's """ fence
     // around it; left alone, that JSON lands in the journal verbatim.
-    const unwrapped = unwrapModelPayload(parsed as { text: string });
-    if (unwrapped.text !== parsed.text) {
+    const unwrapped = unwrapModelPayload(raw as { text: string });
+    if (unwrapped.text !== raw.text)
       log.warn(
-        { before: parsed.text.slice(0, 200) },
+        { before: raw.text.slice(0, 200) },
         "enrich: model wrapped its answer inside text — unwrapped",
       );
-      const ambiguous = ambiguousSchema.safeParse(unwrapped.ambiguous);
-      const tasks = tasksSchema.safeParse(unwrapped.tasks);
-      parsed = {
-        text: unwrapped.text,
-        ambiguous: ambiguous.success ? ambiguous.data : [],
-        tasks: tasks.success ? tasks.data : [],
-      };
-    }
-    if (!parsed.text?.trim())
+    if (!unwrapped.text.trim())
       throw new Error(
         `enrichment returned an empty text: ${text.slice(0, 200)}`,
       );
+    // The chat fallbacks have no schema enforcing these, so a malformed list is dropped
+    // rather than trusted.
+    const ambiguous = ambiguousSchema.safeParse(unwrapped.ambiguous).data ?? [];
+    const tasks = tasksSchema.safeParse(unwrapped.tasks).data ?? [];
     log.info(
       {
         usage,
-        ambiguous: parsed.ambiguous?.length ?? 0,
-        tasks: parsed.tasks?.length ?? 0,
+        ambiguous: ambiguous.length,
+        tasks: tasks.length,
         structured: structuredOutput !== undefined,
       },
       "enrich: agent responded",
     );
-    return {
-      text: parsed.text,
-      ambiguous: parsed.ambiguous ?? [],
-      tasks: parsed.tasks ?? [],
-      usage,
-    };
+    return { text: unwrapped.text, ambiguous, tasks, usage };
   }
 
   /**
@@ -465,7 +461,7 @@ export class Enricher {
       (structuredOutput !== undefined
         ? detectedTaskSchema.safeParse(structuredOutput)
         : { success: false as const, data: undefined }
-      ).data ?? detectedTaskSchema.safeParse(this.extractJson(raw)).data;
+      ).data ?? detectedTaskSchema.safeParse(parseModelJson(raw)).data;
     if (!parsed?.description)
       throw new Error(
         `task extraction returned no usable JSON: ${raw.slice(0, 200)}`,
@@ -572,12 +568,8 @@ export class Enricher {
     modelOverride?: string,
     parse: (out: SdkOut) => T = (out) => out as T,
   ): Promise<T> {
-    const first = modelOverride ?? this.model;
-    const models = [first];
-    if (this.backupModel && this.backupModel !== first)
-      models.push(this.backupModel);
     const steps: { name: string; call: () => Promise<SdkOut> }[] = [
-      ...models.map((model) => ({
+      ...this.models(modelOverride ?? this.model).map((model) => ({
         name: model ?? "default",
         call: () => this.runSdk(prompt, systemPrompt, outputFormat, model),
       })),
@@ -614,7 +606,10 @@ export class Enricher {
         );
         return out;
       } catch (err) {
-        breaker.failure(err);
+        // Only an outage trips the breaker. An unusable answer or a rejected key still
+        // moves down the chain, but opening a circuit on it would hold jots forever
+        // behind a failure no cooldown can fix, instead of posting them un-enriched.
+        if (isRecoverable(err)) breaker.failure(err);
         lastErr = err;
         log.warn({ err, step: step.name, tier }, "enrich: step failed");
       }
@@ -718,11 +713,12 @@ export class Enricher {
         }
       } else if (msg.type === "result") {
         // A named error subtype (e.g. error_max_structured_output_retries) means
-        // the SDK already retried against the schema server-side and gave up —
-        // treat it as a failed call so the next step in the chain kicks in.
-        if (msg.subtype && msg.subtype !== "success")
+        // the SDK already retried against the schema server-side and gave up, and a
+        // "success" with is_error set is an API error (529, 401…) carried in `result`.
+        // Either is a failed call, so the next step in the chain kicks in.
+        if (msg.is_error || (msg.subtype && msg.subtype !== "success"))
           throw new Error(
-            `agent gave up producing a usable result (${msg.subtype})`,
+            `agent gave up producing a usable result (${msg.subtype}): ${msg.errors?.join("; ") || msg.result || ""}`,
           );
         if (typeof msg.result === "string" && !text) text = msg.result;
         if (msg.structured_output !== undefined)
@@ -730,17 +726,5 @@ export class Enricher {
       }
     }
     return { text, usage, structuredOutput };
-  }
-
-  // The agent returns free-form text: usually clean JSON, occasionally fenced, wrapped
-  // in a stray sentence, or carrying raw line breaks inside a string (parseModelJson).
-  private extractJson(
-    s: string,
-  ): { text?: string; ambiguous?: Candidate[]; tasks?: DetectedTask[] } | null {
-    return parseModelJson(s) as {
-      text?: string;
-      ambiguous?: Candidate[];
-      tasks?: DetectedTask[];
-    } | null;
   }
 }

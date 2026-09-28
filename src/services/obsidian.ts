@@ -4,6 +4,9 @@ import { logger } from "../log.ts";
 
 const log = logger("obsidian");
 
+// Obsidian is on the LAN: a request slower than this is a hung plugin, not a slow link.
+const REQUEST_TIMEOUT_MS = 15_000;
+
 export interface ObsidianConfig {
   url: string;
   key: string;
@@ -55,7 +58,7 @@ export class ObsidianClient {
     const res = await fetch(`${this.cfg.url}/vault/${this.encode(vaultPath)}`, {
       headers: this.headers(),
       dispatcher: this.dispatcher,
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     log.debug(
       { method: "GET", path: vaultPath, status: res.status },
@@ -75,7 +78,7 @@ export class ObsidianClient {
       headers: this.headers({ "Content-Type": contentType }),
       body: body as any,
       dispatcher: this.dispatcher,
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     log.debug(
       { method: "PUT", path: vaultPath, status: res.status },
@@ -184,7 +187,7 @@ export class ObsidianClient {
       method: "DELETE",
       headers: this.headers(),
       dispatcher: this.dispatcher,
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     log.debug(
       { method: "DELETE", path: vaultPath, status: res.status },

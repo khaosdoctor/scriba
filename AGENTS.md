@@ -36,8 +36,12 @@ deployed on the homelab (Coolify). Single user.
 - **No model call waits forever, and a dead step is skipped.** Each call is capped at
   `ENRICH_TIMEOUT_MS` (15s): the SDK gets an `AbortController` and the answer is raced
   against it, the chat fallbacks get the same cap with SDK retries off (the next step is
-  the retry). Each step has a `CircuitBreaker` (`core.ts`, token-free): three failures in
-  a row and the step is skipped for two minutes, then one trial call decides. When every
+  the retry). Each step has a `CircuitBreaker` (`core.ts`, token-free): three transient
+  failures in a row (`isRecoverable`: timeouts, 5xx, 429, network) and the step is skipped
+  for two minutes, then one trial call decides. An unusable answer or a rejected key still
+  moves down the chain but never trips a breaker, so it can't hold jots behind a failure no
+  cooldown fixes; those jots end the usual way, posted un-enriched. Voice fix is
+  best-effort: when it fails the original transcript goes on to enrichment. When every
   step is open, `run` throws `ModelsDownError` and the user is told once; the processor
   then **holds** jots — no claim, no retry charged, `heldNotice` on the status message,
   the placeholder keeps its place — and the retry sweep brings them back once a cooldown

@@ -20,6 +20,7 @@ type Msg =
       result?: unknown;
       subtype?: string;
       structured_output?: unknown;
+      is_error?: boolean;
     };
 
 /** Fake SDK query: yields the given messages, and records the last call's prompt + options. */
@@ -874,4 +875,48 @@ test("the switch notice carries the error that moved it down the chain", async (
   });
   await enricher.enrich({ text: "x", candidates: [] });
   assert.equal((errs[0] as Error).message, "usage limit reached");
+});
+
+test("a failure no cooldown can fix never opens a circuit, so jots aren't held on it", async () => {
+  const enricher = new Enricher(
+    "claude-haiku-4-5",
+    failQuery("invalid x-api-key (401)"),
+  );
+  for (let i = 0; i < 5; i++)
+    await assert.rejects(enricher.enrich({ text: "x", candidates: [] }), {
+      message: "invalid x-api-key (401)",
+    });
+  assert.equal(enricher.available(), true);
+});
+
+test("a fallback's malformed lists are dropped instead of trusted", async () => {
+  const groq = fakeGroq('{"text":"x","ambiguous":"none","tasks":{}}');
+  const out = await new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(out.text, "x");
+  assert.deepEqual(out.ambiguous, []);
+  assert.deepEqual(out.tasks, []);
+});
+
+test("an API error reported as a success result moves down the chain", async () => {
+  const { fn } = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      result: "API Error: 529 overloaded",
+    } as Msg,
+  ]);
+  const groq = fakeGroq('{"text":"rescued","ambiguous":[]}');
+  const out = await new Enricher(
+    "claude-haiku-4-5",
+    fn,
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(out.text, "rescued");
 });

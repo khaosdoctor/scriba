@@ -177,7 +177,19 @@ export class JotProcessor {
           id,
           `🎤 <i>${escapeHtml(original)}</i>\n\n🔧 Checking transcript…`,
         );
-        const proposed = await this.enricher.fixTranscript(original, vfModel);
+        // Voice fix is an optional clean-up: when it can't run, the original goes on
+        // to enrichment instead of failing the whole jot. Held on ModelsDownError, like
+        // any other step, since enrichment right after would hit the same wall.
+        const proposed = await this.enricher
+          .fixTranscript(original, vfModel)
+          .catch((err: unknown) => {
+            if (err instanceof ModelsDownError) throw err;
+            log.warn(
+              { id, err },
+              "voice fix failed — keeping the original transcript",
+            );
+            return original;
+          });
         await this.repo.updateJot(id, { proposed_text: proposed });
         // Only ask when there's an actual difference.
         if (proposed !== original) {

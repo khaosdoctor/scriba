@@ -83,8 +83,8 @@ export class CircuitBreaker {
   lastError: unknown;
 
   constructor(
-    private threshold = 3,
-    private cooldownMs = 120_000,
+    private threshold: number,
+    private cooldownMs: number,
     private now: () => number = Date.now,
   ) {}
 
@@ -1162,14 +1162,7 @@ function escapeControlsInStrings(s: string): string {
       else if (ch === "\\") escaped = true;
       else if (ch === '"') inString = false;
       else if (ch < " ") {
-        out +=
-          ch === "\n"
-            ? "\\n"
-            : ch === "\r"
-              ? "\\r"
-              : ch === "\t"
-                ? "\\t"
-                : `\\u${ch.charCodeAt(0).toString(16).padStart(4, "0")}`;
+        out += JSON.stringify(ch).slice(1, -1); // \n, \t, \u0001…
         continue;
       }
     } else if (ch === '"') inString = true;

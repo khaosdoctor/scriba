@@ -12,8 +12,9 @@ export interface Transcriber {
 export class GroqTranscriber implements Transcriber {
   private groq: Groq;
   constructor(apiKey: string) {
-    // Parakeet is the retry, so no SDK retries stacking 15s timeouts in front of it.
-    this.groq = new Groq({ apiKey, timeout: 15_000, maxRetries: 0 });
+    // Parakeet is the retry, so no SDK retries in front of it. The timeout covers the
+    // upload plus Whisper on a long note, so it's the SDK's own 60s, said out loud.
+    this.groq = new Groq({ apiKey, timeout: 60_000, maxRetries: 0 });
   }
 
   async transcribe(bytes: Uint8Array, ext: string): Promise<string> {
