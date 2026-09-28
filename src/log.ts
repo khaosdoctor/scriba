@@ -16,7 +16,10 @@ import pretty from "pino-pretty";
 const level = process.env.LOG_LEVEL ?? "debug";
 // Secrets stripped in pino core so they never reach any stream, any call site. Wildcards
 // match the config secrets (telegram.token, obsidian.key, transcription.groqApiKey).
-const redact = { paths: ["*.token", "*.key", "*.groqApiKey"], censor: "***" };
+const redact = {
+  paths: ["*.token", "*.key", "*.groqApiKey", "*.opencodeApiKey"],
+  censor: "***",
+};
 const stream =
   process.env.LOG_JSON === "1"
     ? pino.destination({ dest: 1, sync: true })

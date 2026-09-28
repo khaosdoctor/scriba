@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Enricher, type GroqChatFn, type QueryFn } from "./enrich.ts";
+import {
+  Enricher,
+  type GroqChatFn,
+  ModelsDownError,
+  type QueryFn,
+} from "./enrich.ts";
 
 type Msg =
   | {
@@ -15,6 +20,7 @@ type Msg =
       result?: unknown;
       subtype?: string;
       structured_output?: unknown;
+      is_error?: boolean;
     };
 
 /** Fake SDK query: yields the given messages, and records the last call's prompt + options. */
@@ -256,7 +262,8 @@ test("run passes the model to the SDK only when one is set", async () => {
     candidates: [],
   });
   assert.equal(withModel.calls[0]!.options.model, "claude-x");
-  assert.equal(withModel.calls[0]!.options.maxTurns, 1);
+  // structured output: the tool call takes a turn, plus room for one re-ask
+  assert.equal(withModel.calls[0]!.options.maxTurns, 3);
 
   const noModel = fakeQuery([assistantText('{"text":"ok"}')]);
   await new Enricher(undefined, noModel.fn).enrich({
@@ -683,4 +690,248 @@ test("enrich falls back to Groq text-parsing when structured output is exhausted
   const out = await enricher.enrich({ text: "x", candidates: [] });
   assert.equal(out.text, "rescued by groq");
   assert.equal(groq.calls.length, 1);
+});
+
+test("a fallback answer nested inside its own text field is unwrapped, not journaled as JSON", async () => {
+  const inner = JSON.stringify({
+    text: "I enrolled in an electronics course in Portuguese",
+    ambiguous: [{ surface: "Portuguese", note: "Portugal" }],
+    tasks: [{ description: "Do one class a day", type: "personal" }],
+  });
+  const groq = fakeGroq(
+    JSON.stringify({ text: inner, ambiguous: [], tasks: [] }),
+  );
+  const res = await new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(res.text, "I enrolled in an electronics course in Portuguese");
+  assert.deepEqual(res.ambiguous, [
+    { surface: "Portuguese", note: "Portugal" },
+  ]);
+  assert.equal(res.tasks.length, 1);
+});
+
+test("a fallback answer with raw line breaks inside the text still parses", async () => {
+  const groq = fakeGroq(
+    '{"text": "I made a list.\n\nI still want to write again.", "ambiguous": [], "tasks": []}',
+  );
+  const res = await new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(res.text, "I made a list.\n\nI still want to write again.");
+});
+
+test("the prompt's triple-quote fence echoed around the text is stripped", async () => {
+  const groq = fakeGroq(
+    JSON.stringify({ text: '"""Like I have to go out,"""', ambiguous: [] }),
+  );
+  const res = await new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(res.text, "Like I have to go out,");
+});
+
+test("structured output whose text holds the whole JSON answer is unwrapped", async () => {
+  const { fn } = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      structured_output: {
+        text: '{"text": "At least I finished my website", "ambiguous": [], "tasks": []}',
+        ambiguous: [],
+        tasks: [],
+      },
+    },
+  ]);
+  const out = await new Enricher(undefined, fn).enrich({
+    text: "x",
+    candidates: [],
+  });
+  assert.equal(out.text, "At least I finished my website");
+});
+
+/** A query whose stream never yields: a CLI subprocess that went quiet. */
+const hangingQuery = (() =>
+  (async function* () {
+    await new Promise(() => {});
+  })()) as unknown as QueryFn;
+
+test("a Claude call that hangs times out and the chain moves on", async () => {
+  const groq = fakeGroq('{"text":"rescued","ambiguous":[]}');
+  const out = await new Enricher(
+    "claude-haiku-4-5",
+    hangingQuery,
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+    undefined,
+    20,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(out.text, "rescued");
+});
+
+test("the SDK gets an abort controller and the chat fallbacks get the timeout", async () => {
+  const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
+  await new Enricher("m", fn).enrich({ text: "x", candidates: [] });
+  assert.ok(calls[0]!.options.abortController instanceof AbortController);
+
+  const seen: (number | undefined)[] = [];
+  const groqFn: GroqChatFn = async (_k, _m, _msgs, _url, timeoutMs) => {
+    seen.push(timeoutMs);
+    return { text: '{"text":"ok"}', usage: { input: 0, output: 0 } };
+  };
+  await new Enricher(
+    "m",
+    failQuery(),
+    [{ apiKey: "k", model: "g" }],
+    groqFn,
+    undefined,
+    1234,
+  ).enrich({ text: "x", candidates: [] });
+  assert.deepEqual(seen, [1234]);
+});
+
+test("a step that keeps failing is skipped once its circuit opens", async () => {
+  const claudeCalls: string[] = [];
+  const query = ((args: any) => {
+    claudeCalls.push(args.options.model);
+    return failQuery("overloaded 529")(args);
+  }) as unknown as QueryFn;
+  const groq = fakeGroq('{"text":"ok","ambiguous":[]}');
+  const enricher = new Enricher(
+    "claude-haiku-4-5",
+    query,
+    [{ apiKey: "k", model: "g", name: "Groq" }],
+    groq.fn,
+  );
+  for (let i = 0; i < 5; i++)
+    await enricher.enrich({ text: "x", candidates: [] });
+  // three failures open haiku's circuit; jots four and five go straight to Groq
+  assert.equal(claudeCalls.length, 3);
+  assert.equal(groq.calls.length, 5);
+});
+
+test("every step down: the chain throws ModelsDownError once and says so once", async () => {
+  const t = { now: 0 };
+  const notices: string[] = [];
+  const failGroq: GroqChatFn = async () => {
+    throw new Error("Connection error.");
+  };
+  const enricher = new Enricher(
+    "claude-haiku-4-5",
+    failQuery("overloaded 529"),
+    [{ apiKey: "k", model: "g", name: "Groq" }],
+    failGroq,
+    undefined,
+    15_000,
+    () => t.now,
+  );
+  enricher.setSwitchNotifier((to) => {
+    notices.push(to);
+  });
+  for (let i = 0; i < 2; i++)
+    await assert.rejects(enricher.enrich({ text: "x", candidates: [] }));
+  assert.equal(enricher.available(), true);
+  await assert.rejects(
+    enricher.enrich({ text: "x", candidates: [] }),
+    ModelsDownError,
+  );
+  assert.equal(enricher.available(), false);
+  // open circuits: nothing is called, and the down notice isn't repeated
+  await assert.rejects(
+    enricher.enrich({ text: "x", candidates: [] }),
+    ModelsDownError,
+  );
+  assert.deepEqual(notices, ["down"]);
+  // the cooldown runs out: a trial call goes through again
+  t.now = 120_000;
+  assert.equal(enricher.available(), true);
+});
+
+test("the switch notice carries the error that moved it down the chain", async () => {
+  const errs: unknown[] = [];
+  const { fn } = fakeQuery([assistantText('{"text":"ok"}')]);
+  const query = ((args: any) =>
+    args.options.model === "claude-haiku-4-5"
+      ? failQuery("usage limit reached")(args)
+      : fn(args)) as unknown as QueryFn;
+  const enricher = new Enricher(
+    "claude-haiku-4-5",
+    query,
+    [],
+    undefined,
+    "claude-sonnet-5",
+  );
+  enricher.setSwitchNotifier((_to, _model, err) => {
+    errs.push(err);
+  });
+  await enricher.enrich({ text: "x", candidates: [] });
+  assert.equal((errs[0] as Error).message, "usage limit reached");
+});
+
+test("a failure no cooldown can fix never opens a circuit, so jots aren't held on it", async () => {
+  const enricher = new Enricher(
+    "claude-haiku-4-5",
+    failQuery("invalid x-api-key (401)"),
+  );
+  for (let i = 0; i < 5; i++)
+    await assert.rejects(enricher.enrich({ text: "x", candidates: [] }), {
+      message: "invalid x-api-key (401)",
+    });
+  assert.equal(enricher.available(), true);
+});
+
+test("an unusable answer never trips the breaker, even when it reads like an outage", async () => {
+  // the rejection quotes the answer, and "500" in it would match isRecoverable's 5xx
+  const groq = fakeGroq("I walked 500 metres on a network of trails today");
+  const enricher = new Enricher(
+    "claude-haiku-4-5",
+    failQuery("invalid x-api-key (401)"),
+    [{ apiKey: "k", model: "g", name: "Groq" }],
+    groq.fn,
+  );
+  for (let i = 0; i < 4; i++)
+    await assert.rejects(enricher.enrich({ text: "x", candidates: [] }));
+  assert.equal(groq.calls.length, 4);
+  assert.equal(enricher.available(), true);
+});
+
+test("a fallback's malformed lists are dropped instead of trusted", async () => {
+  const groq = fakeGroq('{"text":"x","ambiguous":"none","tasks":{}}');
+  const out = await new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(out.text, "x");
+  assert.deepEqual(out.ambiguous, []);
+  assert.deepEqual(out.tasks, []);
+});
+
+test("an API error reported as a success result moves down the chain", async () => {
+  const { fn } = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      is_error: true,
+      result: "API Error: 529 overloaded",
+    } as Msg,
+  ]);
+  const groq = fakeGroq('{"text":"rescued","ambiguous":[]}');
+  const out = await new Enricher(
+    "claude-haiku-4-5",
+    fn,
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(out.text, "rescued");
 });

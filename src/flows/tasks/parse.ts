@@ -17,7 +17,7 @@
 
 import { createHash } from "node:crypto";
 import * as chrono from "chrono-node";
-import { escapeHtml, escapeRe } from "../../core.ts";
+import { escapeHtml, escapeRe, isDateLike } from "../../core.ts";
 import type { TaskType } from "../../db.ts";
 import { DATE_RE, dateFromIso, plainDate } from "../../time.ts";
 
@@ -354,16 +354,6 @@ const PERSONAL_CUE =
 // never be recognised as the filler they are.
 const TAIL_FILLER =
   /[\s,.;:—-]*(?<![\p{L}\p{N}])(by|due|on|at|in|from|starting|start|starts|begin|begins|until|till|before|the|end|ends|of|for|and|then|to|até|ate|para|pra|em|na|no|de|do|da|dia|que|senast|innan|på|pa|den|i)(?![\p{L}\p{N}])[\s,.;:—-]*$/iu;
-
-/** A chrono hit that pins down an actual day, rather than a bare clock time ("at 7pm"). */
-function isDateLike(r: chrono.ParsedResult): boolean {
-  return (
-    (r.start.isCertain("day") ||
-      r.start.isCertain("weekday") ||
-      r.start.isCertain("month")) &&
-    !r.start.tags().has("casualReference/now")
-  );
-}
 
 /** Date spans in a line, from the first locale that finds any. A bare clock time is not a
  *  date and never counts (see isDateLike). */

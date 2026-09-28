@@ -64,9 +64,46 @@ export function makeJotId(): string {
 /** Errors worth retrying (transient infra); anything else is treated as unrecoverable. */
 export function isRecoverable(err: unknown): boolean {
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  return /timeout|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
+  // "connection error" / "timed out" are the OpenAI-shaped SDKs' (Groq, OpenCode) words
+  // for the same network failures.
+  return /timeout|timed out|connection error|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
     m,
   );
+}
+
+/**
+ * Per-upstream circuit breaker, token-free. `threshold` failures in a row open it for
+ * `cooldownMs`, during which `allows()` is false and callers skip straight to the next
+ * option. Once the cooldown is up one trial call is let through: success closes it, a
+ * failure opens it for another cooldown.
+ */
+export class CircuitBreaker {
+  private failures = 0;
+  private openUntil = 0;
+  lastError: unknown;
+
+  constructor(
+    private threshold: number,
+    private cooldownMs: number,
+    private now: () => number = Date.now,
+  ) {}
+
+  allows(): boolean {
+    return this.now() >= this.openUntil;
+  }
+
+  success(): void {
+    this.failures = 0;
+    this.openUntil = 0;
+    this.lastError = undefined;
+  }
+
+  failure(err: unknown): void {
+    this.failures++;
+    this.lastError = err;
+    if (this.failures >= this.threshold)
+      this.openUntil = this.now() + this.cooldownMs;
+  }
 }
 
 /** A jot's line can be edited/deleted only once it exists in the note: done, or abandoned
@@ -248,6 +285,12 @@ export function retryNotice(
   const left = Math.max(0, max - attempts);
   const more = left === 1 ? "one more try" : `${left} more tries`;
   return `⚠️ That ${kind} jot didn't go through (attempt ${attempts} of ${max}). I'll try again on my own — ${more} left, or decide it now.\n${errorBlock(error)}`;
+}
+
+/** Status line for a jot held back because every enrichment model is down. It keeps its
+ *  place in the note and isn't charged a retry; the sweep picks it up once one is back. */
+export function heldNotice(kind: JotKind): string {
+  return `⏸ Every enrichment model is down right now, so this ${kind} jot is waiting. It goes into your journal on its own once one is back.`;
 }
 
 /** Status line once a jot is given up on. The text is in the note un-enriched, so what's
@@ -535,6 +578,24 @@ const wikilinkRe = /\[\[.*?\]\]/g;
  * relative to that entry's day. Token-free (chrono-node is a deterministic parser, not
  * a model call) and never touches text already inside an existing `[[wikilink]]`.
  */
+/**
+ * A chrono hit that pins down an actual day. chrono also matches bare times ("at 3pm",
+ * "meeting at 9") by defaulting the day to the reference date — a clock time, not a date
+ * — so the parse must have fixed a day/weekday/month. "now" resolves to today but reads as
+ * "this moment", so its casual-reference tag rules it out. "for a week" / "for 3 days" is
+ * a duration that chrono resolves to a day that far ahead ("been in the dryer for a week
+ * now" became next Monday), so it's out too.
+ */
+export function isDateLike(r: chrono.ParsedResult): boolean {
+  return (
+    (r.start.isCertain("day") ||
+      r.start.isCertain("weekday") ||
+      r.start.isCertain("month")) &&
+    !r.start.tags().has("casualReference/now") &&
+    !/^for\s/i.test(r.text)
+  );
+}
+
 export function linkDateWords(text: string, referenceDate: string): string {
   if (!text.trim()) return text;
   const linkSpans = [...text.matchAll(wikilinkRe)].map(
@@ -544,16 +605,6 @@ export function linkDateWords(text: string, referenceDate: string): string {
     linkSpans.some(([s, e]) => start < e && end > s);
 
   const ref = dateFromIso(referenceDate);
-  // chrono also matches bare times ("at 3pm", "meeting at 9") by defaulting the day to
-  // the reference date — that's not a date word, it's a clock time, so require the
-  // parse to have actually pinned down a day/weekday/month before linking it. "now" gets
-  // the same certain-day treatment (it resolves to today) but reads as "this moment", not
-  // a day reference, so it's excluded by its casual-reference tag rather than linked.
-  const isDateLike = (r: chrono.ParsedResult) =>
-    (r.start.isCertain("day") ||
-      r.start.isCertain("weekday") ||
-      r.start.isCertain("month")) &&
-    !r.start.tags().has("casualReference/now");
   // chrono leans on `\b`, which is ASCII-only in JS: in "Pokémon" the accented é counts as
   // a non-word char, so "mon" looks like a standalone weekday and the word gets a Monday
   // link spliced into the middle of it. Re-check both edges against a Unicode letter/digit
@@ -1100,5 +1151,88 @@ export function reprocessTargets(jots: Pick<Jot, "anchor">[]): string[] {
     seen.add(j.anchor);
     out.push(j.anchor);
   }
+  return out;
+}
+
+/** Escape raw control characters (a literal newline, tab…) that sit inside JSON string
+ *  literals. Weaker chat models write a multi-paragraph "text" with real line breaks,
+ *  which JSON.parse rejects outright; outside a string they're whitespace and stay. */
+function escapeControlsInStrings(s: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (const ch of s) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      else if (ch < " ") {
+        out += JSON.stringify(ch).slice(1, -1); // \n, \t, \u0001…
+        continue;
+      }
+    } else if (ch === '"') inString = true;
+    out += ch;
+  }
+  return out;
+}
+
+/** Read a model's free-text answer as a JSON object. Usually it is clean JSON; sometimes
+ *  it's wrapped in a ```json fence or a stray sentence, or carries raw line breaks inside
+ *  a string. Tries the clean parse first, then the outermost {...} span, each strictly
+ *  and then with those line breaks escaped. `null` when nothing parses to an object. */
+export function parseModelJson(s: string): Record<string, unknown> | null {
+  const cleaned = s
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  const a = cleaned.indexOf("{"),
+    b = cleaned.lastIndexOf("}");
+  const spans = [cleaned];
+  if (a >= 0 && b > a) spans.push(cleaned.slice(a, b + 1));
+  for (const span of spans)
+    for (const attempt of [span, escapeControlsInStrings(span)]) {
+      try {
+        const v = JSON.parse(attempt);
+        if (v && typeof v === "object" && !Array.isArray(v)) return v;
+      } catch {
+        /* next attempt */
+      }
+    }
+  return null;
+}
+
+/** The enrichment payload, as far as it could be read. */
+export interface ModelPayload {
+  text: string;
+  ambiguous?: unknown;
+  tasks?: unknown;
+}
+
+/**
+ * Undo the ways a model mangles the "text" field of an enrichment answer: the whole JSON
+ * answer nested inside it again (`{"text": "{\"text\": ...}"}`, or the raw object as a
+ * string), and the `"""` fence the prompt wraps the entry in echoed back around it.
+ * Nested payloads are unwrapped a few levels deep; the innermost `ambiguous`/`tasks`
+ * win when the outer ones are empty, since that's where the model actually put them.
+ */
+export function unwrapModelPayload(p: ModelPayload): ModelPayload {
+  let out = { ...p };
+  for (let i = 0; i < 3; i++) {
+    const t = out.text.trim();
+    if (!t.startsWith("{") && !t.startsWith("```")) break;
+    const inner = parseModelJson(t);
+    if (!inner || typeof inner.text !== "string") break;
+    const empty = (v: unknown) => !Array.isArray(v) || v.length === 0;
+    out = {
+      text: inner.text,
+      ambiguous: empty(out.ambiguous)
+        ? (inner.ambiguous ?? out.ambiguous)
+        : out.ambiguous,
+      tasks: empty(out.tasks) ? (inner.tasks ?? out.tasks) : out.tasks,
+    };
+  }
+  const fenced = out.text.trim().match(/^"""([\s\S]*)"""$/);
+  if (fenced) out.text = (fenced[1] ?? "").trim();
   return out;
 }

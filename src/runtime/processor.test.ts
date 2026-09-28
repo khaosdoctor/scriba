@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Jot } from "../db.ts";
 import { MAX_ATTEMPTS } from "../db.ts";
-import { JotProcessor } from "./processor.ts";
+import { ModelsDownError } from "../services/enrich.ts";
+import { HELD as HELD_MARKER, JotProcessor } from "./processor.ts";
 
 /** Status messages the bot was asked to post, with the buttons each one carried. */
 type Posted = { id: string; html: string; opts: any };
@@ -165,4 +166,30 @@ test("detection can be switched off, and never asks about the same jot twice", a
   const none = harness();
   assert.deepEqual(await none.processor.tasksFrom([], jot()), []);
   assert.deepEqual(await none.processor.tasksFrom(undefined, jot()), []);
+});
+
+test("every model down: the jot goes back to pending, no attempt charged, one held notice", async () => {
+  const { processor, posted, updates } = harness();
+  await processor.fail(jot(), new ModelsDownError(new Error("overloaded 529")));
+
+  assert.deepEqual(updates, [
+    ["abcd1234", { status: "pending" }],
+    ["abcd1234", { error: HELD_MARKER }],
+  ]);
+  assert.equal(posted.length, 1);
+  assert.match(posted[0]!.html, /Every enrichment model is down/);
+  assert.deepEqual(buttons(posted[0]), { retry: false, discard: true });
+
+  // a sweep that finds it still held says nothing more
+  await processor.hold(jot({ error: HELD_MARKER }));
+  assert.equal(posted.length, 1);
+});
+
+test("a held notice that couldn't be sent isn't marked, so the next sweep tries again", async () => {
+  const { processor, updates } = harness();
+  processor.bot.status = async () => {
+    throw new Error("telegram 502");
+  };
+  await processor.hold(jot());
+  assert.deepEqual(updates, []);
 });

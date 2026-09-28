@@ -4,6 +4,7 @@ import {
   AGENT_UPDATE_CHARS,
   anchorLine,
   assetEmbed,
+  CircuitBreaker,
   candidates,
   cleanNoteTitle,
   clipUpdate,
@@ -46,6 +47,7 @@ import {
   noteSuggestions,
   parseEntrySize,
   parseLiteralEdit,
+  parseModelJson,
   parseRuleWords,
   parseWizardRef,
   placeholderLine,
@@ -62,6 +64,7 @@ import {
   thoughtIcon,
   tokenize,
   toolIcon,
+  unwrapModelPayload,
   WIZARD_ENTRYSIZE_REF,
   WIZARD_NOTE_REF,
   WIZARD_REGISTER_REF,
@@ -387,6 +390,23 @@ test("linkDateWords ignores bare clock times that carry no date", () => {
   assert.equal(
     linkDateWords("Met the doctor at 3pm today", ref),
     "Met the doctor [[2026-07-10|at 3pm today]]",
+  );
+});
+
+test("linkDateWords leaves a 'for <duration>' span alone", () => {
+  const ref = "2026-09-28";
+  assert.equal(
+    linkDateWords("in the dryer for a week now", ref),
+    "in the dryer for a week now",
+  );
+  assert.equal(
+    linkDateWords("I stayed there for 3 days", ref),
+    "I stayed there for 3 days",
+  );
+  // a real relative date still links
+  assert.equal(
+    linkDateWords("see you in a week", ref),
+    "see you [[2026-10-05|in a week]]",
   );
 });
 
@@ -1195,4 +1215,84 @@ test("formatListPage clamps the page and footers what is off screen", () => {
 
   // A custom separator keeps the footer on its own line.
   assert.match(formatListPage(items, 0, 2, "/x", ", "), /^item1, item2\n\n/);
+});
+
+test("parseModelJson reads clean, fenced, prose-wrapped and line-broken JSON", () => {
+  assert.deepEqual(parseModelJson('{"text":"a"}'), { text: "a" });
+  assert.deepEqual(parseModelJson('```json\n{"text":"a"}\n```'), { text: "a" });
+  assert.deepEqual(parseModelJson('Sure: {"text":"a"} ok'), { text: "a" });
+  assert.deepEqual(parseModelJson('{"text": "a\n\nb\tc"}'), {
+    text: "a\n\nb\tc",
+  });
+  assert.deepEqual(parseModelJson('{\n  "text": "a"\n}'), { text: "a" });
+  assert.equal(parseModelJson("no json here"), null);
+  assert.equal(parseModelJson("[1,2]"), null);
+  assert.equal(parseModelJson('{"text": "unterminated'), null);
+});
+
+test("unwrapModelPayload unwraps a nested answer and keeps the inner lists", () => {
+  const nested = {
+    text: '{"text": "Also [[2026-09-29|Tuesday]] I have an interview", "ambiguous": [], "tasks": [{"description": "Go to the interview", "type": "personal"}]}',
+    ambiguous: [],
+    tasks: [],
+  };
+  const out = unwrapModelPayload(nested);
+  assert.equal(out.text, "Also [[2026-09-29|Tuesday]] I have an interview");
+  assert.deepEqual(out.tasks, [
+    { description: "Go to the interview", type: "personal" },
+  ]);
+});
+
+test("unwrapModelPayload keeps outer lists when they're already filled", () => {
+  const out = unwrapModelPayload({
+    text: '{"text": "hi", "ambiguous": [{"surface":"x","note":"y"}]}',
+    ambiguous: [{ surface: "a", note: "b" }],
+  });
+  assert.equal(out.text, "hi");
+  assert.deepEqual(out.ambiguous, [{ surface: "a", note: "b" }]);
+});
+
+test("unwrapModelPayload unwraps several levels and strips an echoed fence", () => {
+  const lvl2 = JSON.stringify({ text: '"""deep"""' });
+  const lvl1 = JSON.stringify({ text: lvl2 });
+  assert.equal(unwrapModelPayload({ text: lvl1 }).text, "deep");
+});
+
+test("unwrapModelPayload leaves ordinary text alone, braces included", () => {
+  for (const text of [
+    "Plain entry with [[Link]]",
+    "{curly} is how I write sets",
+    '{"not": "a payload"}',
+    'She said """hi""" in the middle',
+  ])
+    assert.equal(unwrapModelPayload({ text }).text, text);
+});
+
+test("CircuitBreaker opens after the threshold, lets one trial through after the cooldown", () => {
+  const t = { now: 0 };
+  const b = new CircuitBreaker(2, 100, () => t.now);
+  b.failure(new Error("a"));
+  assert.equal(b.allows(), true);
+  b.failure(new Error("b"));
+  assert.equal(b.allows(), false);
+  assert.equal((b.lastError as Error).message, "b");
+  t.now = 100;
+  assert.equal(b.allows(), true);
+  // the trial fails: straight back open, no second run-up to the threshold
+  b.failure(new Error("c"));
+  assert.equal(b.allows(), false);
+  t.now = 200;
+  b.success();
+  assert.equal(b.allows(), true);
+  b.failure(new Error("d"));
+  assert.equal(b.allows(), true);
+});
+
+test("isRecoverable covers the OpenAI-shaped SDKs' network errors", () => {
+  assert.equal(isRecoverable(new Error("Connection error.")), true);
+  assert.equal(isRecoverable(new Error("Request timed out.")), true);
+  assert.equal(
+    isRecoverable(new Error("timeout after 15s (claude-haiku-4-5)")),
+    true,
+  );
 });

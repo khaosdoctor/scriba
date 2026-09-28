@@ -30,9 +30,25 @@ deployed on the homelab (Coolify). Single user.
   (`FallbackTranscriber`); non-English is translated in (Groq `/translations`, or the
   enricher for Parakeet voice + all text).
 - **Every model call falls back remote → local.** Enrichment tries the chosen Claude
-  model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model, and
-  posts the jot un-enriched when all three fail. The user is told once per change of step,
-  not per jot. Vision has no Groq step.
+  model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model, then
+  OpenCode Go when `OPENCODE_GO_API_KEY` is set, and posts the jot un-enriched when all fail. The user is told once per change of step,
+  not per jot, with the error that moved it. Vision has no Groq step.
+- **No model call waits forever, and a dead step is skipped.** Each call is capped at
+  `ENRICH_TIMEOUT_MS` (15s): the SDK gets an `AbortController` and the answer is raced
+  against it, the chat fallbacks get the same cap with SDK retries off (the next step is
+  the retry). Each step has a `CircuitBreaker` (`core.ts`, token-free): three transient
+  failures in a row (`isRecoverable`: timeouts, 5xx, 429, network) and the step is skipped
+  for two minutes, then one trial call decides. An unusable answer or a rejected key still
+  moves down the chain but never trips a breaker, so it can't hold jots behind a failure no
+  cooldown fixes; those jots end the usual way, posted un-enriched. Voice fix is
+  best-effort: when it fails the original transcript goes on to enrichment. When every
+  step is open, `run` throws `ModelsDownError` and the user is told once; the processor
+  then **holds** jots — no claim, no retry charged, `heldNotice` on the status message,
+  the placeholder keeps its place — and the retry sweep brings them back once a cooldown
+  lets a trial through. Only the SDK path gets `outputFormat`; the "reply with one JSON
+  object" instruction goes to the chat fallbacks alone, because given to the SDK it fights
+  the StructuredOutput tool (haiku answers in text and runs out of turns, sonnet nests the
+  JSON inside `text`).
 - **Four jot kinds.** `text`/`audio` carry enrichable text (audio is transcribed).
   An **image's caption is the entry text**, enriched and wikilinked like any other jot —
   what you type alongside the photo is the jot, not the embed's alt (Telegram's Bot API
@@ -89,7 +105,8 @@ deployed on the homelab (Coolify). Single user.
   the composed line after enrichment, resolving phrases like "yesterday", "three weeks
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not
   processing time) and rewriting them to `[[YYYY-MM-DD|phrase]]`. The target daily note
-  doesn't need to exist yet.
+  doesn't need to exist yet. A `for <duration>` span ("for a week now") is a length of
+  time, and chrono would resolve it to a day that far ahead, so it stays unlinked.
 - **Years are linked by the enricher, not by a regex.** The vault keeps a note per year
   under `maps of content/years`, so every year an entry mentions is linked — `[[1918]]`,
   and `[[146 BCE]]` before the common era (always BCE, never BC/AD). This is the enricher's

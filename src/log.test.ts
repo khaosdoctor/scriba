@@ -37,13 +37,18 @@ test("secrets are censored before they reach the stream", () => {
     telegram: { token: "SECRET-TOKEN", allowedUserId: 1 },
     obsidian: { key: "SECRET-KEY", url: "http://127.0.0.1:27124" },
     transcription: { groqApiKey: "SECRET-GROQ", mode: "local" },
-    enrich: { groqApiKey: "SECRET-GROQ-2", model: "claude-haiku-4-5" },
+    enrich: {
+      groqApiKey: "SECRET-GROQ-2",
+      opencodeApiKey: "SECRET-OPENCODE",
+      model: "claude-haiku-4-5",
+    },
   }`);
 
   assert.equal(rec.telegram.token, "***");
   assert.equal(rec.obsidian.key, "***");
   assert.equal(rec.transcription.groqApiKey, "***");
   assert.equal(rec.enrich.groqApiKey, "***");
+  assert.equal(rec.enrich.opencodeApiKey, "***");
   // The whole point is that config objects stay loggable: only the secret is taken out.
   assert.equal(rec.telegram.allowedUserId, 1);
   assert.equal(rec.obsidian.url, "http://127.0.0.1:27124");

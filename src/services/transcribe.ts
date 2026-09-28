@@ -12,7 +12,9 @@ export interface Transcriber {
 export class GroqTranscriber implements Transcriber {
   private groq: Groq;
   constructor(apiKey: string) {
-    this.groq = new Groq({ apiKey });
+    // Parakeet is the retry, so no SDK retries in front of it. The timeout covers the
+    // upload plus Whisper on a long note, so it's the SDK's own 60s, said out loud.
+    this.groq = new Groq({ apiKey, timeout: 60_000, maxRetries: 0 });
   }
 
   async transcribe(bytes: Uint8Array, ext: string): Promise<string> {
@@ -50,7 +52,12 @@ export class ParakeetTranscriber implements Transcriber {
       { backend: "parakeet", url: this.url, ext, bytes: bytes.length },
       "transcribing",
     );
-    const res = await fetch(this.url, { method: "POST", body: form });
+    // Local CPU inference on a long voice note takes a while; this only bounds a hang.
+    const res = await fetch(this.url, {
+      method: "POST",
+      body: form,
+      signal: AbortSignal.timeout(120_000),
+    });
     if (!res.ok) throw new Error(`parakeet ${res.status}: ${await res.text()}`);
     const text = res.headers.get("content-type")?.includes("json")
       ? ((await res.json()) as { text?: string }).text

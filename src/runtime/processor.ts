@@ -10,6 +10,7 @@ import {
   escapeHtml,
   forcedCandidates,
   gaveUpMessage,
+  heldNotice,
   isRecoverable,
   journalLine,
   linkDateWords,
@@ -29,12 +30,15 @@ import {
   type TaskDraft,
 } from "../flows/tasks/parse.ts";
 import { logger } from "../log.ts";
-import type { Enricher } from "../services/enrich.ts";
+import { type Enricher, ModelsDownError } from "../services/enrich.ts";
 import type { LinkIndex } from "../services/links.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import type { Transcriber } from "../services/transcribe.ts";
 
 const log = logger("processor");
+
+// `error` marker on a jot held back while every model is down.
+export const HELD = "held: every enrichment model is down";
 
 /** First status line shown per jot kind while it's being worked on. */
 const STARTING: Record<Jot["kind"], string> = {
@@ -135,6 +139,11 @@ export class JotProcessor {
         );
       }
     }
+    // Every model is down: don't claim, don't charge a retry, just wait. The placeholder
+    // keeps the jot's place in the note and the retry sweep brings it back once a
+    // breaker's cooldown lets a trial call through. Video needs no model.
+    if (loaded.kind !== "video" && !this.enricher.available())
+      return this.hold(loaded);
     // Atomic claim — only the winner proceeds, so flush + sweeps can't double-process.
     if (!(await this.repo.claim(id)))
       return log.debug({ id }, "processJot: claim lost, another worker has it");
@@ -168,7 +177,19 @@ export class JotProcessor {
           id,
           `🎤 <i>${escapeHtml(original)}</i>\n\n🔧 Checking transcript…`,
         );
-        const proposed = await this.enricher.fixTranscript(original, vfModel);
+        // Voice fix is an optional clean-up: when it can't run, the original goes on
+        // to enrichment instead of failing the whole jot. Held on ModelsDownError, like
+        // any other step, since enrichment right after would hit the same wall.
+        const proposed = await this.enricher
+          .fixTranscript(original, vfModel)
+          .catch((err: unknown) => {
+            if (err instanceof ModelsDownError) throw err;
+            log.warn(
+              { id, err },
+              "voice fix failed — keeping the original transcript",
+            );
+            return original;
+          });
         await this.repo.updateJot(id, { proposed_text: proposed });
         // Only ask when there's an actual difference.
         if (proposed !== original) {
@@ -384,6 +405,12 @@ export class JotProcessor {
 
   /** Record a failure: retry if transient and under the cap, else give up gracefully. */
   private async fail(jot: Jot, err: unknown): Promise<void> {
+    // The chain went down under this jot: back to pending, the attempt not counted.
+    if (err instanceof ModelsDownError) {
+      await this.repo.updateJot(jot.id, { status: "pending" });
+      // Always re-post: the status message says "Weaving…" again after this attempt.
+      return this.hold({ ...jot, error: null });
+    }
     const msg = err instanceof Error ? err.message : String(err);
     const attempts = (jot.attempts ?? 0) + 1;
     const recoverable = isRecoverable(err);
@@ -454,6 +481,26 @@ export class JotProcessor {
         followers.length > 0 ? followers.length + 1 : 0,
       ),
     );
+  }
+
+  /** Leave a jot waiting while every model is down. The notice goes out once per hold
+   *  (marked in `error`), not on every sweep that finds it still waiting. */
+  private async hold(jot: Jot): Promise<void> {
+    if (jot.error === HELD)
+      return log.debug({ id: jot.id }, "jot still held, notice already sent");
+    log.warn(
+      { id: jot.id, kind: jot.kind },
+      "every enrichment model is down — jot held until one is back",
+    );
+    // Marked only once the notice is out, so a failed send is tried again next sweep.
+    // ponytail: a flush and a sweep reaching the same fresh jot together can both send
+    // it (a duplicate notice, nothing lost); a compare-and-swap mark would close that.
+    await this.bot
+      .status(jot.id, heldNotice(jot.kind), { discard: true })
+      .then(() => this.repo.updateJot(jot.id, { error: HELD }))
+      .catch((err) =>
+        log.warn({ id: jot.id, err }, "could not post the held notice"),
+      );
   }
 
   /** Post a failure on the jot's status message with 🔄 Retry / 🗑 Delete under it. The
