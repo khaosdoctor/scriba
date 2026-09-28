@@ -31,8 +31,9 @@ deployed on the homelab (Coolify). Single user.
   enricher for Parakeet voice + all text).
 - **Every model call falls back remote → local.** Enrichment tries the chosen Claude
   model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model, then
-  OpenCode Go when `OPENCODE_GO_API_KEY` is set, and posts the jot un-enriched when all fail. The user is told once per change of step,
-  not per jot, with the error that moved it. Vision has no Groq step.
+  OpenCode Go when `OPENCODE_GO_API_KEY` is set, and posts the jot un-enriched when all
+  fail. The user is told once per change of step, not per jot, with the error that moved
+  it. Vision has no Groq step.
 - **No model call waits forever, and a dead step is skipped.** Each call is capped at
   `ENRICH_TIMEOUT_MS` (15s): the SDK gets an `AbortController` and the answer is raced
   against it, the chat fallbacks get the same cap with SDK retries off (the next step is
@@ -321,8 +322,8 @@ deployed on the homelab (Coolify). Single user.
   `warn` for rejected/invalid input, `error` (with `{ err }`) for failures, `debug` for
   raw payloads. A new command or feature without logs on its happy path AND its rejection
   paths is incomplete. Secrets are stripped in pino core via `redact` in `src/log.ts`
-  (`*.token`/`*.key`/`*.groqApiKey`); log config objects freely, but add a path there if
-  you introduce a secret with a different field name.
+  (`*.token`/`*.key`/`*.groqApiKey`/`*.opencodeApiKey`); log config objects freely, but
+  add a path there if you introduce a secret with a different field name.
 - **Slash commands are discoverable.** Any new `bot.command(...)` also gets an entry in
   `setMyCommands` (in `ScribaBot.start`) so it shows in Telegram's `/` menu.
 - **Tests sit next to the source** as `<name>.test.ts`, one per file — except the admin
