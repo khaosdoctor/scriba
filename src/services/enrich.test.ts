@@ -684,3 +684,70 @@ test("enrich falls back to Groq text-parsing when structured output is exhausted
   assert.equal(out.text, "rescued by groq");
   assert.equal(groq.calls.length, 1);
 });
+
+test("a fallback answer nested inside its own text field is unwrapped, not journaled as JSON", async () => {
+  const inner = JSON.stringify({
+    text: "I enrolled in an electronics course in Portuguese",
+    ambiguous: [{ surface: "Portuguese", note: "Portugal" }],
+    tasks: [{ description: "Do one class a day", type: "personal" }],
+  });
+  const groq = fakeGroq(
+    JSON.stringify({ text: inner, ambiguous: [], tasks: [] }),
+  );
+  const res = await new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(res.text, "I enrolled in an electronics course in Portuguese");
+  assert.deepEqual(res.ambiguous, [
+    { surface: "Portuguese", note: "Portugal" },
+  ]);
+  assert.equal(res.tasks.length, 1);
+});
+
+test("a fallback answer with raw line breaks inside the text still parses", async () => {
+  const groq = fakeGroq(
+    '{"text": "I made a list.\n\nI still want to write again.", "ambiguous": [], "tasks": []}',
+  );
+  const res = await new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(res.text, "I made a list.\n\nI still want to write again.");
+});
+
+test("the prompt's triple-quote fence echoed around the text is stripped", async () => {
+  const groq = fakeGroq(
+    JSON.stringify({ text: '"""Like I have to go out,"""', ambiguous: [] }),
+  );
+  const res = await new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [{ apiKey: "k", model: "m" }],
+    groq.fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(res.text, "Like I have to go out,");
+});
+
+test("structured output whose text holds the whole JSON answer is unwrapped", async () => {
+  const { fn } = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      structured_output: {
+        text: '{"text": "At least I finished my website", "ambiguous": [], "tasks": []}',
+        ambiguous: [],
+        tasks: [],
+      },
+    },
+  ]);
+  const out = await new Enricher(undefined, fn).enrich({
+    text: "x",
+    candidates: [],
+  });
+  assert.equal(out.text, "At least I finished my website");
+});

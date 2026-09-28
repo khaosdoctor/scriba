@@ -2,7 +2,7 @@ import type { OutputFormat } from "@anthropic-ai/claude-agent-sdk";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import Groq from "groq-sdk";
 import { z } from "zod";
-import type { Candidate } from "../core.ts";
+import { type Candidate, parseModelJson, unwrapModelPayload } from "../core.ts";
 import { logger } from "../log.ts";
 
 export type QueryFn = typeof sdkQuery;
@@ -134,24 +134,19 @@ const TASK_OUTPUT_FORMAT: OutputFormat = {
   },
 };
 
+const ambiguousSchema = z.array(
+  z.object({ surface: z.string(), note: z.string() }),
+);
+const tasksSchema = z.array(detectedTaskSchema);
 /** Validates the agent's structured_output payload (the SDK's outputFormat already
  *  constrains the shape server-side; this guards against schema drift and the
  *  Groq fallback, which has no native structured-output support). */
 const enrichedPayloadSchema = z.object({
   text: z.string(),
-  ambiguous: z.array(z.object({ surface: z.string(), note: z.string() })),
+  ambiguous: ambiguousSchema,
   // Optional: the Groq fallback has no structured output to enforce this, and an answer
   // without the field is a valid answer — it just means "no tasks in this one".
-  tasks: z
-    .array(
-      z.object({
-        description: z.string(),
-        start: z.string().optional(),
-        due: z.string().optional(),
-        type: z.string().optional(),
-      }),
-    )
-    .optional(),
+  tasks: tasksSchema.optional(),
 });
 
 /** JSON Schema twin of enrichedPayloadSchema, for the SDK's outputFormat request param
@@ -322,9 +317,29 @@ export class Enricher {
     }
     if (!parsed) parsed = this.extractJson(text);
 
-    if (!parsed?.text)
+    if (typeof parsed?.text !== "string" || !parsed.text.trim())
       throw new Error(
         `enrichment returned no usable JSON: ${text.slice(0, 200)}`,
+      );
+    // A model can nest the whole answer inside "text" or echo the prompt's """ fence
+    // around it; left alone, that JSON lands in the journal verbatim.
+    const unwrapped = unwrapModelPayload(parsed as { text: string });
+    if (unwrapped.text !== parsed.text) {
+      log.warn(
+        { before: parsed.text.slice(0, 200) },
+        "enrich: model wrapped its answer inside text — unwrapped",
+      );
+      const ambiguous = ambiguousSchema.safeParse(unwrapped.ambiguous);
+      const tasks = tasksSchema.safeParse(unwrapped.tasks);
+      parsed = {
+        text: unwrapped.text,
+        ambiguous: ambiguous.success ? ambiguous.data : [],
+        tasks: tasks.success ? tasks.data : [],
+      };
+    }
+    if (!parsed.text?.trim())
+      throw new Error(
+        `enrichment returned an empty text: ${text.slice(0, 200)}`,
       );
     log.info(
       {
@@ -584,31 +599,15 @@ export class Enricher {
     return { text, usage, structuredOutput };
   }
 
-  // The agent returns free-form text: usually clean JSON, occasionally wrapped in a
-  // ```json fence or a stray sentence. Try the clean parse first; fall back to the
-  // outermost {...} span only if that fails.
+  // The agent returns free-form text: usually clean JSON, occasionally fenced, wrapped
+  // in a stray sentence, or carrying raw line breaks inside a string (parseModelJson).
   private extractJson(
     s: string,
   ): { text?: string; ambiguous?: Candidate[]; tasks?: DetectedTask[] } | null {
-    const cleaned = s
-      .trim()
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/, "")
-      .trim();
-    try {
-      return JSON.parse(cleaned);
-    } catch {
-      /* fall through */
-    }
-    const a = cleaned.indexOf("{"),
-      b = cleaned.lastIndexOf("}");
-    if (a >= 0 && b > a) {
-      try {
-        return JSON.parse(cleaned.slice(a, b + 1));
-      } catch {
-        /* give up */
-      }
-    }
-    return null;
+    return parseModelJson(s) as {
+      text?: string;
+      ambiguous?: Candidate[];
+      tasks?: DetectedTask[];
+    } | null;
   }
 }

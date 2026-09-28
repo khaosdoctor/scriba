@@ -46,6 +46,7 @@ import {
   noteSuggestions,
   parseEntrySize,
   parseLiteralEdit,
+  parseModelJson,
   parseRuleWords,
   parseWizardRef,
   placeholderLine,
@@ -62,6 +63,7 @@ import {
   thoughtIcon,
   tokenize,
   toolIcon,
+  unwrapModelPayload,
   WIZARD_ENTRYSIZE_REF,
   WIZARD_NOTE_REF,
   WIZARD_REGISTER_REF,
@@ -1195,4 +1197,55 @@ test("formatListPage clamps the page and footers what is off screen", () => {
 
   // A custom separator keeps the footer on its own line.
   assert.match(formatListPage(items, 0, 2, "/x", ", "), /^item1, item2\n\n/);
+});
+
+test("parseModelJson reads clean, fenced, prose-wrapped and line-broken JSON", () => {
+  assert.deepEqual(parseModelJson('{"text":"a"}'), { text: "a" });
+  assert.deepEqual(parseModelJson('```json\n{"text":"a"}\n```'), { text: "a" });
+  assert.deepEqual(parseModelJson('Sure: {"text":"a"} ok'), { text: "a" });
+  assert.deepEqual(parseModelJson('{"text": "a\n\nb\tc"}'), {
+    text: "a\n\nb\tc",
+  });
+  assert.deepEqual(parseModelJson('{\n  "text": "a"\n}'), { text: "a" });
+  assert.equal(parseModelJson("no json here"), null);
+  assert.equal(parseModelJson("[1,2]"), null);
+  assert.equal(parseModelJson('{"text": "unterminated'), null);
+});
+
+test("unwrapModelPayload unwraps a nested answer and keeps the inner lists", () => {
+  const nested = {
+    text: '{"text": "Also [[2026-09-29|Tuesday]] I have an interview", "ambiguous": [], "tasks": [{"description": "Go to the interview", "type": "personal"}]}',
+    ambiguous: [],
+    tasks: [],
+  };
+  const out = unwrapModelPayload(nested);
+  assert.equal(out.text, "Also [[2026-09-29|Tuesday]] I have an interview");
+  assert.deepEqual(out.tasks, [
+    { description: "Go to the interview", type: "personal" },
+  ]);
+});
+
+test("unwrapModelPayload keeps outer lists when they're already filled", () => {
+  const out = unwrapModelPayload({
+    text: '{"text": "hi", "ambiguous": [{"surface":"x","note":"y"}]}',
+    ambiguous: [{ surface: "a", note: "b" }],
+  });
+  assert.equal(out.text, "hi");
+  assert.deepEqual(out.ambiguous, [{ surface: "a", note: "b" }]);
+});
+
+test("unwrapModelPayload unwraps several levels and strips an echoed fence", () => {
+  const lvl2 = JSON.stringify({ text: '"""deep"""' });
+  const lvl1 = JSON.stringify({ text: lvl2 });
+  assert.equal(unwrapModelPayload({ text: lvl1 }).text, "deep");
+});
+
+test("unwrapModelPayload leaves ordinary text alone, braces included", () => {
+  for (const text of [
+    "Plain entry with [[Link]]",
+    "{curly} is how I write sets",
+    '{"not": "a payload"}',
+    'She said """hi""" in the middle',
+  ])
+    assert.equal(unwrapModelPayload({ text }).text, text);
 });
