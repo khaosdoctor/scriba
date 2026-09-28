@@ -1,3 +1,10 @@
+## [1.49.1](https://github.com/khaosdoctor/scriba/compare/v1.49.0...v1.49.1) (2026-09-28)
+
+
+### Bug Fixes
+
+* **enrich:** turn off extended thinking for enrichment calls ([#20](https://github.com/khaosdoctor/scriba/issues/20)) ([3ebc900](https://github.com/khaosdoctor/scriba/commit/3ebc900128f06dda039da072daed00035bf29103))
+
 ## [1.49.0](https://github.com/khaosdoctor/scriba/compare/v1.48.1...v1.49.0) (2026-09-28)
 
 
@@ -26,11 +33,4 @@
 
 * **tasks:** lowercase work notes folder ([97c7cbe](https://github.com/khaosdoctor/scriba/commit/97c7cbe6057c6a7bb217e1363c661aaf6ba426ff))
 * **tasks:** point work note default to notes/Work notes ([8074a82](https://github.com/khaosdoctor/scriba/commit/8074a829429114e8188e975edd873819e32b49a7))
-
-## [1.47.1](https://github.com/khaosdoctor/scriba/compare/v1.47.0...v1.47.1) (2026-09-27)
-
-
-### Bug Fixes
-
-* **enrich:** treat unusable model output as a failed tier and reject blank PARAKEET_URL at boot ([b7149ee](https://github.com/khaosdoctor/scriba/commit/b7149eec4fe421d6f4e0b133f5260a03262422fd))
 
