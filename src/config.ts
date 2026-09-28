@@ -82,7 +82,7 @@ const envSchema = z.object({
   ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
   // OpenCode Go: OpenAI-compatible fallback after Groq. Requires an API key from
   // opencode.ai/go. The model runs through OpenCode's proxy, not direct DeepSeek.
-  OPENCODE_API_KEY: z.string().optional(),
+  OPENCODE_GO_API_KEY: z.string().optional(),
   OPENCODE_FALLBACK_MODEL: z.string().default("deepseek-v4.1-flash"),
 
   // Voice-fix: when enabled, a second model lightly cleans the transcript before
@@ -146,7 +146,7 @@ export const config = {
     fallbackModel: env.ENRICH_FALLBACK_MODEL,
     // Reuses the transcription Groq key; empty ⇒ fallback disabled.
     groqApiKey: env.GROQ_API_KEY ?? "",
-    opencodeApiKey: env.OPENCODE_API_KEY ?? "",
+    opencodeApiKey: env.OPENCODE_GO_API_KEY ?? "",
     opencodeModel: env.OPENCODE_FALLBACK_MODEL,
   },
   voiceFix: {
