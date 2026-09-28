@@ -38,7 +38,7 @@ import type { Transcriber } from "../services/transcribe.ts";
 const log = logger("processor");
 
 // `error` marker on a jot held back while every model is down.
-const HELD = "held: every enrichment model is down";
+export const HELD = "held: every enrichment model is down";
 
 /** First status line shown per jot kind while it's being worked on. */
 const STARTING: Record<Jot["kind"], string> = {
@@ -486,12 +486,15 @@ export class JotProcessor {
   /** Leave a jot waiting while every model is down. The notice goes out once per hold
    *  (marked in `error`), not on every sweep that finds it still waiting. */
   private async hold(jot: Jot): Promise<void> {
+    if (jot.error === HELD)
+      return log.debug({ id: jot.id }, "jot still held, notice already sent");
     log.warn(
       { id: jot.id, kind: jot.kind },
       "every enrichment model is down — jot held until one is back",
     );
-    if (jot.error === HELD) return;
     // Marked only once the notice is out, so a failed send is tried again next sweep.
+    // ponytail: a flush and a sweep reaching the same fresh jot together can both send
+    // it (a duplicate notice, nothing lost); a compare-and-swap mark would close that.
     await this.bot
       .status(jot.id, heldNotice(jot.kind), { discard: true })
       .then(() => this.repo.updateJot(jot.id, { error: HELD }))

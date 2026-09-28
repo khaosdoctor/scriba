@@ -3,10 +3,7 @@ import { test } from "node:test";
 import type { Jot } from "../db.ts";
 import { MAX_ATTEMPTS } from "../db.ts";
 import { ModelsDownError } from "../services/enrich.ts";
-import { JotProcessor } from "./processor.ts";
-
-// Mirrors processor.ts's HELD marker.
-const HELD_MARKER = "held: every enrichment model is down";
+import { HELD as HELD_MARKER, JotProcessor } from "./processor.ts";
 
 /** Status messages the bot was asked to post, with the buttons each one carried. */
 type Posted = { id: string; html: string; opts: any };

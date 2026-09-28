@@ -78,6 +78,7 @@ export class ModelsDownError extends Error {
   constructor(cause: unknown) {
     super(
       `every enrichment model is down (last error: ${cause instanceof Error ? cause.message : String(cause)})`,
+      { cause },
     );
     this.name = "ModelsDownError";
   }
