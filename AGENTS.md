@@ -295,6 +295,19 @@ deployed on the homelab (Coolify). Single user.
   (`ScribaBot.syncEditedSource`, `bot.ts`): a squashed leader/follower is skipped, since a
   squashed line is several jots' sources combined into one and there's no single field to
   fold the edit back into.
+- **Connection health never spends a token.** `HealthMonitor` (`runtime/health.ts`) probes
+  every upstream once a minute, all at once, with a 5s timeout each: Anthropic and
+  Telegram at their bare host, Groq and OpenCode at `/models` with their key (skipped when
+  there is no key), Obsidian at its REST root through the client's own TLS dispatcher, and
+  Parakeet at the `/models` listing next to its transcription URL (`modelsUrlFor`). A
+  probe is a GET with no body, and `upstreams()` is the only place the URLs are built, so
+  `health.test.ts` fails if one of them ever points at a completions, messages or audio
+  endpoint. Two failed probes in a row mark an upstream down, one success brings it back,
+  and each transition is one Telegram notice plus the `onChange` callback. Keyed upstreams
+  need a 2xx (a rejected key is an outage for that fallback); the rest count any HTTP
+  answer. A round still running when the next tick comes makes that tick a no-op.
+  `/status` lists the snapshot through `formatHealth`; `isUp(name)` answers true for an
+  upstream nobody probes.
 
 ## Conventions
 

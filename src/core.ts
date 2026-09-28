@@ -911,6 +911,45 @@ export function formatStatus(v: StatusView): string {
   ].join("\n");
 }
 
+/** One upstream as the health monitor last saw it. `latencyMs` is null until the first
+ *  probe answers; `error` is the latest failed probe's, cleared by the next success. */
+export interface UpstreamStatus {
+  name: string;
+  up: boolean;
+  latencyMs: number | null;
+  error: string | null;
+  failures: number;
+  since: number;
+}
+
+/** /status block for the health monitor: one line per upstream. An error line is capped,
+ *  since a fetch error can carry a whole cause chain. */
+export function formatHealth(rows: UpstreamStatus[], now: number): string {
+  const lines = ["Upstreams:"];
+  if (!rows.length) lines.push("none probed");
+  for (const r of rows) {
+    const parts = [`${r.up ? "🟢" : "🔴"} ${r.name}`];
+    if (!r.up) parts.push(`down ${formatDuration(now - r.since)}`);
+    parts.push(r.latencyMs === null ? "not probed yet" : `${r.latencyMs} ms`);
+    if (r.error) parts.push(clipUpdate(r.error, 120));
+    lines.push(parts.join(" · "));
+  }
+  return lines.join("\n");
+}
+
+/** The model listing next to an OpenAI-style transcription endpoint:
+ *  `.../v1/audio/transcriptions` → `.../v1/models`. A GET there generates nothing, which
+ *  is why the health probe uses it instead of the endpoint itself. */
+export function modelsUrlFor(transcriptionsUrl: string): string {
+  const u = new URL(transcriptionsUrl);
+  const base = u.pathname
+    .replace(/\/audio\/transcriptions\/?$/, "")
+    .replace(/\/$/, "");
+  u.pathname = `${base}/models`;
+  u.search = "";
+  return u.toString();
+}
+
 /** GitHub Release bodies are conventional-changelog markdown: `### Section` headers and
  *  `* item ([#N](url)) ([sha](url))` bullets. Telegram gets plain text, not markdown, so
  *  this strips the `#`/`*` markers and the trailing commit/issue link refs, leaving

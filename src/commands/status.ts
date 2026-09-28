@@ -1,4 +1,4 @@
-import { formatStatus } from "../core.ts";
+import { formatHealth, formatStatus } from "../core.ts";
 import { logger } from "../log.ts";
 import type { Command } from "./types.ts";
 
@@ -9,7 +9,7 @@ export const status: Command = {
   description: "health snapshot",
   run: async (_ctx, _args, d) => {
     log.info("/status command");
-    return formatStatus({
+    const status = formatStatus({
       counts: await d.repo.statusCounts(),
       queueDepth: d.queue.depth,
       transcriber: d.transcriber.chain,
@@ -18,5 +18,6 @@ export const status: Command = {
       sha: d.sha,
       uptimeMs: Date.now() - d.startedAt,
     });
+    return `${status}\n\n${formatHealth(d.health.snapshot(), Date.now())}`;
   },
 };
