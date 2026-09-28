@@ -937,6 +937,10 @@ export function formatHealth(rows: UpstreamStatus[], now: number): string {
   return lines.join("\n");
 }
 
+/** OpenCode Go's OpenAI-compatible API root: the enrichment fallback's `baseUrl` and the
+ *  health probe's `/models` listing both hang off it. */
+export const OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1";
+
 /** The model listing next to an OpenAI-style transcription endpoint:
  *  `.../v1/audio/transcriptions` → `.../v1/models`. A GET there generates nothing, which
  *  is why the health probe uses it instead of the endpoint itself. */

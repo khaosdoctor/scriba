@@ -6,6 +6,7 @@ import { config } from "./config.ts";
 import {
   ENRICH_MODEL_KEY,
   formatDeployNotice,
+  OPENCODE_BASE_URL,
   VOICE_FIX_MODEL_KEY,
 } from "./core.ts";
 import { Repository } from "./db.ts";
@@ -72,7 +73,7 @@ async function main(): Promise<void> {
     fallbacks.push({
       apiKey: config.enrich.opencodeApiKey,
       model: config.enrich.opencodeModel,
-      baseUrl: "https://opencode.ai/zen/go/v1",
+      baseUrl: OPENCODE_BASE_URL,
       name: "OpenCode",
     });
   const enricher = new Enricher(

@@ -1,5 +1,10 @@
 import { type Dispatcher, fetch } from "undici";
-import { formatDuration, modelsUrlFor, type UpstreamStatus } from "../core.ts";
+import {
+  formatDuration,
+  modelsUrlFor,
+  OPENCODE_BASE_URL,
+  type UpstreamStatus,
+} from "../core.ts";
 import { logger } from "../log.ts";
 
 const log = logger("health");
@@ -11,8 +16,9 @@ export interface Upstream {
   name: string;
   url: string;
   headers?: Record<string, string>;
-  /** Only a 2xx counts as up. Set where a key is sent, since a rejected key means that
-   *  fallback is as dead as an unreachable host. Otherwise any HTTP answer counts. */
+  /** Only a 2xx counts as up. Set where a key is sent: Groq answers a bad key with 401,
+   *  so its probe also catches a revoked key; OpenCode's listing doesn't check the key,
+   *  so there it only proves the host answers. Otherwise any HTTP answer counts. */
   requireOk?: boolean;
   dispatcher?: Dispatcher;
 }
@@ -43,7 +49,7 @@ export function upstreams(t: HealthTargets, obsidian: Dispatcher): Upstream[] {
   if (t.opencodeApiKey)
     list.push({
       name: "opencode",
-      url: "https://opencode.ai/zen/go/v1/models",
+      url: `${OPENCODE_BASE_URL}/models`,
       headers: { Authorization: `Bearer ${t.opencodeApiKey}` },
       requireOk: true,
     });
@@ -61,16 +67,14 @@ function describe(err: unknown): string {
 
 /** Probes every upstream on a timer and keeps the latest status of each. A down
  *  upstream takes 2 failed probes in a row (one blip is not an outage), a recovery takes
- *  one success. Each transition is told to the owner once and handed to `onChange`. */
+ *  one success. Each transition is told to the owner once. */
 export class HealthMonitor {
   private state = new Map<string, UpstreamStatus>();
   private timer: NodeJS.Timeout | null = null;
-  private running = false;
 
   constructor(
     private targets: Upstream[],
     private notify: (text: string) => Promise<void>,
-    private onChange?: (name: string, up: boolean) => void,
     private intervalMs = 60_000,
     private timeoutMs = 5_000,
   ) {
@@ -106,31 +110,14 @@ export class HealthMonitor {
     log.info("health monitor stopped");
   }
 
-  /** An upstream nobody probes (not configured) reads as up: there is no evidence
-   *  against it, and callers use this to decide whether to skip a step. */
-  isUp(name: string): boolean {
-    return this.state.get(name)?.up ?? true;
-  }
-
   snapshot(): UpstreamStatus[] {
     return [...this.state.values()].map((s) => ({ ...s }));
   }
 
-  /** One round: every upstream at once. A round still running when the next tick
-   *  arrives makes that tick a no-op, so slow probes never pile up. Never throws. */
+  /** One round: every upstream at once. `probe` catches everything, so this never
+   *  throws, and the timeout keeps a round far shorter than the interval. */
   async check(): Promise<void> {
-    if (this.running) {
-      log.debug("previous health round still running, skipping tick");
-      return;
-    }
-    this.running = true;
-    try {
-      await Promise.all(this.targets.map((u) => this.probe(u)));
-    } catch (err) {
-      log.error({ err }, "health round failed");
-    } finally {
-      this.running = false;
-    }
+    await Promise.all(this.targets.map((u) => this.probe(u)));
   }
 
   private async probe(u: Upstream): Promise<void> {
@@ -167,7 +154,6 @@ export class HealthMonitor {
       );
       this.announce(
         name,
-        true,
         `🟢 ${name} is back (${latencyMs} ms) after ${formatDuration(downFor)} down.`,
       );
       return;
@@ -184,18 +170,13 @@ export class HealthMonitor {
       { upstream: name, latencyMs, error, failures: s.failures },
       "upstream down",
     );
-    this.announce(name, false, `🔴 ${name} is unreachable: ${error}`);
+    this.announce(name, `🔴 ${name} is unreachable: ${error}`);
   }
 
-  /** Tell the owner and the listener. Neither may throw back into a probe round. */
-  private announce(name: string, up: boolean, text: string): void {
+  /** Tell the owner. A failed send must not throw back into a probe round. */
+  private announce(name: string, text: string): void {
     this.notify(text).catch((err) =>
       log.error({ err, upstream: name }, "health notice failed to send"),
     );
-    try {
-      this.onChange?.(name, up);
-    } catch (err) {
-      log.error({ err, upstream: name }, "health onChange listener threw");
-    }
   }
 }

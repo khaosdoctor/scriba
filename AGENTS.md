@@ -303,11 +303,10 @@ deployed on the homelab (Coolify). Single user.
   probe is a GET with no body, and `upstreams()` is the only place the URLs are built, so
   `health.test.ts` fails if one of them ever points at a completions, messages or audio
   endpoint. Two failed probes in a row mark an upstream down, one success brings it back,
-  and each transition is one Telegram notice plus the `onChange` callback. Keyed upstreams
-  need a 2xx (a rejected key is an outage for that fallback); the rest count any HTTP
-  answer. A round still running when the next tick comes makes that tick a no-op.
-  `/status` lists the snapshot through `formatHealth`; `isUp(name)` answers true for an
-  upstream nobody probes.
+  and each transition is one Telegram notice. An upstream probed with a key needs a 2xx:
+  Groq answers a bad key with 401, while OpenCode's listing doesn't check the key, so
+  there a 2xx only proves the host answers. The rest count any HTTP answer. `/status`
+  lists the snapshot through `formatHealth`.
 
 ## Conventions
 

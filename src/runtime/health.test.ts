@@ -40,25 +40,25 @@ function monitor(
   targets: Upstream[],
   over: {
     notify?: (t: string) => Promise<void>;
-    onChange?: (name: string, up: boolean) => void;
     intervalMs?: number;
     timeoutMs?: number;
   } = {},
 ) {
   const notices: string[] = [];
-  const changes: [string, boolean][] = [];
   const m = new HealthMonitor(
     targets,
     over.notify ??
       (async (t) => {
         notices.push(t);
       }),
-    over.onChange ?? ((name, up) => void changes.push([name, up])),
     over.intervalMs,
     over.timeoutMs ?? 1_000,
   );
-  return { m, notices, changes };
+  return { m, notices };
 }
+
+const upOf = (m: HealthMonitor, name: string) =>
+  m.snapshot().find((s) => s.name === name)?.up;
 
 const all = {
   groqApiKey: "gsk-test",
@@ -120,17 +120,17 @@ test("a probe is a GET with no body", async () => {
 
 test("down after 2 failed probes, up on the first success, one notice each", async () => {
   flaky.status = 503;
-  const { m, notices, changes } = monitor([
+  const { m, notices } = monitor([
     { name: "groq", url: `${base}/flaky`, requireOk: true },
   ]);
 
   await m.check();
-  assert.equal(m.isUp("groq"), true, "one failure is a blip, not an outage");
+  assert.equal(upOf(m, "groq"), true, "one failure is a blip, not an outage");
   assert.equal(m.snapshot()[0]!.failures, 1);
   assert.equal(notices.length, 0);
 
   await m.check();
-  assert.equal(m.isUp("groq"), false);
+  assert.equal(upOf(m, "groq"), false);
   assert.equal(m.snapshot()[0]!.error, "HTTP 503");
   await m.check(); // still down: no second notice
   assert.equal(notices.length, 1);
@@ -138,7 +138,7 @@ test("down after 2 failed probes, up on the first success, one notice each", asy
 
   flaky.status = 200;
   await m.check();
-  assert.equal(m.isUp("groq"), true);
+  assert.equal(upOf(m, "groq"), true);
   const s = m.snapshot()[0]!;
   assert.equal(s.failures, 0);
   assert.equal(s.error, null);
@@ -146,10 +146,6 @@ test("down after 2 failed probes, up on the first success, one notice each", asy
   await m.check(); // still up: no second notice
   assert.equal(notices.length, 2);
   assert.match(notices[1]!, /groq is back/);
-  assert.deepEqual(changes, [
-    ["groq", false],
-    ["groq", true],
-  ]);
 });
 
 test("any HTTP answer is reachable unless the upstream needs a 2xx", async () => {
@@ -159,8 +155,8 @@ test("any HTTP answer is reachable unless the upstream needs a 2xx", async () =>
   ]);
   await m.check();
   await m.check();
-  assert.equal(m.isUp("anthropic"), true);
-  assert.equal(m.isUp("groq"), false);
+  assert.equal(upOf(m, "anthropic"), true);
+  assert.equal(upOf(m, "groq"), false);
 });
 
 test("a probe that never answers times out as a failure", async () => {
@@ -175,35 +171,16 @@ test("a probe that never answers times out as a failure", async () => {
   assert.match(s.error ?? "", /timeout|abort/i);
 });
 
-test("a round still running makes the next tick a no-op", async () => {
-  seen.length = 0;
-  const { m } = monitor([{ name: "slow", url: `${base}/stall` }], {
-    timeoutMs: 100,
-  });
-  const first = m.check();
-  await m.check(); // returns straight away, sends nothing
-  await first;
-  assert.equal(seen.filter((s) => s.path === "/stall").length, 1);
-});
-
-test("a failing notifier or listener never throws out of a round", async () => {
+test("a failing notifier never throws out of a round", async () => {
   const { m } = monitor([{ name: "dead", url: "http://127.0.0.1:1/" }], {
     notify: async () => {
       throw new Error("telegram down too");
     },
-    onChange: () => {
-      throw new Error("listener bug");
-    },
   });
   await m.check();
   await m.check();
-  assert.equal(m.isUp("dead"), false);
+  assert.equal(upOf(m, "dead"), false);
   assert.match(m.snapshot()[0]!.error ?? "", /fetch failed/);
-});
-
-test("isUp is true for an upstream nobody probes", () => {
-  const { m } = monitor([]);
-  assert.equal(m.isUp("groq"), true);
 });
 
 test("start probes on a timer and stop ends it", async () => {
