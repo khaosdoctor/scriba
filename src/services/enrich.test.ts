@@ -782,6 +782,8 @@ test("the SDK gets an abort controller and the chat fallbacks get the timeout", 
   const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
   await new Enricher("m", fn).enrich({ text: "x", candidates: [] });
   assert.ok(calls[0]!.options.abortController instanceof AbortController);
+  // no extended thinking: it was most of haiku's time on every jot
+  assert.deepEqual(calls[0]!.options.thinking, { type: "disabled" });
 
   const seen: (number | undefined)[] = [];
   const groqFn: GroqChatFn = async (_k, _m, _msgs, _url, timeoutMs) => {

@@ -708,6 +708,9 @@ export class Enricher {
         maxTurns: outputFormat ? 3 : 1,
         allowedTools: [],
         abortController,
+        // Linking a journal line needs no reasoning, and haiku's default thinking cost
+        // 6-7s a call, pushing it past ENRICH_TIMEOUT_MS while the answer took under 1s.
+        thinking: { type: "disabled" },
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(model ? { model } : {}),
         ...(outputFormat ? { outputFormat } : {}),
