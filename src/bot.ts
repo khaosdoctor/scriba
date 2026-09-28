@@ -131,7 +131,10 @@ export class ScribaBot implements BotServices {
     private sha: string,
     private startedAt: number,
   ) {
-    this.bot = new Bot(config.telegram.token);
+    // grammY waits 500s per API call by default; 60s still covers the 30s long poll.
+    this.bot = new Bot(config.telegram.token, {
+      client: { timeoutSeconds: 60 },
+    });
     this.rating = new RatingCommand(this.bot, repo, obsidian);
     this.habits = new HabitsCommand(this.bot, obsidian);
     this.reprocess = new ReprocessCommand(this.bot, repo);
@@ -427,8 +430,10 @@ export class ScribaBot implements BotServices {
   async downloadFile(fileId: string): Promise<DownloadedFile> {
     const file = await this.bot.api.getFile(fileId);
     if (!file.file_path) throw new Error(`no file_path for ${fileId}`);
+    // Bot API files go up to 20 MB, so longer than a model call, but never unbounded.
     const res = await fetch(
       `https://api.telegram.org/file/bot${config.telegram.token}/${file.file_path}`,
+      { signal: AbortSignal.timeout(60_000) },
     );
     if (!res.ok) throw new Error(`telegram file download: ${res.status}`);
     const bytes = new Uint8Array(await res.arrayBuffer());

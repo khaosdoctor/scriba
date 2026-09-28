@@ -151,6 +151,7 @@ export class VaultTools {
       const res = await fetch(current, {
         redirect: "manual",
         dispatcher: this.dispatcher,
+        signal: AbortSignal.timeout(15_000),
         headers: {
           // Some sites 403 an unknown agent; be honest about what this is.
           "user-agent":

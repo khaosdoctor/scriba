@@ -45,7 +45,10 @@ export class GithubReleases {
 
   private async fetchOne(url: string): Promise<ReleaseNote | null> {
     log.debug({ url }, "github: fetching release");
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await fetch(url, {
+      headers: this.headers(),
+      signal: AbortSignal.timeout(15_000),
+    });
     if (!res.ok) {
       log.warn({ url, status: res.status }, "github: fetching release failed");
       return null;
@@ -72,7 +75,10 @@ export class GithubReleases {
   async recent(count: number): Promise<ReleaseNote[]> {
     const url = `https://api.github.com/repos/${this.repo}/releases?per_page=${count}`;
     log.debug({ url, count }, "github: listing releases");
-    const res = await fetch(url, { headers: this.headers() });
+    const res = await fetch(url, {
+      headers: this.headers(),
+      signal: AbortSignal.timeout(15_000),
+    });
     if (!res.ok) {
       log.warn({ status: res.status }, "github: listing releases failed");
       return [];

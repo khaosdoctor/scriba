@@ -55,6 +55,7 @@ export class ObsidianClient {
     const res = await fetch(`${this.cfg.url}/vault/${this.encode(vaultPath)}`, {
       headers: this.headers(),
       dispatcher: this.dispatcher,
+      signal: AbortSignal.timeout(15_000),
     });
     log.debug(
       { method: "GET", path: vaultPath, status: res.status },
@@ -74,6 +75,7 @@ export class ObsidianClient {
       headers: this.headers({ "Content-Type": contentType }),
       body: body as any,
       dispatcher: this.dispatcher,
+      signal: AbortSignal.timeout(15_000),
     });
     log.debug(
       { method: "PUT", path: vaultPath, status: res.status },
@@ -182,6 +184,7 @@ export class ObsidianClient {
       method: "DELETE",
       headers: this.headers(),
       dispatcher: this.dispatcher,
+      signal: AbortSignal.timeout(15_000),
     });
     log.debug(
       { method: "DELETE", path: vaultPath, status: res.status },
