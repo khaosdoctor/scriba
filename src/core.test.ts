@@ -25,6 +25,7 @@ import {
   forcedCandidates,
   formatDeployNotice,
   formatDuration,
+  formatHealth,
   formatJotDetail,
   formatListPage,
   formatReleaseList,
@@ -43,6 +44,7 @@ import {
   journalLine,
   linkDateWords,
   makeJotId,
+  modelsUrlFor,
   monthGrid,
   noteSuggestions,
   parseEntrySize,
@@ -642,6 +644,76 @@ test("formatStatus summarises health", () => {
   assert.match(out, /Queue depth: 3/);
   assert.match(out, /Transcriber: local/);
   assert.match(out, /5 files \/ 9 aliases/);
+});
+
+test("formatHealth renders one line per upstream", () => {
+  const now = 1_000_000;
+  const out = formatHealth(
+    [
+      {
+        name: "anthropic",
+        up: true,
+        latencyMs: 120,
+        error: null,
+        failures: 0,
+        since: 0,
+      },
+      {
+        name: "groq",
+        up: false,
+        latencyMs: 5001,
+        error: "HTTP 401",
+        failures: 3,
+        since: now - 180_000,
+      },
+      {
+        name: "parakeet",
+        up: true,
+        latencyMs: null,
+        error: null,
+        failures: 0,
+        since: now,
+      },
+    ],
+    now,
+  );
+  assert.deepEqual(out.split("\n"), [
+    "Upstreams:",
+    "🟢 anthropic · 120 ms",
+    "🔴 groq · down 3m 0s · 5001 ms · HTTP 401",
+    "🟢 parakeet · not probed yet",
+  ]);
+});
+
+test("formatHealth caps a long error", () => {
+  const out = formatHealth(
+    [
+      {
+        name: "obsidian",
+        up: true,
+        latencyMs: 40,
+        error: "x ".repeat(200),
+        failures: 1,
+        since: 0,
+      },
+    ],
+    0,
+  );
+  assert.ok(out.split("\n")[1]!.length < 180);
+  // one failed probe is a warning, not green
+  assert.ok(out.split("\n")[1]!.startsWith("🟡 obsidian"));
+});
+
+test("modelsUrlFor swaps the transcription path for the model listing", () => {
+  assert.equal(
+    modelsUrlFor("http://parakeet:5092/v1/audio/transcriptions"),
+    "http://parakeet:5092/v1/models",
+  );
+  assert.equal(
+    modelsUrlFor("http://parakeet:5092/v1/audio/transcriptions/?x=1"),
+    "http://parakeet:5092/v1/models",
+  );
+  assert.equal(modelsUrlFor("http://asr:9000"), "http://asr:9000/models");
 });
 
 test("formatStatus shows a disabled link index", () => {

@@ -24,8 +24,9 @@ export class ObsidianClient {
   // for a loopback target (the normal case). A non-loopback URL (e.g. the homelab deploy
   // reaching Obsidian over the LAN) gets real verification so the bearer token can't be
   // intercepted on an untrusted segment — unless OBSIDIAN_INSECURE_TLS opts out for a
-  // trusted LAN with its own self-signed cert.
-  private dispatcher: Agent;
+  // trusted LAN with its own self-signed cert. Public so the health probe trusts exactly
+  // what the client trusts.
+  readonly dispatcher: Agent;
 
   constructor(private cfg: ObsidianConfig) {
     const host = new URL(cfg.url).hostname;

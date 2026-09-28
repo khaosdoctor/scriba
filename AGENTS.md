@@ -31,8 +31,9 @@ deployed on the homelab (Coolify). Single user.
   enricher for Parakeet voice + all text).
 - **Every model call falls back remote → local.** Enrichment tries the chosen Claude
   model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model, then
-  OpenCode Go when `OPENCODE_GO_API_KEY` is set, and posts the jot un-enriched when all fail. The user is told once per change of step,
-  not per jot, with the error that moved it. Vision has no Groq step.
+  OpenCode Go when `OPENCODE_GO_API_KEY` is set, and posts the jot un-enriched when all
+  fail. The user is told once per change of step, not per jot, with the error that moved
+  it. Vision has no Groq step.
 - **No model call waits forever, and a dead step is skipped.** Each call is capped at
   `ENRICH_TIMEOUT_MS` (15s): the SDK gets an `AbortController` and the answer is raced
   against it, the chat fallbacks get the same cap with SDK retries off (the next step is
@@ -295,6 +296,18 @@ deployed on the homelab (Coolify). Single user.
   (`ScribaBot.syncEditedSource`, `bot.ts`): a squashed leader/follower is skipped, since a
   squashed line is several jots' sources combined into one and there's no single field to
   fold the edit back into.
+- **Connection health never spends a token.** `HealthMonitor` (`runtime/health.ts`) probes
+  every upstream once a minute, all at once, with a 5s timeout each: Anthropic and
+  Telegram at their bare host, Groq and OpenCode at `/models` with their key (skipped when
+  there is no key), Obsidian at its REST root through the client's own TLS dispatcher, and
+  Parakeet at the `/models` listing next to its transcription URL (`modelsUrlFor`). A
+  probe is a GET with no body, and `upstreams()` is the only place the URLs are built, so
+  `health.test.ts` fails if one of them ever points at a completions, messages or audio
+  endpoint. Two failed probes in a row mark an upstream down, one success brings it back,
+  and each transition is one Telegram notice. An upstream probed with a key needs a 2xx:
+  Groq answers a bad key with 401, while OpenCode's listing doesn't check the key, so
+  there a 2xx only proves the host answers. The rest count any HTTP answer. `/status`
+  lists the snapshot through `formatHealth`.
 
 ## Conventions
 
@@ -309,8 +322,8 @@ deployed on the homelab (Coolify). Single user.
   `warn` for rejected/invalid input, `error` (with `{ err }`) for failures, `debug` for
   raw payloads. A new command or feature without logs on its happy path AND its rejection
   paths is incomplete. Secrets are stripped in pino core via `redact` in `src/log.ts`
-  (`*.token`/`*.key`/`*.groqApiKey`); log config objects freely, but add a path there if
-  you introduce a secret with a different field name.
+  (`*.token`/`*.key`/`*.groqApiKey`/`*.opencodeApiKey`); log config objects freely, but
+  add a path there if you introduce a secret with a different field name.
 - **Slash commands are discoverable.** Any new `bot.command(...)` also gets an entry in
   `setMyCommands` (in `ScribaBot.start`) so it shows in Telegram's `/` menu.
 - **Tests sit next to the source** as `<name>.test.ts`, one per file — except the admin

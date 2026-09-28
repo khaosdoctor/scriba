@@ -35,6 +35,7 @@ import { REPROCESS_NS, ReprocessCommand } from "./flows/reprocess.ts";
 import { TASKS_NS, TasksFlow } from "./flows/tasks/index.ts";
 import type { TaskDraft } from "./flows/tasks/parse.ts";
 import { logger } from "./log.ts";
+import type { HealthMonitor } from "./runtime/health.ts";
 import type {
   BotServices,
   DownloadedFile,
@@ -109,6 +110,7 @@ export class ScribaBot implements BotServices {
   private command: CommandSession;
   private tasks: TasksFlow;
   private processor!: JotProcessor;
+  private health!: HealthMonitor;
   // jotId -> the live status message we edit in place through the jot's lifecycle.
   // ponytail: in-memory. On restart the map is empty and status() just posts a fresh
   // message; nothing is lost. Persist it only if that ever proves annoying.
@@ -174,6 +176,10 @@ export class ScribaBot implements BotServices {
   setProcessor(processor: JotProcessor): void {
     this.processor = processor;
   }
+  /** Same cycle: the monitor notifies through this bot, and /status reads the monitor. */
+  setHealth(health: HealthMonitor): void {
+    this.health = health;
+  }
 
   /** Assemble what the admin commands act on. */
   private deps(): Deps {
@@ -185,6 +191,7 @@ export class ScribaBot implements BotServices {
       transcriber: this.transcriber,
       links: this.links,
       github: this.github,
+      health: this.health,
       version: this.version,
       sha: this.sha,
       startedAt: this.startedAt,

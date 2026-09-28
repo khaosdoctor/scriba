@@ -6,10 +6,12 @@ import { config } from "./config.ts";
 import {
   ENRICH_MODEL_KEY,
   formatDeployNotice,
+  OPENCODE_BASE_URL,
   VOICE_FIX_MODEL_KEY,
 } from "./core.ts";
 import { Repository } from "./db.ts";
 import { logger } from "./log.ts";
+import { HealthMonitor, upstreams } from "./runtime/health.ts";
 import { JotProcessor } from "./runtime/processor.ts";
 import { FlushQueue } from "./runtime/queue.ts";
 import { Scheduler } from "./runtime/scheduler.ts";
@@ -71,7 +73,7 @@ async function main(): Promise<void> {
     fallbacks.push({
       apiKey: config.enrich.opencodeApiKey,
       model: config.enrich.opencodeModel,
-      baseUrl: "https://opencode.ai/zen/go/v1",
+      baseUrl: OPENCODE_BASE_URL,
       name: "OpenCode",
     });
   const enricher = new Enricher(
@@ -159,6 +161,24 @@ async function main(): Promise<void> {
 
   void processor.retrySweep(); // pick up anything left over from a previous run
 
+  // 5b. connection health: probe every upstream, tell the owner when one goes down or
+  // comes back. Probes are plain GETs to a host or a /models listing, never a call that
+  // generates anything.
+  const health = new HealthMonitor(
+    upstreams(
+      {
+        groqApiKey: config.enrich.groqApiKey,
+        opencodeApiKey: config.enrich.opencodeApiKey,
+        obsidianUrl: config.obsidian.url,
+        parakeetUrl: config.transcription.parakeetUrl,
+      },
+      obsidian.dispatcher,
+    ),
+    (t) => bot.notify(t),
+  );
+  bot.setHealth(health);
+  health.start();
+
   // 6. health server
   // Long polling needs no inbound webhook; this server exists only for a health check.
   const server = http.createServer((req, res) => {
@@ -207,6 +227,7 @@ async function main(): Promise<void> {
     await bot.stop();
     server.close();
     scheduler.stop();
+    health.stop();
     links.stop();
     await repo.close();
     log.info("shutdown complete");
