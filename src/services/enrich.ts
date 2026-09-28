@@ -595,10 +595,24 @@ export class Enricher {
         log.debug({ step: step.name }, "enrich: circuit open, skipping step");
         continue;
       }
+      let raw: SdkOut;
       try {
-        const raw = await step.call();
+        raw = await step.call();
+      } catch (err) {
+        // Only an outage trips the breaker. A rejected key still moves down the chain,
+        // but opening a circuit on it would hold jots forever behind a failure no
+        // cooldown can fix, instead of posting them un-enriched.
+        if (isRecoverable(err)) breaker.failure(err);
+        lastErr = err;
+        log.warn({ err, step: step.name, tier }, "enrich: step failed");
+        continue;
+      }
+      // It answered, so it's up. Whether the answer is usable is another question, and
+      // one the breaker stays out of: a rejection quotes the answer, and "500 metres" in
+      // it would read as a 5xx.
+      breaker.success();
+      try {
         const out = parse(raw);
-        breaker.success();
         await this.settle(tier, step.name, lastErr);
         log.info(
           { step: step.name, tier, usage: raw.usage },
@@ -606,12 +620,8 @@ export class Enricher {
         );
         return out;
       } catch (err) {
-        // Only an outage trips the breaker. An unusable answer or a rejected key still
-        // moves down the chain, but opening a circuit on it would hold jots forever
-        // behind a failure no cooldown can fix, instead of posting them un-enriched.
-        if (isRecoverable(err)) breaker.failure(err);
         lastErr = err;
-        log.warn({ err, step: step.name, tier }, "enrich: step failed");
+        log.warn({ err, step: step.name, tier }, "enrich: unusable answer");
       }
     }
     if (this.available()) throw lastErr;

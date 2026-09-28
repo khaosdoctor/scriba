@@ -889,6 +889,21 @@ test("a failure no cooldown can fix never opens a circuit, so jots aren't held o
   assert.equal(enricher.available(), true);
 });
 
+test("an unusable answer never trips the breaker, even when it reads like an outage", async () => {
+  // the rejection quotes the answer, and "500" in it would match isRecoverable's 5xx
+  const groq = fakeGroq("I walked 500 metres on a network of trails today");
+  const enricher = new Enricher(
+    "claude-haiku-4-5",
+    failQuery("invalid x-api-key (401)"),
+    [{ apiKey: "k", model: "g", name: "Groq" }],
+    groq.fn,
+  );
+  for (let i = 0; i < 4; i++)
+    await assert.rejects(enricher.enrich({ text: "x", candidates: [] }));
+  assert.equal(groq.calls.length, 4);
+  assert.equal(enricher.available(), true);
+});
+
 test("a fallback's malformed lists are dropped instead of trusted", async () => {
   const groq = fakeGroq('{"text":"x","ambiguous":"none","tasks":{}}');
   const out = await new Enricher(
