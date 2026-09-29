@@ -9,6 +9,7 @@ import {
   deleteAnchorLine,
   distinctSurfaces,
   editConfirmation,
+  embedOffer,
   entitiesToMarkdown,
   escapeHtml,
   fitTelegram,
@@ -19,6 +20,7 @@ import {
   parseLiteralEdit,
   placeholderLine,
   replaceAnchorLine,
+  setEmbeds,
   stripJournalLine,
   withinSquashWindow,
 } from "./core.ts";
@@ -86,13 +88,19 @@ export type StatusButtons = {
   retry?: boolean;
   undo?: boolean;
   discard?: boolean;
+  /** Line holds a YouTube/tweet/image URL: offer to embed it, or to turn it back into a
+   *  link (`embedOffer` in core.ts decides which). */
+  embed?: "embed" | "plain";
 };
 
-/** The failure pair, side by side under the message: run it again now, or take it out of
- *  the journal for good. Empty (which clears any existing keyboard) when neither is asked
- *  for, so a message that's no longer actionable stops offering actions. */
+/** The buttons under a jot's status message. Empty (which clears any existing keyboard)
+ *  when none is asked for, so a message that's no longer actionable stops offering
+ *  actions. */
 function jotButtons(jotId: string, opts?: StatusButtons): InlineKeyboard {
   const kb = new InlineKeyboard();
+  if (opts?.undo) kb.text("↩️ Undo", `un:${jotId}`);
+  if (opts?.embed === "embed") kb.text("🖼 Embed", `em:${jotId}:1`);
+  if (opts?.embed === "plain") kb.text("🔗 Plain link", `em:${jotId}:0`);
   if (opts?.retry) kb.text("🔄 Retry", `rt:${jotId}`);
   if (opts?.discard) kb.text("🗑 Delete", `dl:${jotId}`);
   return kb;
@@ -354,16 +362,14 @@ export class ScribaBot implements BotServices {
   /** Create-or-edit the one live status message for a jot. First call sends it and
    *  remembers the message id; later calls edit that same message in place, so the
    *  chat reads as a clean audit trail instead of a stream of notifications.
-   *  `undo: true` attaches an undo button; `retry`/`discard` attach the failure pair;
-   *  otherwise any button is cleared. */
+   *  `undo: true` attaches an undo button, `embed` the embed toggle; `retry`/`discard`
+   *  attach the failure pair; otherwise any button is cleared. */
   async status(
     jotId: string,
     html: string,
     opts?: StatusButtons,
   ): Promise<void> {
-    const reply_markup = opts?.undo
-      ? new InlineKeyboard().text("↩️ Undo", `un:${jotId}`)
-      : jotButtons(jotId, opts);
+    const reply_markup = jotButtons(jotId, opts);
     const chat = config.telegram.allowedUserId;
     const existing = this.statusMsgs.get(jotId);
     if (existing) {
@@ -467,7 +473,7 @@ export class ScribaBot implements BotServices {
     await this.status(
       jotId,
       `${confirmation}\n(applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""})`,
-      { undo: true },
+      { undo: true, embed: await this.embedFor(jot) },
     );
   }
 
@@ -668,6 +674,7 @@ export class ScribaBot implements BotServices {
     await this.status(jotId, "✍️ got your edit — applying…");
     await this.status(jotId, await this.replaceJotText(jot, markdown), {
       undo: true,
+      embed: await this.embedFor(jot),
     });
   }
 
@@ -844,7 +851,20 @@ export class ScribaBot implements BotServices {
     // A freeform instruction can itself be "delete this", so only offer Undo when the
     // entry is actually still in the journal.
     const after = await this.repo.getJot(jotId);
-    await this.status(jotId, applied, { undo: after?.status === "done" });
+    const done = after?.status === "done";
+    await this.status(jotId, applied, {
+      undo: done,
+      embed: done ? await this.embedFor(jot) : undefined,
+    });
+  }
+
+  /** The embed toggle an edited jot's status message should offer, read off the line as
+   *  it now is in the note — an edit can add, remove or embed a URL, so the offer made
+   *  when the jot first finished may no longer hold. */
+  private async embedFor(jot: Jot): Promise<StatusButtons["embed"]> {
+    const note = await this.obsidian.readNote(jot.note_path);
+    const line = anchorLine(note, jot.anchor);
+    return line ? embedOffer(stripJournalLine(line, jot.time)) : undefined;
   }
 
   /** Apply one or more edit instructions to a jot's line, merged into a single write
@@ -998,6 +1018,7 @@ export class ScribaBot implements BotServices {
     if (ns === "rt") return this.handleRetry(ctx, rest[0]);
     if (ns === "un") return this.handleRemove(ctx, rest[0], "undo");
     if (ns === "dl") return this.handleRemove(ctx, rest[0], "discard");
+    if (ns === "em") return this.handleEmbed(ctx, rest[0], rest[1] === "1");
     if (ns === COMMAND_NS) return this.command.handleTap(ctx, rest);
     if (ns === TASKS_NS) return this.tasks.handleTap(ctx, rest);
     if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
@@ -1035,6 +1056,45 @@ export class ScribaBot implements BotServices {
     const result = await this.deleteJot(jot);
     // status() with no opts clears the buttons, so a second tap can't re-run it.
     await this.status(jot.id, result);
+  }
+
+  /** 🖼 Embed / 🔗 Plain link on a finished jot whose line has a YouTube, tweet or image
+   *  URL: rewrite those URLs as `![](url)` embeds or back to links, token-free. The
+   *  button then offers the opposite, so the choice can be undone with the next tap. */
+  private async handleEmbed(
+    ctx: any,
+    jotId: string | undefined,
+    embed: boolean,
+  ): Promise<void> {
+    const jot = jotId ? await this.repo.getJot(jotId) : undefined;
+    if (!jot || jot.status !== "done") {
+      log.warn({ jotId, status: jot?.status }, "embed: jot not editable");
+      return void ctx.answerCallbackQuery({ text: "gone" });
+    }
+    const text = await this.obsidian.withNoteLock(jot.note_path, async () => {
+      const note = await this.obsidian.readNote(jot.note_path);
+      const line = anchorLine(note, jot.anchor);
+      if (!line) return null;
+      const next = setEmbeds(stripJournalLine(line, jot.time), embed);
+      const out = replaceAnchorLine(
+        note,
+        jot.anchor,
+        journalLine(jot.time, next, jot.anchor),
+      );
+      if (out) await this.obsidian.writeNote(jot.note_path, out);
+      return next;
+    });
+    if (text === null) {
+      log.warn({ jotId }, "embed: anchored line not found");
+      return void ctx.answerCallbackQuery({ text: "line not found" });
+    }
+    log.info({ jotId, embed }, "embed toggled");
+    await ctx.answerCallbackQuery({ text: embed ? "embedded" : "plain link" });
+    await this.syncEditedSource(jot, text);
+    await this.status(jot.id, editConfirmation(jot.time, text), {
+      undo: true,
+      embed: embedOffer(text),
+    });
   }
 
   /** 🔄 Retry on a failed jot's status message: reset its attempts and queue it now,

@@ -15,6 +15,7 @@ import {
   doneMessage,
   donePreview,
   editConfirmation,
+  embedOffer,
   enrichableSource,
   entitiesToMarkdown,
   entryMaxChars,
@@ -38,6 +39,7 @@ import {
   insertJournalLine,
   isBlank,
   isEditableJot,
+  isEmbeddableUrl,
   isInsideRoot,
   isRecoverable,
   jotPreview,
@@ -59,6 +61,7 @@ import {
   replaceAnchorLine,
   reprocessTargets,
   retryNotice,
+  setEmbeds,
   setFrontmatterValue,
   splitEntry,
   stripJournalLine,
@@ -839,6 +842,46 @@ test("an image's caption is enrichable entry text; video's is not", () => {
     enrichableSource(mediaJot({ kind: "audio" }), "(failed)"),
     "(failed)",
   );
+});
+
+test("isEmbeddableUrl knows YouTube, tweets and images, nothing else", () => {
+  for (const url of [
+    "https://www.youtube.com/watch?v=NnTvZWp5Q7o",
+    "https://youtu.be/NnTvZWp5Q7o",
+    "https://twitter.com/obsdmd/status/1580548874246443010",
+    "https://x.com/obsdmd/status/1580548874246443010",
+    "https://example.com/cat.JPG?w=300",
+  ])
+    assert.ok(isEmbeddableUrl(url), url);
+  for (const url of [
+    "https://www.youtube.com/@obsidianmd",
+    "https://x.com/obsdmd",
+    "https://example.com/post",
+  ])
+    assert.ok(!isEmbeddableUrl(url), url);
+});
+
+test("embedOffer asks to embed, then offers plain once embedded", () => {
+  const yt = "https://youtu.be/abc";
+  assert.equal(embedOffer("just text"), undefined);
+  assert.equal(embedOffer("read https://example.com/post"), undefined);
+  assert.equal(embedOffer(`watch ${yt}`), "embed");
+  assert.equal(embedOffer(`watch [this](${yt})`), "embed");
+  assert.equal(embedOffer(`watch ![](${yt})`), "plain");
+  // One still linked is enough to offer embedding the rest.
+  assert.equal(embedOffer(`![](${yt}) and ${yt}`), "embed");
+});
+
+test("setEmbeds round-trips bare and labelled links", () => {
+  const yt = "https://www.youtube.com/watch?v=abc&t=10";
+  const line = `saw ${yt}. also [cat](https://e.com/c.png) and https://e.com/page, [[Note]]`;
+  const embedded = setEmbeds(line, true);
+  assert.equal(
+    embedded,
+    `saw ![](${yt}). also ![cat](https://e.com/c.png) and https://e.com/page, [[Note]]`,
+  );
+  assert.equal(setEmbeds(embedded, true), embedded);
+  assert.equal(setEmbeds(embedded, false), line);
 });
 
 test("assetEmbed gives an image no alias and a video its caption", () => {

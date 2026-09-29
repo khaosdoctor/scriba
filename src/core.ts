@@ -135,6 +135,50 @@ export function assetEmbed(jot: Jot): string {
     : `![[${jot.asset_path}]]`;
 }
 
+/** URLs Obsidian renders inline when written as `![](url)`: YouTube videos, tweets and
+ *  external images. Any other page needs an `<iframe>`, so it stays a plain link.
+ *  ponytail: hand-kept list from Obsidian's "Embed web pages" help page — add a pattern
+ *  when Obsidian learns a new host. */
+const EMBEDDABLE = [
+  /^https?:\/\/(www\.|m\.)?(youtube\.com\/watch\?|youtu\.be\/)/i,
+  /^https?:\/\/(www\.|mobile\.)?(twitter|x)\.com\/\w+\/status\/\d+/i,
+  /^https?:\/\/[^?#]+\.(png|jpe?g|gif|webp|avif|svg|bmp)([?#]|$)/i,
+];
+
+export function isEmbeddableUrl(url: string): boolean {
+  return EMBEDDABLE.some((re) => re.test(url));
+}
+
+// One matcher for every URL form in a line: `![alt](url)` (embedded), `[text](url)`
+// (markdown link), or a bare URL. Trailing punctuation belongs to the sentence.
+const URL_FORMS =
+  /(!?)\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)|(?<![\w/([<])(https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"])/g;
+
+/** Which embed toggle a line can offer: `"embed"` when it holds an embeddable URL written
+ *  as a link, `"plain"` when every one is already embedded, undefined when it has none. */
+export function embedOffer(text: string): "embed" | "plain" | undefined {
+  let embedded = false;
+  for (const m of text.matchAll(URL_FORMS)) {
+    if (!isEmbeddableUrl(m[3] ?? m[4] ?? "")) continue;
+    if (m[1] !== "!") return "embed";
+    embedded = true;
+  }
+  return embedded ? "plain" : undefined;
+}
+
+/** Rewrite every embeddable URL in a line as an Obsidian embed (`embed: true`) or back to
+ *  a link. `[text](url)` keeps its text as the embed's alt; a bare URL embeds as `![](url)`
+ *  and comes back bare. Other URLs are left alone. */
+export function setEmbeds(text: string, embed: boolean): string {
+  return text.replace(URL_FORMS, (all, bang, label, linked, bare) => {
+    const url = linked ?? bare;
+    if (!isEmbeddableUrl(url)) return all;
+    if (embed) return `![${label ?? ""}](${url})`;
+    if (bang !== "!") return all;
+    return label ? `[${label}](${url})` : url;
+  });
+}
+
 /** Rolling-gap test for squashing: a new jot folds into the previous still-open one
  *  when it arrived within `windowMs` of it. A `windowMs` of 0 disables squashing. */
 export function withinSquashWindow(

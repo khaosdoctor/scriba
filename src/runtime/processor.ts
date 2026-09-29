@@ -5,6 +5,7 @@ import {
   combineEnrichSource,
   doneMessage,
   ENTRY_MAX_CHARS_KEY,
+  embedOffer,
   enrichableSource,
   entryMaxChars,
   escapeHtml,
@@ -63,7 +64,12 @@ export interface BotServices {
   status: (
     jotId: string,
     html: string,
-    opts?: { retry?: boolean; undo?: boolean; discard?: boolean },
+    opts?: {
+      retry?: boolean;
+      undo?: boolean;
+      discard?: boolean;
+      embed?: "embed" | "plain";
+    },
   ) => Promise<void>;
   // Delete a jot's live status message if one exists (used to collapse stray
   // per-follower messages into the leader's single confirmation on a squash).
@@ -367,7 +373,7 @@ export class JotProcessor {
             merged ? followers.length + 1 : 0,
             of > 1 ? { i: 1, of } : undefined,
           ),
-          { undo: true },
+          { undo: true, embed: embedOffer(linked) },
         );
         // One message per spillover piece — each is a jot in its own right, so replying
         // to its message edits it and its ↩️ Undo removes only that line.
@@ -378,7 +384,7 @@ export class JotProcessor {
               i: i + 2,
               of,
             }),
-            { undo: true },
+            { undo: true, embed: embedOffer(p.raw_text ?? "") },
           );
         // Tasks come after the entry is safely in the note: a card is a question about
         // something already journalled, never a step on the way to journalling it.

@@ -277,6 +277,15 @@ deployed on the homelab (Coolify). Single user.
   `ScribaBot.handleRemove`, which runs the same `deleteJot` teardown as `/delete` and then
   re-renders the status without a keyboard. Deleting a squashed leader marks its followers
   deleted too: they share the one anchor line that just went away.
+- **Embeddable links are a choice, one tap either way.** When a finished line holds a URL
+  Obsidian renders with `![](url)` (YouTube, tweets, external images; any other page needs
+  an iframe, so it stays a link), its status message gets **🖼 Embed** next to Undo
+  (`em:<jotId>:1`). The tap rewrites those URLs in the line to `![](url)` (a `[text](url)`
+  keeps its text as alt), folds the change back into the source like any edit, and the
+  button becomes **🔗 Plain link** (`em:<jotId>:0`) to reverse it. Plain is the default,
+  so nothing waits on the answer. An edit re-reads the line and offers whichever toggle
+  now applies (`ScribaBot.embedFor`), since it can add, remove or embed a URL. Detection and rewrite are `embedOffer`/`setEmbeds` in
+  `core.ts`, token-free; the enricher is told to leave URLs untouched so they survive.
 - **Every failure is a decision, so it carries both buttons.** Any jot that fails —
   transient (still in the retry cycle), given up on, or thrown during intake in `bot.catch`
   — gets **🔄 Retry** (`rt:<jotId>`, `handleRetry`: `resetForRetry` + requeue now) and

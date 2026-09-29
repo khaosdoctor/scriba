@@ -122,6 +122,7 @@ export interface EnrichResult {
 const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules:
 - The vault is English. If the text is not in English, translate it to natural English preserving the author's voice and meaning. If it is already English, keep it verbatim.
 - Do not summarise or rewrite style. Other than translation, only insert wikilinks.
+- URLs and markdown links/embeds ([text](url), ![](url)) stay exactly as written: never translate, link or reformat anything inside them.
 - You are given candidate wikilinks (surface text -> note). Apply a link ONLY when the surface word genuinely refers to that note IN THIS CONTEXT. A word matching a note alias is not enough (e.g. "no" is rarely the country Norway; "we" is rarely a book title).
 - Candidates marked (REGISTERED) are hand-curated by the human: always link their first occurrence verbatim, with no contextual judgment — skip the ambiguity check entirely for those.
 - Apply confident links inline using [[Note|surface]] (or [[Note]] if identical). Link the first occurrence only.
