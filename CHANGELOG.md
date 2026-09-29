@@ -1,3 +1,10 @@
+## [1.50.0](https://github.com/khaosdoctor/scriba/compare/v1.49.1...v1.50.0) (2026-09-29)
+
+
+### Features
+
+* offer to embed YouTube, tweet and image links as Obsidian embeds ([0366bab](https://github.com/khaosdoctor/scriba/commit/0366babdebe04c1632af0a663152c51728435b2f))
+
 ## [1.49.1](https://github.com/khaosdoctor/scriba/compare/v1.49.0...v1.49.1) (2026-09-28)
 
 
@@ -25,12 +32,4 @@
 ### Features
 
 * **enrich:** add OpenCode Go/DeepSeek Flash as enrichment fallback ([#17](https://github.com/khaosdoctor/scriba/issues/17)) ([4ccdaa0](https://github.com/khaosdoctor/scriba/commit/4ccdaa05a01115b08623674077d94b2d0911fb9a))
-
-## [1.47.2](https://github.com/khaosdoctor/scriba/compare/v1.47.1...v1.47.2) (2026-09-27)
-
-
-### Bug Fixes
-
-* **tasks:** lowercase work notes folder ([97c7cbe](https://github.com/khaosdoctor/scriba/commit/97c7cbe6057c6a7bb217e1363c661aaf6ba426ff))
-* **tasks:** point work note default to notes/Work notes ([8074a82](https://github.com/khaosdoctor/scriba/commit/8074a829429114e8188e975edd873819e32b49a7))
 
