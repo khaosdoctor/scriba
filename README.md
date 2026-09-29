@@ -1,66 +1,60 @@
 # scriba
 
-Journal to Obsidian from Telegram. Send a text or voice note and scriba writes it into
+Journal to Obsidian from Telegram. You send a text or a voice note and scriba writes it into
 today's daily note, just because I am too lazy
 
-> **This is a personal bot.** I built it for myself. It makes a lot of assumptions about how my vault and machines set up, so it probably won't work for you out of the box. It's public because the code might be useful. Read the assumptions before you try to run it.
+> **This is a personal bot.** I built it for myself, so it makes a lot of assumptions about how my vault and machines are set up, and it probably won't work for you out of the box. It's public because the code might be useful. Read the assumptions before you try to run it.
 
-## What it assumes
+## Assumptions
 
-- **One user.**, it will only respond to one Telegram user id, and it will only
-write to one Obsidian vault.
+- **One user.** It only answers one Telegram user id, and it only writes to one Obsidian vault.
 - **You run Obsidian with the Local REST API plugin**, reachable from wherever scriba runs.
-- **Your vault looks like mine.** Daily notes under `notes/daily notes`, a `## Journal` heading to write under, a `## Habits` checklist, a daily-note template, an assets folder. All configurable (see [Environment](#environment)), but the defaults match my vault. 
-- **Tasks live in two notes.** One for work, one for personal, each keeping its tasks as a checklist under a single heading, tagged, with `[start:: yyyy-mm-dd]` (optional) and `[due:: yyyy-mm-dd]` (the deadline) — the shape the Obsidian Tasks plugin queries. Paths, headings and tags are configurable.
-- **The vault is in English.** Anything you send in another language is translated on the way in.
-- **You have a Claude subscription** (an OAuth token, not an API key). Enrichment runs on haiku, falls back to sonnet, then to a free Groq model when the subscription runs out.
+- **Your vault looks like mine.** Daily notes under `notes/daily notes`, a `## Journal` heading to write under, a `## Habits` checklist, a daily-note template and an assets folder. You can change all of it (check [Environment](#environment)), but the defaults match my vault.
+- **Tasks live in two notes.** One for work and one for personal, each with its tasks as a checklist under a single heading, tagged, with `[start:: yyyy-mm-dd]` (optional) and `[due:: yyyy-mm-dd]` (the deadline). That's the shape the Obsidian Tasks plugin queries, and you can configure the paths, headings and tags.
+- **The vault is in English.** If you send something in another language, it gets translated on the way in.
+- **You have a Claude subscription** (an OAuth token, not an API key). Enrichment runs on haiku and falls back to sonnet, then to a free Groq model, then to OpenCode Go if you set `OPENCODE_GO_API_KEY`.
 - **It runs as one always-on process.** Long polling, because it's simpler
-- **Deployed on Coolify** because the GH Actions here triggers a deploy due to Coolify's weird caching of Docker image tags. If you don't want that, just disable the actions
+- **It's deployed on Coolify.** The GH Actions here trigger the deploy because Coolify caches Docker image tags in a weird way. If you don't want that, just disable the actions
 
-## What it does
+## Features
 
-- Writes a placeholder the instant a message arrives, then fills it in place. 
-- Transcribes voice with Groq, falling back to the local Parakeet sidecar.
-- Adds contextual `[[wikilinks]]`. Ambiguous ones you confirm with a button
-- Edit a jot by replying to it: `s/old/new/`, `replace X with Y`, freeform, or `/delete`.
+- When you send a message, scriba writes a placeholder right away and fills it in place once it's processed.
+- Your voice notes go to Groq first, and to the local Parakeet sidecar if Groq fails or you don't have a key.
+- It adds contextual `[[wikilinks]]`, and you confirm the ambiguous ones with a button.
+- You can edit a jot by replying to it with `s/old/new/`, `replace X with Y` or a freeform instruction. Replying with `/delete` removes it.
 - **Embeds.** If you send a YouTube, tweet or image link, the entry keeps it as a normal link and the status message gets a 🖼 Embed button. Tap it and scriba rewrites the link as `![](url)`, so Obsidian shows it right in your note. You can go back with 🔗 Plain link. Any other link stays a link, Obsidian needs an iframe for those.
-- Retries failed jots up to 10 times. If it gives up, it posts the jot un-enriched with a retry button.
-- **Task mode.** `/task` turns every message into a task — "review the RFC by next friday", "buy cat sand next week" — split into a description, a start date and a deadline, with the type (work or personal) picked from what you said. Nothing is written until you confirm the card, whose buttons change any of it. `/done` closes the mode.
-- **One-message tasks.** `/taskadd finish the slides by thursday` reads the line with the model — messy phrasing, any language — and shows you the same card to confirm. `/taskadd` on its own asks for the line.
-- **Task lists.** `/tasks` shows what's open, overdue, due today, due this week or in the next fortnight, and what's done. Every row is a button: tapping an open task ticks it off in the vault, tapping a done one reopens it.
-- **A task summary every morning.** At `TASKS_TIME` (09:00 by default) scriba sends what's due today plus anything still overdue, with the same tickable rows. It's an explicitly non-silent message, so it always notifies; a day with nothing due sends nothing.
-- **It spots tasks in your journal.** Say you need to do something in a jot and it offers to make a task of it, on the same card — including asking when it's due, since a journal entry is often vague about that. Switch it off from the task menu if you'd rather it didn't.
-- It assumes you have some sort of habit checklist in your daily note. It can
-review it with you one habit at a time. And it also assumes you have a rating
-system for your days, which it can prompt you for nightly.
+- A failed jot is retried up to 10 times, and every failure message has a 🔄 Retry and a 🗑 Delete button. If scriba gives up, the jot goes into the note un-enriched.
+- **Task mode.** `/task` turns every message into a task, like "review the RFC by next friday" or "buy cat sand next week". Each one is split into a description, a start date and a deadline, and the type (work or personal) comes from what you said. Nothing is written until you confirm the card, and you can change any of it with its buttons. `/done` closes the mode.
+- **One-message tasks.** `/taskadd finish the slides by thursday` reads the line with the model, so messy phrasing in any language works, and shows you the same card to confirm. If you send just `/taskadd`, it asks you for the line.
+- **Task lists.** `/tasks` shows what's open, overdue, due today, due this week or in the next fortnight, and what's done. Every row is a button: you tap an open task to tick it off in the vault, and a done one to reopen it.
+- **A task summary every morning.** At `TASKS_TIME` (09:00 by default) scriba sends what's due today plus anything still overdue, with the same tickable rows. This one always notifies you, and on a day with nothing due it doesn't send anything.
+- **It spots tasks in your journal.** If a jot says you need to do something, scriba offers to make it a task on the same card, and asks when it's due, since a journal entry is often vague about that. You can switch this off from the task menu.
+- **Habits and day ratings.** If you have a habit checklist in your daily note, scriba can review it with you one habit at a time. It can also ask you to rate your day every night.
 
 ## Setup
 
 You need Node 24, an always-on host with Docker, Obsidian running the Local REST API plugin,
 a Telegram bot, and a Claude subscription.
 
-1. **Make a Telegram bot.** Talk to [@BotFather](https://t.me/BotFather), create one, copy the token.
-2. **Find your Telegram user id.** Message [@userinfobot](https://t.me/userinfobot) or another raw message bot to get the allowed ID
-3. **Get a Claude token.** Run `claude setup-token` and copy the result. 
-4. **Turn on the Obsidian Local REST API** plugin and copy its key. Note the URL it serves on (default `https://127.0.0.1:27124`). 
-5. **Configure.** `cp .env.example .env` and fill it in. At minimum set the four required variables; see [Environment](#environment) for the rest.
-6. **Run it.** `docker compose up -d` starts scriba and the transcription sidecar. 
-7. **Say hi.** Message your bot. It should write to today's note. If nothing shows up, check `docker compose logs -f scriba`.
+1. **Make a Telegram bot.** Talk to [@BotFather](https://t.me/BotFather), create one and copy the token.
+2. **Find your Telegram user id.** Message [@userinfobot](https://t.me/userinfobot) or another raw message bot to get the id you want to allow.
+3. **Get a Claude token.** Run `claude setup-token` and copy the result.
+4. **Turn on the Obsidian Local REST API** plugin and copy its key. Take note of the URL it serves on (by default `https://127.0.0.1:27124`).
+5. **Configure.** Run `cp .env.example .env` and fill it in. You need at least the four required variables, check [Environment](#environment) for the rest.
+6. **Run it.** `docker compose up -d` starts scriba and the transcription sidecar.
+7. **Say hi.** Message your bot and it should write to today's note. If nothing shows up, check `docker compose logs -f scriba`.
 
-Set `GROQ_API_KEY` to transcribe with Groq first; without it every voice note goes to the sidecar.
+If you set `GROQ_API_KEY`, your voice notes are transcribed with Groq first. Without it, every voice note goes to the sidecar.
 
 ## Commands
 
-Scriba has a set of commands that will be shown in the bot's menu, you can type
-`/menu` and it will be a completely interactive experience. You can also type `/help` to see it directly as a list.
+Every command shows up in the bot's menu. You can type `/menu` for the interactive version, or `/help` to get them as a list.
 
-## Flowchart of how things work
+## Jot lifecycle
 
-A jot (a single journal entry) is written to the note **twice**. 
+A jot (a single journal entry) is written to the note **twice**. First as an instant placeholder, which fixes its order, and then as the enriched version in the same place. We only enrich after a batch flush, so the LLM calls are grouped, because they're expensive.
 
-First, an instant placeholder that fixes its order, then the enriched version in place. Enrichment happens after a batch flush so we can group the API calls to LLMs because they're expensive.
-
-> Enrichment means that it will transcribe the audio if it's an audio, add the image or video as attachment, will try to find other notes that match the text and add `[[wikilinks]]` to them, and will also try to find ambiguous links and ask you to confirm them. It's optional, and if it fails, it will retry a few times before giving up and posting the jot un-enriched with a retry button.
+> Enrichment transcribes the audio if it's a voice note, attaches the image or video, links the text to your other notes with `[[wikilinks]]` and asks you about the ambiguous links. If it fails, scriba retries a few times, and when it gives up the jot goes in un-enriched with a retry button.
 
 ```mermaid
 sequenceDiagram
@@ -100,7 +94,7 @@ sequenceDiagram
     Note over P,O: on failure: retry (transient, ≤10)<br/>else post un-enriched + 🔄 Retry button
 ```
 
-Status machine:
+Each jot goes through these states:
 
 ```mermaid
 flowchart LR
@@ -114,11 +108,11 @@ flowchart LR
 
 ## Environment
 
-Every variable lives in [`.env.example`](./.env.example), each with a comment explaining it. Four are required (`TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `CLAUDE_CODE_OAUTH_TOKEN`, `OBSIDIAN_API_KEY`); the rest have working defaults.
+Every variable is in [`.env.example`](./.env.example), with a comment explaining it. Four are required (`TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `CLAUDE_CODE_OAUTH_TOKEN`, `OBSIDIAN_API_KEY`), and the rest have working defaults.
 
 ## Develop
 
-Run it without Docker:
+You can run it without Docker:
 
 ```sh
 npm install     # Node 24, builds the better-sqlite3 addon
@@ -130,4 +124,4 @@ npm test        # core logic
 
 ## License
 
-Elastic License 2.0. See [LICENSE](./LICENSE).
+Elastic License 2.0. Check [LICENSE](./LICENSE).
