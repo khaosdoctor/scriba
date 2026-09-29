@@ -23,6 +23,7 @@ write to one Obsidian vault.
 - Transcribes voice with Groq, falling back to the local Parakeet sidecar.
 - Adds contextual `[[wikilinks]]`. Ambiguous ones you confirm with a button
 - Edit a jot by replying to it: `s/old/new/`, `replace X with Y`, freeform, or `/delete`.
+- **Embeds.** If you send a YouTube, tweet or image link, the entry keeps it as a normal link and the status message gets a 🖼 Embed button. Tap it and scriba rewrites the link as `![](url)`, so Obsidian shows it right in your note. You can go back with 🔗 Plain link. Any other link stays a link, Obsidian needs an iframe for those.
 - Retries failed jots up to 10 times. If it gives up, it posts the jot un-enriched with a retry button.
 - **Task mode.** `/task` turns every message into a task — "review the RFC by next friday", "buy cat sand next week" — split into a description, a start date and a deadline, with the type (work or personal) picked from what you said. Nothing is written until you confirm the card, whose buttons change any of it. `/done` closes the mode.
 - **One-message tasks.** `/taskadd finish the slides by thursday` reads the line with the model — messy phrasing, any language — and shows you the same card to confirm. `/taskadd` on its own asks for the line.
