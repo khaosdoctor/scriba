@@ -583,9 +583,7 @@ export function anchorLine(note: string, anchor: string): string | null {
   return note.match(anchorRe(anchor))?.[0] ?? null;
 }
 
-export type MoveResult =
-  | { note: string }
-  | { missing: "line" | "heading" };
+export type MoveResult = { note: string } | { missing: "line" | "heading" };
 
 /** Move the line carrying `^anchor` under `heading`, keeping the line (and so its anchor)
  *  exactly as it is. Says what is missing instead of moving when the anchor or the heading

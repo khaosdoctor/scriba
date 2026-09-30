@@ -168,7 +168,8 @@ export class ObsidianClient {
     return this.withNoteLock(notePath, async () => {
       const note = await this.readNote(notePath);
       const out = moveAnchorLine(note, anchor, this.cfg.tilHeading);
-      if ("missing" in out) return out.missing === "line" ? "no-line" : "no-heading";
+      if ("missing" in out)
+        return out.missing === "line" ? "no-line" : "no-heading";
       await this.writeNote(notePath, out.note);
       log.info({ notePath, anchor }, "line moved to TIL");
       return "moved";
