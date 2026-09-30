@@ -1,11 +1,15 @@
 import { type Bot, InlineKeyboard } from "grammy";
 import { config } from "../config.ts";
-import { escapeHtml } from "../core.ts";
+import { clipUpdate, escapeHtml } from "../core.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = logger("til-flow");
+
+/** Cap on the quoted jot. Escaping can grow a character to five, so this keeps the card
+ *  well inside Telegram's 4096 whatever the jot holds. */
+const QUOTE_CHARS = 600;
 
 /** callback_query namespace this flow owns (see ScribaBot.handleButton). */
 export const TIL_NS = "ti";
@@ -30,7 +34,7 @@ export class TilFlow {
     const sent = await this.bot.api
       .sendMessage(
         config.telegram.allowedUserId,
-        `💡 That sounds like a TIL. Move this to TIL?\n<blockquote>${escapeHtml(text)}</blockquote>`,
+        `💡 That sounds like a TIL. Move this to TIL?\n<blockquote>${escapeHtml(clipUpdate(text, QUOTE_CHARS))}</blockquote>`,
         { parse_mode: "HTML", reply_markup: kb },
       )
       .catch((err) => {
@@ -55,7 +59,18 @@ export class TilFlow {
       await ctx.answerCallbackQuery({ text: "kept in the journal" });
       return this.settle(ctx, "🚫 Kept in the journal.");
     }
-    const moved = await this.obsidian.moveToTil(jot.note_path, jot.anchor);
+    const moved = await this.obsidian
+      .moveToTil(jot.note_path, jot.anchor)
+      .catch((err: unknown) => {
+        log.error({ err, jotId }, "til move failed, line left in the journal");
+        return null;
+      });
+    // The card keeps its buttons: a reprocess never asks again, so another tap is the retry.
+    if (moved === null)
+      return void (await ctx.answerCallbackQuery({
+        text: "couldn't move it, tap again to retry",
+        show_alert: true,
+      }));
     if (moved === "no-line") {
       log.warn({ jotId }, "til accepted but the line is no longer in the note");
       await ctx.answerCallbackQuery({ text: "couldn't find the line" });

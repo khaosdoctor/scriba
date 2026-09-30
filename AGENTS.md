@@ -293,7 +293,9 @@ deployed on the homelab (Coolify). Single user.
   the note lock: the line is cut out and inserted under `TIL_HEADING` untouched, so its
   `^anchor` still resolves for edit, undo and reprocess. A note with no TIL heading is not
   touched (the helper reports `heading` missing rather than appending at the end) and the
-  card says so. After a move the leader's and every squashed follower's `section` becomes
+  card says so. A vault write that throws is logged and answered with an alert; the card
+  keeps its buttons, since a reprocess never asks again and another tap is the retry. The
+  quoted jot is cut to 600 characters (`clipUpdate`) so the card always fits Telegram. After a move the leader's and every squashed follower's `section` becomes
   `til`, so the re-append fallbacks write the line back under TIL, not Journal.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button — `un:<jotId>`, handled by

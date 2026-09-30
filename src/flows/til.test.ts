@@ -174,15 +174,12 @@ test("a failed card edit does not undo a move that already happened", async () =
   assert.deepEqual(h.answers, ["moved to TIL", "kept in the journal"]);
 });
 
-test("known limitation: a failing vault write propagates and the callback is never answered", async () => {
+test("a failing vault write answers the tap, changes nothing and keeps the card for a retry", async () => {
   const h = harness({ moveFails: true });
-  await assert.rejects(
-    () => h.flow.handleTap(h.ctx, ["y", "abcd1234"]),
-    /obsidian is down/,
-  );
+  await h.flow.handleTap(h.ctx, ["y", "abcd1234"]);
+  assert.deepEqual(h.answers, ["couldn't move it, tap again to retry"]);
   assert.deepEqual(h.updates, []);
   assert.deepEqual(h.edits, []);
-  assert.deepEqual(h.answers, []);
 });
 
 test("an expired callback query rejects after the move, and the card is not settled", async () => {
@@ -280,11 +277,19 @@ test("the jot's text is escaped so it cannot close the quote early", async () =>
   assert.equal(text.split("</blockquote>").length - 1, 1);
 });
 
-test("known limitation: text over Telegram's cap is sent whole, and a rejected send leaves the jot unmarked", async () => {
+test("a jot over Telegram's cap is quoted truncated, so the card still goes out and is marked", async () => {
   const h = harness({ sendFails: (text) => text.length > 4096 });
   await h.flow.ask("abcd1234", "x".repeat(10_000));
-  assert.deepEqual(h.sends, []);
-  assert.deepEqual(h.marked, []);
+  assert.equal(h.sends.length, 1);
+  assert.ok(h.sends[0]!.text.length < 4096);
+  assert.match(h.sends[0]!.text, /…<\/blockquote>$/);
+  assert.deepEqual(h.marked, ["abcd1234"]);
+});
+
+test("a worst-case escaped jot still fits in one message", async () => {
+  const h = harness({ sendFails: (text) => text.length > 4096 });
+  await h.flow.ask("abcd1234", "&".repeat(10_000));
+  assert.equal(h.sends.length, 1);
 });
 
 test("the jot is marked as asked only after the card was sent", async () => {
