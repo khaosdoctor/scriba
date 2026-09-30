@@ -30,6 +30,7 @@ today's daily note, just because I am too lazy
 - **Task lists.** `/tasks` shows what's open, overdue, due today, due this week or in the next fortnight, and what's done. Every row is a button: you tap an open task to tick it off in the vault, and a done one to reopen it.
 - **A task summary every morning.** At `TASKS_TIME` (09:00 by default) scriba sends what's due today plus anything still overdue, with the same tickable rows. This one always notifies you, and on a day with nothing due it doesn't send anything.
 - **It spots tasks in your journal.** If a jot says you need to do something, scriba offers to make it a task on the same card, and asks when it's due, since a journal entry is often vague about that. You can switch this off from the task menu.
+- **It spots things you learned.** If a jot reads like something you just learned, scriba asks "Move this to TIL?". Accept and the line moves from `## Journal` to `## TIL` in the same daily note, and you can still edit or undo it. Decline and it stays where it is. If the note has no TIL heading, the line isn't moved and the card says so. A jot that already went to the TIL section isn't asked about, and you can switch the cards off from the task menu.
 - **Habits and day ratings.** If you have a habit checklist in your daily note, scriba can review it with you one habit at a time. It can also ask you to rate your day every night.
 
 ## Setup

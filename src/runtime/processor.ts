@@ -19,6 +19,7 @@ import {
   replaceAnchorLine,
   retryNotice,
   splitEntry,
+  TIL_DETECTION_KEY,
   VOICE_FIX_KEY,
   VOICE_FIX_MODEL_KEY,
   voiceFixEnabled,
@@ -78,6 +79,8 @@ export interface BotServices {
   // Propose a task the enricher spotted in a jot — the same confirmation card task mode
   // uses, so a suggestion is edited and created exactly like one typed by hand.
   askTask: (draft: TaskDraft, jotId: string, jotDate: string) => Promise<void>;
+  // Ask whether a jot the enricher read as a TIL should move to the TIL section.
+  askTil: (jotId: string, text: string) => Promise<void>;
   awaitVoiceFix: (
     jotId: string,
     original: string,
@@ -231,6 +234,7 @@ export class JotProcessor {
       const maxChars = await this.maxChars();
       let textPart = source;
       let detected: TaskDraft[] = [];
+      let tilCard = false;
       if (source.trim()) {
         const [stopwords, rejections, registered] = await Promise.all([
           this.repo.stopwords(),
@@ -295,6 +299,7 @@ export class JotProcessor {
           "enricher: done",
         );
         detected = await this.tasksFrom(res.tasks, jot);
+        tilCard = await this.tilWanted(res.til, jot);
         for (const a of res.ambiguous) {
           const pid = makeJotId();
           await this.repo.addPendingLink(pid, jot.id, a.surface, a.note);
@@ -390,6 +395,7 @@ export class JotProcessor {
         // something already journalled, never a step on the way to journalling it.
         for (const draft of detected)
           await this.bot.askTask(draft, jot.id, basename(jot.note_path, ".md"));
+        if (tilCard) await this.bot.askTil(jot.id, linked);
         await this.bot.onJotDone(jot.id); // apply anything queued while we were working
         // Each follower's own message gets the done reaction + its queued edits drained;
         // the leader carries the single status message for the whole group. Any stray
@@ -607,6 +613,33 @@ export class JotProcessor {
       `task detection: ${drafts.length} task(s) found in this jot`,
     );
     return drafts;
+  }
+
+  /**
+   * Whether this jot gets a "Move this to TIL?" card. The enricher's read is the signal;
+   * the rest is guards: the feature can be switched off from the task menu, a jot that
+   * is already a TIL jot (routed there by its prefix) needs no card, and each jot is asked once so /reprocess
+   * can't raise a card for an answer already given.
+   */
+  private async tilWanted(sounds: boolean, jot: Jot): Promise<boolean> {
+    if (!sounds) return false;
+    if (!detectionEnabled(await this.repo.getSetting(TIL_DETECTION_KEY))) {
+      log.debug({ id: jot.id }, "til detection off, no card");
+      return false;
+    }
+    if (jot.section === "til") {
+      log.debug({ id: jot.id }, "til detection: already a TIL jot");
+      return false;
+    }
+    if (await this.repo.tilOffered(jot.id)) {
+      log.info(
+        { id: jot.id },
+        "til detection: already asked, not asking again",
+      );
+      return false;
+    }
+    log.info({ id: jot.id }, "til detection: this jot sounds like a TIL");
+    return true;
   }
 
   /** Resolve relative-date phrases against the jot's own day, once, for reuse in both the journal line and the Telegram preview. */

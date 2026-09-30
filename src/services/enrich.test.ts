@@ -521,6 +521,7 @@ test("enrich requests structured output and uses it directly, skipping text pars
     "text",
     "ambiguous",
     "tasks",
+    "til",
   ]);
   // The schema asks for tasks every time, but a payload without them still parses — the
   // Groq fallback has no structured output to enforce the shape.
@@ -712,6 +713,21 @@ test("a fallback answer nested inside its own text field is unwrapped, not journ
     { surface: "Portuguese", note: "Portugal" },
   ]);
   assert.equal(res.tasks.length, 1);
+});
+
+test("the til field is read when it is true and defaults to false when absent or malformed", async () => {
+  const ask = async (answer: object) =>
+    (
+      await new Enricher(
+        "claude-haiku-4-5",
+        failQuery(),
+        [{ apiKey: "k", model: "m" }],
+        fakeGroq(JSON.stringify(answer)).fn,
+      ).enrich({ text: "x", candidates: [] })
+    ).til;
+  assert.equal(await ask({ text: "a", ambiguous: [], til: true }), true);
+  assert.equal(await ask({ text: "a", ambiguous: [] }), false);
+  assert.equal(await ask({ text: "a", ambiguous: [], til: "yes" }), false);
 });
 
 test("a fallback answer with raw line breaks inside the text still parses", async () => {

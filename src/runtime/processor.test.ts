@@ -32,7 +32,12 @@ const jot = (over: Partial<Jot> = {}): Jot =>
  *  throws, which is the give-up path's own escape hatch — it keeps the stubs to the parts
  *  under test. */
 function harness(
-  over: { followers?: Jot[]; detection?: string; priorDrafts?: number } = {},
+  over: {
+    followers?: Jot[];
+    detection?: string;
+    priorDrafts?: number;
+    tilAsked?: boolean;
+  } = {},
 ) {
   const posted: Posted[] = [];
   const reactions: [string, string][] = [];
@@ -42,6 +47,7 @@ function harness(
     groupFollowers: async () => over.followers ?? [],
     getSetting: async () => over.detection,
     taskDraftsForJot: async () => over.priorDrafts ?? 0,
+    tilOffered: async () => over.tilAsked ?? false,
   };
   const obsidian = {
     ensureDailyNote: async () => {
@@ -168,6 +174,22 @@ test("detection can be switched off, and never asks about the same jot twice", a
   const none = harness();
   assert.deepEqual(await none.processor.tasksFrom([], jot()), []);
   assert.deepEqual(await none.processor.tasksFrom(undefined, jot()), []);
+});
+
+test("a TIL card needs the enricher's read and passes every guard", async () => {
+  assert.equal(await harness().processor.tilWanted(true, jot()), true);
+  assert.equal(await harness().processor.tilWanted(false, jot()), false);
+  // switched off from the menu
+  const off = harness({ detection: "off" });
+  assert.equal(await off.processor.tilWanted(true, jot()), false);
+  // already a TIL jot (the prefix routed it there at intake)
+  assert.equal(
+    await harness().processor.tilWanted(true, jot({ section: "til" })),
+    false,
+  );
+  // asked once already, so /reprocess stays quiet
+  const asked = harness({ tilAsked: true });
+  assert.equal(await asked.processor.tilWanted(true, jot()), false);
 });
 
 test("every model down: the jot goes back to pending, no attempt charged, one held notice", async () => {

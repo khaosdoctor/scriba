@@ -1,6 +1,11 @@
 import { type Bot, InlineKeyboard } from "grammy";
 import { config } from "../../config.ts";
-import { escapeHtml, fitTelegram, makeJotId } from "../../core.ts";
+import {
+  escapeHtml,
+  fitTelegram,
+  makeJotId,
+  TIL_DETECTION_KEY,
+} from "../../core.ts";
 import type { Repository, TaskDraftRow, TaskType } from "../../db.ts";
 import { logger } from "../../log.ts";
 import type { Enricher } from "../../services/enrich.ts";
@@ -560,6 +565,8 @@ export class TasksFlow {
         return this.tapTick(ctx, action === "k", args);
       case "det":
         return this.tapDetection(ctx);
+      case "til":
+        return this.tapTilDetection(ctx);
       case "close":
         await ctx.answerCallbackQuery();
         log.info("tasks: screen closed");
@@ -719,6 +726,11 @@ export class TasksFlow {
     for (const v of VIEWS) kb.text(VIEW_LABEL[v], `${TASKS_NS}:v:${v}:0`).row();
     const on = await taskDetectionEnabled(this.repo);
     kb.text(`🔎 Spot tasks in jots: ${on ? "on" : "off"}`, `${TASKS_NS}:det`);
+    const til = detectionEnabled(await this.repo.getSetting(TIL_DETECTION_KEY));
+    kb.row().text(
+      `💡 Spot TILs in jots: ${til ? "on" : "off"}`,
+      `${TASKS_NS}:til`,
+    );
     return this.withClose(kb);
   }
 
@@ -913,6 +925,16 @@ export class TasksFlow {
     log.info({ enabled: !on }, "tasks: jot detection toggled");
     await ctx.answerCallbackQuery({
       text: on ? "I'll stop suggesting tasks" : "I'll suggest tasks again",
+    });
+    return this.showMenu(ctx, "edit");
+  }
+
+  private async tapTilDetection(ctx: any): Promise<void> {
+    const on = detectionEnabled(await this.repo.getSetting(TIL_DETECTION_KEY));
+    await this.repo.setSetting(TIL_DETECTION_KEY, on ? "off" : "on");
+    log.info({ enabled: !on }, "tasks: TIL detection toggled");
+    await ctx.answerCallbackQuery({
+      text: on ? "I'll stop suggesting TILs" : "I'll suggest TILs again",
     });
     return this.showMenu(ctx, "edit");
   }

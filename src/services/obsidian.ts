@@ -1,5 +1,9 @@
 import { Agent, fetch } from "undici";
-import { insertJournalLine, setFrontmatterValue } from "../core.ts";
+import {
+  insertJournalLine,
+  moveAnchorLine,
+  setFrontmatterValue,
+} from "../core.ts";
 import type { JotSection } from "../db.ts";
 import { logger } from "../log.ts";
 
@@ -152,6 +156,22 @@ export class ObsidianClient {
     await this.withNoteLock(path, async () => {
       const note = await this.readNote(path);
       await this.writeNote(path, insertJournalLine(note, heading, line));
+    });
+  }
+
+  /** Move a jot's line from wherever it is to the TIL heading of the same note, anchor
+   *  untouched. Says what is missing when the line or the TIL heading isn't in the note. */
+  async moveToTil(
+    notePath: string,
+    anchor: string,
+  ): Promise<"moved" | "no-line" | "no-heading"> {
+    return this.withNoteLock(notePath, async () => {
+      const note = await this.readNote(notePath);
+      const out = moveAnchorLine(note, anchor, this.cfg.tilHeading);
+      if ("missing" in out) return out.missing === "line" ? "no-line" : "no-heading";
+      await this.writeNote(notePath, out.note);
+      log.info({ notePath, anchor }, "line moved to TIL");
+      return "moved";
     });
   }
 

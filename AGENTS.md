@@ -280,6 +280,21 @@ deployed on the homelab (Coolify). Single user.
   produced drafts is never asked about again, so `/reprocess` can't re-propose tasks that
   were created or dismissed weeks ago. `tasks` is optional coming back in, since the Groq
   fallback has no structured output to enforce the shape.
+- **A jot that reads like a TIL gets a card, from the same enrichment call.** The enricher's
+  JSON carries a `til` boolean beside `tasks` (optional coming back in, for the same Groq
+  reason). `JotProcessor.tilWanted` applies the guards: the switch (`tilDetection` in
+  `settings`, toggled from the task menu next to task spotting), a jot that is already in
+  the TIL section (`jot.section === "til"`, which the `TIL` prefix sets at intake), and
+  `Repository.tilOffered`, since each jot is asked once (`jots.til_offered`) and
+  `/reprocess` must not raise the card again. The flag is set only after the card was sent,
+  so a failed send can be offered again. The card comes after the entry is written, like a
+  task card. `TilFlow` (`flows/til.ts`, callbacks `ti:y|n:<jotId>`) holds no draft: the jot
+  id is all it needs. ✅ calls `ObsidianClient.moveToTil`, which runs `moveAnchorLine` under
+  the note lock: the line is cut out and inserted under `TIL_HEADING` untouched, so its
+  `^anchor` still resolves for edit, undo and reprocess. A note with no TIL heading is not
+  touched (the helper reports `heading` missing rather than appending at the end) and the
+  card says so. After a move the leader's and every squashed follower's `section` becomes
+  `til`, so the re-append fallbacks write the line back under TIL, not Journal.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button — `un:<jotId>`, handled by
   `ScribaBot.handleRemove`, which runs the same `deleteJot` teardown as `/delete` and then

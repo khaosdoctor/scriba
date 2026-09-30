@@ -333,6 +333,11 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
     assert.equal(await repo.taskDraftsForJot("aaaaaaaa"), 1);
     assert.equal(await repo.taskDraftsForJot("ffffffff"), 0);
     assert.equal(await repo.getTaskDraft("nope"), undefined);
+    // The TIL card is asked once per jot, whatever the answer.
+    assert.equal(await repo.tilOffered("aaaaaaaa"), false);
+    await repo.markTilOffered("aaaaaaaa");
+    assert.equal(await repo.tilOffered("aaaaaaaa"), true);
+    assert.equal(await repo.tilOffered("ffffffff"), false);
   } finally {
     await repo.close();
     await rm(dbPath, { force: true });

@@ -49,6 +49,7 @@ import {
   makeJotId,
   modelsUrlFor,
   monthGrid,
+  moveAnchorLine,
   noteSuggestions,
   parseEntrySize,
   parseLiteralEdit,
@@ -1457,6 +1458,79 @@ test("unwrapModelPayload keeps outer lists when they're already filled", () => {
   });
   assert.equal(out.text, "hi");
   assert.deepEqual(out.ambiguous, [{ surface: "a", note: "b" }]);
+});
+
+test("moveAnchorLine moves the line under the heading and leaves its anchor alone", () => {
+  const note = [
+    "## Journal",
+    "- _10:00:00 ::_ first ^aaaaaaaa",
+    "- _10:01:00 ::_ learned a thing ^bbbbbbbb",
+    "## Habits",
+    "- [ ] Read",
+    "## TIL",
+    "- ",
+    "## Log",
+  ].join("\n");
+  assert.deepEqual(moveAnchorLine(note, "bbbbbbbb", "TIL"), {
+    note: [
+      "## Journal",
+      "- _10:00:00 ::_ first ^aaaaaaaa",
+      "## Habits",
+      "- [ ] Read",
+      "## TIL",
+      "- _10:01:00 ::_ learned a thing ^bbbbbbbb",
+      "## Log",
+    ].join("\n"),
+  });
+});
+
+test("moveAnchorLine appends after the TIL bullets already there", () => {
+  const note = [
+    "## Journal",
+    "- _10:01:00 ::_ new ^bbbbbbbb",
+    "## TIL",
+    "- _09:00:00 ::_ old ^aaaaaaaa",
+    "## Log",
+  ].join("\n");
+  const out = moveAnchorLine(note, "bbbbbbbb", "TIL");
+  assert.ok("note" in out);
+  assert.equal(
+    out.note,
+    [
+      "## Journal",
+      "## TIL",
+      "- _09:00:00 ::_ old ^aaaaaaaa",
+      "- _10:01:00 ::_ new ^bbbbbbbb",
+      "## Log",
+    ].join("\n"),
+  );
+  // Still found by its anchor afterwards, so edit, undo and reprocess keep working.
+  assert.equal(
+    anchorLine(out.note, "bbbbbbbb"),
+    "- _10:01:00 ::_ new ^bbbbbbbb",
+  );
+});
+
+test("moveAnchorLine says so when the anchor is gone", () => {
+  assert.deepEqual(
+    moveAnchorLine("## Journal\n- x ^aaaaaaaa\n## TIL", "ffffffff", "TIL"),
+    { missing: "line" },
+  );
+});
+
+test("moveAnchorLine refuses when the note has no such heading, instead of appending", () => {
+  assert.deepEqual(
+    moveAnchorLine("## Journal\n- x ^aaaaaaaa", "aaaaaaaa", "TIL"),
+    { missing: "heading" },
+  );
+});
+
+test("unwrapModelPayload keeps a til the model put in the inner answer", () => {
+  const out = unwrapModelPayload({
+    text: '{"text": "hi", "ambiguous": [], "til": true}',
+    til: false,
+  });
+  assert.equal(out.til, true);
 });
 
 test("unwrapModelPayload unwraps several levels and strips an echoed fence", () => {

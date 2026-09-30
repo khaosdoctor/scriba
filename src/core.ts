@@ -583,6 +583,33 @@ export function anchorLine(note: string, anchor: string): string | null {
   return note.match(anchorRe(anchor))?.[0] ?? null;
 }
 
+export type MoveResult =
+  | { note: string }
+  | { missing: "line" | "heading" };
+
+/** Move the line carrying `^anchor` under `heading`, keeping the line (and so its anchor)
+ *  exactly as it is. Says what is missing instead of moving when the anchor or the heading
+ *  isn't in the note: without the heading the line would be appended at the end of it. */
+export function moveAnchorLine(
+  note: string,
+  anchor: string,
+  heading: string,
+): MoveResult {
+  const line = anchorLine(note, anchor);
+  if (line === null) return { missing: "line" };
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRe(heading)}\\s*$`, "m");
+  if (!headingRe.test(note)) return { missing: "heading" };
+  const without = note.replace(
+    new RegExp(`${anchorRe(anchor).source}\\n?`, "m"),
+    "",
+  );
+  return { note: insertJournalLine(without, heading, line) };
+}
+
+/** `settings` key for the "Move this to TIL?" cards (set from the task menu, survives a
+ *  restart). Unset means on, like task detection. */
+export const TIL_DETECTION_KEY = "tilDetection";
+
 export interface AliasEntry {
   note: string;
   alias: string;
@@ -1312,6 +1339,7 @@ export interface ModelPayload {
   text: string;
   ambiguous?: unknown;
   tasks?: unknown;
+  til?: unknown;
 }
 
 /**
@@ -1335,6 +1363,7 @@ export function unwrapModelPayload(p: ModelPayload): ModelPayload {
         ? (inner.ambiguous ?? out.ambiguous)
         : out.ambiguous,
       tasks: empty(out.tasks) ? (inner.tasks ?? out.tasks) : out.tasks,
+      til: out.til === true ? true : (inner.til ?? out.til),
     };
   }
   const fenced = out.text.trim().match(/^"""([\s\S]*)"""$/);
