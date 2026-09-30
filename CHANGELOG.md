@@ -1,3 +1,10 @@
+## [1.51.0](https://github.com/khaosdoctor/scriba/compare/v1.50.0...v1.51.0) (2026-09-30)
+
+
+### Features
+
+* write TIL-prefixed jots under the TIL heading ([#21](https://github.com/khaosdoctor/scriba/issues/21)) ([932b7e0](https://github.com/khaosdoctor/scriba/commit/932b7e0b8a56bea1cb05a9478e004e1ea4685b08))
+
 ## [1.50.0](https://github.com/khaosdoctor/scriba/compare/v1.49.1...v1.50.0) (2026-09-29)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * **enrich:** stop raw JSON in the journal and keep jots from hanging ([#19](https://github.com/khaosdoctor/scriba/issues/19)) ([f08f827](https://github.com/khaosdoctor/scriba/commit/f08f827ee8ec71d3e2ef38c58f191eee653d40e2))
-
-## [1.48.0](https://github.com/khaosdoctor/scriba/compare/v1.47.2...v1.48.0) (2026-09-27)
-
-
-### Features
-
-* **enrich:** add OpenCode Go/DeepSeek Flash as enrichment fallback ([#17](https://github.com/khaosdoctor/scriba/issues/17)) ([4ccdaa0](https://github.com/khaosdoctor/scriba/commit/4ccdaa05a01115b08623674077d94b2d0911fb9a))
 
