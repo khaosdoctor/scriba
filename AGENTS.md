@@ -75,6 +75,14 @@ deployed on the homelab (Coolify). Single user.
   message), marking it for merge; reacting with 🤝 yourself is the opt-out — it pulls that
   jot back into its own line (`Repository.unsquash`, a claim()-style compare-and-swap).
   Too late once the batch has already flushed and folded it into the leader.
+- **TIL section.** A text jot starting with `TIL` (`stripTilPrefix` in `core.ts`, token-free)
+  is stored with the prefix removed and `section = "til"` (`jots.section`, default
+  `"journal"`). Every write that has to append a line (placeholder, unsquash, anchor-missing
+  fallback) passes `jot.section` to `ObsidianClient.appendJournalLine`, which picks
+  `TIL_HEADING` or `JOURNAL_HEADING`. The line keeps the usual `- _time ::_ text ^anchor`
+  shape, so replace/edit/undo/reprocess find it by anchor anywhere. A missing heading falls
+  back to appending at the end of the note, like Journal. A TIL jot only squashes with
+  another TIL jot, and split pieces inherit the section.
 - Jot status: `pending → processing → done` (or `failed` → retry, or `abandoned` on
   give-up). `processing` is claimed atomically so flush + sweeps never double-process.
 - Stopwords, learned link-rejections and registered (always-link) pairs live in the DB,

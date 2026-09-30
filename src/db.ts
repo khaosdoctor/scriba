@@ -4,6 +4,7 @@ import { logger } from "./log.ts";
 const log = logger("db");
 
 export type JotKind = "text" | "audio" | "image" | "video";
+export type JotSection = "journal" | "til";
 export type JotStatus =
   | "pending" // placeholder written, awaiting processing
   | "processing" // claimed by a worker (atomic) — in flight
@@ -63,6 +64,7 @@ export interface Jot {
   raw_text: string | null;
   transcript: string | null;
   proposed_text: string | null;
+  section: JotSection;
   asset_path: string | null;
   file_id: string | null;
   status: JotStatus;

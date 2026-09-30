@@ -448,6 +448,16 @@ export function splitEntry(text: string, maxChars: number): string[] {
   return out.length ? out : [clean];
 }
 
+// "TIL", then a colon/dash or whitespace, then the actual text. "TIL" alone, or a word that
+// merely starts with it ("tilde"), is an ordinary jot.
+const TIL_PREFIX = /^til(?:\s*[:\-–—]+\s*|\s+)(?=\S)/i;
+
+/** The text after a leading "TIL" marker, or null when the jot doesn't start with one.
+ *  The heading already says it is a TIL, so the marker itself is dropped. */
+export function stripTilPrefix(text: string): string | null {
+  return TIL_PREFIX.test(text) ? text.replace(TIL_PREFIX, "") : null;
+}
+
 /** Placeholder written the instant a jot arrives — fixes ordering, filled in later. */
 export function placeholderLine(time: string, anchor: string): string {
   return journalLine(time, "⏳", anchor);

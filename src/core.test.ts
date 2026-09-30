@@ -65,6 +65,7 @@ import {
   setFrontmatterValue,
   splitEntry,
   stripJournalLine,
+  stripTilPrefix,
   TELEGRAM_LIMIT,
   thoughtIcon,
   tokenize,
@@ -143,6 +144,25 @@ test("journal + placeholder lines match the vault house style", () => {
     placeholderLine("09:00:00", "deadbeef"),
     "- _09:00:00 ::_ ⏳ ^deadbeef",
   );
+});
+
+test("stripTilPrefix drops a leading TIL marker in its usual spellings", () => {
+  assert.equal(stripTilPrefix("TIL foo"), "foo");
+  assert.equal(stripTilPrefix("til foo"), "foo");
+  assert.equal(stripTilPrefix("TIL: foo"), "foo");
+  assert.equal(stripTilPrefix("TIL:foo"), "foo");
+  assert.equal(stripTilPrefix("TIL - foo"), "foo");
+  assert.equal(stripTilPrefix("Til – foo"), "foo");
+  assert.equal(stripTilPrefix("TIL:\nfoo\nbar"), "foo\nbar");
+});
+
+test("stripTilPrefix leaves everything else alone", () => {
+  assert.equal(stripTilPrefix("TIL"), null);
+  assert.equal(stripTilPrefix("TIL:"), null);
+  assert.equal(stripTilPrefix("tilde is a key"), null);
+  assert.equal(stripTilPrefix("until then"), null);
+  assert.equal(stripTilPrefix("today TIL foo"), null);
+  assert.equal(stripTilPrefix(""), null);
 });
 
 test("insertJournalLine replaces the empty template bullet on the first jot", () => {
@@ -788,6 +808,7 @@ test("formatJotDetail shows full text and includes errors", () => {
     raw_text: null,
     transcript: "x".repeat(400),
     proposed_text: null,
+    section: "journal",
     asset_path: null,
     file_id: null,
     status: "failed",
@@ -812,6 +833,7 @@ const mediaJot = (over: Partial<Jot>): Jot => ({
   raw_text: null,
   transcript: null,
   proposed_text: null,
+  section: "journal",
   asset_path: null,
   file_id: null,
   status: "done",
@@ -1125,6 +1147,7 @@ test("jotPreview falls back to (kind) for a captionless attach-only jot", () => 
     raw_text: null,
     transcript: null,
     proposed_text: null,
+    section: "journal" as const,
     asset_path: null,
     file_id: null,
     status: "done" as const,

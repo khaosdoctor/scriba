@@ -17,6 +17,7 @@ function sampleJot(id: string): Jot {
     raw_text: "hi",
     transcript: null,
     proposed_text: null,
+    section: "journal",
     asset_path: null,
     file_id: null,
     status: "pending",

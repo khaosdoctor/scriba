@@ -22,9 +22,10 @@ import {
   replaceAnchorLine,
   setEmbeds,
   stripJournalLine,
+  stripTilPrefix,
   withinSquashWindow,
 } from "./core.ts";
-import type { Jot, JotKind, Repository } from "./db.ts";
+import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
 import { COMMAND_NS, CommandSession } from "./flows/command.ts";
 import {
   HABITS_NS,
@@ -713,6 +714,9 @@ export class ScribaBot implements BotServices {
     // down. ensureDailyNote + the placeholder write happen after, and writeLine recreates
     // the note on flush, so a failed placeholder self-heals.
     const notePath = this.obsidian.dailyPath(date);
+    const tilText = kind === "text" ? stripTilPrefix(src.rawText ?? "") : null;
+    const section: JotSection = tilText === null ? "journal" : "til";
+    const rawText = tilText ?? src.rawText;
 
     // Squash a rapid burst: a text/voice jot arriving within the squash window of the
     // previous still-pending text/voice jot in this note folds into that jot's line —
@@ -727,6 +731,7 @@ export class ScribaBot implements BotServices {
       const prev = await this.repo.lastPendingEnrichableJot(notePath);
       if (
         prev &&
+        prev.section === section &&
         withinSquashWindow(prev.received_at, epochMs, config.squash.windowMs)
       ) {
         anchor = prev.anchor;
@@ -756,9 +761,10 @@ export class ScribaBot implements BotServices {
       note_path: notePath,
       anchor,
       time,
-      raw_text: src.rawText ?? null,
+      raw_text: rawText ?? null,
       transcript: null,
       proposed_text: null,
+      section,
       asset_path: null,
       file_id: src.fileId ?? null,
       status: "pending",
@@ -782,7 +788,11 @@ export class ScribaBot implements BotServices {
       log.debug({ id, anchor }, "squashed — reusing leader placeholder");
     } else {
       await this.obsidian.ensureDailyNote(date);
-      await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
+      await this.obsidian.appendJournalLine(
+        date,
+        placeholderLine(time, id),
+        section,
+      );
       log.debug({ id, notePath }, "placeholder line written");
     }
     this.queue.add(id);
@@ -818,6 +828,7 @@ export class ScribaBot implements BotServices {
     await this.obsidian.appendJournalLine(
       plainDate(jot.received_at),
       placeholderLine(jot.time, jotId),
+      jot.section,
     );
     await ctx.react("✍").catch(() => {});
   }

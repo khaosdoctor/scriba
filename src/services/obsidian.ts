@@ -1,5 +1,6 @@
 import { Agent, fetch } from "undici";
 import { insertJournalLine, setFrontmatterValue } from "../core.ts";
+import type { JotSection } from "../db.ts";
 import { logger } from "../log.ts";
 
 const log = logger("obsidian");
@@ -13,6 +14,7 @@ export interface ObsidianConfig {
   dailyDir: string;
   dailyTemplate: string;
   journalHeading: string;
+  tilHeading: string;
   habitsHeading: string;
   assetsDir: string;
   insecureTls: boolean;
@@ -135,17 +137,21 @@ export class ObsidianClient {
     return run;
   }
 
-  /** Insert a bullet under the ## Journal heading. Read-modify-write (not the REST
-   *  heading-append) so the line lands right after the last bullet — or replaces the
-   *  empty template bullet — instead of trailing a blank line below it. */
-  async appendJournalLine(date: string, line: string): Promise<void> {
+  /** Insert a bullet under the ## Journal heading (or ## TIL for a TIL jot).
+   *  Read-modify-write (not the REST heading-append) so the line lands right after the
+   *  last bullet — or replaces the empty template bullet — instead of trailing a blank
+   *  line below it. */
+  async appendJournalLine(
+    date: string,
+    line: string,
+    section: JotSection = "journal",
+  ): Promise<void> {
     const path = this.dailyPath(date);
+    const heading =
+      section === "til" ? this.cfg.tilHeading : this.cfg.journalHeading;
     await this.withNoteLock(path, async () => {
       const note = await this.readNote(path);
-      await this.writeNote(
-        path,
-        insertJournalLine(note, this.cfg.journalHeading, line),
-      );
+      await this.writeNote(path, insertJournalLine(note, heading, line));
     });
   }
 
