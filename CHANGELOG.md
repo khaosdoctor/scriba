@@ -1,3 +1,10 @@
+## [1.53.0](https://github.com/khaosdoctor/scriba/compare/v1.52.0...v1.53.0) (2026-09-30)
+
+
+### Features
+
+* ask follow-up questions after the nightly rating for what's still empty ([#23](https://github.com/khaosdoctor/scriba/issues/23)) ([f31d6d7](https://github.com/khaosdoctor/scriba/commit/f31d6d723c8765a0df05ef49e97a67bb6c20cdf0))
+
 ## [1.52.0](https://github.com/khaosdoctor/scriba/compare/v1.51.0...v1.52.0) (2026-09-30)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * **enrich:** turn off extended thinking for enrichment calls ([#20](https://github.com/khaosdoctor/scriba/issues/20)) ([3ebc900](https://github.com/khaosdoctor/scriba/commit/3ebc900128f06dda039da072daed00035bf29103))
-
-## [1.49.0](https://github.com/khaosdoctor/scriba/compare/v1.48.1...v1.49.0) (2026-09-28)
-
-
-### Features
-
-* **health:** probe upstreams and report connection status ([#18](https://github.com/khaosdoctor/scriba/issues/18)) ([c8de09d](https://github.com/khaosdoctor/scriba/commit/c8de09dc199ffafcfc4c9eb229e90d9c82e1c42f))
 
