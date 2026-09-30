@@ -289,6 +289,21 @@ test("changing the rating time again and again leaves one timer, at the last tim
   h.scheduler.stop();
 });
 
+test("setRatingTime normalises an unpadded time and ignores an invalid one", async (t) => {
+  clockAt10(t);
+  const h = harness();
+  h.scheduler.setRatingTime("9:30"); // before 10:00, so the next firing is tomorrow 09:30
+  h.scheduler.setRatingTime("25:99"); // rejected, 09:30 stays
+  h.scheduler.start();
+  t.mock.timers.tick(23 * HOUR + 29 * MIN);
+  await flush();
+  assert.deepEqual(h.rated, []);
+  t.mock.timers.tick(MIN);
+  await flush();
+  assert.deepEqual(h.rated, ["2026-03-10"]);
+  h.scheduler.stop();
+});
+
 test("a midnight rating is for the day that just ended, by exact date", async (t) => {
   clockAt10(t);
   const h = harness();
@@ -348,7 +363,7 @@ test("the rating switch is read at every firing, not once at start", async (t) =
   h.scheduler.stop();
 });
 
-test("known limitation: a rating prompt that never resolves stops the nightly rating for good", async (t) => {
+test("a rating prompt that never resolves does not stop the next night's", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   let calls = 0;
   const scheduler = new Scheduler(
@@ -367,9 +382,12 @@ test("known limitation: a rating prompt that never resolves stops the nightly ra
     1000,
   );
   scheduler.start();
-  t.mock.timers.tick(2 * DAY);
+  t.mock.timers.tick(DAY);
   await flush();
   assert.equal(calls, 1);
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(calls, 2);
   scheduler.stop();
 });
 

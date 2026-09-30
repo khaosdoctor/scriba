@@ -34,6 +34,10 @@ const PROMPTS: Record<FollowupQuestion, string> = {
  *  as for any other. The TIL is a jot prefixed with "TIL:" rather than a bullet under the TIL
  *  heading, since enrichment and the status message belong to the jot pipeline. */
 export class FollowupFlow {
+  /** Prompts already skipped (`chat:message`), so a double tap asks the next question once.
+   *  Forgotten on restart, which only ever loses the guard for a prompt that was live then. */
+  private skipped = new Set<string>();
+
   constructor(
     private bot: Bot,
     private repo: Repository,
@@ -107,9 +111,21 @@ export class FollowupFlow {
       log.warn({ code, date }, "follow-up tap rejected: bad payload");
       return void ctx.answerCallbackQuery({ text: "bad follow-up" });
     }
+    const message = ctx.callbackQuery?.message;
+    if (!message) {
+      log.warn({ date, question }, "follow-up tap: prompt message is gone");
+      return void ctx.answerCallbackQuery();
+    }
+    // Claimed before the first await, so a double tap can't ask the next question twice.
+    const key = `${ctx.chat.id}:${message.message_id}`;
+    if (this.skipped.has(key)) {
+      log.info({ date, question }, "follow-up tap ignored: already skipped");
+      return void ctx.answerCallbackQuery();
+    }
+    this.skipped.add(key);
     log.info({ date, question }, "follow-up skipped");
     await ctx.answerCallbackQuery();
-    await this.drop(ctx.chat.id, ctx.callbackQuery.message.message_id);
+    await this.drop(ctx.chat.id, message.message_id);
     await this.ask(date, question);
   }
 

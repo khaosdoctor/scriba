@@ -358,7 +358,11 @@ deployed on the homelab (Coolify). Single user.
   (`WIZARD_RATING_TIME_REF`) and checked by `parseClockTime`, which takes 24-hour `H:MM` or
   `HH:MM` and answers anything else with a message. `Scheduler` owns the rating timer apart
   from the fixed daily jobs: `setRatingTime` re-arms it at once when running, and the job
-  reads the `nightlyRating` row each time it fires, skipping (and re-arming) when it is off.
+  reads the `nightlyRating` row each time it fires, skipping when it is off. The next night
+  is armed before the prompt runs, so a prompt that hangs or throws can't stop later ones.
+  A Skip tap is claimed in memory by chat and message id before its first await, so a double
+  tap asks the next question once, and a tap whose message is gone is only acknowledged.
+  The menu toggles keep their setting when the ack or the redraw fails.
   `ratingDay` picks the day to rate: before 12:00 the firing is just after midnight, so
   yesterday, otherwise today. The follow-up reads its own row in `FollowupFlow.start`, so a
   rating that is off never reaches it. The switches govern the nightly prompt only: `/rate`

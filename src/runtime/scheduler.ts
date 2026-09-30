@@ -1,5 +1,10 @@
 import { config } from "../config.ts";
-import { RATING_SWITCH_KEY, ratingDay, switchEnabled } from "../core.ts";
+import {
+  parseClockTime,
+  RATING_SWITCH_KEY,
+  ratingDay,
+  switchEnabled,
+} from "../core.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
 import { msUntilNext, plainDate, previousDate, startOfToday } from "../time.ts";
@@ -82,13 +87,19 @@ export class Scheduler {
   /** Move the nightly rating to `time` (HH:MM). Before `start` it only records the time;
    *  once running it re-arms, so the change applies to the very next occurrence. */
   setRatingTime(time: string): void {
-    this.ratingAt = time;
-    log.info({ time }, "rating time set");
+    const at = parseClockTime(time);
+    if (!at) {
+      log.warn({ time }, "rating time rejected: not HH:MM");
+      return;
+    }
+    this.ratingAt = at;
+    log.info({ time: at }, "rating time set");
     if (this.started) this.armRating();
   }
 
   /** Arm the rating prompt for the next occurrence of `ratingAt`, replacing any timer
-   *  already armed, and re-arm after it fires whatever the outcome. */
+   *  already armed. The next night is armed before the prompt runs, so a prompt that hangs
+   *  or fails can't stop the ones after it. */
   private armRating(): void {
     clearTimeout(this.ratingTimer);
     const wait = msUntilNext(this.ratingAt);
@@ -97,12 +108,12 @@ export class Scheduler {
       "next rating prompt scheduled",
     );
     this.ratingTimer = setTimeout(async () => {
+      this.armRating();
       try {
         await this.fireRating();
       } catch (e) {
         log.error({ err: e }, "daily rating prompt failed");
       }
-      this.armRating();
     }, wait);
     this.ratingTimer.unref();
   }

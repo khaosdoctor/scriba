@@ -312,13 +312,28 @@ test("start reads the follow-up switch and never the rating's", async () => {
   assert.deepEqual(h.keys, ["nightlyFollowup"]);
 });
 
-test("known limitation: two concurrent Skip taps ask the next question twice", async () => {
+test("two concurrent Skip taps on one prompt ask the next question once", async () => {
   const h = harness();
   const t = tap();
   await Promise.all([
     h.flow.handleTap(t.ctx, "j", DATE),
     h.flow.handleTap(t.ctx, "j", DATE),
   ]);
+  assert.equal(h.sent.length, 1);
+  assert.deepEqual(h.deleted, [[1, 9]]);
+  assert.equal(t.answers.length, 2);
+});
+
+test("a repeated Skip tap later on is ignored too, but another prompt still works", async () => {
+  const h = harness();
+  const first = tap();
+  await h.flow.handleTap(first.ctx, "j", DATE);
+  await h.flow.handleTap(first.ctx, "j", DATE);
+  assert.equal(h.sent.length, 1);
+
+  const other = tap();
+  other.ctx.callbackQuery.message.message_id = 10;
+  await h.flow.handleTap(other.ctx, "j", DATE);
   assert.equal(h.sent.length, 2);
 });
 
@@ -337,7 +352,7 @@ test("Skip on a stale prompt asks from the note as it is now", async () => {
   assert.match(old.sent[0]!.text, /\(fu:t:2026-06-25\)/);
 });
 
-test("known limitation: a Skip tap whose message is missing throws after the ack", async () => {
+test("a Skip tap whose message is gone is acknowledged and stops", async () => {
   const h = harness();
   const answers: unknown[] = [];
   const ctx = {
@@ -345,7 +360,8 @@ test("known limitation: a Skip tap whose message is missing throws after the ack
     callbackQuery: {},
     answerCallbackQuery: async (a?: unknown) => void answers.push(a),
   };
-  await assert.rejects(h.flow.handleTap(ctx, "j", DATE), TypeError);
+  await h.flow.handleTap(ctx, "j", DATE);
   assert.equal(answers.length, 1);
   assert.deepEqual(h.sent, []);
+  assert.deepEqual(h.deleted, []);
 });

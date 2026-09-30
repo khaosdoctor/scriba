@@ -1346,11 +1346,12 @@ test("parseClockTime rejects malformed, non-ASCII and multi-line input", () => {
     assert.equal(parseClockTime(bad), null, JSON.stringify(bad));
 });
 
-test("known limitation: ratingTime passes the fallback through without normalising it", () => {
-  assert.equal(ratingTime(undefined, "9:30"), "9:30");
-  // ...which ratingDay then misreads: Number("9:") is NaN, so it rates today.
+test("ratingTime normalises the fallback too, and ratingDay reads an unpadded hour", () => {
+  assert.equal(ratingTime(undefined, "9:30"), "09:30");
+  assert.equal(ratingTime("garbage", "9:30"), "09:30");
+  assert.equal(ratingTime("8:05", "00:00"), "08:05");
   const now = new Date(2026, 6, 6, 12, 0).getTime();
-  assert.equal(ratingDay("9:30", now), "2026-07-06");
+  assert.equal(ratingDay("9:30", now), "2026-07-05");
 });
 
 test("ratingDay rolls back across month, year and leap-day boundaries", () => {

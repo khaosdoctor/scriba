@@ -200,22 +200,31 @@ test("a stored off switch flips back on", async () => {
   assert.deepEqual(c.answers, ["Follow-up on"]);
 });
 
-test("known limitation: a toggle on a menu that is gone still changes the setting, then throws", async () => {
+test("a toggle on a menu that is gone keeps the setting and does not throw", async () => {
   const { menu, sets } = settingsHarness();
   const c = callbackCtx({ editFails: true });
-  await assert.rejects(
-    menu.handleCallback(c.ctx, ["fusw"]),
-    /message to edit not found/,
-  );
+  await menu.handleCallback(c.ctx, ["fusw"]);
   assert.deepEqual(sets, [["nightlyFollowup", "off"]]);
+  assert.deepEqual(c.answers, ["Follow-up off"]);
 });
 
-test("known limitation: an expired callback query blocks the redraw after the switch flipped", async () => {
+test("an expired callback query still gets the menu redrawn after the switch flipped", async () => {
   const { menu, sets } = settingsHarness();
   const c = callbackCtx({ answerFails: true });
-  await assert.rejects(menu.handleCallback(c.ctx, ["rtsw"]), /too old/);
+  await menu.handleCallback(c.ctx, ["rtsw"]);
   assert.deepEqual(sets, [["nightlyRating", "off"]]);
-  assert.deepEqual(c.edits, []);
+  assert.equal(c.edits.length, 1);
+  assert.equal(
+    findButton(c.edits[0]!.opts.reply_markup, "menu:rtsw").text,
+    "🌙 Nightly rating: off",
+  );
+});
+
+test("a toggle survives both the ack and the redraw failing", async () => {
+  const { menu, sets } = settingsHarness();
+  const c = callbackCtx({ answerFails: true, editFails: true });
+  await menu.handleCallback(c.ctx, ["fusw"]);
+  assert.deepEqual(sets, [["nightlyFollowup", "off"]]);
 });
 
 test("the time button opens the time prompt and nothing else", async () => {

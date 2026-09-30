@@ -453,10 +453,16 @@ export class MenuController {
     const next = switchEnabled(await repo.getSetting(key)) ? "off" : "on";
     await repo.setSetting(key, next);
     log.info({ key, next }, "menu: switch toggled");
-    await ctx.answerCallbackQuery({ text: `${label} ${next}` });
-    await ctx.editMessageText("🗂 scriba control menu", {
-      reply_markup: await this.rootMenu(),
-    });
+    // The setting is already saved, so neither a stale callback query nor a menu that has
+    // gone away may undo that or stop the other half.
+    await ctx
+      .answerCallbackQuery({ text: `${label} ${next}` })
+      .catch((err: unknown) => log.warn({ err }, "menu: toggle ack failed"));
+    await ctx
+      .editMessageText("🗂 scriba control menu", {
+        reply_markup: await this.rootMenu(),
+      })
+      .catch((err: unknown) => log.warn({ err }, "menu: toggle redraw failed"));
   }
 
   /** The rating time is free text (HH:MM): ask, and route the reply back by the marker. */
