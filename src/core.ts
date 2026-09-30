@@ -5,7 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { sep } from "node:path";
 import * as chrono from "chrono-node";
-import type { Jot, JotKind, JotStatus, StatsRow } from "./db.ts";
+import type { Jot, JotKind, JotSection, JotStatus, StatsRow } from "./db.ts";
 import type { ReleaseNote } from "./services/github.ts";
 import { dateFromIso, plainDate } from "./time.ts";
 
@@ -446,6 +446,23 @@ export function splitEntry(text: string, maxChars: number): string[] {
     if (buf) out.push(buf);
   }
   return out.length ? out : [clean];
+}
+
+// "TIL", then a colon/dash or whitespace, then the actual text. "TIL" alone, or a word that
+// merely starts with it ("tilde"), is an ordinary jot.
+const TIL_PREFIX = /^til(?:\s*[:\-–—]+\s*|\s+)(?=[\s\S]*[\p{L}\p{N}])/iu;
+
+/** The text after a leading "TIL" marker, or null when the jot doesn't start with one.
+ *  The heading already says it is a TIL, so the marker itself is dropped. */
+export function stripTilPrefix(text: string): string | null {
+  return TIL_PREFIX.test(text) ? text.replace(TIL_PREFIX, "") : null;
+}
+
+/** Text of a natively edited message as it belongs on the jot's line: a TIL jot keeps its
+ *  marker out of the note, so an edit that still starts with "TIL" loses it again. */
+export function editedJotText(section: JotSection, text: string): string {
+  if (section !== "til") return text;
+  return stripTilPrefix(text) ?? text;
 }
 
 /** Placeholder written the instant a jot arrives — fixes ordering, filled in later. */

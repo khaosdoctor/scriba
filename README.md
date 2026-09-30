@@ -21,6 +21,7 @@ today's daily note, just because I am too lazy
 - When you send a message, scriba writes a placeholder right away and fills it in place once it's processed.
 - Your voice notes go to Groq first, and to the local Parakeet sidecar if Groq fails or you don't have a key.
 - It adds contextual `[[wikilinks]]`, and you confirm the ambiguous ones with a button.
+- **TIL.** A text jot that starts with `TIL` (`TIL foo`, `til: foo`, `TIL - foo`) goes under the `## TIL` heading instead of `## Journal`, without the prefix. Everything else works the same. The heading is `TIL_HEADING`, and if the note doesn't have it the line is appended at the end of the note.
 - You can edit a jot by replying to it with `s/old/new/`, `replace X with Y` or a freeform instruction. Replying with `/delete` removes it.
 - **Embeds.** If you send a YouTube, tweet or image link, the entry keeps it as a normal link and the status message gets a 🖼 Embed button. Tap it and scriba rewrites the link as `![](url)`, so Obsidian shows it right in your note. You can go back with 🔗 Plain link. Any other link stays a link, Obsidian needs an iframe for those.
 - A failed jot is retried up to 10 times, and every failure message has a 🔄 Retry and a 🗑 Delete button. If scriba gives up, the jot goes into the note un-enriched.

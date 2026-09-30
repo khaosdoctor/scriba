@@ -17,6 +17,7 @@ function sampleJot(id: string): Jot {
     raw_text: "hi",
     transcript: null,
     proposed_text: null,
+    section: "journal",
     asset_path: null,
     file_id: null,
     status: "pending",
@@ -194,13 +195,36 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
       kind: "image",
       received_at: 9000,
     }); // attach-only — never a run head
-    assert.equal((await repo.lastPendingEnrichableJot(NOTE))?.id, "22222222"); // newest pending enrichable; image skipped
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "journal"))?.id,
+      "22222222",
+    ); // newest pending enrichable; image skipped
     assert.deepEqual(
       (await repo.groupFollowers("11111111")).map((j) => j.id),
       ["22222222"],
     );
     await repo.updateJot("22222222", { status: "done" }); // no longer an open run head
-    assert.equal((await repo.lastPendingEnrichableJot(NOTE))?.id, "11111111");
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "journal"))?.id,
+      "11111111",
+    );
+    // a newer TIL jot is invisible to the journal run and vice versa
+    await repo.insertJot({
+      ...sampleJot("66666666"),
+      note_path: NOTE,
+      section: "til",
+      received_at: -2, // outside the /reprocess range test below
+    });
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "journal"))?.id,
+      "11111111",
+    );
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "til"))?.id,
+      "66666666",
+    );
+    await repo.updateJot("66666666", { status: "done" });
+    assert.equal(await repo.lastPendingEnrichableJot(NOTE, "til"), undefined);
     await repo.markDeleted("22222222");
     assert.deepEqual(await repo.groupFollowers("11111111"), []); // deleted drops out
 
@@ -314,5 +338,80 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
     await rm(dbPath, { force: true });
     await rm(`${dbPath}-shm`, { force: true });
     await rm(`${dbPath}-wal`, { force: true });
+  }
+});
+
+const tempDbPath = () =>
+  join(tmpdir(), `scriba-test-${randomBytes(6).toString("hex")}.db`);
+
+async function removeDb(dbPath: string) {
+  for (const suffix of ["", "-shm", "-wal"])
+    await rm(`${dbPath}${suffix}`, { force: true });
+}
+
+test("squash lookups stay inside their section", async (t) => {
+  const dbPath = tempDbPath();
+  let repo: Repository;
+  try {
+    repo = await Repository.open(dbPath);
+  } catch (e) {
+    return t.skip(
+      `native sqlite unavailable: ${(e as Error).message.slice(0, 80)}`,
+    );
+  }
+  try {
+    const NOTE = "notes/daily notes/2026-07-09.md";
+    await repo.insertJot({
+      ...sampleJot("aaaaaaaa"),
+      note_path: NOTE,
+      received_at: 1000,
+    });
+    await repo.insertJot({
+      ...sampleJot("bbbbbbbb"),
+      note_path: NOTE,
+      section: "til",
+      received_at: 2000,
+    });
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "journal"))?.id,
+      "aaaaaaaa",
+    );
+    await repo.insertJot({
+      ...sampleJot("cccccccc"),
+      note_path: NOTE,
+      received_at: 3000,
+    });
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "journal"))?.id,
+      "cccccccc",
+    );
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "til"))?.id,
+      "bbbbbbbb",
+    );
+  } finally {
+    await repo.close();
+    await removeDb(dbPath);
+  }
+});
+
+test("reopening a migrated database applies nothing and keeps the section", async (t) => {
+  const dbPath = tempDbPath();
+  try {
+    const first = await Repository.open(dbPath);
+    await first.insertJot({ ...sampleJot("aaaaaaaa"), section: "til" });
+    await first.close();
+  } catch (e) {
+    await removeDb(dbPath);
+    return t.skip(
+      `native sqlite unavailable: ${(e as Error).message.slice(0, 80)}`,
+    );
+  }
+  try {
+    const second = await Repository.open(dbPath);
+    assert.equal((await second.getJot("aaaaaaaa"))?.section, "til");
+    await second.close();
+  } finally {
+    await removeDb(dbPath);
   }
 });

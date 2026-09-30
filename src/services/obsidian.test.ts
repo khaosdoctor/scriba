@@ -96,6 +96,7 @@ async function client(over: Partial<ObsidianConfig> = {}) {
     dailyDir: "notes/daily notes",
     dailyTemplate: "internal/templates/Daily Note",
     journalHeading: "Journal",
+    tilHeading: "TIL",
     habitsHeading: "Habits",
     assetsDir: "internal/assets/journal",
     insecureTls: false,
@@ -243,6 +244,80 @@ test("appendJournalLine puts the bullet under the heading, not below a blank lin
   assert.equal(
     fake.vault.get(path),
     "# 2026-08-16\n\n## Journal\n- _10:00:00 ::_ hi ^aaaaaaaa\n",
+  );
+});
+
+test("appendJournalLine writes a TIL jot under the TIL heading", async () => {
+  const { obsidian, fake } = await client();
+  const path = "notes/daily notes/2026-08-16.md";
+  fake.vault.set(path, "## Journal\n- a ^aaaaaaaa\n## TIL\n- \n## Log\n");
+  await obsidian.appendJournalLine(
+    "2026-08-16",
+    "- _10:00:00 ::_ hi ^bbbbbbbb",
+    "til",
+  );
+  assert.equal(
+    fake.vault.get(path),
+    "## Journal\n- a ^aaaaaaaa\n## TIL\n- _10:00:00 ::_ hi ^bbbbbbbb\n## Log\n",
+  );
+});
+
+test("appendJournalLine appends at the end when the TIL heading is missing", async () => {
+  const { obsidian, fake } = await client();
+  const path = "notes/daily notes/2026-08-16.md";
+  fake.vault.set(path, "## Journal\n- a ^aaaaaaaa\n");
+  await obsidian.appendJournalLine(
+    "2026-08-16",
+    "- _10:00:00 ::_ hi ^bbbbbbbb",
+    "til",
+  );
+  assert.equal(
+    fake.vault.get(path),
+    "## Journal\n- a ^aaaaaaaa\n- _10:00:00 ::_ hi ^bbbbbbbb\n",
+  );
+});
+
+test("appendJournalLine defaults to the journal section even when a TIL heading exists", async () => {
+  const { obsidian, fake } = await client();
+  const path = "notes/daily notes/2026-08-16.md";
+  fake.vault.set(path, "## Journal\n- a ^aaaaaaaa\n## TIL\n- \n");
+  await obsidian.appendJournalLine(
+    "2026-08-16",
+    "- _10:00:00 ::_ hi ^bbbbbbbb",
+  );
+  assert.equal(
+    fake.vault.get(path),
+    "## Journal\n- a ^aaaaaaaa\n- _10:00:00 ::_ hi ^bbbbbbbb\n## TIL\n- \n",
+  );
+});
+
+test("appendJournalLine uses the configured TIL heading", async () => {
+  const { obsidian, fake } = await client({ tilHeading: "Today I Learned" });
+  const path = "notes/daily notes/2026-08-16.md";
+  fake.vault.set(
+    path,
+    "## Journal\n- a\n## Today I Learned\n- \n## TIL\n- keep\n",
+  );
+  await obsidian.appendJournalLine(
+    "2026-08-16",
+    "- _10:00:00 ::_ hi ^bbbbbbbb",
+    "til",
+  );
+  assert.equal(
+    fake.vault.get(path),
+    "## Journal\n- a\n## Today I Learned\n- _10:00:00 ::_ hi ^bbbbbbbb\n## TIL\n- keep\n",
+  );
+});
+
+test("appendJournalLine keeps each section's lines apart", async () => {
+  const { obsidian, fake } = await client();
+  const path = "notes/daily notes/2026-08-16.md";
+  fake.vault.set(path, "## Journal\n- j1\n## TIL\n- t1\n## Log\n");
+  await obsidian.appendJournalLine("2026-08-16", "- t2", "til");
+  await obsidian.appendJournalLine("2026-08-16", "- j2", "journal");
+  assert.equal(
+    fake.vault.get(path),
+    "## Journal\n- j1\n- j2\n## TIL\n- t1\n- t2\n## Log\n",
   );
 });
 

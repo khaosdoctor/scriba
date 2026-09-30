@@ -4,6 +4,7 @@ import { logger } from "./log.ts";
 const log = logger("db");
 
 export type JotKind = "text" | "audio" | "image" | "video";
+export type JotSection = "journal" | "til";
 export type JotStatus =
   | "pending" // placeholder written, awaiting processing
   | "processing" // claimed by a worker (atomic) — in flight
@@ -63,6 +64,7 @@ export interface Jot {
   raw_text: string | null;
   transcript: string | null;
   proposed_text: string | null;
+  section: JotSection;
   asset_path: string | null;
   file_id: string | null;
   status: JotStatus;
@@ -135,10 +137,15 @@ export class Repository {
       .update({ status: "pending", updated_at: Date.now() });
   }
   /** Most recent still-pending text/voice jot in a note — the open end of a squash run.
-   *  A new enrichable jot arriving within the squash window folds into this one's line. */
-  async lastPendingEnrichableJot(notePath: string): Promise<Jot | undefined> {
+   *  A new enrichable jot arriving within the squash window folds into this one's line.
+   *  Only jots in the same section count, so a TIL jot between two journal jots doesn't
+   *  split their run. */
+  async lastPendingEnrichableJot(
+    notePath: string,
+    section: JotSection,
+  ): Promise<Jot | undefined> {
     return this.k<Jot>("jots")
-      .where({ note_path: notePath, status: "pending" })
+      .where({ note_path: notePath, status: "pending", section })
       .whereIn("kind", ["text", "audio"])
       .orderBy("received_at", "desc")
       .first();

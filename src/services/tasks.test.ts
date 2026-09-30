@@ -87,6 +87,7 @@ async function store() {
     dailyDir: "notes/daily notes",
     dailyTemplate: "internal/templates/Daily Note",
     journalHeading: "Journal",
+    tilHeading: "TIL",
     habitsHeading: "Habits",
     assetsDir: "internal/assets/journal",
     insecureTls: false,

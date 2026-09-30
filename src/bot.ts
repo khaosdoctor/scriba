@@ -9,6 +9,7 @@ import {
   deleteAnchorLine,
   distinctSurfaces,
   editConfirmation,
+  editedJotText,
   embedOffer,
   entitiesToMarkdown,
   escapeHtml,
@@ -22,9 +23,10 @@ import {
   replaceAnchorLine,
   setEmbeds,
   stripJournalLine,
+  stripTilPrefix,
   withinSquashWindow,
 } from "./core.ts";
-import type { Jot, JotKind, Repository } from "./db.ts";
+import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
 import { COMMAND_NS, CommandSession } from "./flows/command.ts";
 import {
   HABITS_NS,
@@ -642,11 +644,12 @@ export class ScribaBot implements BotServices {
   // the edit for when processing finishes. Clearing the message to empty/whitespace
   // is the delete gesture (Telegram never delivers an actual message delete), so a
   // blank edit removes the journal line instead of replacing it.
-  private async applyMessageEdit(ctx: any, markdown: string): Promise<void> {
+  private async applyMessageEdit(ctx: any, edited: string): Promise<void> {
     const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
     if (!jotId) return;
     const jot = await this.repo.getJot(jotId);
     if (!jot) return;
+    const markdown = editedJotText(jot.section, edited);
     const blank = isBlank(markdown);
     if (!isEditableJot(jot.status)) {
       // "delete" is the instruction applyEdits recognises when onJotDone drains the
@@ -713,6 +716,9 @@ export class ScribaBot implements BotServices {
     // down. ensureDailyNote + the placeholder write happen after, and writeLine recreates
     // the note on flush, so a failed placeholder self-heals.
     const notePath = this.obsidian.dailyPath(date);
+    const tilText = kind === "text" ? stripTilPrefix(src.rawText ?? "") : null;
+    const section: JotSection = tilText === null ? "journal" : "til";
+    const rawText = tilText ?? src.rawText;
 
     // Squash a rapid burst: a text/voice jot arriving within the squash window of the
     // previous still-pending text/voice jot in this note folds into that jot's line —
@@ -724,7 +730,7 @@ export class ScribaBot implements BotServices {
     let anchor = id;
     let squashed = false;
     if (kind === "text" || kind === "audio") {
-      const prev = await this.repo.lastPendingEnrichableJot(notePath);
+      const prev = await this.repo.lastPendingEnrichableJot(notePath, section);
       if (
         prev &&
         withinSquashWindow(prev.received_at, epochMs, config.squash.windowMs)
@@ -756,9 +762,10 @@ export class ScribaBot implements BotServices {
       note_path: notePath,
       anchor,
       time,
-      raw_text: src.rawText ?? null,
+      raw_text: rawText ?? null,
       transcript: null,
       proposed_text: null,
+      section,
       asset_path: null,
       file_id: src.fileId ?? null,
       status: "pending",
@@ -782,7 +789,11 @@ export class ScribaBot implements BotServices {
       log.debug({ id, anchor }, "squashed — reusing leader placeholder");
     } else {
       await this.obsidian.ensureDailyNote(date);
-      await this.obsidian.appendJournalLine(date, placeholderLine(time, id));
+      await this.obsidian.appendJournalLine(
+        date,
+        placeholderLine(time, id),
+        section,
+      );
       log.debug({ id, notePath }, "placeholder line written");
     }
     this.queue.add(id);
@@ -818,6 +829,7 @@ export class ScribaBot implements BotServices {
     await this.obsidian.appendJournalLine(
       plainDate(jot.received_at),
       placeholderLine(jot.time, jotId),
+      jot.section,
     );
     await ctx.react("✍").catch(() => {});
   }

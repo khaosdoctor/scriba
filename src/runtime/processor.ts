@@ -675,6 +675,10 @@ export class JotProcessor {
       { id: jot.id, anchor: jot.anchor },
       "anchor missing — appending line instead",
     );
-    await this.obsidian.appendJournalLine(basename(jot.note_path, ".md"), line);
+    await this.obsidian.appendJournalLine(
+      basename(jot.note_path, ".md"),
+      line,
+      jot.section,
+    );
   }
 }

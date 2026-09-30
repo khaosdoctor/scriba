@@ -15,6 +15,7 @@ import {
   doneMessage,
   donePreview,
   editConfirmation,
+  editedJotText,
   embedOffer,
   enrichableSource,
   entitiesToMarkdown,
@@ -65,6 +66,7 @@ import {
   setFrontmatterValue,
   splitEntry,
   stripJournalLine,
+  stripTilPrefix,
   TELEGRAM_LIMIT,
   thoughtIcon,
   tokenize,
@@ -143,6 +145,93 @@ test("journal + placeholder lines match the vault house style", () => {
     placeholderLine("09:00:00", "deadbeef"),
     "- _09:00:00 ::_ ⏳ ^deadbeef",
   );
+});
+
+test("stripTilPrefix drops a leading TIL marker in its usual spellings", () => {
+  assert.equal(stripTilPrefix("TIL foo"), "foo");
+  assert.equal(stripTilPrefix("til foo"), "foo");
+  assert.equal(stripTilPrefix("TIL: foo"), "foo");
+  assert.equal(stripTilPrefix("TIL:foo"), "foo");
+  assert.equal(stripTilPrefix("TIL - foo"), "foo");
+  assert.equal(stripTilPrefix("Til – foo"), "foo");
+  assert.equal(stripTilPrefix("TIL:\nfoo\nbar"), "foo\nbar");
+});
+
+test("stripTilPrefix leaves everything else alone", () => {
+  assert.equal(stripTilPrefix("TIL"), null);
+  assert.equal(stripTilPrefix("TIL:"), null);
+  assert.equal(stripTilPrefix("tilde is a key"), null);
+  assert.equal(stripTilPrefix("until then"), null);
+  assert.equal(stripTilPrefix("today TIL foo"), null);
+  assert.equal(stripTilPrefix(""), null);
+});
+
+test("stripTilPrefix takes a dash run with or without spaces", () => {
+  assert.equal(stripTilPrefix("TIL-foo"), "foo");
+  assert.equal(stripTilPrefix("TIL--foo"), "foo");
+  assert.equal(stripTilPrefix("TIL—foo"), "foo");
+  assert.equal(stripTilPrefix("TIL –foo"), "foo");
+});
+
+test("stripTilPrefix needs text after the marker", () => {
+  for (const t of ["TIL ", "TIL   ", "TIL: ", "TIL\n", "TIL:\n\n"])
+    assert.equal(stripTilPrefix(t), null, JSON.stringify(t));
+});
+
+test("stripTilPrefix ignores a marker followed only by dashes or punctuation", () => {
+  for (const t of ["TIL -", "TIL —", "TIL - -", "TIL: ...", "TIL -\n"])
+    assert.equal(stripTilPrefix(t), null, JSON.stringify(t));
+  assert.equal(stripTilPrefix("TIL - 5 things"), "5 things");
+});
+
+test("stripTilPrefix takes any whitespace run between the marker and the text", () => {
+  assert.equal(stripTilPrefix("TIL\nfoo"), "foo");
+  assert.equal(stripTilPrefix("TIL\n\n\nfoo"), "foo");
+  assert.equal(stripTilPrefix("TIL:\r\nfoo\r\nbar"), "foo\r\nbar");
+  assert.equal(stripTilPrefix("TIL\tfoo"), "foo");
+});
+
+test("stripTilPrefix ignores the marker's case, keeps the rest, and strips only once", () => {
+  assert.equal(stripTilPrefix("tIl foo"), "foo");
+  assert.equal(stripTilPrefix("Til: foo"), "foo");
+  assert.equal(stripTilPrefix("TIL: Foo"), "Foo");
+  assert.equal(stripTilPrefix("TIL TIL foo"), "TIL foo");
+});
+
+test("stripTilPrefix rejects words that only start with til and other punctuation", () => {
+  for (const t of [
+    "tilt the camera",
+    "tills",
+    "TILL noon",
+    "till noon",
+    "til.e foo",
+    "TIL/foo",
+    "TIL, foo",
+    "TIL! foo",
+    "TIL; foo",
+    "TIL. foo",
+    "TIL… foo",
+  ])
+    assert.equal(stripTilPrefix(t), null, t);
+});
+
+test("known limitation: the English word 'til' is read as the marker", () => {
+  assert.equal(stripTilPrefix("til noon I slept"), "noon I slept");
+  assert.equal(stripTilPrefix("til 5pm"), "5pm");
+  assert.equal(stripTilPrefix("Til tomorrow: call mom"), "tomorrow: call mom");
+});
+
+test("editedJotText strips a re-typed TIL marker only for TIL jots", () => {
+  assert.equal(
+    editedJotText("til", "TIL: sqlite has WAL mode"),
+    "sqlite has WAL mode",
+  );
+  assert.equal(
+    editedJotText("til", "sqlite has WAL mode"),
+    "sqlite has WAL mode",
+  );
+  assert.equal(editedJotText("til", "TIL"), "TIL");
+  assert.equal(editedJotText("journal", "TIL: foo"), "TIL: foo");
 });
 
 test("insertJournalLine replaces the empty template bullet on the first jot", () => {
@@ -788,6 +877,7 @@ test("formatJotDetail shows full text and includes errors", () => {
     raw_text: null,
     transcript: "x".repeat(400),
     proposed_text: null,
+    section: "journal",
     asset_path: null,
     file_id: null,
     status: "failed",
@@ -812,6 +902,7 @@ const mediaJot = (over: Partial<Jot>): Jot => ({
   raw_text: null,
   transcript: null,
   proposed_text: null,
+  section: "journal",
   asset_path: null,
   file_id: null,
   status: "done",
@@ -1125,6 +1216,7 @@ test("jotPreview falls back to (kind) for a captionless attach-only jot", () => 
     raw_text: null,
     transcript: null,
     proposed_text: null,
+    section: "journal" as const,
     asset_path: null,
     file_id: null,
     status: "done" as const,
