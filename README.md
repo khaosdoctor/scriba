@@ -32,6 +32,7 @@ today's daily note, just because I am too lazy
 - **It spots tasks in your journal.** If a jot says you need to do something, scriba offers to make it a task on the same card, and asks when it's due, since a journal entry is often vague about that. You can switch this off from the task menu.
 - **It spots things you learned.** If a jot reads like something you just learned, scriba asks "Move this to TIL?". Accept and the line moves from `## Journal` to `## TIL` in the same daily note, and you can still edit or undo it. Decline and it stays where it is. If the note has no TIL heading, the line isn't moved and the card says so. A jot that already went to the TIL section isn't asked about, and you can switch the cards off from the task menu.
 - **Habits and day ratings.** If you have a habit checklist in your daily note, scriba can review it with you one habit at a time. It can also ask you to rate your day every night.
+- **A follow-up after the rating.** Once you rate the day, scriba asks about whatever is still empty in that day's note. If there are no jots it asks "One line for the day?", and if the TIL section is empty it asks "Learned anything today?". If both are filled it asks nothing. Reply to a question and your answer goes in as a normal jot, enriched like any other, or tap Skip. The TIL answer is a jot starting with `TIL:`. `TIL_HEADING` (default `TIL`) names the section it checks.
 
 ## Setup
 

@@ -24,6 +24,8 @@ import {
   feedMessage,
   fitFeed,
   fitTelegram,
+  followupQuestions,
+  followupRef,
   forcedCandidates,
   formatDeployNotice,
   formatDuration,
@@ -52,6 +54,7 @@ import {
   moveAnchorLine,
   noteSuggestions,
   parseEntrySize,
+  parseFollowupRef,
   parseLiteralEdit,
   parseModelJson,
   parseRuleWords,
@@ -63,6 +66,7 @@ import {
   replaceAnchorLine,
   reprocessTargets,
   retryNotice,
+  sectionHasContent,
   setEmbeds,
   setFrontmatterValue,
   splitEntry,
@@ -98,6 +102,105 @@ test("combineEnrichSource joins parts, dropping blanks", () => {
   );
   assert.equal(combineEnrichSource([]), "");
   assert.equal(combineEnrichSource([" solo "]), "solo");
+});
+
+const DAILY_TEMPLATE = `---
+tags:
+  - type/daily-note
+overallRating: 5
+---
+# 2026-07-05
+---
+## ✅ Tasks
+\`\`\`tasks
+preset on_or_before_this_file_name
+\`\`\`
+## Journal
+-
+## Habits
+- [ ] Practiced music #meta/habits/music
+## TIL
+-
+## Log
+- [Health log](obsidian://open)
+`;
+const HEADINGS = { journal: "Journal", til: "TIL" };
+
+test("sectionHasContent ignores the template's empty heading and placeholder bullet", () => {
+  assert.equal(sectionHasContent(DAILY_TEMPLATE, "Journal"), false);
+  assert.equal(sectionHasContent(DAILY_TEMPLATE, "TIL"), false);
+  assert.equal(sectionHasContent("## TIL\n", "TIL"), false);
+  assert.equal(sectionHasContent("## TIL\n- [ ]\n* \n\n---\n", "TIL"), false);
+});
+
+test("sectionHasContent counts a jot, a placeholder line or plain text", () => {
+  const jot = DAILY_TEMPLATE.replace(
+    "## Journal\n-\n",
+    "## Journal\n- _10:00:00 ::_ hi ^aaaaaaaa\n",
+  );
+  assert.equal(sectionHasContent(jot, "Journal"), true);
+  assert.equal(sectionHasContent(jot, "TIL"), false);
+  assert.equal(sectionHasContent("## TIL\n- _1:00 ::_ ⏳ ^a\n", "TIL"), true);
+  assert.equal(sectionHasContent("## TIL\nsomething\n", "TIL"), true);
+});
+
+test("sectionHasContent stops at the next heading and treats a missing heading as empty", () => {
+  assert.equal(
+    sectionHasContent("## Journal\n- \n## TIL\n- x\n", "Journal"),
+    false,
+  );
+  assert.equal(sectionHasContent("## Journal\n- x\n", "TIL"), false);
+});
+
+test("sectionHasContent does not read the rating out of frontmatter", () => {
+  assert.equal(
+    sectionHasContent("---\noverallRating: 5\n---\n## TIL\n- \n", "TIL"),
+    false,
+  );
+});
+
+test("followupQuestions asks only what is still empty", () => {
+  const jot = "- _10:00:00 ::_ hi ^aaaaaaaa";
+  const til = "- a thing I learned";
+  const withJournal = DAILY_TEMPLATE.replace(
+    "## Journal\n-\n",
+    `## Journal\n${jot}\n`,
+  );
+  const withTil = DAILY_TEMPLATE.replace("## TIL\n-\n", `## TIL\n${til}\n`);
+  const withBoth = withJournal.replace("## TIL\n-\n", `## TIL\n${til}\n`);
+  assert.deepEqual(followupQuestions(DAILY_TEMPLATE, HEADINGS), [
+    "journal",
+    "til",
+  ]);
+  assert.deepEqual(followupQuestions(withJournal, HEADINGS), ["til"]);
+  assert.deepEqual(followupQuestions(withTil, HEADINGS), ["journal"]);
+  assert.deepEqual(followupQuestions(withBoth, HEADINGS), []);
+});
+
+test("followupQuestions asks both for a day with no note, and resumes after a question", () => {
+  assert.deepEqual(followupQuestions(null, HEADINGS), ["journal", "til"]);
+  assert.deepEqual(followupQuestions(null, HEADINGS, "journal"), ["til"]);
+  assert.deepEqual(followupQuestions(null, HEADINGS, "til"), []);
+});
+
+test("followupQuestions follows the configured headings", () => {
+  const note = "## Journal\n- \n## Learned\n- something\n";
+  assert.deepEqual(
+    followupQuestions(note, { journal: "Journal", til: "Learned" }),
+    ["journal"],
+  );
+});
+
+test("followupRef round-trips through parseFollowupRef", () => {
+  for (const q of ["journal", "til"] as const) {
+    const text = `Learned anything today? Reply to this message.\n${followupRef(q, "2026-07-05")}`;
+    assert.deepEqual(parseFollowupRef(text), {
+      question: q,
+      date: "2026-07-05",
+    });
+  }
+  assert.equal(parseFollowupRef("(fu:x:2026-07-05)"), null);
+  assert.equal(parseFollowupRef("(hb:2026-07-05:1)"), null);
 });
 
 test("setFrontmatterValue replaces an existing field in place", () => {

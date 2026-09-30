@@ -332,6 +332,22 @@ deployed on the homelab (Coolify). Single user.
   (`ScribaBot.syncEditedSource`, `bot.ts`): a squashed leader/follower is skipped, since a
   squashed line is several jots' sources combined into one and there's no single field to
   fold the edit back into.
+- **Rating a day opens a follow-up for what's still empty.** After a rating is saved,
+  `FollowupFlow` (`flows/followup.ts`) asks "One line for the day?" when the `JOURNAL_HEADING`
+  section has no content, then "Learned anything today?" when the `TIL_HEADING` section
+  has none. `followupQuestions` and `sectionHasContent` (`core.ts`) decide, token-free, by
+  reading the note: blank lines, empty bullets (`-`, `- [ ]`), rules and HTML comments are
+  template scaffolding, and the frontmatter rating is never looked at. A day with no note
+  asks both. No state is held: the prompt's text carries `(fu:j|t:<date>)` and a reply is
+  routed by it in `ScribaBot`'s text handler, while the note says what is still empty, so an
+  answer works after a restart and an unanswered question costs nothing. Each question has
+  a ⏭ Skip button (`fu:<j|t>:<date>`) and, since an inline keyboard and `force_reply` can't
+  share a message, no force-reply: you swipe-reply, and any message that isn't a reply is a
+  normal jot. Answered or skipped, the prompt is deleted and the next one is asked. Both
+  answers go through `ScribaBot.intake` as text jots, filed under the rated day (`day`:
+  that day's last second when it isn't today), so they enrich, edit and undo like any jot.
+  The TIL answer is written as `TIL: <text>` because enrichment, anchors and the status
+  message belong to the jot pipeline, which only writes under the journal heading.
 - **Connection health never spends a token.** `HealthMonitor` (`runtime/health.ts`) probes
   every upstream once a minute, all at once, with a 5s timeout each: Anthropic and
   Telegram at their bare host, Groq and OpenCode at `/models` with their key (skipped when
