@@ -166,6 +166,59 @@ test("stripTilPrefix leaves everything else alone", () => {
   assert.equal(stripTilPrefix(""), null);
 });
 
+test("stripTilPrefix takes a dash run with or without spaces", () => {
+  assert.equal(stripTilPrefix("TIL-foo"), "foo");
+  assert.equal(stripTilPrefix("TIL--foo"), "foo");
+  assert.equal(stripTilPrefix("TIL—foo"), "foo");
+  assert.equal(stripTilPrefix("TIL –foo"), "foo");
+});
+
+test("stripTilPrefix needs text after the marker", () => {
+  for (const t of ["TIL ", "TIL   ", "TIL: ", "TIL\n", "TIL:\n\n"])
+    assert.equal(stripTilPrefix(t), null, JSON.stringify(t));
+});
+
+test("known limitation: a lone dash after TIL counts as the text", () => {
+  assert.equal(stripTilPrefix("TIL -"), "-");
+});
+
+test("stripTilPrefix takes any whitespace run between the marker and the text", () => {
+  assert.equal(stripTilPrefix("TIL\nfoo"), "foo");
+  assert.equal(stripTilPrefix("TIL\n\n\nfoo"), "foo");
+  assert.equal(stripTilPrefix("TIL:\r\nfoo\r\nbar"), "foo\r\nbar");
+  assert.equal(stripTilPrefix("TIL\tfoo"), "foo");
+});
+
+test("stripTilPrefix ignores the marker's case, keeps the rest, and strips only once", () => {
+  assert.equal(stripTilPrefix("tIl foo"), "foo");
+  assert.equal(stripTilPrefix("Til: foo"), "foo");
+  assert.equal(stripTilPrefix("TIL: Foo"), "Foo");
+  assert.equal(stripTilPrefix("TIL TIL foo"), "TIL foo");
+});
+
+test("stripTilPrefix rejects words that only start with til and other punctuation", () => {
+  for (const t of [
+    "tilt the camera",
+    "tills",
+    "TILL noon",
+    "till noon",
+    "til.e foo",
+    "TIL/foo",
+    "TIL, foo",
+    "TIL! foo",
+    "TIL; foo",
+    "TIL. foo",
+    "TIL… foo",
+  ])
+    assert.equal(stripTilPrefix(t), null, t);
+});
+
+test("known limitation: the English word 'til' is read as the marker", () => {
+  assert.equal(stripTilPrefix("til noon I slept"), "noon I slept");
+  assert.equal(stripTilPrefix("til 5pm"), "5pm");
+  assert.equal(stripTilPrefix("Til tomorrow: call mom"), "tomorrow: call mom");
+});
+
 test("editedJotText strips a re-typed TIL marker only for TIL jots", () => {
   assert.equal(
     editedJotText("til", "TIL: sqlite has WAL mode"),

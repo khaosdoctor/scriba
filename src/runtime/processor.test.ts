@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { insertJournalLine } from "../core.ts";
 import type { Jot } from "../db.ts";
 import { MAX_ATTEMPTS } from "../db.ts";
 import { ModelsDownError } from "../services/enrich.ts";
@@ -193,4 +194,81 @@ test("a held notice that couldn't be sent isn't marked, so the next sweep tries 
   };
   await processor.hold(jot());
   assert.deepEqual(updates, []);
+});
+
+/** A processor over an in-memory note, with appends routed through the real
+ *  insertJournalLine the way ObsidianClient does it. */
+function noteHarness(note: string) {
+  const state = { note, writes: 0, appended: [] as [string, string, string][] };
+  const obsidian = {
+    ensureDailyNote: async () => "",
+    withNoteLock: async (_p: string, fn: () => Promise<unknown>) => fn(),
+    readNote: async () => state.note,
+    writeNote: async (_p: string, content: string) => {
+      state.writes++;
+      state.note = content;
+    },
+    appendJournalLine: async (date: string, line: string, section: string) => {
+      state.appended.push([date, line, section]);
+      state.note = insertJournalLine(
+        state.note,
+        section === "til" ? "TIL" : "Journal",
+        line,
+      );
+    },
+  };
+  const processor: any = new JotProcessor(
+    {} as any,
+    obsidian as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+  return { processor, state };
+}
+
+const LINE = "- _10:00:00 ::_ hello ^abcd1234";
+
+test("writeLine appends a TIL jot with the til section when its anchor is gone", async () => {
+  const { processor, state } = noteHarness("## Journal\n- a ^aaaaaaaa\n");
+  await processor.writeLine(jot({ section: "til" }), LINE);
+  assert.deepEqual(state.appended, [["2026-08-16", LINE, "til"]]);
+  assert.equal(state.writes, 0);
+});
+
+test("writeLine appends a journal jot with the journal section when its anchor is gone", async () => {
+  const { processor, state } = noteHarness("## Journal\n- a ^aaaaaaaa\n");
+  await processor.writeLine(jot({ section: "journal" }), LINE);
+  assert.deepEqual(state.appended, [["2026-08-16", LINE, "journal"]]);
+});
+
+test("writeLine replaces a TIL line in place and never appends", async () => {
+  const { processor, state } = noteHarness(
+    "## Journal\n- a ^aaaaaaaa\n## TIL\n- _10:00:00 ::_ ⏳ ^abcd1234\n## Log\n",
+  );
+  await processor.writeLine(jot({ section: "til" }), LINE);
+  assert.equal(
+    state.note,
+    `## Journal\n- a ^aaaaaaaa\n## TIL\n${LINE}\n## Log\n`,
+  );
+  assert.deepEqual(state.appended, []);
+});
+
+test("writeLine with no TIL heading appends at the end and leaves the journal alone", async () => {
+  const { processor, state } = noteHarness("## Journal\n- a ^aaaaaaaa\n");
+  await processor.writeLine(jot({ section: "til" }), LINE);
+  assert.equal(state.note, `## Journal\n- a ^aaaaaaaa\n${LINE}\n`);
+});
+
+test("a split piece stays in its parent's section", () => {
+  const { processor } = noteHarness("");
+  assert.equal(
+    processor.pieceJot(jot({ section: "til" }), "tail", 1).section,
+    "til",
+  );
+  assert.equal(
+    processor.pieceJot(jot({ section: "journal" }), "tail", 1).section,
+    "journal",
+  );
 });

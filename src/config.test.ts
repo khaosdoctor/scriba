@@ -12,7 +12,12 @@ let counter = 0;
 async function load(env: Record<string, string>) {
   const saved = { ...process.env };
   // wipe the vars we care about so leakage between cases can't hide a bug
-  for (const k of ["GROQ_API_KEY", "PARAKEET_URL", "ENRICH_BACKUP_MODEL"])
+  for (const k of [
+    "GROQ_API_KEY",
+    "PARAKEET_URL",
+    "ENRICH_BACKUP_MODEL",
+    "TIL_HEADING",
+  ])
     delete process.env[k];
   Object.assign(process.env, BASE, env);
   try {
@@ -47,4 +52,16 @@ test("OBSIDIAN_INSECURE_TLS defaults off and parses to boolean", async () => {
   assert.equal(config.obsidian.insecureTls, false);
   const on = await load({ OBSIDIAN_INSECURE_TLS: "true" });
   assert.equal(on.config.obsidian.insecureTls, true);
+});
+
+test("the TIL heading defaults to TIL", async () => {
+  const { config } = await load({});
+  assert.equal(config.obsidian.tilHeading, "TIL");
+});
+
+test("TIL_HEADING is configurable without touching the other headings", async () => {
+  const { config } = await load({ TIL_HEADING: "Today I learned" });
+  assert.equal(config.obsidian.tilHeading, "Today I learned");
+  assert.equal(config.obsidian.journalHeading, "Journal");
+  assert.equal(config.obsidian.habitsHeading, "Habits");
 });
