@@ -1518,6 +1518,107 @@ test("moveAnchorLine says so when the anchor is gone", () => {
   );
 });
 
+test("moveAnchorLine moves the last line of a note that has no trailing newline", () => {
+  const note = "## TIL\n- y ^bbbbbbbb\n## Journal\n- x ^aaaaaaaa";
+  assert.deepEqual(moveAnchorLine(note, "aaaaaaaa", "TIL"), {
+    note: "## TIL\n- y ^bbbbbbbb\n- x ^aaaaaaaa\n## Journal\n",
+  });
+});
+
+test("moveAnchorLine reorders a line already under the heading and never duplicates it", () => {
+  const note = "## TIL\n- a ^aaaaaaaa\n- b ^bbbbbbbb\n## Log";
+  const out = moveAnchorLine(note, "aaaaaaaa", "TIL");
+  assert.deepEqual(out, {
+    note: "## TIL\n- b ^bbbbbbbb\n- a ^aaaaaaaa\n## Log",
+  });
+});
+
+test("moveAnchorLine moves one indented line and keeps its indent", () => {
+  const note = [
+    "## Journal",
+    "- parent ^pppppppp",
+    "  - child one ^aaaaaaaa",
+    "  - child two ^cccccccc",
+    "## TIL",
+    "\t- old ^bbbbbbbb",
+  ].join("\n");
+  assert.deepEqual(moveAnchorLine(note, "aaaaaaaa", "TIL"), {
+    note: [
+      "## Journal",
+      "- parent ^pppppppp",
+      "  - child two ^cccccccc",
+      "## TIL",
+      "\t- old ^bbbbbbbb",
+      "  - child one ^aaaaaaaa",
+    ].join("\n"),
+  });
+});
+
+test("moveAnchorLine touches one line of a realistic note and is idempotent", () => {
+  const note = [
+    "---",
+    "tags:",
+    "  - type/daily-note",
+    "---",
+    "# 2026-08-16",
+    "## Habits",
+    "- [ ] Read",
+    "## Journal",
+    "- _10:00:00 ::_ first ^aaaaaaaa",
+    "- _10:01:00 ::_ learned x ^bbbbbbbb",
+    "## TIL",
+    "- ",
+    "## Log",
+    "- health",
+  ].join("\n");
+  const first = moveAnchorLine(note, "bbbbbbbb", "TIL");
+  assert.ok("note" in first);
+  const before = note.split("\n");
+  const after = first.note.split("\n");
+  assert.deepEqual(
+    before.filter((l) => !after.includes(l)),
+    ["- "],
+  );
+  assert.deepEqual(
+    after.filter((l) => !before.includes(l)),
+    [],
+  );
+  assert.equal(after.length, before.length - 1);
+  assert.deepEqual(moveAnchorLine(first.note, "bbbbbbbb", "TIL"), first);
+});
+
+test("moveAnchorLine leaves the source heading bare when the moved line was its only bullet", () => {
+  const note = "## Journal\n- only ^aaaaaaaa\n## TIL\n- ";
+  assert.deepEqual(moveAnchorLine(note, "aaaaaaaa", "TIL"), {
+    note: "## Journal\n## TIL\n- only ^aaaaaaaa",
+  });
+});
+
+test("unwrapModelPayload takes an inner til when the outer one is not true", () => {
+  const nested = (til: unknown) =>
+    unwrapModelPayload({ text: '{"text": "hi", "til": true}', til }).til;
+  assert.equal(nested(false), true);
+  assert.equal(nested(undefined), true);
+  assert.equal(
+    unwrapModelPayload({ text: '{"text":"hi","til":false}', til: true }).til,
+    true,
+  );
+  assert.equal(
+    unwrapModelPayload({ text: '{"text":"hi","til":"no"}', til: false }).til,
+    "no",
+  );
+});
+
+test("unwrapModelPayload keeps a missing til missing and an outer false false", () => {
+  assert.equal(
+    unwrapModelPayload({ text: '{"text":"hi"}', til: false }).til,
+    false,
+  );
+  const none = unwrapModelPayload({ text: '{"text":"hi"}' });
+  assert.equal(none.til, undefined);
+  assert.ok("til" in none);
+});
+
 test("moveAnchorLine refuses when the note has no such heading, instead of appending", () => {
   assert.deepEqual(
     moveAnchorLine("## Journal\n- x ^aaaaaaaa", "aaaaaaaa", "TIL"),

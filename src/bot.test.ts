@@ -423,6 +423,40 @@ test("the merge opt-out ignores what it should and reports a late tap", async ()
   assert.match(late.notices[0]!, /too late/);
 });
 
+test("the bot builds its TIL card flow in the constructor", async () => {
+  const { TilFlow } = await import("./flows/til.ts");
+  const h = await harness();
+  assert.ok(h.bot.til instanceof TilFlow);
+});
+
+test("a ti: button goes to the TIL flow and the fallthrough never answers it", async () => {
+  const h = await harness();
+  const taps: [unknown, string[]][] = [];
+  h.bot.til = {
+    handleTap: async (ctx: unknown, rest: string[]) => {
+      taps.push([ctx, rest]);
+    },
+  };
+  let answered = 0;
+  const ctx = {
+    callbackQuery: { data: "ti:y:abcd1234" },
+    answerCallbackQuery: async () => void answered++,
+  };
+  await h.bot.handleButton(ctx);
+  assert.deepEqual(taps, [[ctx, ["y", "abcd1234"]]]);
+  assert.equal(answered, 0);
+});
+
+test("askTil hands the jot and its text to the TIL flow", async () => {
+  const h = await harness();
+  const asks: [string, string][] = [];
+  h.bot.til = {
+    ask: async (id: string, text: string) => void asks.push([id, text]),
+  };
+  assert.equal(await h.bot.askTil("abcd1234", "TIL: x"), undefined);
+  assert.deepEqual(asks, [["abcd1234", "TIL: x"]]);
+});
+
 test("a reply instruction to a TIL jot still processing is queued verbatim", async () => {
   const h = await harness({
     jotId: "aaaaaaaa",

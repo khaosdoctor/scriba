@@ -354,6 +354,43 @@ async function removeDb(dbPath: string) {
     await rm(`${dbPath}${suffix}`, { force: true });
 }
 
+test("the offered flag is per jot, strictly boolean, and survives edits and a reprocess reset", async (t) => {
+  const dbPath = tempDbPath();
+  let repo: Repository;
+  try {
+    repo = await Repository.open(dbPath);
+  } catch (e) {
+    return t.skip(
+      `native sqlite unavailable: ${(e as Error).message.slice(0, 80)}`,
+    );
+  }
+  try {
+    assert.equal(await repo.tilOffered("ffffffff"), false); // no such jot
+    await repo.insertJot(sampleJot("aaaaaaaa"));
+    await repo.insertJot(sampleJot("bbbbbbbb"));
+    assert.equal(await repo.tilOffered("aaaaaaaa"), false);
+
+    const before = await repo.getJot("aaaaaaaa");
+    await repo.markTilOffered("aaaaaaaa");
+    const offered = await repo.tilOffered("aaaaaaaa");
+    assert.equal(typeof offered, "boolean");
+    assert.equal(offered, true);
+    assert.equal(await repo.tilOffered("bbbbbbbb"), false);
+
+    const after = await repo.getJot("aaaaaaaa");
+    assert.equal(after?.status, before?.status);
+    assert.equal(after?.raw_text, before?.raw_text);
+    assert.equal(after?.section, before?.section);
+
+    await repo.updateJot("aaaaaaaa", { raw_text: "x", status: "pending" });
+    await repo.resetForReprocess(["aaaaaaaa"]);
+    assert.equal(await repo.tilOffered("aaaaaaaa"), true);
+  } finally {
+    await repo.close();
+    await removeDb(dbPath);
+  }
+});
+
 test("squash lookups stay inside their section", async (t) => {
   const dbPath = tempDbPath();
   let repo: Repository;

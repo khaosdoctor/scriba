@@ -192,6 +192,180 @@ test("a TIL card needs the enricher's read and passes every guard", async () => 
   assert.equal(await asked.processor.tilWanted(true, jot()), false);
 });
 
+/** A processor driven through `processJot` end to end: a stateful jot table and note, an
+ *  enricher that answers as told, and a bot that logs every call in order. */
+function pipeline(
+  over: {
+    til?: boolean;
+    tasks?: { description: string; type?: string }[];
+    raw?: string;
+    followers?: Jot[];
+    writeFails?: boolean;
+    section?: "journal" | "til";
+  } = {},
+) {
+  const calls: string[] = [];
+  const tilAsks: [string, string][] = [];
+  const enriched: string[] = [];
+  const offered = new Set<string>();
+  const leader = jot({
+    status: "pending",
+    section: over.section ?? "journal",
+    raw_text: over.raw ?? "a thought",
+  } as Partial<Jot>);
+  const jots = new Map<string, Jot>(
+    [leader, ...(over.followers ?? [])].map((j) => [j.id, j]),
+  );
+  let note = `## Journal\n- _10:00:00 ::_ ⏳ ^${leader.id}`;
+  const repo = {
+    getJot: async (id: string) => jots.get(id),
+    claim: async () => true,
+    getSetting: async () => undefined,
+    updateJot: async () => {},
+    groupFollowers: async () => over.followers ?? [],
+    stopwords: async () => new Set<string>(),
+    rejections: async () => new Set<string>(),
+    registeredLinks: async () => [],
+    addPendingLink: async () => {},
+    taskDraftsForJot: async () => 0,
+    tilOffered: async (id: string) => offered.has(id),
+    insertJot: async () => {},
+  };
+  const obsidian = {
+    ensureDailyNote: async () => "",
+    withNoteLock: async (_p: string, fn: () => Promise<unknown>) => fn(),
+    readNote: async () => note,
+    writeNote: async (_p: string, c: string) => {
+      if (over.writeFails) throw new Error("obsidian is down");
+      note = c;
+      calls.push("write");
+    },
+    appendJournalLine: async () => {
+      if (over.writeFails) throw new Error("obsidian is down");
+    },
+  };
+  const enricher = {
+    available: () => true,
+    enrich: async (input: { text: string }) => {
+      enriched.push(input.text);
+      return {
+        text: "Learned that X",
+        ambiguous: [],
+        tasks: over.tasks ?? [],
+        til: over.til ?? false,
+        usage: { input: 0, output: 0 },
+      };
+    },
+  };
+  const bot = {
+    typing: async () => {},
+    status: async (_id: string, _html: string, opts?: { undo?: boolean }) =>
+      void calls.push(opts?.undo ? "status:done" : "status"),
+    react: async () => {},
+    deleteStatus: async () => {},
+    askLink: async () => {},
+    askTask: async (d: { description: string }) =>
+      void calls.push(`askTask:${d.description}`),
+    askTil: async (id: string, text: string) => {
+      tilAsks.push([id, text]);
+      calls.push("askTil");
+    },
+    onJotDone: async () => void calls.push("onJotDone"),
+  };
+  const processor: any = new JotProcessor(
+    repo as any,
+    obsidian as any,
+    {} as any,
+    enricher as any,
+    { list: () => [] } as any,
+    bot as any,
+  );
+  return {
+    processor,
+    calls,
+    tilAsks,
+    enriched,
+    offered,
+    leaderId: leader.id,
+    note: () => note,
+  };
+}
+
+test("a jot the enricher read as a TIL gets its card after the entry is written and before the drain", async () => {
+  const p = pipeline({ til: true });
+  await p.processor.processJot(p.leaderId);
+  assert.deepEqual(p.tilAsks, [[p.leaderId, "Learned that X"]]);
+  const at = (c: string) => p.calls.indexOf(c);
+  assert.ok(at("write") < at("status:done"));
+  assert.ok(at("status:done") < at("askTil"));
+  assert.ok(at("askTil") < at("onJotDone"));
+});
+
+test("no card when the enricher did not read it as a TIL", async () => {
+  const p = pipeline({ til: false });
+  await p.processor.processJot(p.leaderId);
+  assert.deepEqual(p.tilAsks, []);
+  assert.ok(p.calls.includes("status:done"));
+  assert.ok(p.calls.includes("onJotDone"));
+});
+
+test("a blank jot never reaches the enricher or the card", async () => {
+  for (const raw of ["", "   "]) {
+    const p = pipeline({ til: true, raw });
+    await p.processor.processJot(p.leaderId);
+    assert.deepEqual(p.enriched, []);
+    assert.deepEqual(p.tilAsks, []);
+    assert.ok(p.calls.includes("status:done"));
+  }
+});
+
+test("a jot whose note write fails gets no card", async () => {
+  const p = pipeline({ til: true, writeFails: true });
+  await p.processor.processJot(p.leaderId);
+  assert.deepEqual(p.tilAsks, []);
+});
+
+test("a task card comes before the TIL card, both before the drain", async () => {
+  const p = pipeline({
+    til: true,
+    tasks: [{ description: "book flights", type: "personal" }],
+  });
+  await p.processor.processJot(p.leaderId);
+  const at = (c: string) => p.calls.indexOf(c);
+  assert.ok(at("askTask:book flights") < at("askTil"));
+  assert.ok(at("askTil") < at("onJotDone"));
+  assert.equal(p.tilAsks[0]?.[0], p.leaderId);
+});
+
+test("a squashed burst asks once, for the leader, on the leader's section", async () => {
+  const follower = jot({
+    id: "f0000001",
+    anchor: "abcd1234",
+    status: "pending",
+    raw_text: "and more",
+    section: "til",
+  } as Partial<Jot>);
+  const p = pipeline({ til: true, followers: [follower] });
+  await p.processor.processJot(p.leaderId);
+  assert.deepEqual(p.tilAsks, [[p.leaderId, "Learned that X"]]);
+  assert.match(p.enriched[0]!, /a thought/);
+  assert.match(p.enriched[0]!, /and more/);
+});
+
+test("a TIL jot is never offered the card", async () => {
+  const p = pipeline({ til: true, section: "til" });
+  await p.processor.processJot(p.leaderId);
+  assert.deepEqual(p.tilAsks, []);
+});
+
+test("a reprocess after the card was sent does not ask again", async () => {
+  const p = pipeline({ til: true });
+  await p.processor.processJot(p.leaderId);
+  p.offered.add(p.leaderId); // what TilFlow.ask does once the card is out
+  await p.processor.processJot(p.leaderId);
+  assert.equal(p.tilAsks.length, 1);
+});
+
 test("every model down: the jot goes back to pending, no attempt charged, one held notice", async () => {
   const { processor, posted, updates } = harness();
   await processor.fail(jot(), new ModelsDownError(new Error("overloaded 529")));

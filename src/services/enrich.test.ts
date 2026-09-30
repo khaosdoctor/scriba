@@ -715,6 +715,75 @@ test("a fallback answer nested inside its own text field is unwrapped, not journ
   assert.equal(res.tasks.length, 1);
 });
 
+const structuredTil = async (structured_output: object) => {
+  const { fn, calls } = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      result: "ignored, structured_output wins",
+      structured_output,
+    },
+  ]);
+  const out = await new Enricher(undefined, fn).enrich({
+    text: "x",
+    candidates: [],
+  });
+  return { out, calls };
+};
+
+test("structured output carries til straight through and leaves the text alone", async () => {
+  const { out } = await structuredTil({
+    text: "TIL sqlite has WAL",
+    ambiguous: [],
+    tasks: [],
+    til: true,
+  });
+  assert.equal(out.til, true);
+  assert.equal(out.text, "TIL sqlite has WAL");
+});
+
+test("structured output without til, or with til false, is a valid answer that is not a TIL", async () => {
+  for (const answer of [
+    { text: "a", ambiguous: [] },
+    { text: "a", ambiguous: [], til: false },
+  ]) {
+    const { out } = await structuredTil(answer);
+    assert.equal(out.til, false);
+    assert.equal(out.text, "a");
+  }
+});
+
+test("the structured-output schema declares til as a required boolean", async () => {
+  const { calls } = await structuredTil({ text: "a", ambiguous: [] });
+  const schema = calls[0]!.options.outputFormat.schema;
+  assert.deepEqual(schema.properties.til, { type: "boolean" });
+  assert.ok(schema.required.includes("til"));
+  assert.equal(schema.additionalProperties, false);
+});
+
+test("a fenced fallback answer still yields til", async () => {
+  const res = await new Enricher(
+    "claude-haiku-4-5",
+    failQuery(),
+    [{ apiKey: "k", model: "m" }],
+    fakeGroq('```json\n{"text":"a","ambiguous":[],"tasks":[],"til":true}\n```')
+      .fn,
+  ).enrich({ text: "x", candidates: [] });
+  assert.equal(res.til, true);
+});
+
+test("only a literal true counts as til on the fallback path", async () => {
+  for (const til of [null, 0, 1, "true", "TRUE", [], {}, "false", false]) {
+    const res = await new Enricher(
+      "claude-haiku-4-5",
+      failQuery(),
+      [{ apiKey: "k", model: "m" }],
+      fakeGroq(JSON.stringify({ text: "a", ambiguous: [], til })).fn,
+    ).enrich({ text: "x", candidates: [] });
+    assert.equal(res.til, false, JSON.stringify(til));
+  }
+});
+
 test("the til field is read when it is true and defaults to false when absent or malformed", async () => {
   const ask = async (answer: object) =>
     (

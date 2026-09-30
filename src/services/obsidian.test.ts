@@ -367,6 +367,102 @@ test("a rejected write is raised, not swallowed", async () => {
   assert.equal(fake.vault.get("notes/a.md"), "x");
 });
 
+const TIL_PATH = "notes/daily notes/2026-01-05.md";
+const TIL_NOTE = [
+  "## Journal",
+  "- _10:00:00 ::_ first ^aaaaaaaa",
+  "- _10:01:00 ::_ learned x ^bbbbbbbb",
+  "## TIL",
+  "- ",
+  "",
+].join("\n");
+
+test("moveToTil reads once, writes once, and puts the line under TIL with its anchor intact", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set(TIL_PATH, TIL_NOTE);
+  assert.equal(await obsidian.moveToTil(TIL_PATH, "bbbbbbbb"), "moved");
+  assert.equal(counted(fake, "GET", TIL_PATH), 1);
+  assert.equal(counted(fake, "PUT", TIL_PATH), 1);
+  assert.equal(
+    fake.vault.get(TIL_PATH),
+    [
+      "## Journal",
+      "- _10:00:00 ::_ first ^aaaaaaaa",
+      "## TIL",
+      "- _10:01:00 ::_ learned x ^bbbbbbbb",
+      "",
+    ].join("\n"),
+  );
+});
+
+test("moveToTil writes nothing when the line is gone", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set(TIL_PATH, TIL_NOTE);
+  assert.equal(await obsidian.moveToTil(TIL_PATH, "ffffffff"), "no-line");
+  assert.equal(counted(fake, "PUT", TIL_PATH), 0);
+  assert.equal(fake.vault.get(TIL_PATH), TIL_NOTE);
+});
+
+test("moveToTil writes nothing when the note has no TIL heading", async () => {
+  const { obsidian, fake } = await client();
+  const note = "## Journal\n- x ^aaaaaaaa\n";
+  fake.vault.set(TIL_PATH, note);
+  assert.equal(await obsidian.moveToTil(TIL_PATH, "aaaaaaaa"), "no-heading");
+  assert.equal(counted(fake, "PUT", TIL_PATH), 0);
+  assert.equal(fake.vault.get(TIL_PATH), note);
+});
+
+test("moveToTil takes the note lock, so a concurrent journal append is neither lost nor interleaved", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set(TIL_PATH, TIL_NOTE);
+  const release = fake.stall(`GET ${TIL_PATH}`);
+  const moving = obsidian.moveToTil(TIL_PATH, "bbbbbbbb");
+  const appending = obsidian.appendJournalLine("2026-01-05", "- new ^cccccccc");
+  release();
+  await Promise.all([moving, appending]);
+  assert.deepEqual(
+    fake.seen.filter((r) => r.path === TIL_PATH).map((r) => r.method),
+    ["GET", "PUT", "GET", "PUT"],
+  );
+  const note = fake.vault.get(TIL_PATH) ?? "";
+  assert.ok(note.indexOf("^bbbbbbbb") > note.indexOf("## TIL"));
+  assert.ok(note.includes("- new ^cccccccc"));
+  assert.ok(note.indexOf("^cccccccc") < note.indexOf("## TIL"));
+});
+
+test("two moves at once leave the line in the TIL section exactly once", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set(TIL_PATH, TIL_NOTE);
+  const results = await Promise.all([
+    obsidian.moveToTil(TIL_PATH, "bbbbbbbb"),
+    obsidian.moveToTil(TIL_PATH, "bbbbbbbb"),
+  ]);
+  assert.deepEqual(results, ["moved", "moved"]);
+  const note = fake.vault.get(TIL_PATH) ?? "";
+  assert.equal(note.split("^bbbbbbbb").length - 1, 1);
+  assert.ok(note.indexOf("^bbbbbbbb") > note.indexOf("## TIL"));
+});
+
+test("moveToTil follows a configured TIL heading", async () => {
+  const { obsidian, fake } = await client({ tilHeading: "Today I Learned" });
+  fake.vault.set(
+    TIL_PATH,
+    "## Journal\n- x ^aaaaaaaa\n## TIL\n- other ^bbbbbbbb\n## Today I Learned\n- ",
+  );
+  assert.equal(await obsidian.moveToTil(TIL_PATH, "aaaaaaaa"), "moved");
+  assert.equal(
+    fake.vault.get(TIL_PATH),
+    "## Journal\n## TIL\n- other ^bbbbbbbb\n## Today I Learned\n- x ^aaaaaaaa",
+  );
+
+  const plain = await client({ tilHeading: "Today I Learned" });
+  plain.fake.vault.set(TIL_PATH, "## Journal\n- x ^aaaaaaaa\n## TIL\n- ");
+  assert.equal(
+    await plain.obsidian.moveToTil(TIL_PATH, "aaaaaaaa"),
+    "no-heading",
+  );
+});
+
 test("deleteNote raises on a real failure but tolerates a 404", async () => {
   const { obsidian, fake } = await client();
   fake.vault.set("notes/a.md", "x");
