@@ -178,8 +178,10 @@ test("stripTilPrefix needs text after the marker", () => {
     assert.equal(stripTilPrefix(t), null, JSON.stringify(t));
 });
 
-test("known limitation: a lone dash after TIL counts as the text", () => {
-  assert.equal(stripTilPrefix("TIL -"), "-");
+test("stripTilPrefix ignores a marker followed only by dashes or punctuation", () => {
+  for (const t of ["TIL -", "TIL —", "TIL - -", "TIL: ...", "TIL -\n"])
+    assert.equal(stripTilPrefix(t), null, JSON.stringify(t));
+  assert.equal(stripTilPrefix("TIL - 5 things"), "5 things");
 });
 
 test("stripTilPrefix takes any whitespace run between the marker and the text", () => {

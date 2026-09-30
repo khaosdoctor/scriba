@@ -450,7 +450,7 @@ export function splitEntry(text: string, maxChars: number): string[] {
 
 // "TIL", then a colon/dash or whitespace, then the actual text. "TIL" alone, or a word that
 // merely starts with it ("tilde"), is an ordinary jot.
-const TIL_PREFIX = /^til(?:\s*[:\-–—]+\s*|\s+)(?=\S)/i;
+const TIL_PREFIX = /^til(?:\s*[:\-–—]+\s*|\s+)(?=[\s\S]*[\p{L}\p{N}])/iu;
 
 /** The text after a leading "TIL" marker, or null when the jot doesn't start with one.
  *  The heading already says it is a TIL, so the marker itself is dropped. */
