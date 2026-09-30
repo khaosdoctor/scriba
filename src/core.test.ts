@@ -89,6 +89,7 @@ import {
   withinSquashWindow,
 } from "./core.ts";
 import type { Jot, StatsRow } from "./db.ts";
+import { parseHabitRef } from "./flows/habits/parse.ts";
 import type { ReleaseNote } from "./services/github.ts";
 
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
@@ -1267,6 +1268,142 @@ test("parseWizardRef recognises the rating-time prompt", () => {
   assert.deepEqual(parseWizardRef(`when? ${WIZARD_RATING_TIME_REF}`), {
     kind: "rt",
   });
+});
+
+test("sectionHasContent treats every scaffolding shape as empty", () => {
+  for (const line of [
+    "  - ",
+    "+ ",
+    "* [x]",
+    "- [X]  ",
+    "----",
+    "<!-- a -->",
+    " ",
+    "\t",
+  ])
+    assert.equal(sectionHasContent(`## TIL\n${line}\n`, "TIL"), false, line);
+});
+
+test("sectionHasContent reads the last section to the end of the note", () => {
+  assert.equal(sectionHasContent("## TIL\n- x", "TIL"), true);
+  assert.equal(sectionHasContent("## TIL", "TIL"), false);
+});
+
+test("insertJournalLine keeps its paths after the section search was shared", () => {
+  assert.equal(insertJournalLine("a\n\n\n", "Journal", "L"), "a\nL\n");
+  assert.equal(insertJournalLine("", "Journal", "L"), "\nL\n");
+  assert.equal(
+    insertJournalLine("# Journal\n- \n", "Journal", "L"),
+    "# Journal\nL\n",
+  );
+  assert.equal(
+    insertJournalLine("#### Journal\n- \n", "Journal", "L"),
+    "#### Journal\nL\n",
+  );
+  assert.equal(
+    insertJournalLine("## Journal  \n- \n", "Journal", "L"),
+    "## Journal  \nL\n",
+  );
+  assert.equal(
+    insertJournalLine("## Journal\n- a\n## Journal\n- b\n", "Journal", "L"),
+    "## Journal\n- a\nL\n## Journal\n- b\n",
+  );
+  assert.equal(
+    insertJournalLine("## Journal\r\n- \r\n", "Journal", "L"),
+    "## Journal\r\nL\n",
+  );
+});
+
+test("parseClockTime takes valid 24h times and pads the hour", () => {
+  for (const [input, out] of [
+    ["0:00", "00:00"],
+    ["00:59", "00:59"],
+    ["19:05", "19:05"],
+    ["23:00", "23:00"],
+    ["1:00", "01:00"],
+  ])
+    assert.equal(parseClockTime(input!), out, input);
+});
+
+test("parseClockTime rejects malformed, non-ASCII and multi-line input", () => {
+  for (const bad of [
+    "24:00",
+    "2:60",
+    "-1:00",
+    "1:2:3",
+    "12:00:00",
+    "12.30",
+    "１２:３０",
+    "12:30pm",
+    "12:30\n13:00",
+    " ",
+    "\t",
+    ":30",
+    "12:",
+    "abc",
+    "🕛",
+  ])
+    assert.equal(parseClockTime(bad), null, JSON.stringify(bad));
+});
+
+test("known limitation: ratingTime passes the fallback through without normalising it", () => {
+  assert.equal(ratingTime(undefined, "9:30"), "9:30");
+  // ...which ratingDay then misreads: Number("9:") is NaN, so it rates today.
+  const now = new Date(2026, 6, 6, 12, 0).getTime();
+  assert.equal(ratingDay("9:30", now), "2026-07-06");
+});
+
+test("ratingDay rolls back across month, year and leap-day boundaries", () => {
+  const at = (y: number, m: number, d: number) =>
+    new Date(y, m, d, 0, 0).getTime();
+  assert.equal(ratingDay("00:00", at(2026, 0, 1)), "2025-12-31");
+  assert.equal(ratingDay("00:00", at(2026, 2, 1)), "2026-02-28");
+  assert.equal(ratingDay("00:00", at(2028, 2, 1)), "2028-02-29");
+  assert.equal(ratingDay("12:00", at(2028, 2, 1)), "2028-03-01");
+});
+
+test("ratingDay is a calendar day back on DST change days", () => {
+  const saved = process.env.TZ;
+  process.env.TZ = "Europe/Stockholm";
+  try {
+    const spring = new Date(2026, 2, 29, 0, 30).getTime();
+    const autumn = new Date(2026, 9, 25, 0, 30).getTime();
+    assert.equal(ratingDay("00:00", spring), "2026-03-28");
+    assert.equal(ratingDay("00:00", autumn), "2026-10-24");
+    assert.equal(ratingDay("22:00", spring), "2026-03-29");
+    assert.equal(ratingDay("22:00", autumn), "2026-10-25");
+  } finally {
+    if (saved === undefined) delete process.env.TZ;
+    else process.env.TZ = saved;
+  }
+});
+
+test("followupQuestions counts a missing section as empty", () => {
+  assert.deepEqual(
+    followupQuestions("## Journal\n- a\n", { journal: "Journal", til: "TIL" }),
+    ["til"],
+  );
+  assert.deepEqual(
+    followupQuestions("## TIL\n- a\n", { journal: "Journal", til: "TIL" }),
+    ["journal"],
+  );
+  assert.deepEqual(
+    followupQuestions("# 2026-07-05\n", { journal: "Journal", til: "TIL" }),
+    ["journal", "til"],
+  );
+});
+
+test("a follow-up marker is not read by the other flows' parsers, nor theirs by it", () => {
+  const prompt = `question ${followupRef("journal", "2026-07-05")}`;
+  assert.equal(parseHabitRef(prompt), null);
+  assert.equal(parseWizardRef(prompt), null);
+  for (const other of [
+    "(hb:2026-07-05:1)",
+    "(rt:time)",
+    "(lw:sw)",
+    "(tk:d:abcdef12)",
+  ])
+    assert.equal(parseFollowupRef(other), null, other);
 });
 
 test("switchEnabled is on unless explicitly off", () => {

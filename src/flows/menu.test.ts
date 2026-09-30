@@ -71,3 +71,249 @@ test("every screen gets a Close button, with no gap above it", () => {
     [["‹ Back"], ["✖ Close"]],
   );
 });
+
+// --- nightly rating switches and time ---
+
+const { parseWizardRef, WIZARD_RATING_TIME_REF } = await import("../core.ts");
+
+/** A menu over a real settings map, with recorders for everything it sends. */
+function settingsHarness(initial: Record<string, string> = {}) {
+  const settings = { ...initial };
+  const sets: [string, string][] = [];
+  const sent: { chat: number; text: string; opts: any }[] = [];
+  const bot = {
+    api: {
+      sendMessage: async (chat: number, text: string, opts: any) => {
+        sent.push({ chat, text, opts });
+        return { chat: { id: chat }, message_id: 50 };
+      },
+    },
+  };
+  const repo = {
+    getSetting: async (key: string) => settings[key],
+    setSetting: async (key: string, value: string) => {
+      sets.push([key, value]);
+      settings[key] = value;
+    },
+  };
+  const menu = new MenuController(
+    bot as any,
+    {} as any,
+    {} as any,
+    {} as any,
+    (() => ({ repo })) as any,
+    (async () => "") as any,
+  ) as any;
+  return { menu, settings, sets, sent };
+}
+
+/** A callback context that records answers and edits, and can be told to fail. */
+function callbackCtx(
+  over: { answerFails?: boolean; editFails?: boolean } = {},
+) {
+  const answers: (string | undefined)[] = [];
+  const edits: { text: string; opts: any }[] = [];
+  const ctx = {
+    callbackQuery: { message: { chat: { id: 1 }, message_id: 2 } },
+    answerCallbackQuery: async (a?: { text: string }) => {
+      if (over.answerFails) throw new Error("query is too old");
+      answers.push(a?.text);
+    },
+    editMessageText: async (text: string, opts: any) => {
+      if (over.editFails) throw new Error("message to edit not found");
+      edits.push({ text, opts });
+    },
+  };
+  return { ctx, answers, edits };
+}
+
+const buttonTexts = (kb: any) =>
+  kb.inline_keyboard.map((row: any[]) => row.map((b) => b.text));
+const findButton = (kb: any, data: string) =>
+  kb.inline_keyboard.flat().find((b: any) => b.callback_data === data);
+
+test("the root menu shows the switches on and the default rating time when nothing is stored", async () => {
+  const { menu } = settingsHarness();
+  const kb = await menu.rootMenu();
+  assert.equal(findButton(kb, "menu:rtsw").text, "🌙 Nightly rating: on");
+  assert.equal(findButton(kb, "menu:fusw").text, "💬 Follow-up: on");
+  assert.equal(findButton(kb, "menu:rtt").text, "🕛 Rating time: 00:00");
+  const rows = buttonTexts(kb);
+  const at = (label: string) =>
+    rows.find((r: string[]) => r.some((t) => t.includes(label)));
+  assert.equal(at("Nightly rating").length, 2);
+  assert.equal(at("Follow-up"), at("Nightly rating"));
+  assert.equal(at("Rating time").length, 1);
+});
+
+test("the root menu shows stored switches and the stored time", async () => {
+  const { menu } = settingsHarness({
+    nightlyRating: "off",
+    nightlyFollowup: "off",
+    ratingTime: "23:30",
+  });
+  const kb = await menu.rootMenu();
+  assert.equal(findButton(kb, "menu:rtsw").text, "🌙 Nightly rating: off");
+  assert.equal(findButton(kb, "menu:fusw").text, "💬 Follow-up: off");
+  assert.equal(findButton(kb, "menu:rtt").text, "🕛 Rating time: 23:30");
+});
+
+test("the rating and follow-up buttons each flip their own setting", async () => {
+  const rating = settingsHarness();
+  const r = callbackCtx();
+  await rating.menu.handleCallback(r.ctx, ["rtsw"]);
+  assert.deepEqual(rating.sets, [["nightlyRating", "off"]]);
+  assert.deepEqual(r.answers, ["Nightly rating off"]);
+
+  const followup = settingsHarness();
+  const f = callbackCtx();
+  await followup.menu.handleCallback(f.ctx, ["fusw"]);
+  assert.deepEqual(followup.sets, [["nightlyFollowup", "off"]]);
+  assert.deepEqual(f.answers, ["Follow-up off"]);
+});
+
+test("a toggle redraws the root menu from the value it just wrote", async () => {
+  const { menu, settings } = settingsHarness();
+  const first = callbackCtx();
+  await menu.handleCallback(first.ctx, ["rtsw"]);
+  assert.equal(first.edits[0]?.text, "🗂 scriba control menu");
+  assert.equal(
+    findButton(first.edits[0]!.opts.reply_markup, "menu:rtsw").text,
+    "🌙 Nightly rating: off",
+  );
+
+  const second = callbackCtx();
+  await menu.handleCallback(second.ctx, ["rtsw"]);
+  assert.equal(settings.nightlyRating, "on");
+  assert.deepEqual(second.answers, ["Nightly rating on"]);
+  assert.equal(
+    findButton(second.edits[0]!.opts.reply_markup, "menu:rtsw").text,
+    "🌙 Nightly rating: on",
+  );
+});
+
+test("a stored off switch flips back on", async () => {
+  const { menu, sets } = settingsHarness({ nightlyFollowup: "off" });
+  const c = callbackCtx();
+  await menu.handleCallback(c.ctx, ["fusw"]);
+  assert.deepEqual(sets, [["nightlyFollowup", "on"]]);
+  assert.deepEqual(c.answers, ["Follow-up on"]);
+});
+
+test("known limitation: a toggle on a menu that is gone still changes the setting, then throws", async () => {
+  const { menu, sets } = settingsHarness();
+  const c = callbackCtx({ editFails: true });
+  await assert.rejects(
+    menu.handleCallback(c.ctx, ["fusw"]),
+    /message to edit not found/,
+  );
+  assert.deepEqual(sets, [["nightlyFollowup", "off"]]);
+});
+
+test("known limitation: an expired callback query blocks the redraw after the switch flipped", async () => {
+  const { menu, sets } = settingsHarness();
+  const c = callbackCtx({ answerFails: true });
+  await assert.rejects(menu.handleCallback(c.ctx, ["rtsw"]), /too old/);
+  assert.deepEqual(sets, [["nightlyRating", "off"]]);
+  assert.deepEqual(c.edits, []);
+});
+
+test("the time button opens the time prompt and nothing else", async () => {
+  const { menu, sent } = settingsHarness();
+  const c = callbackCtx();
+  await menu.handleCallback(c.ctx, ["rtt"]);
+  assert.deepEqual(c.answers, ["Answer the prompt below ↓"]);
+  assert.deepEqual(c.edits, []);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.chat, 1);
+  assert.deepEqual(sent[0]?.opts, { reply_markup: { force_reply: true } });
+  assert.ok(sent[0]?.text.includes(WIZARD_RATING_TIME_REF));
+  assert.deepEqual(parseWizardRef(sent[0]!.text), { kind: "rt" });
+});
+
+function timeReply(body: string) {
+  const replies: string[] = [];
+  const menus: { text: string; opts: any }[] = [];
+  return {
+    replies,
+    menus,
+    ctx: {
+      message: { text: body },
+      reply: async (text: string, opts?: any) => {
+        if (opts) menus.push({ text, opts });
+        else replies.push(text);
+        return { chat: { id: 1 }, message_id: 60 };
+      },
+    },
+  };
+}
+const PROMPT = `when? ${WIZARD_RATING_TIME_REF}`;
+
+test("a valid typed time is stored, handed to the scheduler, and confirmed with a menu button", async () => {
+  const { menu, sets } = settingsHarness();
+  const times: string[] = [];
+  const scheduler = { setRatingTime: (t: string) => void times.push(t) };
+  menu.setScheduler(scheduler);
+  assert.equal(menu.scheduler, scheduler);
+  const r = timeReply("23:30");
+  await menu.handleWizardReply(r.ctx, PROMPT);
+  assert.deepEqual(sets, [["ratingTime", "23:30"]]);
+  assert.deepEqual(times, ["23:30"]);
+  assert.equal(r.menus[0]?.text, "🕛 nightly rating at 23:30");
+  assert.ok(findButton(r.menus[0]!.opts.reply_markup, "menu:root"));
+});
+
+test("typed times are stored as normalised HH:MM", async () => {
+  for (const [body, stored] of [
+    ["9:30", "09:30"],
+    [" 09:30 ", "09:30"],
+    ["0:00", "00:00"],
+    ["00:00", "00:00"],
+    ["23:59", "23:59"],
+    ["12:30\n", "12:30"], // a trailing newline from a paste is trimmed, not rejected
+  ]) {
+    const { menu, sets } = settingsHarness();
+    await menu.handleWizardReply(timeReply(body!).ctx, PROMPT);
+    assert.deepEqual(sets, [["ratingTime", stored]], body);
+  }
+});
+
+test("an unusable typed time gets the format message and changes nothing", async () => {
+  for (const body of [
+    "",
+    "   ",
+    "noon",
+    "24:00",
+    "12:60",
+    "12:5",
+    "1230",
+    "12.30",
+    "12:30pm",
+    "७:३०",
+    "12：30",
+    "x".repeat(5000),
+    "🕛",
+    "12:30 13:30",
+    "-1:30",
+  ]) {
+    const { menu, sets } = settingsHarness();
+    const times: string[] = [];
+    menu.setScheduler({ setRatingTime: (t: string) => void times.push(t) });
+    const r = timeReply(body);
+    await menu.handleWizardReply(r.ctx, PROMPT);
+    assert.deepEqual(
+      r.replies,
+      ["That isn't a time. Use HH:MM in 24-hour time, like 23:30 or 00:00."],
+      JSON.stringify(body.slice(0, 20)),
+    );
+    assert.deepEqual([sets, times, r.menus], [[], [], []]);
+  }
+});
+
+test("a typed time is stored even before a scheduler is wired", async () => {
+  const { menu, sets } = settingsHarness();
+  const r = timeReply("22:00");
+  await menu.handleWizardReply(r.ctx, PROMPT);
+  assert.deepEqual(sets, [["ratingTime", "22:00"]]);
+  assert.equal(r.menus.length, 1);
+});

@@ -59,6 +59,22 @@ test("the TIL heading defaults to TIL", async () => {
   assert.equal(config.obsidian.tilHeading, "TIL");
 });
 
+test("TIL_HEADING is trimmed, tabs and newlines included", async () => {
+  for (const raw of ["  TIL  ", "TIL\t", "TIL\n", "\tTIL\r\n"]) {
+    const { config } = await load({ TIL_HEADING: raw });
+    assert.equal(config.obsidian.tilHeading, "TIL", JSON.stringify(raw));
+  }
+});
+
+test("a blank TIL_HEADING fails at boot", async () => {
+  for (const raw of ["", "   ", "\t\n"])
+    await assert.rejects(
+      load({ TIL_HEADING: raw }),
+      /Invalid configuration/,
+      JSON.stringify(raw),
+    );
+});
+
 test("TIL_HEADING is configurable without touching the other headings", async () => {
   const { config } = await load({ TIL_HEADING: "Today I learned" });
   assert.equal(config.obsidian.tilHeading, "Today I learned");
