@@ -5,7 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { sep } from "node:path";
 import * as chrono from "chrono-node";
-import type { Jot, JotKind, JotStatus, StatsRow } from "./db.ts";
+import type { Jot, JotKind, JotSection, JotStatus, StatsRow } from "./db.ts";
 import type { ReleaseNote } from "./services/github.ts";
 import { dateFromIso, plainDate } from "./time.ts";
 
@@ -456,6 +456,13 @@ const TIL_PREFIX = /^til(?:\s*[:\-–—]+\s*|\s+)(?=\S)/i;
  *  The heading already says it is a TIL, so the marker itself is dropped. */
 export function stripTilPrefix(text: string): string | null {
   return TIL_PREFIX.test(text) ? text.replace(TIL_PREFIX, "") : null;
+}
+
+/** Text of a natively edited message as it belongs on the jot's line: a TIL jot keeps its
+ *  marker out of the note, so an edit that still starts with "TIL" loses it again. */
+export function editedJotText(section: JotSection, text: string): string {
+  if (section !== "til") return text;
+  return stripTilPrefix(text) ?? text;
 }
 
 /** Placeholder written the instant a jot arrives — fixes ordering, filled in later. */

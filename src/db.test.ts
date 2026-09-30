@@ -195,13 +195,36 @@ test("repository roundtrip (skipped when better-sqlite3 can't build)", async (t)
       kind: "image",
       received_at: 9000,
     }); // attach-only — never a run head
-    assert.equal((await repo.lastPendingEnrichableJot(NOTE))?.id, "22222222"); // newest pending enrichable; image skipped
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "journal"))?.id,
+      "22222222",
+    ); // newest pending enrichable; image skipped
     assert.deepEqual(
       (await repo.groupFollowers("11111111")).map((j) => j.id),
       ["22222222"],
     );
     await repo.updateJot("22222222", { status: "done" }); // no longer an open run head
-    assert.equal((await repo.lastPendingEnrichableJot(NOTE))?.id, "11111111");
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "journal"))?.id,
+      "11111111",
+    );
+    // a newer TIL jot is invisible to the journal run and vice versa
+    await repo.insertJot({
+      ...sampleJot("66666666"),
+      note_path: NOTE,
+      section: "til",
+      received_at: -2, // outside the /reprocess range test below
+    });
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "journal"))?.id,
+      "11111111",
+    );
+    assert.equal(
+      (await repo.lastPendingEnrichableJot(NOTE, "til"))?.id,
+      "66666666",
+    );
+    await repo.updateJot("66666666", { status: "done" });
+    assert.equal(await repo.lastPendingEnrichableJot(NOTE, "til"), undefined);
     await repo.markDeleted("22222222");
     assert.deepEqual(await repo.groupFollowers("11111111"), []); // deleted drops out
 

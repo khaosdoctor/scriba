@@ -15,6 +15,7 @@ import {
   doneMessage,
   donePreview,
   editConfirmation,
+  editedJotText,
   embedOffer,
   enrichableSource,
   entitiesToMarkdown,
@@ -163,6 +164,19 @@ test("stripTilPrefix leaves everything else alone", () => {
   assert.equal(stripTilPrefix("until then"), null);
   assert.equal(stripTilPrefix("today TIL foo"), null);
   assert.equal(stripTilPrefix(""), null);
+});
+
+test("editedJotText strips a re-typed TIL marker only for TIL jots", () => {
+  assert.equal(
+    editedJotText("til", "TIL: sqlite has WAL mode"),
+    "sqlite has WAL mode",
+  );
+  assert.equal(
+    editedJotText("til", "sqlite has WAL mode"),
+    "sqlite has WAL mode",
+  );
+  assert.equal(editedJotText("til", "TIL"), "TIL");
+  assert.equal(editedJotText("journal", "TIL: foo"), "TIL: foo");
 });
 
 test("insertJournalLine replaces the empty template bullet on the first jot", () => {

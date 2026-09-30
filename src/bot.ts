@@ -9,6 +9,7 @@ import {
   deleteAnchorLine,
   distinctSurfaces,
   editConfirmation,
+  editedJotText,
   embedOffer,
   entitiesToMarkdown,
   escapeHtml,
@@ -643,11 +644,12 @@ export class ScribaBot implements BotServices {
   // the edit for when processing finishes. Clearing the message to empty/whitespace
   // is the delete gesture (Telegram never delivers an actual message delete), so a
   // blank edit removes the journal line instead of replacing it.
-  private async applyMessageEdit(ctx: any, markdown: string): Promise<void> {
+  private async applyMessageEdit(ctx: any, edited: string): Promise<void> {
     const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
     if (!jotId) return;
     const jot = await this.repo.getJot(jotId);
     if (!jot) return;
+    const markdown = editedJotText(jot.section, edited);
     const blank = isBlank(markdown);
     if (!isEditableJot(jot.status)) {
       // "delete" is the instruction applyEdits recognises when onJotDone drains the
@@ -728,10 +730,9 @@ export class ScribaBot implements BotServices {
     let anchor = id;
     let squashed = false;
     if (kind === "text" || kind === "audio") {
-      const prev = await this.repo.lastPendingEnrichableJot(notePath);
+      const prev = await this.repo.lastPendingEnrichableJot(notePath, section);
       if (
         prev &&
-        prev.section === section &&
         withinSquashWindow(prev.received_at, epochMs, config.squash.windowMs)
       ) {
         anchor = prev.anchor;

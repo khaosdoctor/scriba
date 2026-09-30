@@ -137,10 +137,15 @@ export class Repository {
       .update({ status: "pending", updated_at: Date.now() });
   }
   /** Most recent still-pending text/voice jot in a note — the open end of a squash run.
-   *  A new enrichable jot arriving within the squash window folds into this one's line. */
-  async lastPendingEnrichableJot(notePath: string): Promise<Jot | undefined> {
+   *  A new enrichable jot arriving within the squash window folds into this one's line.
+   *  Only jots in the same section count, so a TIL jot between two journal jots doesn't
+   *  split their run. */
+  async lastPendingEnrichableJot(
+    notePath: string,
+    section: JotSection,
+  ): Promise<Jot | undefined> {
     return this.k<Jot>("jots")
-      .where({ note_path: notePath, status: "pending" })
+      .where({ note_path: notePath, status: "pending", section })
       .whereIn("kind", ["text", "audio"])
       .orderBy("received_at", "desc")
       .first();
