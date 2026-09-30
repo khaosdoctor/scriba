@@ -53,6 +53,7 @@ import {
   monthGrid,
   moveAnchorLine,
   noteSuggestions,
+  parseClockTime,
   parseEntrySize,
   parseFollowupRef,
   parseLiteralEdit,
@@ -63,6 +64,8 @@ import {
   pluralize,
   previewList,
   queuedNotice,
+  ratingDay,
+  ratingTime,
   replaceAnchorLine,
   reprocessTargets,
   retryNotice,
@@ -72,6 +75,7 @@ import {
   splitEntry,
   stripJournalLine,
   stripTilPrefix,
+  switchEnabled,
   TELEGRAM_LIMIT,
   thoughtIcon,
   tokenize,
@@ -79,6 +83,7 @@ import {
   unwrapModelPayload,
   WIZARD_ENTRYSIZE_REF,
   WIZARD_NOTE_REF,
+  WIZARD_RATING_TIME_REF,
   WIZARD_REGISTER_REF,
   WIZARD_STOPWORD_REF,
   withinSquashWindow,
@@ -1256,6 +1261,52 @@ test("parseWizardRef tells the wizard's prompts apart", () => {
   assert.equal(parseWizardRef("rename it (lw:rgw)"), null); // index is required
   assert.equal(parseWizardRef("Rate Exercise (hb:2026-07-29:0)"), null);
   assert.equal(parseWizardRef(""), null);
+});
+
+test("parseWizardRef recognises the rating-time prompt", () => {
+  assert.deepEqual(parseWizardRef(`when? ${WIZARD_RATING_TIME_REF}`), {
+    kind: "rt",
+  });
+});
+
+test("switchEnabled is on unless explicitly off", () => {
+  assert.equal(switchEnabled(undefined), true);
+  assert.equal(switchEnabled("on"), true);
+  assert.equal(switchEnabled("off"), false);
+});
+
+test("parseClockTime accepts 24h HH:MM and pads a single-digit hour", () => {
+  assert.equal(parseClockTime("00:00"), "00:00");
+  assert.equal(parseClockTime(" 23:59 "), "23:59");
+  assert.equal(parseClockTime("9:30"), "09:30");
+});
+
+test("parseClockTime rejects anything else", () => {
+  for (const bad of [
+    "24:00",
+    "12:60",
+    "7pm",
+    "12",
+    "12:5",
+    "1230",
+    "",
+    "ab:cd",
+  ])
+    assert.equal(parseClockTime(bad), null, bad);
+});
+
+test("ratingTime uses the stored time when valid, else the default", () => {
+  assert.equal(ratingTime("22:15", "00:00"), "22:15");
+  assert.equal(ratingTime(undefined, "00:00"), "00:00");
+  assert.equal(ratingTime("garbage", "21:00"), "21:00");
+});
+
+test("ratingDay rates yesterday for a just-after-midnight time and today for an evening one", () => {
+  const now = new Date(2026, 6, 6, 12, 0, 0).getTime();
+  assert.equal(ratingDay("00:00", now), "2026-07-05");
+  assert.equal(ratingDay("11:59", now), "2026-07-05");
+  assert.equal(ratingDay("12:00", now), "2026-07-06");
+  assert.equal(ratingDay("22:30", now), "2026-07-06");
 });
 
 test("parseRuleWords keeps inner spaces, splits on commas and newlines", () => {

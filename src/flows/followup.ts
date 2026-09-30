@@ -3,11 +3,14 @@ import { config } from "../config.ts";
 import {
   entitiesToMarkdown,
   FOLLOWUP_CODES,
+  FOLLOWUP_SWITCH_KEY,
   type FollowupQuestion,
   followupFromCode,
   followupQuestions,
   followupRef,
+  switchEnabled,
 } from "../core.ts";
+import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import { isValidDate } from "../time.ts";
@@ -33,14 +36,19 @@ const PROMPTS: Record<FollowupQuestion, string> = {
 export class FollowupFlow {
   constructor(
     private bot: Bot,
+    private repo: Repository,
     private obsidian: ObsidianClient,
     /** Takes `text` as a jot for `date`, replying to the message in `ctx`. */
     private jot: (ctx: any, date: string, text: string) => Promise<void>,
   ) {}
 
   /** Ask the first question `date`'s note still needs answered, if any. Called right after
-   *  the day is rated. */
+   *  the day is rated, unless the follow-up is switched off. */
   async start(date: string): Promise<void> {
+    if (!switchEnabled(await this.repo.getSetting(FOLLOWUP_SWITCH_KEY))) {
+      log.info({ date }, "follow-up is off, not asking");
+      return;
+    }
     log.info({ date }, "starting follow-up");
     await this.ask(date);
   }

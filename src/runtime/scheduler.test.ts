@@ -24,13 +24,18 @@ type Stats = {
   abandoned: number;
 };
 
-function harness(stats: Partial<Stats> = {}, sweep?: () => Promise<void>) {
+function harness(
+  stats: Partial<Stats> = {},
+  sweep?: () => Promise<void>,
+  settings: Record<string, string> = {},
+) {
   const notified: string[] = [];
   const rated: string[] = [];
   const habits: string[] = [];
   const summaries: string[] = [];
   let sweeps = 0;
   const repo = {
+    getSetting: async (key: string) => settings[key],
     windowStats: async (): Promise<Stats> => ({
       total: 0,
       audio: 0,
@@ -163,11 +168,45 @@ test("the nightly prompts fire for the day that just ended, then re-arm", async 
   assert.equal(h.habits.length, 2);
 });
 
+test("the nightly rating is skipped while its switch is off, the habit review is not", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const h = harness({}, undefined, { nightlyRating: "off" });
+  h.scheduler.start();
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(h.rated.length, 0);
+  assert.equal(h.habits.length, 1);
+
+  // Skipping still re-arms, so turning it back on needs no restart.
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(h.rated.length, 0);
+});
+
+test("changing the rating time re-arms it, and a later time rates the day still going", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const h = harness();
+  h.scheduler.setRatingTime("23:59");
+  h.scheduler.start();
+  // Move it while running: only the new time fires, once per day.
+  h.scheduler.setRatingTime("22:00");
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.deepEqual(h.rated, [plainDate()]);
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(h.rated.length, 2);
+  h.scheduler.stop();
+});
+
 test("a prompt that throws still re-arms for tomorrow", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   let calls = 0;
   const scheduler = new Scheduler(
-    { windowStats: async () => ({ total: 0 }) } as any,
+    {
+      windowStats: async () => ({ total: 0 }),
+      getSetting: async () => undefined,
+    } as any,
     { retrySweep: async () => {} } as any,
     async () => {},
     async () => {

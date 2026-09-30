@@ -348,6 +348,18 @@ deployed on the homelab (Coolify). Single user.
   that day's last second when it isn't today), so they enrich, edit and undo like any jot.
   The TIL answer is written as `TIL: <text>` because enrichment, anchors and the status
   message belong to the jot pipeline, which only writes under the journal heading.
+- **The nightly rating and its follow-up have their own switches and a runtime time.** Three
+  `settings` rows, changed from `/menu` (root screen): `nightlyRating` and `nightlyFollowup`
+  (`on`/`off`, unset is on, `switchEnabled`) and `ratingTime` (`HH:MM`, unset falls back to
+  `RATING_TIME`, `ratingTime` in `core.ts`). The time is typed after a force-reply prompt
+  (`WIZARD_RATING_TIME_REF`) and checked by `parseClockTime`, which takes 24-hour `H:MM` or
+  `HH:MM` and answers anything else with a message. `Scheduler` owns the rating timer apart
+  from the fixed daily jobs: `setRatingTime` re-arms it at once when running, and the job
+  reads the `nightlyRating` row each time it fires, skipping (and re-arming) when it is off.
+  `ratingDay` picks the day to rate: before 12:00 the firing is just after midnight, so
+  yesterday, otherwise today. The follow-up reads its own row in `FollowupFlow.start`, so a
+  rating that is off never reaches it. The switches govern the nightly prompt only: `/rate`
+  and the menu's Rate today still ask, and their follow-up follows its own switch.
 - **Connection health never spends a token.** `HealthMonitor` (`runtime/health.ts`) probes
   every upstream once a minute, all at once, with a 5s timeout each: Anthropic and
   Telegram at their bare host, Groq and OpenCode at `/models` with their key (skipped when

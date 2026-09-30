@@ -49,6 +49,7 @@ import type {
   JotProcessor,
 } from "./runtime/processor.ts";
 import type { FlushQueue } from "./runtime/queue.ts";
+import type { Scheduler } from "./runtime/scheduler.ts";
 import type { Enricher } from "./services/enrich.ts";
 import type { GithubReleases } from "./services/github.ts";
 import type { LinkIndex } from "./services/links.ts";
@@ -152,8 +153,12 @@ export class ScribaBot implements BotServices {
     this.bot = new Bot(config.telegram.token, {
       client: { timeoutSeconds: 60 },
     });
-    this.followup = new FollowupFlow(this.bot, obsidian, (ctx, date, text) =>
-      this.intake(ctx, "text", { rawText: text, day: date }),
+    this.followup = new FollowupFlow(
+      this.bot,
+      repo,
+      obsidian,
+      (ctx, date, text) =>
+        this.intake(ctx, "text", { rawText: text, day: date }),
     );
     this.rating = new RatingCommand(this.bot, repo, obsidian, this.followup);
     this.habits = new HabitsCommand(this.bot, obsidian);
@@ -198,6 +203,10 @@ export class ScribaBot implements BotServices {
   /** Same cycle: the monitor notifies through this bot, and /status reads the monitor. */
   setHealth(health: HealthMonitor): void {
     this.health = health;
+  }
+  /** The menu changes the rating time, which the scheduler owns. */
+  setScheduler(scheduler: Scheduler): void {
+    this.menu.setScheduler(scheduler);
   }
 
   /** Assemble what the admin commands act on. */

@@ -7,7 +7,7 @@ import { sep } from "node:path";
 import * as chrono from "chrono-node";
 import type { Jot, JotKind, JotSection, JotStatus, StatsRow } from "./db.ts";
 import type { ReleaseNote } from "./services/github.ts";
-import { dateFromIso, plainDate } from "./time.ts";
+import { dateFromIso, plainDate, previousDate } from "./time.ts";
 
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -514,6 +514,36 @@ export function sectionHasContent(note: string, heading: string): boolean {
     .some(
       (l) => !/^\s*(?:[-*+](?:\s+\[[ xX]\])?\s*|-{3,}|<!--.*-->)?\s*$/.test(l),
     );
+}
+
+/** `settings` keys for the nightly rating and its follow-up (set from /menu, survive a
+ *  restart). Unset means on; the rating time falls back to `RATING_TIME`. */
+export const RATING_SWITCH_KEY = "nightlyRating";
+export const FOLLOWUP_SWITCH_KEY = "nightlyFollowup";
+export const RATING_TIME_KEY = "ratingTime";
+
+/** Whether an on/off setting is on, from its raw value: only an explicit "off" turns it off. */
+export function switchEnabled(raw: string | undefined): boolean {
+  return raw !== "off";
+}
+
+/** A typed 24-hour clock time, normalised to `HH:MM` ("9:30" becomes "09:30"). Null when it
+ *  isn't one. */
+export function parseClockTime(text: string): string | null {
+  const m = text.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  return m ? `${m[1]!.padStart(2, "0")}:${m[2]}` : null;
+}
+
+/** The nightly rating time in force: the stored setting when it is a valid time, else the
+ *  configured default. */
+export function ratingTime(raw: string | undefined, fallback: string): string {
+  return parseClockTime(raw ?? "") ?? fallback;
+}
+
+/** The day a nightly rating firing at `time` is about: a time before noon is just after
+ *  midnight, so the day that ended is yesterday; a later one rates the day still going. */
+export function ratingDay(time: string, now: number = Date.now()): string {
+  return Number(time.slice(0, 2)) < 12 ? previousDate(now) : plainDate(now);
 }
 
 /** The follow-up questions after the nightly rating, in the order they are asked. */
@@ -1210,6 +1240,7 @@ export const WIZARD_RENAME_REF = "lw:rgw";
 export const WIZARD_ENTRYSIZE_REF = "(es:n)";
 export const WIZARD_ENRICH_MODEL_REF = "(md:em)";
 export const WIZARD_VOICEFIX_MODEL_REF = "(md:vfm)";
+export const WIZARD_RATING_TIME_REF = "(rt:time)";
 
 /** Which wizard prompt a reply is answering, if any. */
 export type WizardPrompt =
@@ -1220,12 +1251,14 @@ export type WizardPrompt =
   | { kind: "rgw"; index: number }
   | { kind: "es" }
   | { kind: "em" }
-  | { kind: "vfm" };
+  | { kind: "vfm" }
+  | { kind: "rt" };
 
 export function parseWizardRef(text: string): WizardPrompt | null {
   if (text.includes(WIZARD_ENTRYSIZE_REF)) return { kind: "es" };
   if (text.includes(WIZARD_ENRICH_MODEL_REF)) return { kind: "em" };
   if (text.includes(WIZARD_VOICEFIX_MODEL_REF)) return { kind: "vfm" };
+  if (text.includes(WIZARD_RATING_TIME_REF)) return { kind: "rt" };
   // `rgn`/`rgw`/`rgm` before `rg` — alternation is first-match, and `rg` prefixes them all.
   const m = text.match(/\(lw:(sw|rgn|rgw|rgm|rg)(?::(\d+))?\)/);
   if (!m) return null;
