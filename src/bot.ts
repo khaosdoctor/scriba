@@ -761,7 +761,9 @@ export class ScribaBot implements BotServices {
     // same react() call instead of a second round-trip.
     let anchor = id;
     let squashed = false;
-    if (kind === "text" || kind === "audio") {
+    // A follow-up answer (`day`) is stamped with the day's last second, so two of them would
+    // always look like one burst: they are deliberate entries and never squash.
+    if (!src.day && (kind === "text" || kind === "audio")) {
       const prev = await this.repo.lastPendingEnrichableJot(notePath, section);
       if (
         prev &&

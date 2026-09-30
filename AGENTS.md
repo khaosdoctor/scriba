@@ -346,8 +346,11 @@ deployed on the homelab (Coolify). Single user.
   normal jot. Answered or skipped, the prompt is deleted and the next one is asked. Both
   answers go through `ScribaBot.intake` as text jots, filed under the rated day (`day`:
   that day's last second when it isn't today), so they enrich, edit and undo like any jot.
-  The TIL answer is written as `TIL: <text>` because enrichment, anchors and the status
-  message belong to the jot pipeline, which only writes under the journal heading.
+  The `day` override moves only the date, time and note path: a jot carrying it never
+  squashes, since every answer to one day shares that last-second stamp and would otherwise
+  fold into the one before. The TIL answer is sent as `TIL: <text>`, which `stripTilPrefix`
+  turns into a jot in the TIL section at intake, so it lands under `TIL_HEADING`. A journal
+  answer that itself starts with "til" is routed the same way.
 - **The nightly rating and its follow-up have their own switches and a runtime time.** Three
   `settings` rows, changed from `/menu` (root screen): `nightlyRating` and `nightlyFollowup`
   (`on`/`off`, unset is on, `switchEnabled`) and `ratingTime` (`HH:MM`, unset falls back to
