@@ -7,15 +7,21 @@ import {
   ENRICH_MODEL_KEY,
   ENTRY_MAX_CHARS_KEY,
   entryMaxChars,
+  FOLLOWUP_SWITCH_KEY,
   fitTelegram,
   formatJotDetail,
   jotPreview,
   noteSuggestions,
+  parseClockTime,
   parseEntrySize,
   parseRuleWords,
   parseWizardRef,
   previewList,
+  RATING_SWITCH_KEY,
+  RATING_TIME_KEY,
+  ratingTime,
   STATUS_ICON,
+  switchEnabled,
   VOICE_FIX_KEY,
   VOICE_FIX_MODEL_KEY,
   voiceFixEnabled,
@@ -23,6 +29,7 @@ import {
   WIZARD_ENTRYSIZE_REF,
   WIZARD_NEWNOTE_REF,
   WIZARD_NOTE_REF,
+  WIZARD_RATING_TIME_REF,
   WIZARD_REGISTER_REF,
   WIZARD_RENAME_REF,
   WIZARD_STOPWORD_REF,
@@ -30,6 +37,7 @@ import {
 } from "../core.ts";
 import type { Jot } from "../db.ts";
 import { logger } from "../log.ts";
+import type { Scheduler } from "../runtime/scheduler.ts";
 import { plainDate } from "../time.ts";
 import type { HabitsCommand } from "./habits/index.ts";
 import type { RatingCommand } from "./rating.ts";
@@ -97,6 +105,12 @@ export class MenuController {
     this.tasks = tasks;
   }
 
+  /** Late-wired like `tasks`: the scheduler owns the rating timer, and is built after the bot. */
+  private scheduler?: Scheduler;
+  setScheduler(scheduler: Scheduler): void {
+    this.scheduler = scheduler;
+  }
+
   /** (Re)start a menu message's idle countdown. Called when one is sent and again on every
    *  tap, so the minute is measured from the last interaction, not from the send. */
   private scheduleExpiry(chatId: number, msgId: number): void {
@@ -157,6 +171,14 @@ export class MenuController {
     const vfOn = voiceFixEnabled(await repo.getSetting(VOICE_FIX_KEY));
     const enrichModel = (await repo.getSetting(ENRICH_MODEL_KEY)) ?? "?";
     const vfModel = (await repo.getSetting(VOICE_FIX_MODEL_KEY)) ?? "?";
+    const ratingOn = switchEnabled(await repo.getSetting(RATING_SWITCH_KEY));
+    const followupOn = switchEnabled(
+      await repo.getSetting(FOLLOWUP_SWITCH_KEY),
+    );
+    const at = ratingTime(
+      await repo.getSetting(RATING_TIME_KEY),
+      config.ratingTime,
+    );
     return new InlineKeyboard()
       .text("📊 Rate today", "menu:rate")
       .text("🌱 Review habits", "menu:habits")
@@ -176,6 +198,11 @@ export class MenuController {
       .text(`✂️ Entry size: ${size ? `${size} chars` : "off"}`, "menu:esz")
       .row()
       .text(`🔧 Voice fix: ${vfOn ? "on" : "off"}`, "menu:vfix")
+      .row()
+      .text(`🌙 Nightly rating: ${ratingOn ? "on" : "off"}`, "menu:rtsw")
+      .text(`💬 Follow-up: ${followupOn ? "on" : "off"}`, "menu:fusw")
+      .row()
+      .text(`🕛 Rating time: ${at}`, "menu:rtt")
       .row()
       .text(`🧠 Enrich: ${shortModel(enrichModel)}`, "menu:em")
       .text(`🎤 VF model: ${shortModel(vfModel)}`, "menu:vfm")
@@ -280,6 +307,12 @@ export class MenuController {
         return this.entrySizeMenu(ctx);
       case "vfix":
         return this.menuToggleVoiceFix(ctx);
+      case "rtsw":
+        return this.menuToggleSwitch(ctx, RATING_SWITCH_KEY, "Nightly rating");
+      case "fusw":
+        return this.menuToggleSwitch(ctx, FOLLOWUP_SWITCH_KEY, "Follow-up");
+      case "rtt":
+        return this.promptRatingTime(ctx);
       case "em":
         await ctx.answerCallbackQuery();
         return this.modelPickerMenu(ctx, "enrich");
@@ -408,6 +441,39 @@ export class MenuController {
     await ctx.editMessageText("🗂 scriba control menu", {
       reply_markup: await this.rootMenu(),
     });
+  }
+
+  /** Flip an on/off setting from the root menu and redraw it. */
+  private async menuToggleSwitch(
+    ctx: any,
+    key: string,
+    label: string,
+  ): Promise<void> {
+    const repo = this.getDeps().repo;
+    const next = switchEnabled(await repo.getSetting(key)) ? "off" : "on";
+    await repo.setSetting(key, next);
+    log.info({ key, next }, "menu: switch toggled");
+    // The setting is already saved, so neither a stale callback query nor a menu that has
+    // gone away may undo that or stop the other half.
+    await ctx
+      .answerCallbackQuery({ text: `${label} ${next}` })
+      .catch((err: unknown) => log.warn({ err }, "menu: toggle ack failed"));
+    await ctx
+      .editMessageText("🗂 scriba control menu", {
+        reply_markup: await this.rootMenu(),
+      })
+      .catch((err: unknown) => log.warn({ err }, "menu: toggle redraw failed"));
+  }
+
+  /** The rating time is free text (HH:MM): ask, and route the reply back by the marker. */
+  private async promptRatingTime(ctx: any): Promise<void> {
+    await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
+    log.info("menu: prompting for the rating time");
+    await this.bot.api.sendMessage(
+      config.telegram.allowedUserId,
+      `🕛 Reply to this message with the time for the nightly rating, as HH:MM in 24-hour time, like 23:30. A time before 12:00 rates the day that just ended, a later one rates today. ${WIZARD_RATING_TIME_REF}`,
+      { reply_markup: { force_reply: true } }, // opened by a tap, see promptEntrySize
+    );
   }
 
   // --- model pickers ---
@@ -1160,6 +1226,23 @@ export class MenuController {
             ? `✂️ entries split above ${size} characters`
             : "✂️ splitting off — entries stay on one line",
           new InlineKeyboard().text("✂️ Entry size", "menu:esz"),
+        );
+      }
+      case "rt": {
+        const time = parseClockTime(body);
+        if (!time) {
+          log.warn({ body }, "menu: unusable rating time reply");
+          return void ctx.reply(
+            "That isn't a time. Use HH:MM in 24-hour time, like 23:30 or 00:00.",
+          );
+        }
+        await repo.setSetting(RATING_TIME_KEY, time);
+        this.scheduler?.setRatingTime(time);
+        log.info({ time }, "menu: rating time changed");
+        return this.replyMenu(
+          ctx,
+          `🕛 nightly rating at ${time}`,
+          new InlineKeyboard().text("🗂 Menu", "menu:root"),
         );
       }
       case "em":

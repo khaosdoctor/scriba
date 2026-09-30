@@ -24,13 +24,18 @@ type Stats = {
   abandoned: number;
 };
 
-function harness(stats: Partial<Stats> = {}, sweep?: () => Promise<void>) {
+function harness(
+  stats: Partial<Stats> = {},
+  sweep?: () => Promise<void>,
+  settings: Record<string, string> = {},
+) {
   const notified: string[] = [];
   const rated: string[] = [];
   const habits: string[] = [];
   const summaries: string[] = [];
   let sweeps = 0;
   const repo = {
+    getSetting: async (key: string) => settings[key],
     windowStats: async (): Promise<Stats> => ({
       total: 0,
       audio: 0,
@@ -163,11 +168,45 @@ test("the nightly prompts fire for the day that just ended, then re-arm", async 
   assert.equal(h.habits.length, 2);
 });
 
+test("the nightly rating is skipped while its switch is off, the habit review is not", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const h = harness({}, undefined, { nightlyRating: "off" });
+  h.scheduler.start();
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(h.rated.length, 0);
+  assert.equal(h.habits.length, 1);
+
+  // Skipping still re-arms, so turning it back on needs no restart.
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(h.rated.length, 0);
+});
+
+test("changing the rating time re-arms it, and a later time rates the day still going", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const h = harness();
+  h.scheduler.setRatingTime("23:59");
+  h.scheduler.start();
+  // Move it while running: only the new time fires, once per day.
+  h.scheduler.setRatingTime("22:00");
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.deepEqual(h.rated, [plainDate()]);
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(h.rated.length, 2);
+  h.scheduler.stop();
+});
+
 test("a prompt that throws still re-arms for tomorrow", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   let calls = 0;
   const scheduler = new Scheduler(
-    { windowStats: async () => ({ total: 0 }) } as any,
+    {
+      windowStats: async () => ({ total: 0 }),
+      getSetting: async () => undefined,
+    } as any,
     { retrySweep: async () => {} } as any,
     async () => {},
     async () => {
@@ -187,6 +226,196 @@ test("a prompt that throws still re-arms for tomorrow", async (t) => {
   await flush();
   assert.equal(calls, 2);
   scheduler.stop();
+});
+
+const MIN = 60_000;
+const HOUR = 60 * MIN;
+
+/** Mock timers and the clock together, starting at 10:00 local on 2026-03-10. */
+function clockAt10(t: { mock: { timers: { enable: (o: any) => void } } }) {
+  t.mock.timers.enable({
+    apis: ["setTimeout", "setInterval", "Date"],
+    now: new Date(2026, 2, 10, 10, 0).getTime(),
+  });
+}
+
+test("a stopped scheduler never fires the rating or the habit review", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const h = harness();
+  h.scheduler.start();
+  h.scheduler.stop();
+  t.mock.timers.tick(3 * DAY);
+  await flush();
+  assert.equal(h.rated.length, 0);
+  assert.equal(h.habits.length, 0);
+});
+
+test("a rating time set before start only records it, and the first firing uses it", async (t) => {
+  clockAt10(t);
+  const h = harness();
+  h.scheduler.setRatingTime("22:00");
+  t.mock.timers.tick(3 * DAY);
+  await flush();
+  assert.equal(h.rated.length, 0);
+
+  // Fresh clock: the tick above moved it.
+  t.mock.timers.reset();
+  clockAt10(t);
+  const fresh = harness();
+  fresh.scheduler.setRatingTime("22:00");
+  fresh.scheduler.start();
+  t.mock.timers.tick(11 * HOUR + 59 * MIN);
+  await flush();
+  assert.deepEqual(fresh.rated, []);
+  t.mock.timers.tick(MIN);
+  await flush();
+  assert.deepEqual(fresh.rated, ["2026-03-10"]);
+  fresh.scheduler.stop();
+});
+
+test("changing the rating time again and again leaves one timer, at the last time", async (t) => {
+  clockAt10(t);
+  const h = harness();
+  h.scheduler.start();
+  h.scheduler.setRatingTime("12:00");
+  h.scheduler.setRatingTime("13:00");
+  h.scheduler.setRatingTime("13:00");
+  t.mock.timers.tick(2 * HOUR + 30 * MIN); // 12:30, past the abandoned 12:00
+  await flush();
+  assert.deepEqual(h.rated, []);
+  t.mock.timers.tick(30 * MIN); // 13:00
+  await flush();
+  assert.deepEqual(h.rated, ["2026-03-10"]);
+  h.scheduler.stop();
+});
+
+test("setRatingTime normalises an unpadded time and ignores an invalid one", async (t) => {
+  clockAt10(t);
+  const h = harness();
+  h.scheduler.setRatingTime("9:30"); // before 10:00, so the next firing is tomorrow 09:30
+  h.scheduler.setRatingTime("25:99"); // rejected, 09:30 stays
+  h.scheduler.start();
+  t.mock.timers.tick(23 * HOUR + 29 * MIN);
+  await flush();
+  assert.deepEqual(h.rated, []);
+  t.mock.timers.tick(MIN);
+  await flush();
+  assert.deepEqual(h.rated, ["2026-03-10"]);
+  h.scheduler.stop();
+});
+
+test("a midnight rating is for the day that just ended, by exact date", async (t) => {
+  clockAt10(t);
+  const h = harness();
+  h.scheduler.start();
+  t.mock.timers.tick(14 * HOUR); // 00:00 on the 11th
+  await flush();
+  assert.deepEqual(h.rated, ["2026-03-10"]);
+  h.scheduler.stop();
+});
+
+test("the noon cutoff: 11:59 rates yesterday, 12:00 rates today", async (t) => {
+  for (const [time, day] of [
+    ["11:59", "2026-03-09"],
+    ["12:00", "2026-03-10"],
+  ] as const) {
+    t.mock.timers.reset();
+    clockAt10(t);
+    const h = harness();
+    h.scheduler.setRatingTime(time);
+    h.scheduler.start();
+    t.mock.timers.tick(2 * HOUR + MIN);
+    await flush();
+    assert.deepEqual(h.rated, [day], time);
+    h.scheduler.stop();
+  }
+});
+
+test("a time changed while running is the one that decides the day", async (t) => {
+  clockAt10(t);
+  const h = harness();
+  h.scheduler.start(); // armed for the 00:00 default
+  h.scheduler.setRatingTime("22:00");
+  t.mock.timers.tick(12 * HOUR);
+  await flush();
+  assert.deepEqual(h.rated, ["2026-03-10"]);
+  h.scheduler.stop();
+});
+
+test("the rating switch is read at every firing, not once at start", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const settings: Record<string, string> = { nightlyRating: "off" };
+  const h = harness({}, undefined, settings);
+  h.scheduler.start();
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(h.rated.length, 0);
+
+  settings.nightlyRating = "on";
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(h.rated.length, 1);
+
+  settings.nightlyRating = "off";
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(h.rated.length, 1);
+  h.scheduler.stop();
+});
+
+test("a rating prompt that never resolves does not stop the next night's", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  let calls = 0;
+  const scheduler = new Scheduler(
+    {
+      windowStats: async () => ({ total: 0 }),
+      getSetting: async () => undefined,
+    } as any,
+    { retrySweep: async () => {} } as any,
+    async () => {},
+    () => {
+      calls++;
+      return new Promise<void>(() => {});
+    },
+    async () => {},
+    async () => {},
+    1000,
+  );
+  scheduler.start();
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(calls, 1);
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(calls, 2);
+  scheduler.stop();
+});
+
+test("a rating that throws does not hold back the habit review in the same tick", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const habits: string[] = [];
+  const scheduler = new Scheduler(
+    {
+      windowStats: async () => ({ total: 0 }),
+      getSetting: async () => undefined,
+    } as any,
+    { retrySweep: async () => {} } as any,
+    async () => {},
+    async () => {
+      throw new Error("telegram is down");
+    },
+    async (d: string) => void habits.push(d),
+    async () => {},
+    1000,
+  );
+  scheduler.start();
+  t.mock.timers.tick(DAY);
+  await flush();
+  assert.equal(habits.length, 1);
+  scheduler.stop();
+  t.mock.timers.tick(3 * DAY);
+  await flush();
+  assert.equal(habits.length, 1);
 });
 
 test("the daily summary stays quiet on a day with no jots", async (t) => {

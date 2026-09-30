@@ -24,6 +24,8 @@ import {
   feedMessage,
   fitFeed,
   fitTelegram,
+  followupQuestions,
+  followupRef,
   forcedCandidates,
   formatDeployNotice,
   formatDuration,
@@ -51,7 +53,9 @@ import {
   monthGrid,
   moveAnchorLine,
   noteSuggestions,
+  parseClockTime,
   parseEntrySize,
+  parseFollowupRef,
   parseLiteralEdit,
   parseModelJson,
   parseRuleWords,
@@ -60,14 +64,18 @@ import {
   pluralize,
   previewList,
   queuedNotice,
+  ratingDay,
+  ratingTime,
   replaceAnchorLine,
   reprocessTargets,
   retryNotice,
+  sectionHasContent,
   setEmbeds,
   setFrontmatterValue,
   splitEntry,
   stripJournalLine,
   stripTilPrefix,
+  switchEnabled,
   TELEGRAM_LIMIT,
   thoughtIcon,
   tokenize,
@@ -75,11 +83,13 @@ import {
   unwrapModelPayload,
   WIZARD_ENTRYSIZE_REF,
   WIZARD_NOTE_REF,
+  WIZARD_RATING_TIME_REF,
   WIZARD_REGISTER_REF,
   WIZARD_STOPWORD_REF,
   withinSquashWindow,
 } from "./core.ts";
 import type { Jot, StatsRow } from "./db.ts";
+import { parseHabitRef } from "./flows/habits/parse.ts";
 import type { ReleaseNote } from "./services/github.ts";
 
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
@@ -98,6 +108,105 @@ test("combineEnrichSource joins parts, dropping blanks", () => {
   );
   assert.equal(combineEnrichSource([]), "");
   assert.equal(combineEnrichSource([" solo "]), "solo");
+});
+
+const DAILY_TEMPLATE = `---
+tags:
+  - type/daily-note
+overallRating: 5
+---
+# 2026-07-05
+---
+## ✅ Tasks
+\`\`\`tasks
+preset on_or_before_this_file_name
+\`\`\`
+## Journal
+-
+## Habits
+- [ ] Practiced music #meta/habits/music
+## TIL
+-
+## Log
+- [Health log](obsidian://open)
+`;
+const HEADINGS = { journal: "Journal", til: "TIL" };
+
+test("sectionHasContent ignores the template's empty heading and placeholder bullet", () => {
+  assert.equal(sectionHasContent(DAILY_TEMPLATE, "Journal"), false);
+  assert.equal(sectionHasContent(DAILY_TEMPLATE, "TIL"), false);
+  assert.equal(sectionHasContent("## TIL\n", "TIL"), false);
+  assert.equal(sectionHasContent("## TIL\n- [ ]\n* \n\n---\n", "TIL"), false);
+});
+
+test("sectionHasContent counts a jot, a placeholder line or plain text", () => {
+  const jot = DAILY_TEMPLATE.replace(
+    "## Journal\n-\n",
+    "## Journal\n- _10:00:00 ::_ hi ^aaaaaaaa\n",
+  );
+  assert.equal(sectionHasContent(jot, "Journal"), true);
+  assert.equal(sectionHasContent(jot, "TIL"), false);
+  assert.equal(sectionHasContent("## TIL\n- _1:00 ::_ ⏳ ^a\n", "TIL"), true);
+  assert.equal(sectionHasContent("## TIL\nsomething\n", "TIL"), true);
+});
+
+test("sectionHasContent stops at the next heading and treats a missing heading as empty", () => {
+  assert.equal(
+    sectionHasContent("## Journal\n- \n## TIL\n- x\n", "Journal"),
+    false,
+  );
+  assert.equal(sectionHasContent("## Journal\n- x\n", "TIL"), false);
+});
+
+test("sectionHasContent does not read the rating out of frontmatter", () => {
+  assert.equal(
+    sectionHasContent("---\noverallRating: 5\n---\n## TIL\n- \n", "TIL"),
+    false,
+  );
+});
+
+test("followupQuestions asks only what is still empty", () => {
+  const jot = "- _10:00:00 ::_ hi ^aaaaaaaa";
+  const til = "- a thing I learned";
+  const withJournal = DAILY_TEMPLATE.replace(
+    "## Journal\n-\n",
+    `## Journal\n${jot}\n`,
+  );
+  const withTil = DAILY_TEMPLATE.replace("## TIL\n-\n", `## TIL\n${til}\n`);
+  const withBoth = withJournal.replace("## TIL\n-\n", `## TIL\n${til}\n`);
+  assert.deepEqual(followupQuestions(DAILY_TEMPLATE, HEADINGS), [
+    "journal",
+    "til",
+  ]);
+  assert.deepEqual(followupQuestions(withJournal, HEADINGS), ["til"]);
+  assert.deepEqual(followupQuestions(withTil, HEADINGS), ["journal"]);
+  assert.deepEqual(followupQuestions(withBoth, HEADINGS), []);
+});
+
+test("followupQuestions asks both for a day with no note, and resumes after a question", () => {
+  assert.deepEqual(followupQuestions(null, HEADINGS), ["journal", "til"]);
+  assert.deepEqual(followupQuestions(null, HEADINGS, "journal"), ["til"]);
+  assert.deepEqual(followupQuestions(null, HEADINGS, "til"), []);
+});
+
+test("followupQuestions follows the configured headings", () => {
+  const note = "## Journal\n- \n## Learned\n- something\n";
+  assert.deepEqual(
+    followupQuestions(note, { journal: "Journal", til: "Learned" }),
+    ["journal"],
+  );
+});
+
+test("followupRef round-trips through parseFollowupRef", () => {
+  for (const q of ["journal", "til"] as const) {
+    const text = `Learned anything today? Reply to this message.\n${followupRef(q, "2026-07-05")}`;
+    assert.deepEqual(parseFollowupRef(text), {
+      question: q,
+      date: "2026-07-05",
+    });
+  }
+  assert.equal(parseFollowupRef("(fu:x:2026-07-05)"), null);
+  assert.equal(parseFollowupRef("(hb:2026-07-05:1)"), null);
 });
 
 test("setFrontmatterValue replaces an existing field in place", () => {
@@ -1153,6 +1262,189 @@ test("parseWizardRef tells the wizard's prompts apart", () => {
   assert.equal(parseWizardRef("rename it (lw:rgw)"), null); // index is required
   assert.equal(parseWizardRef("Rate Exercise (hb:2026-07-29:0)"), null);
   assert.equal(parseWizardRef(""), null);
+});
+
+test("parseWizardRef recognises the rating-time prompt", () => {
+  assert.deepEqual(parseWizardRef(`when? ${WIZARD_RATING_TIME_REF}`), {
+    kind: "rt",
+  });
+});
+
+test("sectionHasContent treats every scaffolding shape as empty", () => {
+  for (const line of [
+    "  - ",
+    "+ ",
+    "* [x]",
+    "- [X]  ",
+    "----",
+    "<!-- a -->",
+    " ",
+    "\t",
+  ])
+    assert.equal(sectionHasContent(`## TIL\n${line}\n`, "TIL"), false, line);
+});
+
+test("sectionHasContent reads the last section to the end of the note", () => {
+  assert.equal(sectionHasContent("## TIL\n- x", "TIL"), true);
+  assert.equal(sectionHasContent("## TIL", "TIL"), false);
+});
+
+test("insertJournalLine keeps its paths after the section search was shared", () => {
+  assert.equal(insertJournalLine("a\n\n\n", "Journal", "L"), "a\nL\n");
+  assert.equal(insertJournalLine("", "Journal", "L"), "\nL\n");
+  assert.equal(
+    insertJournalLine("# Journal\n- \n", "Journal", "L"),
+    "# Journal\nL\n",
+  );
+  assert.equal(
+    insertJournalLine("#### Journal\n- \n", "Journal", "L"),
+    "#### Journal\nL\n",
+  );
+  assert.equal(
+    insertJournalLine("## Journal  \n- \n", "Journal", "L"),
+    "## Journal  \nL\n",
+  );
+  assert.equal(
+    insertJournalLine("## Journal\n- a\n## Journal\n- b\n", "Journal", "L"),
+    "## Journal\n- a\nL\n## Journal\n- b\n",
+  );
+  assert.equal(
+    insertJournalLine("## Journal\r\n- \r\n", "Journal", "L"),
+    "## Journal\r\nL\n",
+  );
+});
+
+test("parseClockTime takes valid 24h times and pads the hour", () => {
+  for (const [input, out] of [
+    ["0:00", "00:00"],
+    ["00:59", "00:59"],
+    ["19:05", "19:05"],
+    ["23:00", "23:00"],
+    ["1:00", "01:00"],
+  ])
+    assert.equal(parseClockTime(input!), out, input);
+});
+
+test("parseClockTime rejects malformed, non-ASCII and multi-line input", () => {
+  for (const bad of [
+    "24:00",
+    "2:60",
+    "-1:00",
+    "1:2:3",
+    "12:00:00",
+    "12.30",
+    "１２:３０",
+    "12:30pm",
+    "12:30\n13:00",
+    " ",
+    "\t",
+    ":30",
+    "12:",
+    "abc",
+    "🕛",
+  ])
+    assert.equal(parseClockTime(bad), null, JSON.stringify(bad));
+});
+
+test("ratingTime normalises the fallback too, and ratingDay reads an unpadded hour", () => {
+  assert.equal(ratingTime(undefined, "9:30"), "09:30");
+  assert.equal(ratingTime("garbage", "9:30"), "09:30");
+  assert.equal(ratingTime("8:05", "00:00"), "08:05");
+  const now = new Date(2026, 6, 6, 12, 0).getTime();
+  assert.equal(ratingDay("9:30", now), "2026-07-05");
+});
+
+test("ratingDay rolls back across month, year and leap-day boundaries", () => {
+  const at = (y: number, m: number, d: number) =>
+    new Date(y, m, d, 0, 0).getTime();
+  assert.equal(ratingDay("00:00", at(2026, 0, 1)), "2025-12-31");
+  assert.equal(ratingDay("00:00", at(2026, 2, 1)), "2026-02-28");
+  assert.equal(ratingDay("00:00", at(2028, 2, 1)), "2028-02-29");
+  assert.equal(ratingDay("12:00", at(2028, 2, 1)), "2028-03-01");
+});
+
+test("ratingDay is a calendar day back on DST change days", () => {
+  const saved = process.env.TZ;
+  process.env.TZ = "Europe/Stockholm";
+  try {
+    const spring = new Date(2026, 2, 29, 0, 30).getTime();
+    const autumn = new Date(2026, 9, 25, 0, 30).getTime();
+    assert.equal(ratingDay("00:00", spring), "2026-03-28");
+    assert.equal(ratingDay("00:00", autumn), "2026-10-24");
+    assert.equal(ratingDay("22:00", spring), "2026-03-29");
+    assert.equal(ratingDay("22:00", autumn), "2026-10-25");
+  } finally {
+    if (saved === undefined) delete process.env.TZ;
+    else process.env.TZ = saved;
+  }
+});
+
+test("followupQuestions counts a missing section as empty", () => {
+  assert.deepEqual(
+    followupQuestions("## Journal\n- a\n", { journal: "Journal", til: "TIL" }),
+    ["til"],
+  );
+  assert.deepEqual(
+    followupQuestions("## TIL\n- a\n", { journal: "Journal", til: "TIL" }),
+    ["journal"],
+  );
+  assert.deepEqual(
+    followupQuestions("# 2026-07-05\n", { journal: "Journal", til: "TIL" }),
+    ["journal", "til"],
+  );
+});
+
+test("a follow-up marker is not read by the other flows' parsers, nor theirs by it", () => {
+  const prompt = `question ${followupRef("journal", "2026-07-05")}`;
+  assert.equal(parseHabitRef(prompt), null);
+  assert.equal(parseWizardRef(prompt), null);
+  for (const other of [
+    "(hb:2026-07-05:1)",
+    "(rt:time)",
+    "(lw:sw)",
+    "(tk:d:abcdef12)",
+  ])
+    assert.equal(parseFollowupRef(other), null, other);
+});
+
+test("switchEnabled is on unless explicitly off", () => {
+  assert.equal(switchEnabled(undefined), true);
+  assert.equal(switchEnabled("on"), true);
+  assert.equal(switchEnabled("off"), false);
+});
+
+test("parseClockTime accepts 24h HH:MM and pads a single-digit hour", () => {
+  assert.equal(parseClockTime("00:00"), "00:00");
+  assert.equal(parseClockTime(" 23:59 "), "23:59");
+  assert.equal(parseClockTime("9:30"), "09:30");
+});
+
+test("parseClockTime rejects anything else", () => {
+  for (const bad of [
+    "24:00",
+    "12:60",
+    "7pm",
+    "12",
+    "12:5",
+    "1230",
+    "",
+    "ab:cd",
+  ])
+    assert.equal(parseClockTime(bad), null, bad);
+});
+
+test("ratingTime uses the stored time when valid, else the default", () => {
+  assert.equal(ratingTime("22:15", "00:00"), "22:15");
+  assert.equal(ratingTime(undefined, "00:00"), "00:00");
+  assert.equal(ratingTime("garbage", "21:00"), "21:00");
+});
+
+test("ratingDay rates yesterday for a just-after-midnight time and today for an evening one", () => {
+  const now = new Date(2026, 6, 6, 12, 0, 0).getTime();
+  assert.equal(ratingDay("00:00", now), "2026-07-05");
+  assert.equal(ratingDay("11:59", now), "2026-07-05");
+  assert.equal(ratingDay("12:00", now), "2026-07-06");
+  assert.equal(ratingDay("22:30", now), "2026-07-06");
 });
 
 test("parseRuleWords keeps inner spaces, splits on commas and newlines", () => {

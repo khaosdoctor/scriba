@@ -4,9 +4,9 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { placeholderLine } from "./core.ts";
+import { placeholderLine, WIZARD_RATING_TIME_REF } from "./core.ts";
 import { type Jot, Repository } from "./db.ts";
-import { plainDate, plainTime } from "./time.ts";
+import { plainDate, plainTime, previousDate } from "./time.ts";
 
 // config.ts reads process.env at import time, so the bot is imported after these are set.
 process.env.TELEGRAM_BOT_TOKEN = "t";
@@ -43,11 +43,17 @@ type Fakes = {
   unsquash?: boolean;
   appendFails?: boolean;
   realRepo?: Repository;
+  /** Offer the newest inserted jot back as the still-pending one, like the real repo. */
+  chain?: boolean;
+  /** What readDailyNote returns; null (the default) is a day with no note. */
+  note?: string | null;
+  settings?: Record<string, string>;
 };
 
 async function harness(over: Fakes = {}) {
   const { ScribaBot } = await import("./bot.ts");
   const inserted: Jot[] = [];
+  const sets: [string, string][] = [];
   const mapped: [number, string][] = [];
   const lookups: [string, string][] = [];
   const appended: [string, string, string | undefined][] = [];
@@ -65,8 +71,11 @@ async function harness(over: Fakes = {}) {
     mapMessage: async (m: number, id: string) => void mapped.push([m, id]),
     lastPendingEnrichableJot: async (notePath: string, section: string) => {
       lookups.push([notePath, section]);
-      return over.prev;
+      return over.prev ?? (over.chain ? inserted.at(-1) : undefined);
     },
+    getSetting: async (key: string) => over.settings?.[key],
+    setSetting: async (key: string, value: string) =>
+      void sets.push([key, value]),
     jotForMessage: async () => over.jotId,
     getJot: async () => over.jot,
     queueEdit: async (id: string, text: string) =>
@@ -76,6 +85,10 @@ async function harness(over: Fakes = {}) {
   const obsidian = {
     dailyPath: (date: string) => `notes/daily notes/${date}.md`,
     ensureDailyNote: async (date: string) => void ensured.push(date),
+    readDailyNote: async () =>
+      over.note === undefined || over.note === null
+        ? null
+        : { path: "p", content: over.note },
     appendJournalLine: async (date: string, line: string, section?: string) => {
       if (over.appendFails) throw new Error("obsidian is down");
       appended.push([date, line, section]);
@@ -104,6 +117,12 @@ async function harness(over: Fakes = {}) {
     return "deleted";
   };
   bot.embedFor = async () => undefined;
+  const sent: string[] = [];
+  const apiDeleted: [number, number][] = [];
+  bot.bot.api.sendMessage = async (_chat: number, text: string) =>
+    void sent.push(text);
+  bot.bot.api.deleteMessage = async (chat: number, id: number) =>
+    void apiDeleted.push([chat, id]);
 
   const intakeCtx = (date = SEC, messageId = 77) => ({
     message: { date, message_id: messageId },
@@ -120,6 +139,9 @@ async function harness(over: Fakes = {}) {
   });
   return {
     bot,
+    sent,
+    sets,
+    apiDeleted,
     inserted,
     mapped,
     lookups,
@@ -471,4 +493,236 @@ test("a reply instruction to a TIL jot still processing is queued verbatim", asy
   };
   await h.bot.handleEdit(ctx);
   assert.deepEqual(h.queuedEdits, [["aaaaaaaa", "TIL: make it shorter"]]);
+});
+
+// --- follow-up after the nightly rating ---
+
+const rated = previousDate(NOW);
+const ratedPath = `notes/daily notes/${rated}.md`;
+
+/** A reply to a follow-up prompt, as grammY would hand it to FollowupFlow.handleReply. */
+const answerCtx = (h: { reacts: string[] }, text: string, sec = SEC) => ({
+  chat: { id: 1 },
+  message: {
+    date: sec,
+    message_id: 77,
+    text,
+    reply_to_message: { message_id: 9 },
+  },
+  react: async (e: string) => void h.reacts.push(e),
+});
+
+test("a journal answer is filed under the rated day as its last entry", async () => {
+  const h = await harness();
+  await h.bot.followup.handleReply(answerCtx(h, "Quiet day"), {
+    question: "journal",
+    date: rated,
+  });
+  assert.equal(h.inserted.length, 1);
+  const row = h.inserted[0]!;
+  assert.equal(row.note_path, ratedPath);
+  assert.equal(row.time, "23:59:59");
+  assert.equal(row.section, "journal");
+  assert.equal(row.raw_text, "Quiet day");
+  assert.equal(row.kind, "text");
+  assert.deepEqual(h.ensured, [rated]);
+  assert.deepEqual(h.apiDeleted, [[1, 9]]);
+});
+
+test("a TIL answer goes through the TIL prefix into the til section", async () => {
+  const h = await harness();
+  await h.bot.followup.handleReply(answerCtx(h, "owls"), {
+    question: "til",
+    date: rated,
+  });
+  const row = h.inserted[0]!;
+  assert.equal(row.section, "til");
+  assert.equal(row.raw_text, "owls");
+  assert.equal(row.note_path, ratedPath);
+  assert.equal(h.appended[0]?.[2], "til");
+});
+
+test("two answers for one past day never squash, even seconds apart", async () => {
+  const h = await harness({ chain: true });
+  await h.bot.followup.handleReply(answerCtx(h, "one"), {
+    question: "journal",
+    date: rated,
+  });
+  await h.bot.followup.handleReply(answerCtx(h, "two", SEC + 2), {
+    question: "journal",
+    date: rated,
+  });
+  assert.equal(h.inserted.length, 2);
+  for (const row of h.inserted) assert.equal(row.anchor, row.id);
+  assert.deepEqual(h.lookups, []);
+  assert.deepEqual(h.reacts, ["✍", "✍"]);
+});
+
+test("an answer for the day it is sent on keeps its real time and skips squashing", async () => {
+  const h = await harness({ chain: true });
+  const ctx = h.intakeCtx();
+  await h.bot.intake(ctx, "text", { rawText: "now", day: today });
+  const row = h.inserted[0]!;
+  assert.equal(row.time, plainTime(NOW));
+  assert.equal(row.received_at, NOW);
+  assert.equal(row.note_path, notePath);
+  assert.deepEqual(h.lookups, []);
+});
+
+test("the day override gives 23:59:59 on DST change days", async () => {
+  const saved = process.env.TZ;
+  process.env.TZ = "Europe/Stockholm";
+  try {
+    for (const [day, next] of [
+      ["2026-03-29", new Date(2026, 2, 30, 0, 10)],
+      ["2026-10-25", new Date(2026, 9, 26, 0, 10)],
+    ] as const) {
+      const h = await harness();
+      await h.bot.intake(h.intakeCtx(next.getTime() / 1000), "text", {
+        rawText: "x",
+        day,
+      });
+      assert.equal(h.inserted[0]?.time, "23:59:59", day);
+      assert.equal(
+        h.inserted[0]?.note_path,
+        `notes/daily notes/${day}.md`,
+        day,
+      );
+    }
+  } finally {
+    if (saved === undefined) delete process.env.TZ;
+    else process.env.TZ = saved;
+  }
+});
+
+test("the rating command is wired to the same follow-up flow", async () => {
+  const h = await harness();
+  assert.equal(h.bot.rating.followup, h.bot.followup);
+});
+
+test("setScheduler hands the scheduler to the menu", async () => {
+  const h = await harness();
+  const seen: unknown[] = [];
+  h.bot.menu = { setScheduler: (s: unknown) => void seen.push(s) };
+  const scheduler = {};
+  h.bot.setScheduler(scheduler);
+  assert.deepEqual(seen, [scheduler]);
+  assert.equal(seen[0], scheduler);
+});
+
+test("a rating time typed in the menu reaches the scheduler, and works without one", async () => {
+  const prompt = `when? ${WIZARD_RATING_TIME_REF}`;
+  const reply = (h: { replies: string[] }) => ({
+    message: { text: "23:30" },
+    reply: async (t: string) => {
+      h.replies.push(t);
+      return { chat: { id: 1 }, message_id: 2 };
+    },
+  });
+
+  const wired = await harness();
+  const times: string[] = [];
+  wired.bot.setScheduler({ setRatingTime: (t: string) => void times.push(t) });
+  await wired.bot.menu.handleWizardReply(reply(wired), prompt);
+  assert.deepEqual(wired.sets, [["ratingTime", "23:30"]]);
+  assert.deepEqual(times, ["23:30"]);
+
+  const bare = await harness();
+  await bare.bot.menu.handleWizardReply(reply(bare), prompt);
+  assert.deepEqual(bare.sets, [["ratingTime", "23:30"]]);
+});
+
+/** Push one text update through the bot's real middleware, with the handlers under test
+ *  replaced by recorders. */
+async function route(
+  h: Awaited<ReturnType<typeof harness>>,
+  replyText: string | undefined,
+  opts: { tasksOpen?: boolean } = {},
+) {
+  const calls: string[] = [];
+  const bot = h.bot;
+  bot.bot.botInfo = {
+    id: 99,
+    is_bot: true,
+    first_name: "b",
+    username: "b",
+    can_join_groups: false,
+    can_read_all_group_messages: false,
+    supports_inline_queries: false,
+    can_connect_to_business: false,
+    has_main_web_app: false,
+    has_topics_enabled: false,
+    allows_users_to_create_topics: false,
+  };
+  bot.followup.handleReply = async (_c: unknown, ref: unknown) =>
+    void calls.push(`followup:${JSON.stringify(ref)}`);
+  bot.habits.handleReply = async () => void calls.push("habits");
+  bot.menu.handleWizardReply = async () => void calls.push("wizard");
+  bot.tasks.handleReply = async () => void calls.push("taskPrompt");
+  bot.tasks.handle = async () => void calls.push("tasks");
+  bot.tasks.isOpen = () => opts.tasksOpen ?? false;
+  bot.handleEdit = async () => void calls.push("edit");
+  bot.intake = async () => void calls.push("intake");
+  await bot.bot.handleUpdate({
+    update_id: 1,
+    message: {
+      message_id: 5,
+      date: SEC,
+      chat: { id: 1, type: "private" },
+      from: { id: 1, is_bot: false, first_name: "me" },
+      text: "my answer",
+      reply_to_message:
+        replyText === undefined
+          ? undefined
+          : {
+              message_id: 4,
+              date: SEC,
+              chat: { id: 1, type: "private" },
+              text: replyText,
+            },
+    },
+  });
+  return calls;
+}
+
+test("a reply to a follow-up prompt goes to the follow-up flow and nowhere else", async () => {
+  const h = await harness();
+  const calls = await route(
+    h,
+    "One line for the day? Reply to this message, or skip.\n(fu:j:2026-07-05)",
+  );
+  assert.deepEqual(calls, [
+    'followup:{"question":"journal","date":"2026-07-05"}',
+  ]);
+});
+
+test("a follow-up reply wins over an open task mode", async () => {
+  const h = await harness();
+  const calls = await route(h, "(fu:t:2026-07-05)", { tasksOpen: true });
+  assert.deepEqual(calls, ['followup:{"question":"til","date":"2026-07-05"}']);
+});
+
+test("an ordinary reply still goes to jot editing, and an unreplied message to intake", async () => {
+  const h = await harness();
+  assert.deepEqual(await route(h, "hello"), ["edit"]);
+  assert.deepEqual(await route(await harness(), undefined), ["intake"]);
+});
+
+test("the Skip button is routed to the follow-up flow with its payload", async () => {
+  const h = await harness();
+  const taps: unknown[][] = [];
+  h.bot.followup.handleTap = async (...args: unknown[]) =>
+    void taps.push(args.slice(1));
+  for (const data of ["fu:j:2026-07-05", "fu:t:2026-07-05"]) {
+    let answered = 0;
+    await h.bot.handleButton({
+      callbackQuery: { data },
+      answerCallbackQuery: async () => void answered++,
+    });
+    assert.equal(answered, 0, data);
+  }
+  assert.deepEqual(taps, [
+    ["j", "2026-07-05"],
+    ["t", "2026-07-05"],
+  ]);
 });

@@ -7,7 +7,7 @@ import { sep } from "node:path";
 import * as chrono from "chrono-node";
 import type { Jot, JotKind, JotSection, JotStatus, StatsRow } from "./db.ts";
 import type { ReleaseNote } from "./services/github.ts";
-import { dateFromIso, plainDate } from "./time.ts";
+import { dateFromIso, plainDate, previousDate } from "./time.ts";
 
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -483,6 +483,116 @@ export function stripJournalLine(line: string, time: string): string {
     .replace(ANCHOR_SUFFIX, "");
 }
 
+/** Line range of the section under `heading`: the heading's index and the index of the next
+ *  heading (or the end of the note). Null when the note has no such heading. */
+function findSection(
+  lines: string[],
+  heading: string,
+): { headingIdx: number; end: number } | null {
+  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRe(heading)}\\s*$`);
+  const headingIdx = lines.findIndex((l) => headingRe.test(l));
+  if (headingIdx === -1) return null;
+  let end = lines.length;
+  for (let i = headingIdx + 1; i < lines.length; i++) {
+    if (/^#{1,6}\s/.test(lines[i]!)) {
+      end = i;
+      break;
+    }
+  }
+  return { headingIdx, end };
+}
+
+/** Does the section under `heading` hold anything beyond what the template puts there?
+ *  Blank lines, empty bullets (`-`, `- `, `- [ ]`), horizontal rules and HTML comments are
+ *  template scaffolding; any other line is content. A missing heading counts as empty. */
+export function sectionHasContent(note: string, heading: string): boolean {
+  const lines = note.split("\n");
+  const section = findSection(lines, heading);
+  if (!section) return false;
+  return lines
+    .slice(section.headingIdx + 1, section.end)
+    .some(
+      (l) => !/^\s*(?:[-*+](?:\s+\[[ xX]\])?\s*|-{3,}|<!--.*-->)?\s*$/.test(l),
+    );
+}
+
+/** `settings` keys for the nightly rating and its follow-up (set from /menu, survive a
+ *  restart). Unset means on; the rating time falls back to `RATING_TIME`. */
+export const RATING_SWITCH_KEY = "nightlyRating";
+export const FOLLOWUP_SWITCH_KEY = "nightlyFollowup";
+export const RATING_TIME_KEY = "ratingTime";
+
+/** Whether an on/off setting is on, from its raw value: only an explicit "off" turns it off. */
+export function switchEnabled(raw: string | undefined): boolean {
+  return raw !== "off";
+}
+
+/** A typed 24-hour clock time, normalised to `HH:MM` ("9:30" becomes "09:30"). Null when it
+ *  isn't one. */
+export function parseClockTime(text: string): string | null {
+  const m = text.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+  return m ? `${m[1]!.padStart(2, "0")}:${m[2]}` : null;
+}
+
+/** The nightly rating time in force: the stored setting when it is a valid time, else the
+ *  configured default. */
+export function ratingTime(raw: string | undefined, fallback: string): string {
+  return parseClockTime(raw ?? "") ?? parseClockTime(fallback) ?? fallback;
+}
+
+/** The day a nightly rating firing at `time` is about: a time before noon is just after
+ *  midnight, so the day that ended is yesterday; a later one rates the day still going. */
+export function ratingDay(time: string, now: number = Date.now()): string {
+  const hour = Number((parseClockTime(time) ?? time).slice(0, 2));
+  return hour < 12 ? previousDate(now) : plainDate(now);
+}
+
+/** The follow-up questions after the nightly rating, in the order they are asked. */
+export const FOLLOWUP_QUESTIONS = ["journal", "til"] as const;
+export type FollowupQuestion = (typeof FOLLOWUP_QUESTIONS)[number];
+
+/** Which follow-up questions a day's note still needs: the journal line when "Journal" has
+ *  no jots, the TIL when "TIL" is empty. `note` is null for a day that has no note yet.
+ *  `after` leaves out that question and the ones before it. */
+export function followupQuestions(
+  note: string | null,
+  headings: { journal: string; til: string },
+  after?: FollowupQuestion,
+): FollowupQuestion[] {
+  const empty: Record<FollowupQuestion, boolean> = {
+    journal: !note || !sectionHasContent(note, headings.journal),
+    til: !note || !sectionHasContent(note, headings.til),
+  };
+  const from = after ? FOLLOWUP_QUESTIONS.indexOf(after) + 1 : 0;
+  return FOLLOWUP_QUESTIONS.slice(from).filter((q) => empty[q]);
+}
+
+/** Marker in a follow-up prompt's text, so a reply can be routed back to it (the same trick
+ *  the habits flow uses): `(fu:j:2026-07-05)` for the journal line, `(fu:t:…)` for the TIL. */
+export const FOLLOWUP_CODES: Record<FollowupQuestion, string> = {
+  journal: "j",
+  til: "t",
+};
+
+export function followupRef(question: FollowupQuestion, date: string): string {
+  return `(fu:${FOLLOWUP_CODES[question]}:${date})`;
+}
+
+/** The question a `j`/`t` code stands for, from a prompt marker or a Skip button. */
+export function followupFromCode(
+  code: string | undefined,
+): FollowupQuestion | null {
+  return FOLLOWUP_QUESTIONS.find((q) => FOLLOWUP_CODES[q] === code) ?? null;
+}
+
+export function parseFollowupRef(
+  text: string,
+): { question: FollowupQuestion; date: string } | null {
+  const m = text.match(/\(fu:([a-z]):(\d{4}-\d{2}-\d{2})\)/);
+  const question = followupFromCode(m?.[1]);
+  return m && question ? { question, date: m[2]! } : null;
+}
+
 /** Insert a journal bullet under `heading`, keeping the vault's indentation:
  *  immediately after the last bullet in that section, or replacing the list when
  *  it holds only the empty template bullet. Falls back to a heading-less append. */
@@ -492,18 +602,9 @@ export function insertJournalLine(
   line: string,
 ): string {
   const lines = note.split("\n");
-  const esc = escapeRe(heading);
-  const headingRe = new RegExp(`^#{1,6}\\s+${esc}\\s*$`);
-  const headingIdx = lines.findIndex((l) => headingRe.test(l));
-  if (headingIdx === -1) return `${note.replace(/\n*$/, "")}\n${line}\n`;
-
-  let end = lines.length;
-  for (let i = headingIdx + 1; i < lines.length; i++) {
-    if (/^#{1,6}\s/.test(lines[i]!)) {
-      end = i;
-      break;
-    }
-  }
+  const section = findSection(lines, heading);
+  if (!section) return `${note.replace(/\n*$/, "")}\n${line}\n`;
+  const { headingIdx, end } = section;
 
   let lastBullet = -1;
   const emptyBullets: number[] = [];
@@ -1140,6 +1241,7 @@ export const WIZARD_RENAME_REF = "lw:rgw";
 export const WIZARD_ENTRYSIZE_REF = "(es:n)";
 export const WIZARD_ENRICH_MODEL_REF = "(md:em)";
 export const WIZARD_VOICEFIX_MODEL_REF = "(md:vfm)";
+export const WIZARD_RATING_TIME_REF = "(rt:time)";
 
 /** Which wizard prompt a reply is answering, if any. */
 export type WizardPrompt =
@@ -1150,12 +1252,14 @@ export type WizardPrompt =
   | { kind: "rgw"; index: number }
   | { kind: "es" }
   | { kind: "em" }
-  | { kind: "vfm" };
+  | { kind: "vfm" }
+  | { kind: "rt" };
 
 export function parseWizardRef(text: string): WizardPrompt | null {
   if (text.includes(WIZARD_ENTRYSIZE_REF)) return { kind: "es" };
   if (text.includes(WIZARD_ENRICH_MODEL_REF)) return { kind: "em" };
   if (text.includes(WIZARD_VOICEFIX_MODEL_REF)) return { kind: "vfm" };
+  if (text.includes(WIZARD_RATING_TIME_REF)) return { kind: "rt" };
   // `rgn`/`rgw`/`rgm` before `rg` — alternation is first-match, and `rg` prefixes them all.
   const m = text.match(/\(lw:(sw|rgn|rgw|rgm|rg)(?::(\d+))?\)/);
   if (!m) return null;

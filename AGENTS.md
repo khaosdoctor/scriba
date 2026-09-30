@@ -332,6 +332,41 @@ deployed on the homelab (Coolify). Single user.
   (`ScribaBot.syncEditedSource`, `bot.ts`): a squashed leader/follower is skipped, since a
   squashed line is several jots' sources combined into one and there's no single field to
   fold the edit back into.
+- **Rating a day opens a follow-up for what's still empty.** After a rating is saved,
+  `FollowupFlow` (`flows/followup.ts`) asks "One line for the day?" when the `JOURNAL_HEADING`
+  section has no content, then "Learned anything today?" when the `TIL_HEADING` section
+  has none. `followupQuestions` and `sectionHasContent` (`core.ts`) decide, token-free, by
+  reading the note: blank lines, empty bullets (`-`, `- [ ]`), rules and HTML comments are
+  template scaffolding, and the frontmatter rating is never looked at. A day with no note
+  asks both. No state is held: the prompt's text carries `(fu:j|t:<date>)` and a reply is
+  routed by it in `ScribaBot`'s text handler, while the note says what is still empty, so an
+  answer works after a restart and an unanswered question costs nothing. Each question has
+  a ⏭ Skip button (`fu:<j|t>:<date>`) and, since an inline keyboard and `force_reply` can't
+  share a message, no force-reply: you swipe-reply, and any message that isn't a reply is a
+  normal jot. Answered or skipped, the prompt is deleted and the next one is asked. Both
+  answers go through `ScribaBot.intake` as text jots, filed under the rated day (`day`:
+  that day's last second when it isn't today), so they enrich, edit and undo like any jot.
+  The `day` override moves only the date, time and note path: a jot carrying it never
+  squashes, since every answer to one day shares that last-second stamp and would otherwise
+  fold into the one before. The TIL answer is sent as `TIL: <text>`, which `stripTilPrefix`
+  turns into a jot in the TIL section at intake, so it lands under `TIL_HEADING`. A journal
+  answer that itself starts with "til" is routed the same way.
+- **The nightly rating and its follow-up have their own switches and a runtime time.** Three
+  `settings` rows, changed from `/menu` (root screen): `nightlyRating` and `nightlyFollowup`
+  (`on`/`off`, unset is on, `switchEnabled`) and `ratingTime` (`HH:MM`, unset falls back to
+  `RATING_TIME`, `ratingTime` in `core.ts`). The time is typed after a force-reply prompt
+  (`WIZARD_RATING_TIME_REF`) and checked by `parseClockTime`, which takes 24-hour `H:MM` or
+  `HH:MM` and answers anything else with a message. `Scheduler` owns the rating timer apart
+  from the fixed daily jobs: `setRatingTime` re-arms it at once when running, and the job
+  reads the `nightlyRating` row each time it fires, skipping when it is off. The next night
+  is armed before the prompt runs, so a prompt that hangs or throws can't stop later ones.
+  A Skip tap is claimed in memory by chat and message id before its first await, so a double
+  tap asks the next question once, and a tap whose message is gone is only acknowledged.
+  The menu toggles keep their setting when the ack or the redraw fails.
+  `ratingDay` picks the day to rate: before 12:00 the firing is just after midnight, so
+  yesterday, otherwise today. The follow-up reads its own row in `FollowupFlow.start`, so a
+  rating that is off never reaches it. The switches govern the nightly prompt only: `/rate`
+  and the menu's Rate today still ask, and their follow-up follows its own switch.
 - **Connection health never spends a token.** `HealthMonitor` (`runtime/health.ts`) probes
   every upstream once a minute, all at once, with a 5s timeout each: Anthropic and
   Telegram at their bare host, Groq and OpenCode at `/models` with their key (skipped when

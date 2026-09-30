@@ -7,6 +7,8 @@ import {
   ENRICH_MODEL_KEY,
   formatDeployNotice,
   OPENCODE_BASE_URL,
+  RATING_TIME_KEY,
+  ratingTime,
   VOICE_FIX_MODEL_KEY,
 } from "./core.ts";
 import { Repository } from "./db.ts";
@@ -157,6 +159,10 @@ async function main(): Promise<void> {
     (d) => bot.promptHabits(d),
     () => bot.promptTaskSummary(),
   );
+  scheduler.setRatingTime(
+    ratingTime(await repo.getSetting(RATING_TIME_KEY), config.ratingTime),
+  );
+  bot.setScheduler(scheduler);
   scheduler.start();
 
   void processor.retrySweep(); // pick up anything left over from a previous run

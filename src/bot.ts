@@ -18,6 +18,7 @@ import {
   isEditableJot,
   journalLine,
   makeJotId,
+  parseFollowupRef,
   parseLiteralEdit,
   placeholderLine,
   replaceAnchorLine,
@@ -28,6 +29,7 @@ import {
 } from "./core.ts";
 import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
 import { COMMAND_NS, CommandSession } from "./flows/command.ts";
+import { FOLLOWUP_NS, FollowupFlow } from "./flows/followup.ts";
 import {
   HABITS_NS,
   HabitsCommand,
@@ -47,6 +49,7 @@ import type {
   JotProcessor,
 } from "./runtime/processor.ts";
 import type { FlushQueue } from "./runtime/queue.ts";
+import type { Scheduler } from "./runtime/scheduler.ts";
 import type { Enricher } from "./services/enrich.ts";
 import type { GithubReleases } from "./services/github.ts";
 import type { LinkIndex } from "./services/links.ts";
@@ -54,7 +57,7 @@ import type { ObsidianClient } from "./services/obsidian.ts";
 import { TaskStore } from "./services/tasks.ts";
 import type { FallbackTranscriber } from "./services/transcribe.ts";
 import { VaultTools } from "./services/vault.ts";
-import { plainDate, plainTime } from "./time.ts";
+import { dayBounds, plainDate, plainTime } from "./time.ts";
 
 const log = logger("bot");
 
@@ -115,6 +118,7 @@ export class ScribaBot implements BotServices {
   private bot: Bot;
   private queue!: FlushQueue;
   private rating: RatingCommand;
+  private followup: FollowupFlow;
   private habits: HabitsCommand;
   private menu: MenuController;
   private reprocess: ReprocessCommand;
@@ -149,7 +153,14 @@ export class ScribaBot implements BotServices {
     this.bot = new Bot(config.telegram.token, {
       client: { timeoutSeconds: 60 },
     });
-    this.rating = new RatingCommand(this.bot, repo, obsidian);
+    this.followup = new FollowupFlow(
+      this.bot,
+      repo,
+      obsidian,
+      (ctx, date, text) =>
+        this.intake(ctx, "text", { rawText: text, day: date }),
+    );
+    this.rating = new RatingCommand(this.bot, repo, obsidian, this.followup);
     this.habits = new HabitsCommand(this.bot, obsidian);
     this.reprocess = new ReprocessCommand(this.bot, repo);
     this.menu = new MenuController(
@@ -192,6 +203,10 @@ export class ScribaBot implements BotServices {
   /** Same cycle: the monitor notifies through this bot, and /status reads the monitor. */
   setHealth(health: HealthMonitor): void {
     this.health = health;
+  }
+  /** The menu changes the rating time, which the scheduler owns. */
+  setScheduler(scheduler: Scheduler): void {
+    this.menu.setScheduler(scheduler);
   }
 
   /** Assemble what the admin commands act on. */
@@ -571,6 +586,9 @@ export class ScribaBot implements BotServices {
         // A reply to a habit value question routes to the habit flow, not a jot edit.
         const prompt = ctx.message.reply_to_message.text ?? "";
         if (parseHabitRef(prompt)) return this.habits.handleReply(ctx);
+        // …and a reply to a follow-up question after the rating becomes a jot.
+        const followup = parseFollowupRef(prompt);
+        if (followup) return this.followup.handleReply(ctx, followup);
         // Likewise a reply to one of the link wizard's add-a-rule prompts.
         if (this.menu.isWizardPrompt(prompt))
           return this.menu.handleWizardReply(ctx, prompt);
@@ -714,9 +732,15 @@ export class ScribaBot implements BotServices {
   private async intake(
     ctx: any,
     kind: JotKind,
-    src: { rawText?: string; fileId?: string },
+    src: { rawText?: string; fileId?: string; day?: string },
   ): Promise<void> {
-    const epochMs = ctx.message.date * 1000;
+    // `day` files the jot under another day's note (the follow-up after rating yesterday):
+    // the last second of that day, so it reads as the day's final entry.
+    const sent = ctx.message.date * 1000;
+    const epochMs =
+      src.day && src.day !== plainDate(sent)
+        ? dayBounds(src.day)[1] - 1000
+        : sent;
     const id = makeJotId();
     const date = plainDate(epochMs);
     const time = plainTime(epochMs);
@@ -737,7 +761,9 @@ export class ScribaBot implements BotServices {
     // same react() call instead of a second round-trip.
     let anchor = id;
     let squashed = false;
-    if (kind === "text" || kind === "audio") {
+    // A follow-up answer (`day`) is stamped with the day's last second, so two of them would
+    // always look like one burst: they are deliberate entries and never squash.
+    if (!src.day && (kind === "text" || kind === "audio")) {
       const prev = await this.repo.lastPendingEnrichableJot(notePath, section);
       if (
         prev &&
@@ -1045,6 +1071,8 @@ export class ScribaBot implements BotServices {
     if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
     if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
     if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
+    if (ns === FOLLOWUP_NS)
+      return this.followup.handleTap(ctx, rest[0], rest[1]);
     if (ns === HABITS_NS)
       return this.habits.handleTap(ctx, rest[0], rest[1], rest[2]);
     if (ns === REPROCESS_NS) return this.reprocess.handleTap(ctx, rest);

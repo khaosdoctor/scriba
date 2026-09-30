@@ -1,4 +1,10 @@
 import { config } from "../config.ts";
+import {
+  parseClockTime,
+  RATING_SWITCH_KEY,
+  ratingDay,
+  switchEnabled,
+} from "../core.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
 import { msUntilNext, plainDate, previousDate, startOfToday } from "../time.ts";
@@ -10,6 +16,10 @@ const log = logger("scheduler");
  *  task summary, and the forever-retry sweep. */
 export class Scheduler {
   private timers: NodeJS.Timeout[] = [];
+  // The rating time is the one that changes at runtime (from /menu), so it has its own timer.
+  private ratingAt: string = config.ratingTime;
+  private ratingTimer?: NodeJS.Timeout;
+  private started = false;
 
   constructor(
     private repo: Repository,
@@ -27,12 +37,8 @@ export class Scheduler {
       () => this.sendSummary(),
       "daily summary",
     );
-    // Fires at 00:00 → the day that just ended is yesterday.
-    this.scheduleDaily(
-      config.ratingTime,
-      () => this.askRating(previousDate()),
-      "daily rating prompt",
-    );
+    this.started = true;
+    this.armRating();
     // Fires at 00:00 → review the day that just ended, i.e. yesterday.
     this.scheduleDaily(
       config.habitsTime,
@@ -50,7 +56,7 @@ export class Scheduler {
       {
         retryMs: this.retryMs,
         summaryTime: config.summaryTime,
-        ratingTime: config.ratingTime,
+        ratingTime: this.ratingAt,
         habitsTime: config.habitsTime,
         tasksTime: config.tasksTime,
       },
@@ -73,7 +79,51 @@ export class Scheduler {
   }
 
   stop(): void {
+    this.started = false;
+    clearTimeout(this.ratingTimer);
     for (const t of this.timers) clearTimeout(t);
+  }
+
+  /** Move the nightly rating to `time` (HH:MM). Before `start` it only records the time;
+   *  once running it re-arms, so the change applies to the very next occurrence. */
+  setRatingTime(time: string): void {
+    const at = parseClockTime(time);
+    if (!at) {
+      log.warn({ time }, "rating time rejected: not HH:MM");
+      return;
+    }
+    this.ratingAt = at;
+    log.info({ time: at }, "rating time set");
+    if (this.started) this.armRating();
+  }
+
+  /** Arm the rating prompt for the next occurrence of `ratingAt`, replacing any timer
+   *  already armed. The next night is armed before the prompt runs, so a prompt that hangs
+   *  or fails can't stop the ones after it. */
+  private armRating(): void {
+    clearTimeout(this.ratingTimer);
+    const wait = msUntilNext(this.ratingAt);
+    log.debug(
+      { inMs: wait, at: this.ratingAt },
+      "next rating prompt scheduled",
+    );
+    this.ratingTimer = setTimeout(async () => {
+      this.armRating();
+      try {
+        await this.fireRating();
+      } catch (e) {
+        log.error({ err: e }, "daily rating prompt failed");
+      }
+    }, wait);
+    this.ratingTimer.unref();
+  }
+
+  private async fireRating(): Promise<void> {
+    if (!switchEnabled(await this.repo.getSetting(RATING_SWITCH_KEY))) {
+      log.info("nightly rating is off, skipping");
+      return;
+    }
+    await this.askRating(ratingDay(this.ratingAt));
   }
 
   /** Arm a `time`-of-day job: wait until the next HH:MM occurrence, run `task`, then

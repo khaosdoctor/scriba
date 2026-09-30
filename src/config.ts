@@ -32,7 +32,7 @@ const envSchema = z.object({
   DAILY_NOTES_DIR: z.string().default("notes/daily notes"),
   DAILY_NOTE_TEMPLATE: z.string().default("internal/templates/Daily Note"),
   JOURNAL_HEADING: z.string().default("Journal"),
-  TIL_HEADING: z.string().default("TIL"),
+  TIL_HEADING: z.string().trim().min(1).default("TIL"),
   HABITS_HEADING: z.string().default("Habits"),
   ASSETS_DIR: z.string().default("internal/assets/journal"),
 

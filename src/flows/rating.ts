@@ -4,6 +4,7 @@ import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import { DATE_RE, plainDate } from "../time.ts";
+import type { FollowupFlow } from "./followup.ts";
 
 const log = logger("rating");
 
@@ -29,6 +30,7 @@ export class RatingCommand {
     private bot: Bot,
     private repo: Repository,
     private obsidian: ObsidianClient,
+    private followup: FollowupFlow,
   ) {}
 
   /** Wire the /rate command. Callback taps are routed in from ScribaBot.handleButton. */
@@ -96,5 +98,9 @@ export class RatingCommand {
     log.info({ date, rating }, "daily rating saved");
     await ctx.answerCallbackQuery({ text: `saved ${rating}/10` });
     await ctx.editMessageText(`📊 ${date} rated ${rating}/10`);
+    // The rating is already saved, so a failed question must not undo the tap.
+    await this.followup
+      .start(date)
+      .catch((err) => log.error({ err, date }, "follow-up failed to start"));
   }
 }
