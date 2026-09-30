@@ -1,3 +1,10 @@
+## [1.52.0](https://github.com/khaosdoctor/scriba/compare/v1.51.0...v1.52.0) (2026-09-30)
+
+
+### Features
+
+* offer to move jots that sound like a TIL to the TIL section ([#22](https://github.com/khaosdoctor/scriba/issues/22)) ([eaf49a6](https://github.com/khaosdoctor/scriba/commit/eaf49a6c4db49acff984f6af58ade108599cd873))
+
 ## [1.51.0](https://github.com/khaosdoctor/scriba/compare/v1.50.0...v1.51.0) (2026-09-30)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * **health:** probe upstreams and report connection status ([#18](https://github.com/khaosdoctor/scriba/issues/18)) ([c8de09d](https://github.com/khaosdoctor/scriba/commit/c8de09dc199ffafcfc4c9eb229e90d9c82e1c42f))
-
-## [1.48.1](https://github.com/khaosdoctor/scriba/compare/v1.48.0...v1.48.1) (2026-09-28)
-
-
-### Bug Fixes
-
-* **enrich:** stop raw JSON in the journal and keep jots from hanging ([#19](https://github.com/khaosdoctor/scriba/issues/19)) ([f08f827](https://github.com/khaosdoctor/scriba/commit/f08f827ee8ec71d3e2ef38c58f191eee653d40e2))
 
