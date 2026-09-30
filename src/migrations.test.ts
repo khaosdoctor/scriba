@@ -69,7 +69,7 @@ async function migrateTo(k: Knex, version: string) {
 
 test("jot_section adds the section column and down removes only that column", async (t) => {
   await withDb(t, async (k) => {
-    await k.migrate.latest();
+    await migrateTo(k, SECTION);
     const up = await columns(k);
     assert.ok(up.includes("section"));
 
@@ -86,7 +86,7 @@ test("jot_section adds the section column and down removes only that column", as
 
 test("rolling jot_section back keeps the rows and the status index", async (t) => {
   await withDb(t, async (k) => {
-    await k.migrate.latest();
+    await migrateTo(k, SECTION);
     await k("jots").insert([
       {
         id: "aaaaaaaa",
@@ -165,14 +165,48 @@ test("a row inserted without a section reads back as journal", async (t) => {
 
 test("jot_section can be rolled back and applied again", async (t) => {
   await withDb(t, async (k) => {
-    await k.migrate.latest();
+    await migrateTo(k, SECTION);
     await k.migrate.down();
-    const [, done] = await k.migrate.latest();
-    assert.deepEqual(done.length, 1);
+    await migrateTo(k, SECTION);
     assert.ok((await columns(k)).includes("section"));
     assert.equal(await k.migrate.currentVersion(), SECTION);
+  });
+});
 
-    const [, again] = await k.migrate.latest();
-    assert.deepEqual(again, []);
+test("til_offered adds a column that defaults to false for rows that predate it", async (t) => {
+  await withDb(t, async (k) => {
+    await migrateTo(k, SECTION);
+    await insertOld(k, "aaaaaaaa");
+    await insertOld(k, "bbbbbbbb");
+    await k.migrate.latest();
+    const rows = await k("jots").select("id", "til_offered").orderBy("id");
+    assert.deepEqual(
+      rows.map((r) => Number(r.til_offered)),
+      [0, 0],
+    );
+  });
+});
+
+test("til_offered down drops only its column, and up again does not collide", async (t) => {
+  await withDb(t, async (k) => {
+    await k.migrate.latest();
+    await insertOld(k, "aaaaaaaa");
+    await insertOld(k, "bbbbbbbb");
+    await k("jots").where({ id: "aaaaaaaa" }).update({ til_offered: true });
+
+    await k.migrate.down();
+    const down = await columns(k);
+    assert.ok(!down.includes("til_offered"));
+    assert.ok(down.includes("section"));
+    assert.equal(await k.migrate.currentVersion(), SECTION);
+    assert.equal((await k("jots").select("id")).length, 2);
+
+    await k.migrate.latest();
+    const rows = await k("jots").select("til_offered");
+    // The earlier offered state is gone with the column, which is expected.
+    assert.deepEqual(
+      rows.map((r) => Number(r.til_offered)),
+      [0, 0],
+    );
   });
 });

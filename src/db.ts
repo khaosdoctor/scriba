@@ -545,6 +545,17 @@ export class Repository {
     return Number(row?.n ?? 0);
   }
 
+  /** Whether this jot was already asked "Move this to TIL?", whatever the answer was. */
+  async tilOffered(jotId: string): Promise<boolean> {
+    const row = await this.k("jots").where({ id: jotId }).first("til_offered");
+    return Boolean(row?.til_offered);
+  }
+
+  async markTilOffered(jotId: string): Promise<void> {
+    await this.k("jots").where({ id: jotId }).update({ til_offered: true });
+    log.debug({ id: jotId }, "til offered");
+  }
+
   // --- runtime settings (key/value; survives restart) ---
   async getSetting(key: string): Promise<string | undefined> {
     const r = await this.k("settings").where({ key }).first();

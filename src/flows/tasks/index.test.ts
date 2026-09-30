@@ -517,6 +517,33 @@ test("a task screen closes by taking itself out of the chat", async () => {
   assert.deepEqual(h.deleted, [[7, 1]]);
 });
 
+test("the TIL switch is on by default, toggles both ways and re-renders the menu", async () => {
+  const h = harness();
+  await h.flow.handleTap(h.ctx as any, ["til"]);
+  assert.equal(h.settings.get("tilDetection"), "off");
+  assert.deepEqual(h.answered.at(-1), "I'll stop suggesting TILs");
+  assert.match(h.edited.at(-1)!.text, /🗂 Tasks/);
+  const label = (m: any) =>
+    (m?.inline_keyboard ?? [])
+      .flat()
+      .find((b: any) => b.callback_data === "tk:til")?.text;
+  assert.match(label(h.edited.at(-1)!.markup), /Spot TILs in jots: off$/);
+
+  await h.flow.handleTap(h.ctx as any, ["til"]);
+  assert.equal(h.settings.get("tilDetection"), "on");
+  assert.deepEqual(h.answered.at(-1), "I'll suggest TILs again");
+  assert.match(label(h.edited.at(-1)!.markup), /Spot TILs in jots: on$/);
+});
+
+test("the TIL and task switches do not touch each other", async () => {
+  const h = harness();
+  await h.flow.handleTap(h.ctx as any, ["til"]);
+  assert.equal(h.settings.has("taskDetection"), false);
+  await h.flow.handleTap(h.ctx as any, ["det"]);
+  assert.equal(h.settings.get("tilDetection"), "off");
+  assert.equal(h.settings.get("taskDetection"), "off");
+});
+
 test("jot detection is on by default and the menu toggles it", async () => {
   const h = harness();
   assert.equal(

@@ -38,6 +38,7 @@ import { RATING_NS, RatingCommand } from "./flows/rating.ts";
 import { REPROCESS_NS, ReprocessCommand } from "./flows/reprocess.ts";
 import { TASKS_NS, TasksFlow } from "./flows/tasks/index.ts";
 import type { TaskDraft } from "./flows/tasks/parse.ts";
+import { TIL_NS, TilFlow } from "./flows/til.ts";
 import { logger } from "./log.ts";
 import type { HealthMonitor } from "./runtime/health.ts";
 import type {
@@ -119,6 +120,7 @@ export class ScribaBot implements BotServices {
   private reprocess: ReprocessCommand;
   private command: CommandSession;
   private tasks: TasksFlow;
+  private til: TilFlow;
   private processor!: JotProcessor;
   private health!: HealthMonitor;
   // jotId -> the live status message we edit in place through the jot's lifecycle.
@@ -173,6 +175,7 @@ export class ScribaBot implements BotServices {
       enricher,
       () => this.command.isOpen(),
     );
+    this.til = new TilFlow(this.bot, repo, obsidian);
     this.command.setBusyCheck(() => this.tasks.isOpen());
     this.menu.setTasks(this.tasks);
     this.registerHandlers();
@@ -317,6 +320,11 @@ export class ScribaBot implements BotServices {
     jotDate: string,
   ): Promise<void> {
     await this.tasks.suggest(draft, jotId, jotDate);
+  }
+
+  /** Offer to move a jot the enricher read as a TIL to the TIL section. */
+  async askTil(jotId: string, text: string): Promise<void> {
+    await this.til.ask(jotId, text);
   }
 
   /** Show both transcript versions and wait for the user to pick one. Returns
@@ -1033,6 +1041,7 @@ export class ScribaBot implements BotServices {
     if (ns === "em") return this.handleEmbed(ctx, rest[0], rest[1] === "1");
     if (ns === COMMAND_NS) return this.command.handleTap(ctx, rest);
     if (ns === TASKS_NS) return this.tasks.handleTap(ctx, rest);
+    if (ns === TIL_NS) return this.til.handleTap(ctx, rest);
     if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
     if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
     if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
