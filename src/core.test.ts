@@ -40,7 +40,6 @@ import {
   gaveUpMessage,
   htmlToText,
   insertJournalLine,
-  isBlank,
   isEditableJot,
   isEmbeddableUrl,
   isInsideRoot,
@@ -958,14 +957,6 @@ test("stripJournalLine strips the time prefix and anchor suffix", () => {
   );
   // A caret inside the text isn't an anchor — journalLine always writes " ^id" at the end.
   assert.equal(stripJournalLine("- _23:13:18 ::_ 3^2", "23:13:18"), "3^2");
-});
-
-test("isBlank treats empty and whitespace-only edits as a delete gesture", () => {
-  assert.equal(isBlank(""), true);
-  assert.equal(isBlank("   "), true);
-  assert.equal(isBlank("\n\t "), true);
-  assert.equal(isBlank("x"), false);
-  assert.equal(isBlank("  hi  "), false);
 });
 
 test("isEditableJot is true only for done/abandoned (a line exists to edit)", () => {

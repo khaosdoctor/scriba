@@ -14,7 +14,6 @@ import {
   entitiesToMarkdown,
   escapeHtml,
   fitTelegram,
-  isBlank,
   isEditableJot,
   journalLine,
   makeJotId,
@@ -676,7 +675,7 @@ export class ScribaBot implements BotServices {
     const jot = await this.repo.getJot(jotId);
     if (!jot) return;
     const markdown = editedJotText(jot.section, edited);
-    const blank = isBlank(markdown);
+    const blank = markdown.trim().length === 0;
     if (!isEditableJot(jot.status)) {
       // "delete" is the instruction applyEdits recognises when onJotDone drains the
       // queue, so an in-flight jot is deleted the moment its line is first written.
