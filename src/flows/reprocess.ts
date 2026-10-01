@@ -11,11 +11,15 @@ import { type JotStatus, type Repository, TERMINAL_STATUSES } from "../db.ts";
 import { logger } from "../log.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
 import { dayBounds, isValidDate, plainDate } from "../time.ts";
+import { closeMessage } from "../views/chat.ts";
+import { backTo, pagedScreen, withClose } from "../views/render/keyboard.ts";
 
 const log = logger("reprocess");
 
 /** callback_query namespace this command owns (see ScribaBot.handleButton). */
 export const REPROCESS_NS = "rp";
+
+const CLOSE = `${REPROCESS_NS}:close`;
 
 const MONTHS = [
   "Jan",
@@ -58,7 +62,7 @@ export class ReprocessCommand {
     this.bot.command("reprocess", async (ctx) => {
       log.info("reprocess menu opened");
       await ctx.reply("🔁 Reprocess — choose scope:", {
-        reply_markup: this.withClose(this.rootMenu()),
+        reply_markup: withClose(this.rootMenu(), CLOSE),
       });
     });
   }
@@ -70,7 +74,7 @@ export class ReprocessCommand {
     await this.bot.api.sendMessage(
       config.telegram.allowedUserId,
       "🔁 Reprocess — choose scope:",
-      { reply_markup: this.withClose(this.rootMenu()) },
+      { reply_markup: withClose(this.rootMenu(), CLOSE) },
     );
   }
 
@@ -83,19 +87,6 @@ export class ReprocessCommand {
       .text("✉️ One jot", `${REPROCESS_NS}:jot:0`);
   }
 
-  private backTo(target: string): InlineKeyboard {
-    return this.withClose(new InlineKeyboard().text("‹ Back", target));
-  }
-
-  /** Every screen carries the same way out: one tap that deletes the message. Empty rows
-   *  are dropped first, or a keyboard ending in .row() would render a gap above it. */
-  private withClose(kb: InlineKeyboard): InlineKeyboard {
-    const rows = kb.inline_keyboard.filter((r) => r.length > 0);
-    return InlineKeyboard.from(rows)
-      .row()
-      .text("✖ Close", `${REPROCESS_NS}:close`);
-  }
-
   /** Dispatch a `rp:<action>[:<args>]` callback. */
   async handleTap(ctx: any, rest: string[]): Promise<void> {
     const [action, ...args] = rest;
@@ -103,7 +94,7 @@ export class ReprocessCommand {
       case "root":
         await ctx.answerCallbackQuery();
         await ctx.editMessageText("🔁 Reprocess — choose scope:", {
-          reply_markup: this.withClose(this.rootMenu()),
+          reply_markup: withClose(this.rootMenu(), CLOSE),
         });
         return;
       case "noop":
@@ -133,15 +124,7 @@ export class ReprocessCommand {
         // A picker you backed out of is litter — take the whole message away rather
         // than leaving "Cancelled." in the timeline.
         await ctx.answerCallbackQuery();
-        await ctx.deleteMessage().catch(async () => {
-          // >48h old, or already gone: leave a tidy, buttonless message instead.
-          await ctx
-            .editMessageText("Cancelled.", {
-              reply_markup: new InlineKeyboard(),
-            })
-            .catch(() => {});
-        });
-        return;
+        return closeMessage(ctx, "Cancelled.").catch(() => {});
       default:
         log.warn({ action }, "reprocess: unknown action");
         await ctx.answerCallbackQuery();
@@ -224,7 +207,7 @@ export class ReprocessCommand {
     );
     await ctx.editMessageText(
       `📅 Pick a day to reprocess (${MONTHS[month - 1]} ${year}):`,
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -240,7 +223,7 @@ export class ReprocessCommand {
     const targets = reprocessTargets(await this.repo.jotsInRange(from, to));
     if (!targets.length) {
       return void ctx.editMessageText(`No reprocessable jots on ${date}.`, {
-        reply_markup: this.backTo(`${REPROCESS_NS}:root`),
+        reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE),
       });
     }
     const kb = new InlineKeyboard()
@@ -252,7 +235,7 @@ export class ReprocessCommand {
       .text("Cancel", `${REPROCESS_NS}:cancel`);
     await ctx.editMessageText(
       `Reprocess ${pluralize(targets.length, "jot")} from ${date}?`,
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -271,7 +254,7 @@ export class ReprocessCommand {
     );
     await ctx.editMessageText(
       `📆 Pick the range start (${MONTHS[month - 1]} ${year}):`,
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -297,7 +280,7 @@ export class ReprocessCommand {
     );
     await ctx.editMessageText(
       `📆 Start: ${start}. Now pick the range end (${MONTHS[month - 1]} ${year}):`,
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -325,7 +308,7 @@ export class ReprocessCommand {
     );
     await ctx.editMessageText(
       `📆 Start: ${start}. Pick the range end (${MONTHS[month - 1]} ${year}):`,
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -348,7 +331,7 @@ export class ReprocessCommand {
     if (!targets.length) {
       return void ctx.editMessageText(
         `No reprocessable jots between ${lo} and ${hi}.`,
-        { reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
+        { reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE) },
       );
     }
     const kb = new InlineKeyboard()
@@ -360,7 +343,7 @@ export class ReprocessCommand {
       .text("Cancel", `${REPROCESS_NS}:cancel`);
     await ctx.editMessageText(
       `Reprocess ${pluralize(targets.length, "jot")} from ${lo} to ${hi}?`,
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -373,26 +356,32 @@ export class ReprocessCommand {
     if (!shown.length) {
       return void ctx.editMessageText(
         page === 0 ? "No reprocessable jots yet." : "No more jots.",
-        { reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
+        { reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE) },
       );
     }
-    const kb = new InlineKeyboard();
-    for (const j of shown) {
-      const label =
-        `${STATUS_ICON[j.status]} ${plainDate(j.received_at)} ${j.time} ${jotPreview(j)}`.slice(
-          0,
-          64,
-        );
-      kb.text(label, `${REPROCESS_NS}:jotpick:${j.id}`).row();
-    }
-    if (page > 0) kb.text("‹ Prev", `${REPROCESS_NS}:jot:${page - 1}`);
-    if (hasNext) kb.text("Next ›", `${REPROCESS_NS}:jot:${page + 1}`);
-    if (page > 0 || hasNext) kb.row();
-    kb.text("‹ Back", `${REPROCESS_NS}:root`);
-    await ctx.editMessageText(
-      `✉️ Pick a jot to reprocess${page ? ` (page ${page + 1})` : ""}:`,
-      { reply_markup: this.withClose(kb) },
-    );
+    const screen = pagedScreen({
+      view: {
+        items: shown,
+        page,
+        pages: hasNext ? page + 2 : page + 1,
+        offset: page * JOT_PAGE,
+      },
+      title: () =>
+        `✉️ Pick a jot to reprocess${page ? ` (page ${page + 1})` : ""}:`,
+      row: (kb, j) =>
+        kb.text(
+          `${STATUS_ICON[j.status]} ${plainDate(j.received_at)} ${j.time} ${jotPreview(j)}`.slice(
+            0,
+            64,
+          ),
+          `${REPROCESS_NS}:jotpick:${j.id}`,
+        ),
+      nav: (p) => `${REPROCESS_NS}:jot:${p}`,
+      back: { text: "‹ Back", data: `${REPROCESS_NS}:root` },
+    });
+    await ctx.editMessageText(screen.text, {
+      reply_markup: withClose(screen.kb, CLOSE),
+    });
   }
 
   private async confirmJot(ctx: any, id?: string): Promise<void> {
@@ -421,7 +410,7 @@ export class ReprocessCommand {
       .row()
       .text("Cancel", `${REPROCESS_NS}:cancel`);
     await ctx.editMessageText(`Reprocess "${jotPreview(jot, 80)}"?${note}`, {
-      reply_markup: this.withClose(kb),
+      reply_markup: withClose(kb, CLOSE),
     });
   }
 
@@ -468,7 +457,7 @@ export class ReprocessCommand {
       if (!jot) {
         log.warn({ id }, "reprocess: execute rejected: jot not found");
         return void ctx.editMessageText(`Jot ${id} not found.`, {
-          reply_markup: this.backTo(`${REPROCESS_NS}:root`),
+          reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE),
         });
       }
       // A crafted/stale callback could name a squashed follower directly — resolve to
@@ -496,7 +485,7 @@ export class ReprocessCommand {
   ): Promise<void> {
     if (!targets.length) {
       return void ctx.editMessageText(`No reprocessable jots for ${label}.`, {
-        reply_markup: this.backTo(`${REPROCESS_NS}:root`),
+        reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE),
       });
     }
     // Guard explicitly rather than optional-chaining the enqueue away: without a queue
@@ -510,7 +499,7 @@ export class ReprocessCommand {
       );
       return void ctx.editMessageText(
         "⚠️ Reprocess isn't ready yet — try again in a moment.",
-        { reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
+        { reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE) },
       );
     }
     log.info({ label, count: targets.length }, "reprocess triggered");
@@ -524,7 +513,7 @@ export class ReprocessCommand {
     if (!reset.length) {
       return void ctx.editMessageText(
         `No reprocessable jots for ${label} anymore.`,
-        { reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
+        { reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE) },
       );
     }
     queue.add(reset);

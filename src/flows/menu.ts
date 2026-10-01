@@ -39,12 +39,22 @@ import type { Jot } from "../db.ts";
 import { logger } from "../log.ts";
 import type { Scheduler } from "../runtime/scheduler.ts";
 import { plainDate } from "../time.ts";
+import { closeMessage } from "../views/chat.ts";
+import {
+  backTo,
+  pagedScreen,
+  paginate,
+  withClose,
+} from "../views/render/keyboard.ts";
 import type { HabitsCommand } from "./habits/index.ts";
 import type { RatingCommand } from "./rating.ts";
 import type { ReprocessCommand } from "./reprocess.ts";
 import type { TasksFlow } from "./tasks/index.ts";
 
 const log = logger("menu");
+
+/** Every menu screen carries the same way out, so a half-finished flow never needs scrolling back. */
+const CLOSE = "menu:close";
 
 const MODEL_PRESETS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"];
 
@@ -224,20 +234,6 @@ export class MenuController {
       .text("‹ Back", "menu:root");
   }
 
-  private backTo(target: string): InlineKeyboard {
-    return this.withClose(new InlineKeyboard().text("‹ Back", target));
-  }
-
-  /** Every screen carries the same way out: one tap that deletes the menu message. A
-   *  control panel is not journal content, and a half-finished flow left three submenus
-   *  deep is exactly where you want a way out that doesn't mean scrolling back. Empty
-   *  rows are dropped first — a keyboard built with a trailing .row() would otherwise
-   *  render a gap above the button. */
-  private withClose(kb: InlineKeyboard): InlineKeyboard {
-    const rows = kb.inline_keyboard.filter((r) => r.length > 0);
-    return InlineKeyboard.from(rows).row().text("✖ Close", "menu:close");
-  }
-
   /** Run a string-returning admin command from a callback and hand back its text. */
   private async runCmd(ctx: any, name: string, arg = ""): Promise<string> {
     const cmd = commands.find((c) => c.name === name);
@@ -334,7 +330,7 @@ export class MenuController {
       case "maint":
         await ctx.answerCallbackQuery();
         return ctx.editMessageText("🛠 Maintenance", {
-          reply_markup: this.withClose(this.maintMenu()),
+          reply_markup: withClose(this.maintMenu(), CLOSE),
         });
       // --- link-rules wizard (see the `lw` block below) ---
       case "links":
@@ -408,7 +404,7 @@ export class MenuController {
   ): Promise<void> {
     await ctx.answerCallbackQuery();
     const text = await this.runCmd(ctx, name, arg);
-    await ctx.editMessageText(text, { reply_markup: this.backTo(back) });
+    await ctx.editMessageText(text, { reply_markup: backTo(back, CLOSE) });
   }
 
   /** Stats: first tap shows a range picker; a range tap shows that window. */
@@ -422,12 +418,12 @@ export class MenuController {
         .row()
         .text("‹ Back", "menu:root");
       return ctx.editMessageText("📈 Stats range:", {
-        reply_markup: this.withClose(kb),
+        reply_markup: withClose(kb, CLOSE),
       });
     }
     const text = await this.runCmd(ctx, "stats", range);
     await ctx.editMessageText(text, {
-      reply_markup: this.backTo("menu:stats"),
+      reply_markup: backTo("menu:stats", CLOSE),
     });
   }
 
@@ -499,7 +495,7 @@ export class MenuController {
     kb.text("✍️ Type a model", `menu:${customCb}`).row();
     kb.text("‹ Back", "menu:root");
     await ctx.editMessageText(`${label}\n\nCurrent: ${current ?? "not set"}`, {
-      reply_markup: this.withClose(kb),
+      reply_markup: withClose(kb, CLOSE),
     });
   }
 
@@ -564,7 +560,7 @@ export class MenuController {
         "",
         "Splits land on topic boundaries where there are any, and on sentence ends otherwise. A sentence is never cut in half.",
       ].join("\n"),
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -604,7 +600,7 @@ export class MenuController {
       .row()
       .text("‹ Cancel", "menu:maint");
     await ctx.editMessageText("Requeue every failed jot?", {
-      reply_markup: this.withClose(kb),
+      reply_markup: withClose(kb, CLOSE),
     });
   }
 
@@ -658,7 +654,7 @@ export class MenuController {
           ? `📇 vault index: ${idx.aliases} alias(es) across ${idx.files} note(s).`
           : "📇 vault index disabled — nothing is being linked.",
       ].join("\n"),
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -688,7 +684,7 @@ export class MenuController {
     if (hidden)
       lines.push("", 'Tap "🗑 Remove a word" to page through all of them.');
     await ctx.editMessageText(fitTelegram(lines.join("\n")), {
-      reply_markup: this.withClose(kb),
+      reply_markup: withClose(kb, CLOSE),
     });
   }
 
@@ -698,28 +694,23 @@ export class MenuController {
     const stops = await this.getDeps().repo.stopwordList();
     if (!stops.length)
       return ctx.editMessageText("🔇 No never-link words left.", {
-        reply_markup: this.backTo("menu:lsw"),
+        reply_markup: backTo("menu:lsw", CLOSE),
       });
-    const pages = Math.ceil(stops.length / PAGE);
-    const p = Math.min(Math.max(page, 0), pages - 1);
-    const kb = new InlineKeyboard();
-    stops.slice(p * PAGE, p * PAGE + PAGE).forEach((w, j) => {
-      kb.text(`🗑 ${w}`.slice(0, 60), `menu:lswd:${p * PAGE + j}`).row();
+    const screen = pagedScreen({
+      view: paginate(stops, page, PAGE),
+      title: (v) =>
+        [
+          "🔗 Link rules › 🔇 Never link › 🗑 Remove — step 3 of 3",
+          "",
+          `Tap a word to let it be linked again.${v.pages > 1 ? ` (page ${v.page + 1}/${v.pages})` : ""}`,
+        ].join("\n"),
+      row: (kb, w, i) => kb.text(`🗑 ${w}`.slice(0, 60), `menu:lswd:${i}`),
+      nav: (p) => `menu:lswl:${p}`,
+      back: { text: "‹ Back", data: "menu:lsw" },
     });
-    if (pages > 1) {
-      if (p > 0) kb.text("‹ Prev", `menu:lswl:${p - 1}`);
-      if (p < pages - 1) kb.text("Next ›", `menu:lswl:${p + 1}`);
-      kb.row();
-    }
-    kb.text("‹ Back", "menu:lsw");
-    await ctx.editMessageText(
-      [
-        "🔗 Link rules › 🔇 Never link › 🗑 Remove — step 3 of 3",
-        "",
-        `Tap a word to let it be linked again.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`,
-      ].join("\n"),
-      { reply_markup: this.withClose(kb) },
-    );
+    await ctx.editMessageText(screen.text, {
+      reply_markup: withClose(screen.kb, CLOSE),
+    });
   }
 
   /** Drop the never-link word at global index `arg`, then re-render its page. */
@@ -749,33 +740,26 @@ export class MenuController {
     const list = await this.getDeps().repo.rejectionList();
     if (!list.length)
       return ctx.editMessageText("🚫 No rejected links.", {
-        reply_markup: this.backTo("menu:links"),
+        reply_markup: backTo("menu:links", CLOSE),
       });
-    const surfaces = distinctSurfaces(list);
-    const pages = Math.ceil(surfaces.length / PAGE);
-    const p = Math.min(Math.max(page, 0), pages - 1);
-    const kb = new InlineKeyboard();
-    surfaces.slice(p * PAGE, p * PAGE + PAGE).forEach((s, j) => {
-      const n = list.filter((r) => r.surface === s).length;
-      kb.text(
-        `🚫 ${s} · ${n} note(s)`.slice(0, 60),
-        `menu:lrjs:${p * PAGE + j}`,
-      ).row();
+    const screen = pagedScreen({
+      view: paginate(distinctSurfaces(list), page, PAGE),
+      title: (v) =>
+        [
+          "🔗 Link rules › 🚫 Rejected pairs — step 2 of 3",
+          "",
+          `Pick the word whose rejection you want to undo.${v.pages > 1 ? ` (page ${v.page + 1}/${v.pages})` : ""}`,
+        ].join("\n"),
+      row: (kb, s, i) => {
+        const n = list.filter((r) => r.surface === s).length;
+        kb.text(`🚫 ${s} · ${n} note(s)`.slice(0, 60), `menu:lrjs:${i}`);
+      },
+      nav: (p) => `menu:lrj:${p}`,
+      back: { text: "‹ Back", data: "menu:links" },
     });
-    if (pages > 1) {
-      if (p > 0) kb.text("‹ Prev", `menu:lrj:${p - 1}`);
-      if (p < pages - 1) kb.text("Next ›", `menu:lrj:${p + 1}`);
-      kb.row();
-    }
-    kb.text("‹ Back", "menu:links");
-    await ctx.editMessageText(
-      [
-        "🔗 Link rules › 🚫 Rejected pairs — step 2 of 3",
-        "",
-        `Pick the word whose rejection you want to undo.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`,
-      ].join("\n"),
-      { reply_markup: this.withClose(kb) },
-    );
+    await ctx.editMessageText(screen.text, {
+      reply_markup: withClose(screen.kb, CLOSE),
+    });
   }
 
   /** Step 3 (rejections) — the notes rejected for surface `si`, tap one to allow it.
@@ -791,30 +775,25 @@ export class MenuController {
       return this.lwRejectedWords(ctx, 0);
     }
     const notes = list.filter((r) => r.surface === surface).map((r) => r.note);
-    const pages = Math.max(1, Math.ceil(notes.length / PAGE));
-    const p = Math.min(Math.max(page, 0), pages - 1);
-    const kb = new InlineKeyboard();
     // Row indices stay global so lwUnreject resolves them against the whole note list.
-    notes.slice(p * PAGE, p * PAGE + PAGE).forEach((n, j) => {
-      kb.text(`↩️ ${n}`.slice(0, 60), `menu:lrju:${si}:${p * PAGE + j}`).row();
+    const screen = pagedScreen({
+      view: paginate(notes, page, PAGE),
+      title: (v) =>
+        [
+          `🔗 Link rules › 🚫 ${surface} — step 3 of 3`,
+          "",
+          `${notes.length} note(s) rejected. Tap one to let "${surface}" link to it again.${v.pages > 1 ? ` (page ${v.page + 1}/${v.pages})` : ""}`,
+        ].join("\n"),
+      row: (kb, n, i) => kb.text(`↩️ ${n}`.slice(0, 60), `menu:lrju:${si}:${i}`),
+      nav: (p) => `menu:lrjs:${si}:${p}`,
+      back: {
+        text: "‹ Back",
+        data: `menu:lrj:${Math.floor(si / MenuController.REJECT_PAGE)}`,
+      },
     });
-    if (pages > 1) {
-      if (p > 0) kb.text("‹ Prev", `menu:lrjs:${si}:${p - 1}`);
-      if (p < pages - 1) kb.text("Next ›", `menu:lrjs:${si}:${p + 1}`);
-      kb.row();
-    }
-    kb.text(
-      "‹ Back",
-      `menu:lrj:${Math.floor(si / MenuController.REJECT_PAGE)}`,
-    );
-    await ctx.editMessageText(
-      [
-        `🔗 Link rules › 🚫 ${surface} — step 3 of 3`,
-        "",
-        `${notes.length} note(s) rejected. Tap one to let "${surface}" link to it again.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`,
-      ].join("\n"),
-      { reply_markup: this.withClose(kb) },
-    );
+    await ctx.editMessageText(screen.text, {
+      reply_markup: withClose(screen.kb, CLOSE),
+    });
   }
 
   /** Undo the surface→note rejection at (`a`, `b`), then re-render where it came from. */
@@ -855,31 +834,25 @@ export class MenuController {
     const PAGE = MenuController.REJECT_PAGE;
     const forced = await this.getDeps().repo.registeredLinks();
     log.info({ forced: forced.length, page }, "link wizard: always-link step");
-    const kb = new InlineKeyboard().text("➕ Add word(s)", "menu:lrga").row();
-    const pages = Math.max(1, Math.ceil(forced.length / PAGE));
-    const p = Math.min(Math.max(page, 0), pages - 1);
-    forced.slice(p * PAGE, p * PAGE + PAGE).forEach((r, j) => {
-      kb.text(
-        `${r.surface} → ${r.note}`.slice(0, 60),
-        `menu:lrgv:${p * PAGE + j}`,
-      ).row();
+    const screen = pagedScreen({
+      kb: new InlineKeyboard().text("➕ Add word(s)", "menu:lrga").row(),
+      view: paginate(forced, page, PAGE),
+      title: (v) =>
+        [
+          "🔗 Link rules › 🔗 Always link — step 2 of 3",
+          "",
+          forced.length
+            ? `${forced.length} pair(s) linked with no judgment call. Tap one to change it.${v.pages > 1 ? ` (page ${v.page + 1}/${v.pages})` : ""}`
+            : "No always-link pairs yet.",
+        ].join("\n"),
+      row: (kb, r, i) =>
+        kb.text(`${r.surface} → ${r.note}`.slice(0, 60), `menu:lrgv:${i}`),
+      nav: (p) => `menu:lrg:${p}`,
+      back: { text: "‹ Back", data: "menu:links" },
     });
-    if (pages > 1) {
-      if (p > 0) kb.text("‹ Prev", `menu:lrg:${p - 1}`);
-      if (p < pages - 1) kb.text("Next ›", `menu:lrg:${p + 1}`);
-      kb.row();
-    }
-    kb.text("‹ Back", "menu:links");
-    await ctx.editMessageText(
-      [
-        "🔗 Link rules › 🔗 Always link — step 2 of 3",
-        "",
-        forced.length
-          ? `${forced.length} pair(s) linked with no judgment call. Tap one to change it.${pages > 1 ? ` (page ${p + 1}/${pages})` : ""}`
-          : "No always-link pairs yet.",
-      ].join("\n"),
-      { reply_markup: this.withClose(kb) },
-    );
+    await ctx.editMessageText(screen.text, {
+      reply_markup: withClose(screen.kb, CLOSE),
+    });
   }
 
   /** Step 3 (always-link) — what you can do to one pair: retarget, rename, or drop. */
@@ -907,7 +880,7 @@ export class MenuController {
         "",
         `"${r.surface}" always links to [[${r.note}]].`,
       ].join("\n"),
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -989,38 +962,35 @@ export class MenuController {
     const word = p.words[p.i];
     if (word === undefined) return this.finishPending(ctx, mode);
 
-    const PAGE = MenuController.PICK_PAGE;
     const hits = noteSuggestions(p.query, this.getDeps().links.list());
-    const pages = Math.max(1, Math.ceil(hits.length / PAGE));
-    p.page = Math.min(Math.max(page, 0), pages - 1);
-    const shown = hits.slice(p.page * PAGE, p.page * PAGE + PAGE);
-
-    const kb = new InlineKeyboard();
-    shown.forEach((note, j) => {
-      kb.text(`📝 ${note}`.slice(0, 60), `menu:lrgp:${j}`).row();
-    });
-    if (pages > 1) {
-      if (p.page > 0) kb.text("‹ Prev", `menu:lrgn:${p.page - 1}`);
-      if (p.page < pages - 1) kb.text("Next ›", `menu:lrgn:${p.page + 1}`);
-      kb.row();
-    }
-    kb.text("🔎 Search by another name", "menu:lrgq").row();
-    kb.text("✍️ Type a note that doesn't exist yet", "menu:lrgm").row();
-    if (p.words.length > 1) kb.text("⏭ Skip this word", "menu:lrgs");
-    kb.text("✖ Cancel", "menu:lrgc");
-
+    const view = paginate(hits, page, MenuController.PICK_PAGE);
+    p.page = view.page;
     const queue =
       p.words.length > 1 ? ` (word ${p.i + 1} of ${p.words.length})` : "";
-    const text = [
-      `🔗 "${word}" → which note?${queue}`,
-      "",
-      hits.length
-        ? `${hits.length} match(es) for "${p.query}"${pages > 1 ? `, page ${p.page + 1}/${pages}` : ""}. Tap one, or search again.`
-        : `Nothing in the vault matches "${p.query}". Search again with another part of the title.`,
-    ].join("\n");
+    const { text, kb } = pagedScreen({
+      view,
+      title: (v) =>
+        [
+          `🔗 "${word}" → which note?${queue}`,
+          "",
+          hits.length
+            ? `${hits.length} match(es) for "${p.query}"${v.pages > 1 ? `, page ${v.page + 1}/${v.pages}` : ""}. Tap one, or search again.`
+            : `Nothing in the vault matches "${p.query}". Search again with another part of the title.`,
+        ].join("\n"),
+      // lwPick resolves the tap against p.page, so the callback carries the index within the page.
+      row: (kb, note, i) =>
+        kb.text(`📝 ${note}`.slice(0, 60), `menu:lrgp:${i - view.offset}`),
+      nav: (n) => `menu:lrgn:${n}`,
+      extraRows: (kb) => {
+        kb.text("🔎 Search by another name", "menu:lrgq").row();
+        kb.text("✍️ Type a note that doesn't exist yet", "menu:lrgm").row();
+        if (p.words.length > 1) kb.text("⏭ Skip this word", "menu:lrgs");
+        kb.text("✖ Cancel", "menu:lrgc");
+      },
+    });
 
     if (mode === "edit")
-      return ctx.editMessageText(text, { reply_markup: this.withClose(kb) });
+      return ctx.editMessageText(text, { reply_markup: withClose(kb, CLOSE) });
     return this.sendMenu(text, kb);
   }
 
@@ -1031,7 +1001,7 @@ export class MenuController {
     text: string,
     kb: InlineKeyboard,
   ): Promise<void> {
-    const sent = await ctx.reply(text, { reply_markup: this.withClose(kb) });
+    const sent = await ctx.reply(text, { reply_markup: withClose(kb, CLOSE) });
     this.scheduleExpiry(sent.chat.id, sent.message_id);
   }
 
@@ -1040,7 +1010,7 @@ export class MenuController {
     const sent = await this.bot.api.sendMessage(
       config.telegram.allowedUserId,
       text,
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
     this.scheduleExpiry(sent.chat.id, sent.message_id);
   }
@@ -1276,22 +1246,13 @@ export class MenuController {
   private async menuClose(ctx: any): Promise<void> {
     log.info("menu closed");
     await ctx.answerCallbackQuery();
-    this.lastMenuMsgId.delete(ctx.chat.id);
-    this.cancelExpiry(
-      ctx.chat.id,
-      ctx.callbackQuery?.message?.message_id ?? -1,
-    );
-    try {
-      await ctx.deleteMessage();
-    } catch (e) {
-      // Delete can fail (already gone, >48h old); leave a tidy closed state instead.
-      log.warn({ err: e }, "menu close: delete failed, editing instead");
-      // An empty InlineKeyboard actually clears the buttons; `reply_markup: undefined`
-      // is dropped from the JSON payload, so Telegram would leave the old ones tappable.
-      await ctx.editMessageText("🗂 Menu closed.", {
-        reply_markup: new InlineKeyboard(),
-      });
-    }
+    await closeMessage(ctx, "🗂 Menu closed.", () => {
+      this.lastMenuMsgId.delete(ctx.chat.id);
+      this.cancelExpiry(
+        ctx.chat.id,
+        ctx.callbackQuery?.message?.message_id ?? -1,
+      );
+    });
   }
 
   /** Run a no-arg maintenance command and show its result over the maintenance menu. */
@@ -1302,7 +1263,7 @@ export class MenuController {
     await ctx.answerCallbackQuery();
     const out = await this.runCmd(ctx, name, arg);
     await ctx.editMessageText(out || "done", {
-      reply_markup: this.withClose(this.maintMenu()),
+      reply_markup: withClose(this.maintMenu(), CLOSE),
     });
   }
 
@@ -1313,18 +1274,20 @@ export class MenuController {
     const jots = await this.getDeps().repo.recentJots(10);
     if (!jots.length)
       return ctx.editMessageText("No jots yet.", {
-        reply_markup: this.backTo("menu:root"),
+        reply_markup: backTo("menu:root", CLOSE),
       });
-    const kb = new InlineKeyboard();
-    for (const j of jots) {
-      kb.text(
-        `${STATUS_ICON[j.status]} ${j.time} ${jotPreview(j)}`,
-        `menu:jot:${j.id}`,
-      ).row();
-    }
-    kb.text("‹ Back", "menu:root");
-    await ctx.editMessageText("🗒 Recent jots:", {
-      reply_markup: this.withClose(kb),
+    const screen = pagedScreen({
+      view: paginate(jots, 0, jots.length),
+      title: () => "🗒 Recent jots:",
+      row: (kb, j) =>
+        kb.text(
+          `${STATUS_ICON[j.status]} ${j.time} ${jotPreview(j)}`,
+          `menu:jot:${j.id}`,
+        ),
+      back: { text: "‹ Back", data: "menu:root" },
+    });
+    await ctx.editMessageText(screen.text, {
+      reply_markup: withClose(screen.kb, CLOSE),
     });
   }
 
@@ -1333,7 +1296,7 @@ export class MenuController {
     const jot = id ? await this.getDeps().repo.getJot(id) : undefined;
     if (!jot)
       return ctx.editMessageText(`No jot ${id ?? ""}.`, {
-        reply_markup: this.backTo("menu:jots"),
+        reply_markup: backTo("menu:jots", CLOSE),
       });
     const kb = new InlineKeyboard()
       .text("🔄 Retry", `menu:jr:${jot.id}`)
@@ -1343,7 +1306,7 @@ export class MenuController {
       .row()
       .text("‹ Back", "menu:jots");
     await ctx.editMessageText(formatJotDetail(jot), {
-      reply_markup: this.withClose(kb),
+      reply_markup: withClose(kb, CLOSE),
     });
   }
 
@@ -1356,7 +1319,7 @@ export class MenuController {
     deps.queue.add([id]);
     await ctx.answerCallbackQuery({ text: "retrying" });
     await ctx.editMessageText(`🔄 retrying ${id}…`, {
-      reply_markup: this.backTo("menu:jots"),
+      reply_markup: backTo("menu:jots", CLOSE),
     });
   }
 
@@ -1368,7 +1331,7 @@ export class MenuController {
       .text("Cancel", `menu:jot:${id}`);
     await ctx.editMessageText(
       `Delete jot ${id}? This removes its line from the journal.`,
-      { reply_markup: this.withClose(kb) },
+      { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
@@ -1381,7 +1344,9 @@ export class MenuController {
     await ctx.answerCallbackQuery();
     log.info({ jotId: id }, "menu: delete jot");
     const msg = await this.deleteJot(jot);
-    await ctx.editMessageText(msg, { reply_markup: this.backTo("menu:jots") });
+    await ctx.editMessageText(msg, {
+      reply_markup: backTo("menu:jots", CLOSE),
+    });
   }
 
   /** Edit from the menu: send a force-reply prompt mapped to the jot, so the reply routes
@@ -1406,7 +1371,7 @@ export class MenuController {
     const jots = await this.getDeps().repo.failedJots(10);
     if (!jots.length)
       return ctx.editMessageText("✅ nothing failed.", {
-        reply_markup: this.backTo("menu:root"),
+        reply_markup: backTo("menu:root", CLOSE),
       });
     const lines = jots.map(
       (j) =>
@@ -1416,7 +1381,7 @@ export class MenuController {
     for (const j of jots) kb.text(`🔄 ${j.id}`, `rt:${j.id}`).row();
     kb.text("‹ Back", "menu:root");
     await ctx.editMessageText(`⚠️ ${jots.length} failed:\n${lines.join("\n")}`, {
-      reply_markup: this.withClose(kb),
+      reply_markup: withClose(kb, CLOSE),
     });
   }
 }
