@@ -1,5 +1,5 @@
 import type { Message, MessageEntity } from "grammy/types";
-import type { IntakeInput } from "../models/domain.ts";
+import type { EditInput, IntakeInput } from "../models/domain.ts";
 
 const ENTITY_WRAP: Partial<Record<string, readonly [string, string]>> = {
   bold: ["**", "**"],
@@ -79,10 +79,6 @@ export function intakeInput(m: Message): IntakeInput | undefined {
     };
   return undefined;
 }
-
-/** An edited message: its id and the new text as markdown (the caption for media, `""`
- *  when it was removed). */
-export type EditInput = { messageId: number; text: string };
 
 export function editInput(m: Message): EditInput {
   const text =
