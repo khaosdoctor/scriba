@@ -56,6 +56,7 @@ export class HabitController {
           : `No habits found for ${date}.`,
       );
     }
+    log.info({ date, count: pending.length }, "sending habit review prompt");
     const id = await notifier.send(
       `🌱 Time to review habits for ${date} — ${pending.length} to go.`,
       {
