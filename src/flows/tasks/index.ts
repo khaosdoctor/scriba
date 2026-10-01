@@ -11,6 +11,12 @@ import { logger } from "../../log.ts";
 import type { Enricher } from "../../services/enrich.ts";
 import type { TaskStore } from "../../services/tasks.ts";
 import { plainDate } from "../../time.ts";
+import { closeMessage } from "../../views/chat.ts";
+import {
+  pagedScreen,
+  paginate,
+  withClose,
+} from "../../views/render/keyboard.ts";
 import {
   detectionEnabled,
   draftFromDetection,
@@ -32,6 +38,10 @@ const log = logger("tasks-flow");
 
 /** callback_query namespace this flow owns (see ScribaBot.handleButton). */
 export const TASKS_NS = "tk";
+
+/** Task lists don't self-destruct the way /menu's screens do (the morning summary has to
+ *  survive until you've worked through it), so Close is how they go. */
+const CLOSE = `${TASKS_NS}:close`;
 
 /** Task mode closes itself after this long without a message, so it can't be left open by
  *  accident and swallow the next thing you meant to journal (same rule as command mode). */
@@ -570,15 +580,7 @@ export class TasksFlow {
       case "close":
         await ctx.answerCallbackQuery();
         log.info("tasks: screen closed");
-        return void (await ctx.deleteMessage().catch(async () => {
-          // >48h old, or already gone: clear the buttons instead of leaving them
-          // tappable on a message that can no longer be removed.
-          await ctx
-            .editMessageText("🗂 Closed.", {
-              reply_markup: new InlineKeyboard(),
-            })
-            .catch(() => {});
-        }));
+        return closeMessage(ctx, "🗂 Closed.").catch(() => {});
       default:
         log.warn({ action }, "tasks: unknown callback action");
         await ctx.answerCallbackQuery();
@@ -731,15 +733,7 @@ export class TasksFlow {
       `💡 Spot TILs in jots: ${til ? "on" : "off"}`,
       `${TASKS_NS}:til`,
     );
-    return this.withClose(kb);
-  }
-
-  /** Every task screen carries the same way out: one tap that deletes the message. Lists
-   *  don't self-destruct the way /menu's screens do — you read them, and the morning
-   *  summary has to survive until you've worked through it — so Close is how they go. */
-  private withClose(kb: InlineKeyboard): InlineKeyboard {
-    const rows = kb.inline_keyboard.filter((r) => r.length > 0);
-    return InlineKeyboard.from(rows).row().text("✖ Close", `${TASKS_NS}:close`);
+    return withClose(kb, CLOSE);
   }
 
   private async showMenu(ctx: any, mode: "edit" | "send"): Promise<void> {
@@ -763,44 +757,43 @@ export class TasksFlow {
   ): Promise<{ text: string; kb: InlineKeyboard; count: number }> {
     const today = plainDate();
     const tasks = filterTasks(await this.store.list(), view, today);
-    const pages = Math.max(1, Math.ceil(tasks.length / PAGE));
-    const p = Math.min(Math.max(page, 0), pages - 1);
-    const shown = tasks.slice(p * PAGE, p * PAGE + PAGE);
+    const pageView = paginate(tasks, page, PAGE);
     log.info(
-      { view, page: p, shown: shown.length, total: tasks.length },
+      {
+        view,
+        page: pageView.page,
+        shown: pageView.items.length,
+        total: tasks.length,
+      },
       "tasks: list rendered",
     );
 
-    const kb = new InlineKeyboard();
-    shown.forEach((t, j) => {
-      const n = p * PAGE + j + 1;
-      const verb = t.state === "done" ? "r" : "k";
-      kb.text(
-        taskButtonLabel(t, n),
-        `${TASKS_NS}:${verb}:${t.type}:${t.index}:${t.fingerprint}:${view}:${p}`,
-      ).row();
+    const screen = pagedScreen({
+      view: pageView,
+      title: (v) =>
+        fitTelegram(
+          [
+            header ?? `<b>${VIEW_LABEL[view]}</b>`,
+            tasks.length
+              ? `${tasks.length} task${tasks.length === 1 ? "" : "s"}${v.pages > 1 ? ` · page ${v.page + 1}/${v.pages}` : ""} · tap one to ${view === "done" ? "reopen it" : "tick it off"}`
+              : "Nothing here.",
+            "",
+            ...v.items.map((t, j) => taskListLine(t, v.offset + j + 1, today)),
+          ].join("\n"),
+        ),
+      row: (kb, t, i) =>
+        kb.text(
+          taskButtonLabel(t, i + 1),
+          `${TASKS_NS}:${t.state === "done" ? "r" : "k"}:${t.type}:${t.index}:${t.fingerprint}:${view}:${pageView.page}`,
+        ),
+      nav: (p) => `${TASKS_NS}:v:${view}:${p}`,
+      back: { text: "‹ Tasks", data: `${TASKS_NS}:m` },
     });
-    if (pages > 1) {
-      if (p > 0) kb.text("‹ Prev", `${TASKS_NS}:v:${view}:${p - 1}`);
-      if (p < pages - 1) kb.text("Next ›", `${TASKS_NS}:v:${view}:${p + 1}`);
-      kb.row();
-    }
-    kb.text("‹ Tasks", `${TASKS_NS}:m`);
-
-    const head = [
-      header ?? `<b>${VIEW_LABEL[view]}</b>`,
-      tasks.length
-        ? `${tasks.length} task${tasks.length === 1 ? "" : "s"}${pages > 1 ? ` · page ${p + 1}/${pages}` : ""} · tap one to ${view === "done" ? "reopen it" : "tick it off"}`
-        : "Nothing here.",
-      "",
-    ];
-    const text = fitTelegram(
-      [
-        ...head,
-        ...shown.map((t, j) => taskListLine(t, p * PAGE + j + 1, today)),
-      ].join("\n"),
-    );
-    return { text, kb: this.withClose(kb), count: tasks.length };
+    return {
+      text: screen.text,
+      kb: withClose(screen.kb, CLOSE),
+      count: tasks.length,
+    };
   }
 
   /** Show a list view, editing the tapped message or sending a fresh one. */
