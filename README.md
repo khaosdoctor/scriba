@@ -87,7 +87,7 @@ sequenceDiagram
         E-->>P: enriched text + ambiguous links
     end
     P->>O: replace "^id" line with the final entry
-    P->>P: edit status message, react 👌, apply edits queued while processing
+    P->>P: react 👌, edit status message, apply edits queued while processing
 
     opt ambiguous link
         P->>U: "Link X → [[Note]]?" (Yes / No)

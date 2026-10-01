@@ -21,7 +21,7 @@ import type { LinkIndex } from "./services/links.ts";
 import type { ObsidianClient } from "./services/obsidian.ts";
 import { TaskNotesService } from "./services/task-notes.ts";
 import type { FallbackTranscriber } from "./services/transcribe.ts";
-import { VaultTools } from "./services/vault.ts";
+import { VaultService } from "./services/vault.ts";
 import { WebService } from "./services/web.ts";
 import { Chat } from "./views/chat.ts";
 import { COMMANDS } from "./views/commands/index.ts";
@@ -106,7 +106,7 @@ export class ScribaBot {
     // reach the host; services/agent.ts holds the allow list.
     this.command = new CommandController({
       service: new AgentService(
-        new VaultTools(config.vaultPath || null, obsidian),
+        new VaultService(config.vaultPath || null, obsidian),
         new WebService(),
         config.command,
       ),

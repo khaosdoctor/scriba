@@ -196,9 +196,12 @@ function pipeline(
     followers?: Jot[];
     writeFails?: boolean;
     section?: "journal" | "til";
+    ambiguous?: { surface: string; note: string }[];
   } = {},
 ) {
   const calls: string[] = [];
+  const sent: { text: string; opts: unknown }[] = [];
+  const pending: { pid: string; surface: string; note: string }[] = [];
   const tilAsks: [string, string][] = [];
   const enriched: string[] = [];
   const offered = new Set<string>();
@@ -223,7 +226,15 @@ function pipeline(
     stopwords: async () => new Set<string>(),
     rejections: async () => new Set<string>(),
     registeredLinks: async () => [],
-    addPendingLink: async () => {},
+    addPendingLink: async (
+      pid: string,
+      _jotId: string,
+      surface: string,
+      linked: string,
+    ) => {
+      pending.push({ pid, surface, note: linked });
+      calls.push("addPendingLink");
+    },
     taskDraftsForJot: async () => 0,
     tilOffered: async (id: string) => offered.has(id),
     insertJot: async () => {},
@@ -247,7 +258,7 @@ function pipeline(
       enriched.push(input.text);
       return {
         text: "Learned that X",
-        ambiguous: [],
+        ambiguous: over.ambiguous ?? [],
         tasks: over.tasks ?? [],
         til: over.til ?? false,
         usage: { input: 0, output: 0 },
@@ -275,11 +286,19 @@ function pipeline(
       suggest: async (draft: { description: string }) =>
         void calls.push(`askTask:${draft.description}`),
     },
-    notifier: { typing: async () => {} },
+    notifier: {
+      typing: async () => {},
+      send: async (text: string, opts: unknown) => {
+        sent.push({ text, opts });
+        calls.push("send");
+      },
+    },
   } as any);
   return {
     processor,
     calls,
+    sent,
+    pending,
     tilAsks,
     enriched,
     offered,
@@ -296,6 +315,28 @@ test("a jot the enricher read as a TIL gets its card after the entry is written 
   assert.ok(at("write") < at("status:done"));
   assert.ok(at("status:done") < at("askTil"));
   assert.ok(at("askTil") < at("onJotDone"));
+});
+
+test("an ambiguous link asks for a yes/no with the pending link's id", async () => {
+  const p = pipeline({ ambiguous: [{ surface: "X", note: "N" }] });
+  await p.processor.processJot(p.leaderId);
+  assert.equal(p.pending.length, 1);
+  const pid = p.pending[0]?.pid;
+  assert.deepEqual(p.pending[0], { pid, surface: "X", note: "N" });
+  assert.equal(p.sent.length, 1);
+  assert.equal(p.sent[0]?.text, 'Link "X" → [[N]]?');
+  // plain text: the only option is the keyboard, no parse mode
+  assert.deepEqual(p.sent[0]?.opts, {
+    keyboard: {
+      inline_keyboard: [
+        [
+          { text: "Yes", callback_data: `lk:y:${pid}` },
+          { text: "No", callback_data: `lk:n:${pid}` },
+        ],
+      ],
+    },
+  });
+  assert.ok(p.calls.indexOf("addPendingLink") < p.calls.indexOf("send"));
 });
 
 test("no card when the enricher did not read it as a TIL", async () => {

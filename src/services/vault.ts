@@ -286,9 +286,6 @@ export class VaultService {
   }
 }
 
-// bot.ts and processing.ts still construct VaultTools
-export { VaultService as VaultTools };
-
 const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, "");
 
 function parseAliasEntries(path: string, text: string): AliasEntry[] {
