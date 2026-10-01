@@ -6,8 +6,9 @@ process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
 
 import type { Jot } from "../db.ts";
-import { fakeSettings } from "./fake-settings.ts";
+import { BOT_INFO, FakeSettings } from "./fakes.ts";
 import { noteOps } from "./note-ops.ts";
+import { sampleJot as baseJot } from "./sqlite.ts";
 
 export const OWNER = 1;
 export const CHAT = 1;
@@ -16,25 +17,16 @@ export const JOT_ID = "aaaaaaaa";
 /** The dash the bot's own messages use, for asserting their exact text. */
 export const EM = String.fromCharCode(0x2014);
 
-export const sampleJot = (over: Partial<Jot> = {}): Jot => ({
-  id: JOT_ID,
-  kind: "text",
-  note_path: "notes/daily notes/2026-08-16.md",
-  anchor: JOT_ID,
-  time: "09:58:00",
-  raw_text: "bought milk",
-  transcript: null,
-  proposed_text: null,
-  section: "journal",
-  asset_path: null,
-  file_id: null,
-  status: "done",
-  attempts: 0,
-  error: null,
-  received_at: NOW - 2000,
-  updated_at: NOW - 2000,
-  ...over,
-});
+export const sampleJot = (over: Partial<Jot> = {}): Jot =>
+  baseJot(JOT_ID, {
+    note_path: "notes/daily notes/2026-08-16.md",
+    time: "09:58:00",
+    raw_text: "bought milk",
+    status: "done",
+    received_at: NOW - 2000,
+    updated_at: NOW - 2000,
+    ...over,
+  });
 
 /** Per-method behavior of a fake. A function is called with the arguments, anything else
  *  is returned as is. */
@@ -131,7 +123,7 @@ export async function botHarness() {
   const failApi = new Set<string>();
 
   const repo = recorder("repo", timeline, repoImpl, {
-    ...fakeSettings(settings),
+    ...new FakeSettings(settings),
     stopwordList: [],
     rejectionList: [],
     registeredLinks: [],
@@ -216,17 +208,7 @@ export async function botHarness() {
   bot.setProcessor(processor);
   bot.setHealth(health as any);
   bot.setScheduler(scheduler);
-  bot.bot.botInfo = {
-    id: 99,
-    is_bot: true,
-    first_name: "scriba",
-    username: "scriba_bot",
-    can_join_groups: false,
-    can_read_all_group_messages: false,
-    supports_inline_queries: false,
-    can_connect_to_business: false,
-    has_main_web_app: false,
-  };
+  bot.bot.botInfo = BOT_INFO;
   bot.bot.api.config.use(
     async (_prev: unknown, method: string, payload: any) => {
       calls.push({ method, payload });

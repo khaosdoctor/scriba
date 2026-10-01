@@ -6,7 +6,7 @@ import type { Knex } from "knex";
 import type { Jot } from "../models/domain.ts";
 import { openDb } from "../repositories/db.ts";
 
-export function sampleJot(id: string): Jot {
+export function sampleJot(id: string, over: Partial<Jot> = {}): Jot {
   const now = Date.now();
   return {
     id,
@@ -25,17 +25,23 @@ export function sampleJot(id: string): Jot {
     error: null,
     received_at: now,
     updated_at: now,
+    ...over,
   };
+}
+
+export const tempDbPath = () =>
+  join(tmpdir(), `scriba-test-${randomBytes(6).toString("hex")}.db`);
+
+export async function removeDb(dbPath: string): Promise<void> {
+  for (const suffix of ["", "-shm", "-wal"])
+    await rm(`${dbPath}${suffix}`, { force: true });
 }
 
 export async function withDb(
   t: { skip: (why: string) => void },
   fn: (k: Knex) => Promise<void>,
 ): Promise<void> {
-  const dbPath = join(
-    tmpdir(),
-    `scriba-test-${randomBytes(6).toString("hex")}.db`,
-  );
+  const dbPath = tempDbPath();
   let k: Knex;
   try {
     k = await openDb(dbPath);
@@ -48,8 +54,6 @@ export async function withDb(
     await fn(k);
   } finally {
     await k.destroy();
-    await rm(dbPath, { force: true });
-    await rm(`${dbPath}-shm`, { force: true });
-    await rm(`${dbPath}-wal`, { force: true });
+    await removeDb(dbPath);
   }
 }

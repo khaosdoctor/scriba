@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeSettings } from "../test/fake-settings.ts";
+import { FakeSettings } from "../test/fakes.ts";
 
 // menu.ts pulls in config.ts, which validates process.env at import time — give it the
 // bare minimum before loading, the same trick config.test.ts uses.
@@ -70,7 +70,9 @@ function settingsHarness(initial: Record<string, string> = {}) {
       },
     },
   };
-  const repo = fakeSettings(settings, (key, value) => sets.push([key, value]));
+  const repo = new FakeSettings(settings, (key, value) =>
+    sets.push([key, value]),
+  );
   const menu = new MenuController(
     bot as any,
     {} as any,
@@ -330,7 +332,7 @@ function wizardHarness(
   const without = (list: Pair[], s: string, n: string) =>
     list.filter((r) => r.surface !== s || r.note !== n);
   const repo = {
-    ...fakeSettings(state.settings, (k, v) => events.push(`set ${k}=${v}`)),
+    ...new FakeSettings(state.settings, (k, v) => events.push(`set ${k}=${v}`)),
     stopwordList: async () => [...state.stopwords],
     addStopword: async (w: string) => {
       events.push(`addStopword ${w}`);

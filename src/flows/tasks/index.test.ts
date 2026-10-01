@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fakeSettings } from "../../test/fake-settings.ts";
+import { FakeSettings } from "../../test/fakes.ts";
 
 // index.ts pulls in config.ts, which validates process.env at import time — give it the
 // bare minimum before loading, the same trick config.test.ts and menu.test.ts use.
@@ -70,7 +70,7 @@ function harness(
       drafts.set(id, { ...d, status: "created" });
       return true;
     },
-    ...fakeSettings(settings),
+    ...new FakeSettings(settings),
   };
 
   // A minimal Obsidian stand-in: one note in memory, read and written whole.

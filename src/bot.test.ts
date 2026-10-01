@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
-import { rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
 import { placeholderLine, WIZARD_RATING_TIME_REF } from "./core.ts";
 import { type Jot, Repository } from "./db.ts";
-import { SETTINGS, type SettingKey } from "./models/settings.ts";
+import { BOT_INFO, FakeSettings } from "./test/fakes.ts";
+import { removeDb, sampleJot, tempDbPath } from "./test/sqlite.ts";
 import { plainDate, plainTime, previousDate } from "./time.ts";
 
 // config.ts reads process.env at import time, so the bot is imported after these are set.
@@ -17,25 +14,15 @@ process.env.OBSIDIAN_API_KEY = "o";
 const NOW = Date.UTC(2026, 7, 16, 10, 0, 0);
 const SEC = NOW / 1000;
 
-const leader = (over: Partial<Jot> = {}): Jot => ({
-  id: "aaaaaaaa",
-  kind: "text",
-  note_path: `notes/daily notes/${plainDate(NOW)}.md`,
-  anchor: "aaaaaaaa",
-  time: plainTime(NOW - 2000),
-  raw_text: "earlier",
-  transcript: null,
-  proposed_text: null,
-  section: "journal",
-  asset_path: null,
-  file_id: null,
-  status: "pending",
-  attempts: 0,
-  error: null,
-  received_at: NOW - 2000,
-  updated_at: NOW - 2000,
-  ...over,
-});
+const leader = (over: Partial<Jot> = {}): Jot =>
+  sampleJot("aaaaaaaa", {
+    note_path: `notes/daily notes/${plainDate(NOW)}.md`,
+    time: plainTime(NOW - 2000),
+    raw_text: "earlier",
+    received_at: NOW - 2000,
+    updated_at: NOW - 2000,
+    ...over,
+  });
 
 type Fakes = {
   prev?: Jot;
@@ -74,10 +61,7 @@ async function harness(over: Fakes = {}) {
       lookups.push([notePath, section]);
       return over.prev ?? (over.chain ? inserted.at(-1) : undefined);
     },
-    getSetting: async (key: SettingKey) =>
-      SETTINGS[key].parse(over.settings?.[key]),
-    setSetting: async (key: string, value: string) =>
-      void sets.push([key, value]),
+    ...new FakeSettings(over.settings, (key, value) => sets.push([key, value])),
     jotForMessage: async () => over.jotId,
     getJot: async () => over.jot,
     queueEdit: async (id: string, text: string) =>
@@ -277,10 +261,7 @@ test("a failed placeholder write still leaves the til row mapped and unqueued", 
 });
 
 test("a TIL jot does not join a pending journal jot in the real repository", async (t) => {
-  const dbPath = join(
-    tmpdir(),
-    `scriba-bot-${randomBytes(6).toString("hex")}.db`,
-  );
+  const dbPath = tempDbPath();
   let repo: Repository;
   try {
     repo = await Repository.open(dbPath);
@@ -307,8 +288,7 @@ test("a TIL jot does not join a pending journal jot in the real repository", asy
     assert.deepEqual(h.reacts, ["✍", "🤝"]);
   } finally {
     await repo.close();
-    for (const suffix of ["", "-shm", "-wal"])
-      await rm(`${dbPath}${suffix}`, { force: true });
+    await removeDb(dbPath);
   }
 });
 
@@ -643,19 +623,7 @@ async function route(
 ) {
   const calls: string[] = [];
   const bot = h.bot;
-  bot.bot.botInfo = {
-    id: 99,
-    is_bot: true,
-    first_name: "b",
-    username: "b",
-    can_join_groups: false,
-    can_read_all_group_messages: false,
-    supports_inline_queries: false,
-    can_connect_to_business: false,
-    has_main_web_app: false,
-    has_topics_enabled: false,
-    allows_users_to_create_topics: false,
-  };
+  bot.bot.botInfo = BOT_INFO;
   bot.followup.handleReply = async (_c: unknown, ref: unknown) =>
     void calls.push(`followup:${JSON.stringify(ref)}`);
   bot.habits.handleReply = async () => void calls.push("habits");

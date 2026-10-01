@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SETTINGS, type SettingKey } from "../models/settings.ts";
+import { FakeSettings } from "../test/fakes.ts";
 
 // followup.ts pulls in config.ts, which validates process.env at import time, so give it the
 // bare minimum first (the same trick scheduler.test.ts uses).
@@ -23,7 +23,7 @@ function harness(
   const sent: { text: string; opts: any }[] = [];
   const deleted: [number, number][] = [];
   const jots: [string, string][] = [];
-  const keys: string[] = [];
+  const repo = new FakeSettings(settings);
   let reads = 0;
   const bot = {
     api: {
@@ -33,12 +33,6 @@ function harness(
         deleted.push([chat, id]);
         if (opts.deleteFails) throw new Error("message to delete not found");
       },
-    },
-  };
-  const repo = {
-    getSetting: async (key: SettingKey) => {
-      keys.push(key);
-      return SETTINGS[key].parse(settings[key]);
     },
   };
   const obsidian = {
@@ -56,7 +50,7 @@ function harness(
       jots.push([date, text]);
     },
   );
-  return { flow, sent, deleted, jots, keys };
+  return { flow, sent, deleted, jots, keys: repo.reads };
 }
 
 const { parseFollowupRef } = await import("../core.ts");
