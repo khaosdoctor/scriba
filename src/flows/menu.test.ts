@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { fakeSettings } from "../test/fake-settings.ts";
 
 // menu.ts pulls in config.ts, which validates process.env at import time — give it the
 // bare minimum before loading, the same trick config.test.ts uses.
@@ -58,7 +59,7 @@ const { parseWizardRef, WIZARD_RATING_TIME_REF } = await import("../core.ts");
 
 /** A menu over a real settings map, with recorders for everything it sends. */
 function settingsHarness(initial: Record<string, string> = {}) {
-  const settings = { ...initial };
+  const settings = new Map(Object.entries(initial));
   const sets: [string, string][] = [];
   const sent: { chat: number; text: string; opts: any }[] = [];
   const bot = {
@@ -69,13 +70,7 @@ function settingsHarness(initial: Record<string, string> = {}) {
       },
     },
   };
-  const repo = {
-    getSetting: async (key: string) => settings[key],
-    setSetting: async (key: string, value: string) => {
-      sets.push([key, value]);
-      settings[key] = value;
-    },
-  };
+  const repo = fakeSettings(settings, (key, value) => sets.push([key, value]));
   const menu = new MenuController(
     bot as any,
     {} as any,
@@ -164,7 +159,7 @@ test("a toggle redraws the root menu from the value it just wrote", async () => 
 
   const second = callbackCtx();
   await menu.handleCallback(second.ctx, ["rtsw"]);
-  assert.equal(settings.nightlyRating, "on");
+  assert.equal(settings.get("nightlyRating"), "on");
   assert.deepEqual(second.answers, ["Nightly rating on"]);
   assert.equal(
     findButton(second.edits[0]!.opts.reply_markup, "menu:rtsw").text,
@@ -330,16 +325,12 @@ function wizardHarness(
     stopwords: [...(init.stopwords ?? [])],
     rejections: [...(init.rejections ?? [])],
     pairs: [...(init.pairs ?? [])],
-    settings: { ...init.settings } as Record<string, string>,
+    settings: new Map(Object.entries(init.settings ?? {})),
   };
   const without = (list: Pair[], s: string, n: string) =>
     list.filter((r) => r.surface !== s || r.note !== n);
   const repo = {
-    getSetting: async (k: string) => state.settings[k],
-    setSetting: async (k: string, v: string) => {
-      events.push(`set ${k}=${v}`);
-      state.settings[k] = v;
-    },
+    ...fakeSettings(state.settings, (k, v) => events.push(`set ${k}=${v}`)),
     stopwordList: async () => [...state.stopwords],
     addStopword: async (w: string) => {
       events.push(`addStopword ${w}`);
@@ -977,7 +968,7 @@ test("the voice-fix button toggles the stored value, defaulting to on from unset
   ]);
   assert.equal(findButton(first.kb, "menu:vfix").text, "🔧 Voice fix: on");
   await h.tap("vfix");
-  assert.equal(h.state.settings.fixVoiceTranscript, "off");
+  assert.equal(h.state.settings.get("fixVoiceTranscript"), "off");
 });
 
 test("closing deletes the menu message, or clears its buttons when the delete fails", async () => {

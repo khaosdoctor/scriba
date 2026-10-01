@@ -1,13 +1,9 @@
 import { type Bot, InlineKeyboard } from "grammy";
 import { config } from "../../config.ts";
-import {
-  escapeHtml,
-  fitTelegram,
-  makeJotId,
-  TIL_DETECTION_KEY,
-} from "../../core.ts";
+import { escapeHtml, fitTelegram, makeJotId } from "../../core.ts";
 import type { Repository, TaskDraftRow, TaskType } from "../../db.ts";
 import { logger } from "../../log.ts";
+import { SETTINGS } from "../../models/settings.ts";
 import type { Enricher } from "../../services/enrich.ts";
 import type { TaskNotesService } from "../../services/task-notes.ts";
 import { plainDate } from "../../time.ts";
@@ -18,13 +14,11 @@ import {
   withClose,
 } from "../../views/render/keyboard.ts";
 import {
-  detectionEnabled,
   draftFromDetection,
   filterTasks,
   isTaskType,
   parseTaskDate,
   parseTaskDraft,
-  TASK_DETECTION_KEY,
   type TaskDraft,
   type TaskView,
   TYPE_LABEL,
@@ -60,11 +54,6 @@ const VIEWS: TaskView[] = [
   "two",
   "done",
 ];
-
-/** Is jot → task detection on right now? */
-export async function taskDetectionEnabled(repo: Repository): Promise<boolean> {
-  return detectionEnabled(await repo.getSetting(TASK_DETECTION_KEY));
-}
 
 /** Marker in `/taskadd`'s "what's the task?" prompt, used when the command arrived with no
  *  text of its own. It carries no draft id — there is no draft yet. */
@@ -574,9 +563,9 @@ export class TasksFlow {
       case "r":
         return this.tapTick(ctx, action === "k", args);
       case "det":
-        return this.tapDetection(ctx);
+        return this.tapDetection(ctx, "taskDetection");
       case "til":
-        return this.tapTilDetection(ctx);
+        return this.tapDetection(ctx, "tilDetection");
       case "close":
         await ctx.answerCallbackQuery();
         log.info("tasks: screen closed");
@@ -726,9 +715,9 @@ export class TasksFlow {
   private async menuKeyboard(): Promise<InlineKeyboard> {
     const kb = new InlineKeyboard();
     for (const v of VIEWS) kb.text(VIEW_LABEL[v], `${TASKS_NS}:v:${v}:0`).row();
-    const on = await taskDetectionEnabled(this.repo);
+    const on = await this.repo.getSetting("taskDetection");
     kb.text(`🔎 Spot tasks in jots: ${on ? "on" : "off"}`, `${TASKS_NS}:det`);
-    const til = detectionEnabled(await this.repo.getSetting(TIL_DETECTION_KEY));
+    const til = await this.repo.getSetting("tilDetection");
     kb.row().text(
       `💡 Spot TILs in jots: ${til ? "on" : "off"}`,
       `${TASKS_NS}:til`,
@@ -912,23 +901,13 @@ export class TasksFlow {
     );
   }
 
-  private async tapDetection(ctx: any): Promise<void> {
-    const on = await taskDetectionEnabled(this.repo);
-    await this.repo.setSetting(TASK_DETECTION_KEY, on ? "off" : "on");
-    log.info({ enabled: !on }, "tasks: jot detection toggled");
-    await ctx.answerCallbackQuery({
-      text: on ? "I'll stop suggesting tasks" : "I'll suggest tasks again",
-    });
-    return this.showMenu(ctx, "edit");
-  }
-
-  private async tapTilDetection(ctx: any): Promise<void> {
-    const on = detectionEnabled(await this.repo.getSetting(TIL_DETECTION_KEY));
-    await this.repo.setSetting(TIL_DETECTION_KEY, on ? "off" : "on");
-    log.info({ enabled: !on }, "tasks: TIL detection toggled");
-    await ctx.answerCallbackQuery({
-      text: on ? "I'll stop suggesting TILs" : "I'll suggest TILs again",
-    });
+  private async tapDetection(
+    ctx: any,
+    key: "taskDetection" | "tilDetection",
+  ): Promise<void> {
+    const enabled = await this.repo.toggleSetting(key);
+    log.info({ key, enabled }, "tasks: detection toggled");
+    await ctx.answerCallbackQuery({ text: SETTINGS[key].label(enabled) });
     return this.showMenu(ctx, "edit");
   }
 }

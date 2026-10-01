@@ -2,6 +2,7 @@ import { type Bot, InlineKeyboard } from "grammy";
 import { config } from "../config.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
+import { RatingSchema } from "../models/settings.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import { DATE_RE, plainDate } from "../time.ts";
 import type { FollowupFlow } from "./followup.ts";
@@ -61,18 +62,13 @@ export class RatingCommand {
   /** Handle a `rate:<date>:<n>` button tap. Write-once via the DB gate, then replace the
    *  buttons with a confirmation so the day can't be rated twice. */
   async handleTap(ctx: any, date?: string, n?: string): Promise<void> {
-    const rating = Number(n);
     log.debug({ date, n }, "rating button tapped");
-    if (
-      !date ||
-      !DATE_RE.test(date) ||
-      !Number.isInteger(rating) ||
-      rating < 1 ||
-      rating > 10
-    ) {
+    const parsed = RatingSchema.safeParse(n);
+    if (!date || !DATE_RE.test(date) || !parsed.success) {
       log.warn({ date, n }, "rating tap rejected: bad payload");
       return void ctx.answerCallbackQuery({ text: "bad rating" });
     }
+    const rating = parsed.data;
     const { recorded, current } = await this.repo.recordRating(date, rating);
     if (!recorded) {
       log.info(

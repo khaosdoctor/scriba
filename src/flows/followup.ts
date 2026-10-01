@@ -3,12 +3,10 @@ import { config } from "../config.ts";
 import {
   entitiesToMarkdown,
   FOLLOWUP_CODES,
-  FOLLOWUP_SWITCH_KEY,
   type FollowupQuestion,
   followupFromCode,
   followupQuestions,
   followupRef,
-  switchEnabled,
 } from "../core.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
@@ -49,7 +47,7 @@ export class FollowupFlow {
   /** Ask the first question `date`'s note still needs answered, if any. Called right after
    *  the day is rated, unless the follow-up is switched off. */
   async start(date: string): Promise<void> {
-    if (!switchEnabled(await this.repo.getSetting(FOLLOWUP_SWITCH_KEY))) {
+    if (!(await this.repo.getSetting("nightlyFollowup"))) {
       log.info({ date }, "follow-up is off, not asking");
       return;
     }

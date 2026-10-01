@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   completeTaskLine,
-  detectionEnabled,
   draftFromDetection,
   effectiveStart,
   filterTasks,
@@ -491,10 +490,4 @@ test("a detected task with no timing at all keeps none — the card asks", () =>
     ).type,
     "personal",
   );
-});
-
-test("detection is on unless it was switched off", () => {
-  assert.equal(detectionEnabled(undefined), true);
-  assert.equal(detectionEnabled("on"), true);
-  assert.equal(detectionEnabled("off"), false);
 });

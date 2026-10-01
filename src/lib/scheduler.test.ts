@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { SETTINGS, type SettingKey } from "../models/settings.ts";
 
 // scheduler.ts pulls in config.ts, which validates process.env at import time, so give it
 // the bare minimum before loading, the same trick config.test.ts uses.
@@ -35,7 +36,7 @@ function harness(
   const summaries: string[] = [];
   let sweeps = 0;
   const repo = {
-    getSetting: async (key: string) => settings[key],
+    getSetting: async (key: SettingKey) => SETTINGS[key].parse(settings[key]),
     windowStats: async (): Promise<Stats> => ({
       total: 0,
       audio: 0,
@@ -205,7 +206,7 @@ test("a prompt that throws still re-arms for tomorrow", async (t) => {
   const scheduler = new Scheduler(
     {
       windowStats: async () => ({ total: 0 }),
-      getSetting: async () => undefined,
+      getSetting: async () => true,
     } as any,
     { retrySweep: async () => {} } as any,
     async () => {},
@@ -369,7 +370,7 @@ test("a rating prompt that never resolves does not stop the next night's", async
   const scheduler = new Scheduler(
     {
       windowStats: async () => ({ total: 0 }),
-      getSetting: async () => undefined,
+      getSetting: async () => true,
     } as any,
     { retrySweep: async () => {} } as any,
     async () => {},
@@ -397,7 +398,7 @@ test("a rating that throws does not hold back the habit review in the same tick"
   const scheduler = new Scheduler(
     {
       windowStats: async () => ({ total: 0 }),
-      getSetting: async () => undefined,
+      getSetting: async () => true,
     } as any,
     { retrySweep: async () => {} } as any,
     async () => {},

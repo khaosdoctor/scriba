@@ -1,10 +1,5 @@
 import { config } from "../config.ts";
-import {
-  parseClockTime,
-  RATING_SWITCH_KEY,
-  ratingDay,
-  switchEnabled,
-} from "../core.ts";
+import { parseClockTime, ratingDay } from "../core.ts";
 import type { Repository } from "../db.ts";
 import type { JotProcessor } from "../runtime/processor.ts";
 import { logger } from "./log.ts";
@@ -119,7 +114,7 @@ export class Scheduler {
   }
 
   private async fireRating(): Promise<void> {
-    if (!switchEnabled(await this.repo.getSetting(RATING_SWITCH_KEY))) {
+    if (!(await this.repo.getSetting("nightlyRating"))) {
       log.info("nightly rating is off, skipping");
       return;
     }

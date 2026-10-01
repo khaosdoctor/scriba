@@ -1,14 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { fakeSettings } from "../../test/fake-settings.ts";
 
 // index.ts pulls in config.ts, which validates process.env at import time — give it the
 // bare minimum before loading, the same trick config.test.ts and menu.test.ts use.
 process.env.TELEGRAM_BOT_TOKEN ??= "t";
 process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
-const { TasksFlow, parseTaskPromptRef, taskDetectionEnabled } = await import(
-  "./index.ts"
-);
+const { TasksFlow, parseTaskPromptRef } = await import("./index.ts");
 const { TaskNotesService } = await import("../../services/task-notes.ts");
 const { noteOps } = await import("../../test/note-ops.ts");
 
@@ -71,8 +70,7 @@ function harness(
       drafts.set(id, { ...d, status: "created" });
       return true;
     },
-    getSetting: async (k: string) => settings.get(k),
-    setSetting: async (k: string, v: string) => void settings.set(k, v),
+    ...fakeSettings(settings),
   };
 
   // A minimal Obsidian stand-in: one note in memory, read and written whole.
@@ -547,10 +545,6 @@ test("the TIL and task switches do not touch each other", async () => {
 
 test("jot detection is on by default and the menu toggles it", async () => {
   const h = harness();
-  assert.equal(
-    await taskDetectionEnabled({ getSetting: async () => undefined } as any),
-    true,
-  );
   await h.flow.handleTap(h.ctx as any, ["det"]);
   assert.equal(h.settings.get("taskDetection"), "off");
   assert.match(h.edited.at(-1)!.text, /🗂 Tasks/);

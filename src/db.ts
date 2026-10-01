@@ -7,6 +7,7 @@ import type {
   TaskDraftRow,
 } from "./models/domain.ts";
 import type { Stats, StatusCounts } from "./models/ops.ts";
+import type { SettingKey, SettingValue, SwitchKey } from "./models/settings.ts";
 import { openDb } from "./repositories/db.ts";
 import { JotRepository } from "./repositories/jots.ts";
 import { LinkRuleRepository } from "./repositories/link-rules.ts";
@@ -211,11 +212,22 @@ export class Repository {
   async markTilOffered(jotId: string): Promise<void> {
     return this.jots.markTilOffered(jotId);
   }
-  async getSetting(key: string): Promise<string | undefined> {
-    return this.settings.getSetting(key);
+  async getSetting<K extends SettingKey>(key: K): Promise<SettingValue<K>> {
+    return this.settings.get(key);
   }
-  async setSetting(key: string, value: string): Promise<void> {
-    return this.settings.setSetting(key, value);
+  async setSetting(key: SettingKey, value: string): Promise<void> {
+    return this.settings.set(key, value);
+  }
+  async toggleSetting(key: SwitchKey): Promise<boolean> {
+    return this.settings.toggle(key);
+  }
+  async seedSettings(
+    defaults: Partial<Record<SettingKey, string>>,
+  ): Promise<void> {
+    return this.settings.seedDefaults(defaults);
+  }
+  async ratingTime(fallback: string): Promise<string> {
+    return this.settings.ratingTime(fallback);
   }
 
   async close(): Promise<void> {

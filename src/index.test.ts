@@ -7,6 +7,8 @@ import { Bot } from "grammy";
 import { MockAgent, setGlobalDispatcher } from "undici";
 import { Repository } from "./db.ts";
 import { loadConfig } from "./models/config.ts";
+import type { SettingKey } from "./models/settings.ts";
+import { SettingsRepository } from "./repositories/settings.ts";
 import { HealthMonitor } from "./services/health.ts";
 import { VaultService } from "./services/vault.ts";
 
@@ -127,11 +129,11 @@ function fakeTelegram(
 
 /** Records every settings write on `events`, then performs it. */
 function recordSettingWrites(t: TestContext, events: string[]) {
-  const write = Repository.prototype.setSetting;
+  const write = SettingsRepository.prototype.set;
   t.mock.method(
-    Repository.prototype,
-    "setSetting",
-    function (this: Repository, key: string, value: string) {
+    SettingsRepository.prototype,
+    "set",
+    function (this: SettingsRepository, key: SettingKey, value: string) {
       events.push(`set ${key}=${value}`);
       return write.call(this, key, value);
     },

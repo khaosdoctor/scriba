@@ -1,11 +1,5 @@
 import { ScribaBot } from "./bot.ts";
-import {
-  ENRICH_MODEL_KEY,
-  formatDeployNotice,
-  RATING_TIME_KEY,
-  ratingTime,
-  VOICE_FIX_MODEL_KEY,
-} from "./core.ts";
+import { formatDeployNotice } from "./core.ts";
 import { Repository } from "./db.ts";
 import { Scheduler } from "./lib/scheduler.ts";
 import { logger } from "./log.ts";
@@ -48,7 +42,7 @@ export interface Scriba {
 
 async function buildEnricher(config: Config, repo: Repository) {
   const enrichModel =
-    (await repo.getSetting(ENRICH_MODEL_KEY)) ?? config.enrich.model;
+    (await repo.getSetting("enrichModel")) ?? config.enrich.model;
   const fallbacks: EnrichFallback[] = [];
   if (config.enrich.groqApiKey)
     fallbacks.push({
@@ -154,9 +148,7 @@ export async function createScriba(
     (d) => bot.promptHabits(d),
     () => bot.promptTaskSummary(),
   );
-  scheduler.setRatingTime(
-    ratingTime(await repo.getSetting(RATING_TIME_KEY), config.ratingTime),
-  );
+  scheduler.setRatingTime(await repo.ratingTime(config.ratingTime));
   bot.setScheduler(scheduler);
 
   // Probes are plain GETs to a host or a /models listing, never a call that generates
@@ -205,10 +197,10 @@ export async function createScriba(
       const unstuck = await repo.resetProcessing();
       log.info({ requeued: unstuck }, "crash recovery done");
       // First boot only: from then on the DB value wins, changed at runtime via /menu.
-      if (!(await repo.getSetting(ENRICH_MODEL_KEY)))
-        await repo.setSetting(ENRICH_MODEL_KEY, config.enrich.model);
-      if (!(await repo.getSetting(VOICE_FIX_MODEL_KEY)))
-        await repo.setSetting(VOICE_FIX_MODEL_KEY, config.voiceFix.model);
+      await repo.seedSettings({
+        enrichModel: config.enrich.model,
+        voiceFixModel: config.voiceFix.model,
+      });
       links.startIndex();
       scheduler.start();
       void processor.retrySweep();

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { SETTINGS, type SettingKey } from "../models/settings.ts";
 
 // followup.ts pulls in config.ts, which validates process.env at import time, so give it the
 // bare minimum first (the same trick scheduler.test.ts uses).
@@ -35,9 +36,9 @@ function harness(
     },
   };
   const repo = {
-    getSetting: async (key: string) => {
+    getSetting: async (key: SettingKey) => {
       keys.push(key);
-      return settings[key];
+      return SETTINGS[key].parse(settings[key]);
     },
   };
   const obsidian = {

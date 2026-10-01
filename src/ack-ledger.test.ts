@@ -832,13 +832,13 @@ ledger("tk", [
     tap: "tk:det",
     when: "toggle task detection, answered after the write",
     expect:
-      "repo.getSetting > repo.setSetting > ack(I'll stop suggesting tasks) > repo.getSetting×2 > tg.editMessageText",
+      "repo.toggleSetting > ack(I'll stop suggesting tasks) > repo.getSetting×2 > tg.editMessageText",
   },
   {
     tap: "tk:til",
     when: "toggle TIL detection, answered after the write",
     expect:
-      "repo.getSetting > repo.setSetting > ack(I'll stop suggesting TILs) > repo.getSetting×2 > tg.editMessageText",
+      "repo.toggleSetting > ack(I'll stop suggesting TILs) > repo.getSetting×2 > tg.editMessageText",
   },
   {
     tap: "tk:close",
@@ -920,7 +920,7 @@ ledger("menu: screens", [
   {
     tap: "menu:root",
     when: "root",
-    expect: "ack() > repo.getSetting×7 > tg.editMessageText",
+    expect: "ack() > repo.getSetting×6 > repo.ratingTime > tg.editMessageText",
   },
   {
     tap: "menu:maint",
@@ -1065,26 +1065,33 @@ ledger("menu: settings", [
     tap: "menu:vfix",
     when: "voice fix toggle, answered after the write",
     expect:
-      "repo.getSetting > repo.setSetting > ack(Voice fix on) > repo.getSetting×7 > tg.editMessageText",
+      "repo.toggleSetting > ack(Voice fix on) > repo.getSetting×6 > repo.ratingTime > tg.editMessageText",
   },
   {
     tap: "menu:rtsw",
     when: "nightly rating toggle, answered after the write",
     expect:
-      "repo.getSetting > repo.setSetting > ack(Nightly rating off) > repo.getSetting×7 > tg.editMessageText",
+      "repo.toggleSetting > ack(Nightly rating off) > repo.getSetting×6 > repo.ratingTime > tg.editMessageText",
   },
   {
     tap: "menu:fusw",
     when: "follow-up toggle, answered after the write",
     expect:
-      "repo.getSetting > repo.setSetting > ack(Follow-up off) > repo.getSetting×7 > tg.editMessageText",
+      "repo.toggleSetting > ack(Follow-up off) > repo.getSetting×6 > repo.ratingTime > tg.editMessageText",
   },
   {
     tap: "menu:rtsw",
     when: "toggle with the answer and the redraw both rejected",
     fail: ["answerCallbackQuery", "editMessageText"],
     expect:
-      "repo.getSetting > repo.setSetting > ack(Nightly rating off) > repo.getSetting×7 > tg.editMessageText",
+      "repo.toggleSetting > ack(Nightly rating off) > repo.getSetting×6 > repo.ratingTime > tg.editMessageText",
+  },
+  {
+    tap: "menu:vfix",
+    when: "voice fix toggle with the answer and the redraw both rejected",
+    fail: ["answerCallbackQuery", "editMessageText"],
+    expect:
+      "repo.toggleSetting > ack(Voice fix on) > repo.getSetting×6 > repo.ratingTime > tg.editMessageText",
   },
   {
     tap: "menu:rtt",

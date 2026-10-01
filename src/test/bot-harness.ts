@@ -6,6 +6,7 @@ process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
 
 import type { Jot } from "../db.ts";
+import { fakeSettings } from "./fake-settings.ts";
 import { noteOps } from "./note-ops.ts";
 
 export const OWNER = 1;
@@ -130,8 +131,7 @@ export async function botHarness() {
   const failApi = new Set<string>();
 
   const repo = recorder("repo", timeline, repoImpl, {
-    getSetting: (key: string) => settings.get(key),
-    setSetting: (key: string, value: string) => void settings.set(key, value),
+    ...fakeSettings(settings),
     stopwordList: [],
     rejectionList: [],
     registeredLinks: [],
