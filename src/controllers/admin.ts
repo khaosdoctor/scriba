@@ -1,5 +1,6 @@
-import { clipUpdate, formatJotDetail } from "../core.ts";
+import { formatJotDetail } from "../core.ts";
 import type { Repository } from "../db.ts";
+import { clipUpdate } from "../lib/feed.ts";
 import { reprocessTargets } from "../lib/jot.ts";
 import { distinctSurfaces } from "../lib/links.ts";
 import { logger } from "../lib/log.ts";

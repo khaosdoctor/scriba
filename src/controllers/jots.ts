@@ -1,6 +1,7 @@
-import { clipUpdate, escapeHtml } from "../core.ts";
 import type { Jot, Repository } from "../db.ts";
+import { clipUpdate } from "../lib/feed.ts";
 import { logger } from "../lib/log.ts";
+import { escapeHtml } from "../lib/text.ts";
 import type { Notifier } from "../models/ops.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";

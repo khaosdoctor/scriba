@@ -18,12 +18,21 @@ function params({ html, keyboard }: SendOptions = {}) {
   };
 }
 
-/** A new message can also point the compose box at itself; an edit cannot. */
+/** A new message can also point the compose box at itself or hang off an earlier message;
+ *  an edit can do neither. */
 function sendParams(opts: SendOptions = {}) {
   return {
     ...params(opts),
     ...(opts.forceReply
       ? { reply_markup: { force_reply: true as const } }
+      : {}),
+    ...(opts.replyTo
+      ? {
+          reply_parameters: {
+            message_id: opts.replyTo,
+            allow_sending_without_reply: true,
+          },
+        }
       : {}),
   };
 }

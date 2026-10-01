@@ -1,15 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { AgentService } from "../services/agent.ts";
+import { CommandController } from "./command.ts";
+import { Modes } from "./modes.ts";
 
-// command.ts pulls in config.ts, which validates process.env at import time — give it the
-// bare minimum before loading, the same trick config.test.ts uses.
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { CommandSession } = await import("./command.ts");
-const { AgentService } = await import("../services/agent.ts");
-
-/** Let the session's promise chains (agent stream, serialized Telegram sends) run out. */
+/** Let the controller's promise chains (agent stream, serialized Telegram sends) run out. */
 const settle = async (times = 6) => {
   for (let i = 0; i < times; i++) await new Promise((r) => setTimeout(r, 1));
 };
@@ -75,38 +70,30 @@ const result = (text?: string, subtype = "success") => ({
   ...(text === undefined ? {} : { result: text }),
 });
 
-/** The chat the owner talks to the bot in. Deliberately not the configured user id, so a
- *  message addressed to the wrong one shows up as a failure. */
-const CHAT = 7;
+type Sent = { text: string; id: number; opts: any };
 
-/** A session wired to stubs that record every Telegram call. */
+/** A controller wired to a chat that only records, opened unless the vault is missing. */
 async function harness(
   feedEditMs = 0,
   turnSilenceMs = 30_000,
   vaultEnabled = true,
+  idleMs = 60_000,
 ) {
-  const sent: { chat: number; text: string; opts: any }[] = [];
-  const edits: { chat: number; msg: number; text: string; opts: any }[] = [];
+  const sent: Sent[] = [];
+  const edits: { msg: number; text: string; opts: any }[] = [];
+  const notices: string[] = [];
   let nextId = 100;
   const failSends = { on: false };
-  const bot = {
-    command: () => {},
-    api: {
-      sendMessage: async (chat: number, text: string, opts: any = {}) => {
-        if (failSends.on) throw new Error("telegram is down");
-        sent.push({ chat, text, opts });
-        return { chat: { id: chat }, message_id: nextId++ };
-      },
-      editMessageText: async (
-        chat: number,
-        msg: number,
-        text: string,
-        opts: any = {},
-      ) => {
-        edits.push({ chat, msg, text, opts });
-        return true;
-      },
+  const notifier = {
+    notify: async (text: string) => void notices.push(text),
+    send: async (text: string, opts: any = {}) => {
+      if (failSends.on) throw new Error("telegram is down");
+      const id = nextId++;
+      sent.push({ text, id, opts });
+      return id;
     },
+    edit: async (msg: number, text: string, opts: any = {}) =>
+      void edits.push({ msg, text, opts }),
   };
   const vault = { enabled: vaultEnabled };
   const web = { fetchPage: async () => "# AI Writing Tropes to Avoid\nnope" };
@@ -117,68 +104,62 @@ async function harness(
     { model: "m", thinkingTokens: 4000 },
     agent.query as any,
   );
-  const session: any = new CommandSession(
-    bot as any,
-    service,
+  const modes = new Modes(notifier, idleMs);
+  const command: any = new CommandController(
+    { service, notifier, modes },
     feedEditMs,
     turnSilenceMs,
   );
 
-  /** Every ctx.reply, with the id of the message it produced and the one it answers. */
-  const replies: { text: string; id: number; source: number; opts: any }[] = [];
-  const reply =
-    (source: number) =>
-    async (text: string, opts: any = {}) => {
-      const id = nextId++;
-      replies.push({ text, id, source, opts });
-      return { chat: { id: CHAT }, message_id: id };
-    };
-  const ctx = { chat: { id: CHAT }, reply: reply(0) };
-
-  /** Deliver a message the way Telegram does: its own incoming message id, which is what
+  /** The status message of each prompt, oldest first. */
+  const replies: Sent[] = [];
+  /** Deliver a message the way the text view does: the owner's own message id is what
    *  everything about that turn should hang off. Returns that id. */
   const say = async (text: string): Promise<number> => {
     const incoming = nextId++;
-    await session.handle(
-      {
-        chat: { id: CHAT },
-        message: { message_id: incoming, text },
-        reply: reply(incoming),
-      },
-      text,
-    );
+    const before = sent.length;
+    await command.handle(text, incoming);
+    const status = sent[before];
+    if (status) replies.push(status);
     return incoming;
   };
+  /** Every send that is not a prompt's status message. */
+  const extra = () => sent.filter((s) => !replies.includes(s));
 
-  await session.start(ctx);
-  replies.length = 0; // drop the "command mode is on" banner
-  return { session, agent, ctx, say, replies, sent, edits, failSends };
+  const opened = command.open();
+  return {
+    command,
+    modes,
+    agent,
+    say,
+    replies,
+    extra,
+    edits,
+    notices,
+    failSends,
+    opened,
+  };
 }
 
 /** The text of every edit made to one message, oldest first. */
 const editsTo = (edits: { msg: number; text: string }[], id: number) =>
   edits.filter((e) => e.msg === id).map((e) => e.text);
 
-/** What a recorded send/reply is threaded under, if anything. */
-const repliedTo = (call: { opts: any }) =>
-  call.opts?.reply_parameters?.message_id;
+/** What a recorded send is threaded under, if anything. */
+const repliedTo = (call: { opts: any }) => call.opts?.replyTo;
 
 /** The callback data behind a status message's ⏹ Stop button. */
 const stopData = (reply: { opts: any }) =>
-  reply.opts.reply_markup.inline_keyboard[0][0].callback_data as string;
+  reply.opts.keyboard.inline_keyboard[0][0].callback_data as string;
 
-const tap = (messageText = "") => {
+/** The id after `cm:s:` on a status message. */
+const turnId = (reply: { opts: any }) => stopData(reply).split(":")[2];
+
+/** Press Stop the way the view does, collecting the toasts. */
+const stop = async (command: any, id?: string): Promise<string[]> => {
   const answered: string[] = [];
-  const edited: string[] = [];
-  return {
-    answered,
-    edited,
-    ctx: {
-      answerCallbackQuery: async (o: any) => void answered.push(o.text),
-      editMessageText: async (text: string) => void edited.push(text),
-      callbackQuery: { message: { text: messageText } },
-    } as any,
-  };
+  await command.stop(id, async (toast: string) => void answered.push(toast));
+  return answered;
 };
 
 const WRITE = "mcp__vault__vault_write";
@@ -186,7 +167,7 @@ const DELETE = "mcp__vault__vault_delete";
 
 /** The ✅/❌ callback data on a confirmation message. */
 const confirmData = (call: { opts: any }) =>
-  call.opts.reply_markup.inline_keyboard[0].map(
+  call.opts.keyboard.inline_keyboard[0].map(
     (b: any) => b.callback_data as string,
   );
 
@@ -199,7 +180,7 @@ test("a message sent while the agent is working is accepted, not refused", async
 
   assert.equal(replies.length, 2);
   assert.match(replies[0]!.text, /Working/);
-  // The second one says it was seen and where it stands — the old code refused it.
+  // The second one says it was seen and where it is in the queue.
   assert.match(replies[1]!.text, /Queued/);
   assert.match(replies[1]!.text, /1 message ahead/);
   // Each status message hangs off the message that asked for it.
@@ -217,7 +198,7 @@ test("handle returns without waiting for the agent", async () => {
   assert.deepEqual(agent.prompts, ["first"]);
 });
 
-test("each answer lands on the message that asked for it", async () => {
+test("each answer arrives on the message that asked for it", async () => {
   const { agent, say, replies, edits } = await harness();
   await say("first");
   await settle();
@@ -233,7 +214,7 @@ test("each answer lands on the message that asked for it", async () => {
   // The first prompt's status message became its answer, and lost its button.
   const answer = edits.find((e) => e.msg === firstId && e.text === "one done");
   assert.ok(answer, "the first prompt's message was edited into the answer");
-  assert.deepEqual(answer!.opts.reply_markup.inline_keyboard.flat(), []);
+  assert.deepEqual(answer!.opts.keyboard.inline_keyboard.flat(), []);
   // The second was handed over and its message promoted out of the queue.
   assert.deepEqual(agent.prompts, ["first", "second"]);
   assert.ok(edits.some((e) => e.msg === secondId && /Working/.test(e.text)));
@@ -245,7 +226,7 @@ test("each answer lands on the message that asked for it", async () => {
 });
 
 test("the live feed rewrites one message instead of posting more", async () => {
-  const { agent, say, replies, sent, edits } = await harness();
+  const { agent, say, replies, extra, edits } = await harness();
   const m1 = await say("write a note");
   await settle();
 
@@ -261,8 +242,8 @@ test("the live feed rewrites one message instead of posting more", async () => {
   );
   await settle();
 
-  // Not one message per thought — that's what buried the chat.
-  assert.deepEqual(sent, []);
+  // Not one message per thought: that's what buried the chat.
+  assert.deepEqual(extra(), []);
   const status = replies[0]!;
   assert.equal(repliedTo(status), m1);
   const latest = editsTo(edits, status.id).at(-1)!;
@@ -323,7 +304,7 @@ test("the feed drops its oldest lines rather than outgrow the message", async ()
 });
 
 test("feed edits are throttled, so a busy agent doesn't hammer Telegram", async () => {
-  // A gap far longer than the test: whatever lands after the first edit waits for it.
+  // An interval far longer than the test: whatever arrives after the first edit waits for it.
   const { agent, say, replies, edits } = await harness(10_000);
   await say("go");
   await settle();
@@ -346,7 +327,7 @@ test("prose written mid-run joins the feed; the closing prose is the answer", as
   await settle();
 
   // Spaced out, the way a real run arrives: prose, then the tool call that supersedes it.
-  // (A turn that finishes before the next render just skips that frame — the answer wins.)
+  // (A turn that finishes before the next render just skips that frame: the answer wins.)
   agent.emit(assistant({ type: "text", text: "reading the folder first" }));
   await settle();
   agent.emit(
@@ -394,7 +375,7 @@ test("the feed follows whichever prompt is being answered", async () => {
   assert.ok(!two.some((t) => t.includes("on the first")));
 });
 
-test("a failing tool result is surfaced, a successful one is not", async () => {
+test("a failing tool result gets a line, a successful one does not", async () => {
   const { agent, say, replies, edits } = await harness();
   await say("go");
   await settle();
@@ -414,28 +395,14 @@ test("a failing tool result is surfaced, a successful one is not", async () => {
   assert.deepEqual(lines, ["⚠️ no such note"]);
 });
 
-test("a deleted prompt can't take its answer down with it", async () => {
-  const { say, replies } = await harness();
-  await say("go");
-  await settle();
-  // Telegram refuses a reply to a message that's gone unless this is set.
-  assert.equal(
-    replies[0]!.opts.reply_parameters.allow_sending_without_reply,
-    true,
-  );
-});
-
 test("Stop interrupts the running turn and closes its message", async () => {
-  const { session, agent, say, replies, edits } = await harness();
+  const { command, agent, say, replies, edits } = await harness();
   await say("long one");
   await settle();
 
-  const [, , id] = stopData(replies[0]!).split(":");
-  const t = tap();
-  await session.handleTap(t.ctx, ["s", id]);
+  assert.deepEqual(await stop(command, turnId(replies[0]!)), ["stopping…"]);
   await settle();
   assert.equal(agent.interrupts, 1);
-  assert.deepEqual(t.answered, ["stopping…"]);
 
   // The interrupt comes back as a result; the turn settles as stopped, not as an answer.
   agent.emit(result(undefined, "error_during_execution"));
@@ -445,19 +412,16 @@ test("Stop interrupts the running turn and closes its message", async () => {
 });
 
 test("Stop on a queued prompt drops it without touching the agent", async () => {
-  const { session, agent, say, replies, edits } = await harness();
+  const { command, agent, say, replies, edits } = await harness();
   await say("first");
   await settle();
   await say("second");
   await settle();
 
-  const [, , id] = stopData(replies[1]!).split(":");
-  const t = tap();
-  await session.handleTap(t.ctx, ["s", id]);
+  assert.deepEqual(await stop(command, turnId(replies[1]!)), ["dropped"]);
   await settle();
 
   assert.equal(agent.interrupts, 0);
-  assert.deepEqual(t.answered, ["dropped"]);
   assert.match(
     edits.filter((e) => e.msg === replies[1]!.id).at(-1)!.text,
     /Dropped/,
@@ -469,16 +433,15 @@ test("Stop on a queued prompt drops it without touching the agent", async () => 
 });
 
 test("a stop for a turn that already finished says so", async () => {
-  const { session, agent, say, replies } = await harness();
+  const { command, agent, say, replies } = await harness();
   await say("go");
   await settle();
   agent.emit(result("done"));
   await settle();
 
-  const [, , id] = stopData(replies[0]!).split(":");
-  const t = tap();
-  await session.handleTap(t.ctx, ["s", id]);
-  assert.deepEqual(t.answered, ["nothing to stop"]);
+  assert.deepEqual(await stop(command, turnId(replies[0]!)), [
+    "nothing to stop",
+  ]);
 });
 
 test("a query that dies is rebuilt, and the queue keeps moving", async () => {
@@ -501,23 +464,56 @@ test("a query that dies is rebuilt, and the queue keeps moving", async () => {
 });
 
 test("closing the session answers everything still in flight", async () => {
-  const { session, agent, ctx, say, replies, edits } = await harness();
+  const { command, modes, agent, say, replies, edits } = await harness();
   await say("first");
   await settle();
   await say("second");
   await settle();
 
-  const inFlight = [...replies]; // finish() posts its own reply; only these two matter
-  await session.finish(ctx);
+  modes.close();
   await settle();
 
-  assert.equal(session.isOpen(), false);
+  assert.equal(command.isOpen(), false);
   assert.equal(agent.interrupts, 1);
-  for (const r of inFlight)
-    assert.match(
-      edits.filter((e) => e.msg === r.id).at(-1)!.text,
-      /Command mode closed/,
-    );
+  assert.match(
+    edits.filter((e) => e.msg === replies[0]!.id).at(-1)!.text,
+    /Command mode closed — this one stopped/,
+  );
+  assert.match(
+    edits.filter((e) => e.msg === replies[1]!.id).at(-1)!.text,
+    /Command mode closed — this one never ran/,
+  );
+});
+
+test("a session nobody talks to closes itself: in-flight prompts are answered and the owner is told", async () => {
+  const IDLE = 40;
+  const { command, agent, say, replies, edits, notices } = await harness(
+    0,
+    30_000,
+    true,
+    IDLE,
+  );
+  await say("first");
+  await settle();
+  await say("second");
+  await settle();
+
+  await new Promise((r) => setTimeout(r, IDLE * 2));
+  await settle();
+
+  assert.equal(command.isOpen(), false);
+  assert.ok(agent.interrupts >= 1, "the query was torn down with the session");
+  assert.match(
+    editsTo(edits, replies[0]!.id).at(-1)!,
+    /Command mode closed — this one stopped/,
+  );
+  assert.match(
+    editsTo(edits, replies[1]!.id).at(-1)!,
+    /Command mode closed — this one never ran/,
+  );
+  assert.deepEqual(notices, [
+    "🧭 Command mode timed out — back to journaling.",
+  ]);
 });
 
 test("the agent is given a thinking budget, so there is reasoning to relay", async () => {
@@ -538,9 +534,9 @@ test("a turn that goes silent is given up on, and the queue moves", async () => 
   await say("second");
   await settle();
 
-  // The agent takes the prompt, does some work, then stops producing anything at all —
-  // no result, and the query never ends. Before the watchdog this wedged the session:
-  // `active` stayed set and every later message queued behind it forever.
+  // The agent takes the prompt, does some work, then stops producing anything at all:
+  // no result, and the query never ends. Without the watchdog this wedges the session,
+  // since `active` stays set and every later message queues behind it forever.
   agent.emit(
     assistant({
       type: "tool_use",
@@ -581,7 +577,7 @@ test("the agent doing anything at all resets the silence timer", async () => {
 });
 
 test("a turn waiting on a confirmation tap isn't counted as silent", async () => {
-  const { session, agent, say, replies, edits } = await harness(0, SILENCE);
+  const { command, agent, say, replies, edits } = await harness(0, SILENCE);
   await say("write a note");
   await settle();
 
@@ -597,8 +593,8 @@ test("a turn waiting on a confirmation tap isn't counted as silent", async () =>
     "a turn waiting on the owner was given up on",
   );
 
-  // Once the tap lands the clock runs again, so a query that then dies is still caught.
-  session.denyPending();
+  // Once the tap arrives the clock runs again, so a query that then dies is still caught.
+  command.denyPending();
   assert.equal((await decision).behavior, "deny");
   await silence();
   assert.match(editsTo(edits, replies[0]!.id).at(-1)!, /went quiet/);
@@ -612,48 +608,30 @@ test("the watchdog stops with the turn, and doesn't fire after an answer", async
   await settle();
   await silence();
 
-  // The answer is the last word: no late "went quiet" landing on top of it.
+  // The answer is the last word: no late "went quiet" written over it.
   assert.equal(editsTo(edits, replies[0]!.id).at(-1), "all done");
 });
 
-test("command mode refuses to open while task mode is open", async () => {
-  const { session, ctx, replies } = await harness();
-  await session.finish(ctx);
-  replies.length = 0;
-  session.setBusyCheck(() => true);
+test("command mode refuses to open while task mode is open, and re-opens over itself", async () => {
+  const { command, modes } = await harness();
+  modes.close();
+  modes.open("task");
 
-  await session.start(ctx);
+  assert.equal(command.open(), "busy");
+  assert.equal(command.isOpen(), false);
+  assert.equal(modes.isOpen("task"), true);
 
-  assert.equal(session.isOpen(), false);
-  assert.deepEqual(
-    replies.map((r) => r.text),
-    ["📝 Task mode is open. Send /done to close it first, then /command."],
-  );
+  modes.close();
+  assert.equal(command.open(), "opened");
+  command.sessionId = "previous-session";
+  assert.equal(command.open(), "opened");
+  assert.equal(command.sessionId, undefined, "a second /command starts over");
 });
 
 test("command mode refuses to open without a mounted vault", async () => {
-  const { session, ctx, replies } = await harness(0, 30_000, false);
-
-  await session.start(ctx);
-
-  assert.equal(session.isOpen(), false);
-  assert.deepEqual(
-    replies.map((r) => r.text),
-    ["⚠️ command mode needs SCRIBA_VAULT_HOST_PATH — the vault isn't mounted."],
-  );
-});
-
-test("/done with command mode closed says so", async () => {
-  const { session, ctx, replies } = await harness();
-  await session.finish(ctx);
-  replies.length = 0;
-
-  await session.finish(ctx);
-
-  assert.deepEqual(
-    replies.map((r) => r.text),
-    ["Command mode isn't open."],
-  );
+  const { command, opened } = await harness(0, 30_000, false);
+  assert.equal(opened, "noVault");
+  assert.equal(command.isOpen(), false);
 });
 
 test("a result that gave up with no text, and an empty success, say so", async () => {
@@ -709,7 +687,7 @@ test("the agent only gets the vault tools and web search", async () => {
 });
 
 test("read-only tools and web search run without asking, anything else is refused", async () => {
-  const { agent, say, sent } = await harness();
+  const { agent, say, extra } = await harness();
   await say("go");
   await settle();
   const { canUseTool } = agent.options;
@@ -729,11 +707,11 @@ test("read-only tools and web search run without asking, anything else is refuse
     behavior: "deny",
     message: "Bash is not available. Only the vault tools and web search are.",
   });
-  assert.deepEqual(sent, [], "nothing was asked in the chat");
+  assert.deepEqual(extra(), [], "nothing was asked in the chat");
 });
 
 test("a write waits for the ✅ tap and then goes through", async () => {
-  const { session, agent, say, sent } = await harness();
+  const { command, agent, say, extra } = await harness();
   const source = await say("write it");
   await settle();
 
@@ -741,48 +719,43 @@ test("a write waits for the ✅ tap and then goes through", async () => {
   const decision = agent.options.canUseTool(WRITE, input);
   await settle();
 
-  const ask = sent.at(-1)!;
+  const ask = extra().at(-1)!;
   assert.equal(
     ask.text,
     "✏️ Write <code>notes/a.md</code>?\n<blockquote>hi</blockquote>",
   );
-  assert.equal(ask.opts.parse_mode, "HTML");
+  assert.equal(ask.opts.html, true);
   assert.equal(repliedTo(ask), source);
   const [yes, no] = confirmData(ask);
   assert.match(yes!, /^cm:y:/);
   assert.match(no!, /^cm:n:/);
 
-  const t = tap("asked");
-  await session.handleTap(t.ctx, yes!.split(":").slice(1));
-  assert.deepEqual(t.answered, ["doing it"]);
-  assert.deepEqual(t.edited, ["asked\n✅ approved"]);
+  const decide = command.takeConfirmation(yes!.split(":")[2]);
+  assert.ok(decide, "the tap found its question");
+  decide(true);
   assert.deepEqual(await decision, { behavior: "allow", updatedInput: input });
 });
 
 test("a declined delete is refused, and a second tap on it has expired", async () => {
-  const { session, agent, say, sent } = await harness();
+  const { command, agent, say, extra } = await harness();
   await say("delete it");
   await settle();
 
   const decision = agent.options.canUseTool(DELETE, { path: "notes/a.md" });
   await settle();
 
-  const ask = sent.at(-1)!;
+  const ask = extra().at(-1)!;
   assert.equal(ask.text, "🗑 Delete <code>notes/a.md</code>?");
   const [, no] = confirmData(ask);
-  const rest = no!.split(":").slice(1);
-  const t = tap("asked");
-  await session.handleTap(t.ctx, rest);
-  assert.deepEqual(t.answered, ["skipped"]);
-  assert.deepEqual(t.edited, ["asked\n❌ declined"]);
+  const id = no!.split(":")[2];
+  command.takeConfirmation(id)!(false);
   assert.deepEqual(await decision, {
     behavior: "deny",
     message: "The owner declined that change.",
   });
 
-  const again = tap();
-  await session.handleTap(again.ctx, rest);
-  assert.deepEqual(again.answered, ["expired"]);
+  assert.equal(command.takeConfirmation(id), undefined);
+  assert.equal(command.takeConfirmation(undefined), undefined);
 });
 
 test("a confirmation Telegram refuses to send is declined rather than left waiting", async () => {
@@ -800,18 +773,17 @@ test("a confirmation Telegram refuses to send is declined rather than left waiti
 });
 
 test("Stop and /done refuse the confirmations still waiting", async () => {
-  const { session, agent, ctx, say, replies } = await harness();
+  const { command, modes, agent, say, replies } = await harness();
   await say("write it");
   await settle();
 
   const first = agent.options.canUseTool(WRITE, { path: "a.md", content: "" });
   await settle();
-  const [, , id] = stopData(replies[0]!).split(":");
-  await session.handleTap(tap().ctx, ["s", id]);
+  await stop(command, turnId(replies[0]!));
   assert.equal((await first).behavior, "deny");
 
   const second = agent.options.canUseTool(DELETE, { path: "a.md" });
   await settle();
-  await session.finish(ctx);
+  modes.close();
   assert.equal((await second).behavior, "deny");
 });

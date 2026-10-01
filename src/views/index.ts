@@ -1,12 +1,13 @@
 import type { Bot, Context } from "grammy";
 import type { AdminController } from "../controllers/admin.ts";
+import type { CommandController } from "../controllers/command.ts";
 import type { HabitController } from "../controllers/habits.ts";
 import type { JotController } from "../controllers/jots.ts";
+import type { Modes } from "../controllers/modes.ts";
 import type { RatingController } from "../controllers/rating.ts";
 import type { SettingsController } from "../controllers/settings.ts";
 import type { TaskController } from "../controllers/tasks.ts";
 import type { Jot } from "../db.ts";
-import type { CommandSession } from "../flows/command.ts";
 import { logger } from "../log.ts";
 import type { JotKind } from "../models/domain.ts";
 import { callbackViews } from "./callbacks/index.ts";
@@ -58,7 +59,8 @@ export type ViewDeps = {
   habits: HabitController;
   settings: SettingsController;
   menus: MenuLifetime;
-  command: CommandSession;
+  modes: Modes;
+  command: CommandController;
   tasks: TaskController;
   jotController: JotController;
   jots: JotHandlers;

@@ -2,6 +2,7 @@ import { extname } from "node:path";
 import { Bot, InlineKeyboard } from "grammy";
 import { config } from "./config.ts";
 import type { AdminController } from "./controllers/admin.ts";
+import { CommandController } from "./controllers/command.ts";
 import { HabitController } from "./controllers/habits.ts";
 import { JotController } from "./controllers/jots.ts";
 import { Modes } from "./controllers/modes.ts";
@@ -28,7 +29,6 @@ import {
   withinSquashWindow,
 } from "./core.ts";
 import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
-import { CommandSession } from "./flows/command.ts";
 import type { Scheduler } from "./lib/scheduler.ts";
 import type { TaskDraft } from "./lib/tasks.ts";
 import { logger } from "./log.ts";
@@ -100,7 +100,7 @@ export class ScribaBot implements BotServices {
   private queue!: FlushQueue;
   private rating: RatingController;
   private habits: HabitController;
-  private command: CommandSession;
+  private command: CommandController;
   private tasks: TaskController;
   private jotController: JotController;
   private adminController!: AdminController;
@@ -152,24 +152,26 @@ export class ScribaBot implements BotServices {
       notifier: this.chat,
       ratingTime: config.ratingTime,
     });
+    // Command and task mode both own the message stream, so neither opens over the other.
+    const modes = new Modes(this.chat);
     // /command: an agent session scoped to the vault. It gets no built-in tool that could
     // reach the host; services/agent.ts holds the allow list.
-    this.command = new CommandSession(
-      this.bot,
-      new AgentService(
+    this.command = new CommandController({
+      service: new AgentService(
         new VaultTools(config.vaultPath || null, obsidian),
         new WebService(),
         config.command,
       ),
-    );
+      notifier: this.chat,
+      modes,
+    });
     // /task: every message becomes a task in one of the two task notes instead of a jot.
-    // It and command mode both own the message stream, so neither opens over the other.
     this.tasks = new TaskController({
       repo,
       notes: new TaskNotesService(obsidian, config.tasks),
       enricher,
       notifier: this.chat,
-      modes: new Modes(this.chat, () => this.command.isOpen()),
+      modes,
       ownerId: config.telegram.allowedUserId,
     });
     this.jotController = new JotController({
@@ -179,13 +181,13 @@ export class ScribaBot implements BotServices {
       // The queue is built after this bot (it needs it), so it is read per retry.
       queue: { add: (ids) => this.queue.add(ids) },
     });
-    this.command.setBusyCheck(() => this.tasks.isOpen());
     registerViews(this.bot, {
       ownerId: config.telegram.allowedUserId,
       rating: this.rating,
       habits: this.habits,
       settings,
       menus,
+      modes,
       command: this.command,
       tasks: this.tasks,
       jotController: this.jotController,

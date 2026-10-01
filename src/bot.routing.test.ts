@@ -50,8 +50,7 @@ async function openCommandMode(h: Harness): Promise<string[]> {
   await h.say("/command");
   assert.equal(h.bot.command.isOpen(), true);
   const handled: string[] = [];
-  h.bot.command.handle = async (_ctx: unknown, text: string) =>
-    void handled.push(text);
+  h.bot.command.handle = async (text: string) => void handled.push(text);
   return handled;
 }
 
@@ -147,7 +146,7 @@ test("/command re-opens and resets the session without an 'already open' check",
 
 test("/command is refused without a vault path", async () => {
   const h = await botHarness();
-  h.bot.command.service = { enabled: false };
+  h.bot.command.deps.service = { enabled: false };
   assert.equal(
     first((await h.say("/command")).texts("sendMessage")),
     `⚠️ command mode needs SCRIBA_VAULT_HOST_PATH ${EM} the vault isn't mounted.`,
