@@ -1,9 +1,9 @@
 import type { Bot, Context } from "grammy";
 import type { AdminController } from "../controllers/admin.ts";
+import type { HabitController } from "../controllers/habits.ts";
 import type { JotController } from "../controllers/jots.ts";
 import type { RatingController } from "../controllers/rating.ts";
 import type { CommandSession } from "../flows/command.ts";
-import type { HabitsCommand } from "../flows/habits/index.ts";
 import type { MenuController } from "../flows/menu.ts";
 import type { ReprocessCommand } from "../flows/reprocess.ts";
 import type { TasksFlow } from "../flows/tasks/index.ts";
@@ -53,7 +53,7 @@ export interface JotHandlers {
 export type ViewDeps = {
   ownerId: number;
   rating: RatingController;
-  habits: HabitsCommand;
+  habits: HabitController;
   menu: MenuController;
   reprocess: ReprocessCommand;
   command: CommandSession;

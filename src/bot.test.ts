@@ -630,7 +630,10 @@ async function route(
   bot.bot.botInfo = BOT_INFO;
   bot.rating.answerFollowup = async (ref: unknown) =>
     void calls.push(`followup:${JSON.stringify(ref)}`);
-  bot.habits.handleReply = async () => void calls.push("habits");
+  bot.habits.fill = async () => {
+    calls.push("habits");
+    return "gone";
+  };
   bot.menu.handleWizardReply = async () => void calls.push("wizard");
   bot.tasks.handleReply = async () => void calls.push("taskPrompt");
   bot.tasks.handle = async () => void calls.push("tasks");

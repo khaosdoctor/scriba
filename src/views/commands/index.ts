@@ -5,6 +5,7 @@ import { deleteCommand } from "./delete.ts";
 import { done } from "./done.ts";
 import { failed } from "./failed.ts";
 import { flush } from "./flush.ts";
+import { habitsCommand } from "./habits.ts";
 import { help } from "./help.ts";
 import { jot } from "./jot.ts";
 import { rate } from "./rate.ts";
@@ -59,13 +60,7 @@ export const COMMANDS: CommandView[] = [
         menu.open(ctx),
   ),
   rate,
-  flow(
-    "habits",
-    "Review habits (yesterday, or /habits YYYY-MM-DD)",
-    ({ habits }) =>
-      (ctx) =>
-        habits.slashHabits(ctx),
-  ),
+  habitsCommand,
   flow(
     "reprocess",
     "Reprocess jots — a day, a date range, or one jot",
