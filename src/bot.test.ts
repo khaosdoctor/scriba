@@ -105,7 +105,7 @@ async function harness(over: Fakes = {}) {
     "sha",
     0,
   );
-  bot.setQueue({ add: (id: string) => void queued.push(id) });
+  bot.setQueue({ add: (ids: string[]) => void queued.push(...ids) });
   bot.status = async (_id: string, text: string) => void statuses.push(text);
   bot.notify = async (text: string) => void notices.push(text);
   bot.replaceJotText = async (j: Jot, text: string) => {

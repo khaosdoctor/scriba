@@ -1353,7 +1353,7 @@ export class MenuController {
       return void ctx.answerCallbackQuery({ text: "gone" });
     log.info({ jotId: id }, "menu: manual retry requested");
     await deps.repo.resetForRetry(id);
-    deps.queue.add(id);
+    deps.queue.add([id]);
     await ctx.answerCallbackQuery({ text: "retrying" });
     await ctx.editMessageText(`🔄 retrying ${id}…`, {
       reply_markup: this.backTo("menu:jots"),

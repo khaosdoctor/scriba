@@ -83,8 +83,8 @@ function setup(
   const reprocess = new ReprocessCommand(bot as any, repo as any);
   if (opts.queue !== false) {
     reprocess.setQueue({
-      addMany: (ids: string[]) => {
-        events.push("addMany");
+      add: (ids: string[]) => {
+        events.push("queue.add");
         queued.push(ids);
       },
     } as any);
@@ -540,7 +540,7 @@ test("go:d acks first, then reads the day, resets and queues only what was reset
     "ack",
     "jotsInRange",
     "resetForReprocess",
-    "addMany",
+    "queue.add",
     "edit",
   ]);
   assert.deepEqual(h.resets, [["a1", "b1", "c1"]]);
@@ -585,7 +585,7 @@ test("go:j acks first and reprocesses the jot's leader", async () => {
     "ack",
     "getJot",
     "resetForReprocess",
-    "addMany",
+    "queue.add",
     "edit",
   ]);
   assert.deepEqual(h.resets, [["lead"]]);

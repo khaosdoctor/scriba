@@ -527,7 +527,7 @@ ledger("cm", [
 // --- rp ---
 
 const DONE_JOTS = [jot(), jot({ id: "bbbbbbbb", anchor: "bbbbbbbb" })];
-const RESET = "repo.resetForReprocess > queue.addMany > tg.editMessageText";
+const RESET = "repo.resetForReprocess > queue.add > tg.editMessageText";
 const withDayJots = (h: Harness) => {
   h.repo.jotsInRange = DONE_JOTS;
   h.repo.resetForReprocess = ["aaaaaaaa", "bbbbbbbb"];

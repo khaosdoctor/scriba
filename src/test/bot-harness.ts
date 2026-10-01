@@ -162,7 +162,7 @@ export async function botHarness() {
     queueImpl,
     {},
     {
-      sync: ["add", "addMany"],
+      sync: ["add"],
       props: { depth: 0 },
     },
   );

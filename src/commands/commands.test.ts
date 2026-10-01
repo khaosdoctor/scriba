@@ -71,7 +71,7 @@ function deps(over: Record<string, any> = {}) {
       ...over.repo,
     },
     queue: {
-      add: (id: string) => void calls.push(`queue.add(${id})`),
+      add: (ids: string[]) => void calls.push(`queue.add(${ids.join(",")})`),
       ...over.queue,
     },
     processor: { retrySweep: track("retrySweep"), ...over.processor },

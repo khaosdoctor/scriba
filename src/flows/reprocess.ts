@@ -527,7 +527,7 @@ export class ReprocessCommand {
         { reply_markup: this.backTo(`${REPROCESS_NS}:root`) },
       );
     }
-    queue.addMany(reset); // one arm() for the whole batch, not one per id
+    queue.add(reset);
     await ctx.editMessageText(
       `🔁 Reprocessing ${pluralize(reset.length, "jot")} from ${label}…`,
     );
