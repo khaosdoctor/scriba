@@ -210,3 +210,32 @@ test("til_offered down drops only its column, and up again does not collide", as
     );
   });
 });
+
+const schema = async (k: Knex) =>
+  (await k.raw(
+    "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE 'knex_%' ORDER BY type, name",
+  )) as { type: string; name: string; sql: string }[];
+
+test("every migration rolls back, and migrating again rebuilds the same schema", async (t) => {
+  await withDb(t, async (k) => {
+    await k.migrate.latest();
+    const built = await schema(k);
+    const stopwords = await k("stopwords").count("* as n").first();
+    assert.ok(built.length > 8);
+    assert.ok(Number(stopwords?.n) > 100);
+
+    // A down() that misses a table, index or column would leave it behind or make the
+    // next up() collide with it.
+    await k.migrate.rollback(undefined, true);
+    assert.deepEqual(await schema(k), []);
+    assert.equal(await k.migrate.currentVersion(), "none");
+
+    await k.migrate.latest();
+    assert.deepEqual(await schema(k), built);
+    assert.deepEqual(
+      await k("stopwords").count("* as n").first(),
+      stopwords,
+      "the seeded stopwords come back",
+    );
+  });
+});

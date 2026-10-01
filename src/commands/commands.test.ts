@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Jot } from "../db.ts";
+import type { ReleaseNote } from "../services/github.ts";
+import { startOfToday } from "../time.ts";
 import { commands } from "./index.ts";
 import type { Command, Deps } from "./types.ts";
 
@@ -64,6 +66,7 @@ function deps(over: Record<string, any> = {}) {
       addStopword: track("addStopword"),
       delStopword: track("delStopword", 0),
       rejectionList: track("rejectionList", []),
+      unreject: track("unreject", 0),
       setSetting: track("setSetting"),
       ...over.repo,
     },
@@ -299,5 +302,291 @@ test("/rejections and /unstick report their counts", async () => {
       deps({ repo: { resetProcessing: async () => 1 } }),
     ),
     "🔧 unstuck 1 jot",
+  );
+});
+
+const DASH = String.fromCharCode(0x2014);
+
+const release = (over: Partial<ReleaseNote> = {}): ReleaseNote => ({
+  tag: "v1.34.0",
+  version: "1.34.0",
+  name: "v1.34.0",
+  body: "### Features\n\n* offer to move TIL jots ([#22](https://x/22)) ([abc1234](https://x/abc1234))\n\n### Bug Fixes\n\n* keep the card ([#23](https://x/23))\n",
+  url: "https://github.com/o/r/releases/tag/v1.34.0",
+  publishedAt: "2026-09-30T12:00:00.000Z",
+  ...over,
+});
+
+test("/changelog with no args shows the latest release as plain text", async () => {
+  const d = deps({ github: { latest: async () => release() } });
+  assert.equal(
+    await byName("changelog").run({} as any, "", d),
+    "📋 v1.34.0\n\nFeatures:\n• offer to move TIL jots\n\nBug Fixes:\n• keep the card\n\nhttps://github.com/o/r/releases/tag/v1.34.0",
+  );
+});
+
+test("/changelog says so when GitHub can't be reached", async () => {
+  const down = { latest: async () => null, byVersion: async () => null };
+  assert.equal(
+    await byName("changelog").run({} as any, "", deps({ github: down })),
+    "⚠️ couldn't reach GitHub for the latest release",
+  );
+  assert.equal(
+    await byName("changelog").run({} as any, "9.9.9", deps({ github: down })),
+    "no release found for 9.9.9",
+  );
+  assert.equal(
+    await byName("changelog").run(
+      {} as any,
+      "5",
+      deps({ github: { recent: async () => [] } }),
+    ),
+    "⚠️ couldn't reach GitHub for release history",
+  );
+});
+
+test("/changelog with a version looks that version up", async () => {
+  const asked: string[] = [];
+  const d = deps({
+    github: {
+      byVersion: async (v: string) => {
+        asked.push(v);
+        return release({ name: "v1.2.3", body: "", url: "https://x/1.2.3" });
+      },
+    },
+  });
+  assert.equal(
+    await byName("changelog").run({} as any, " 1.2.3 ", d),
+    "📋 v1.2.3\n\nhttps://x/1.2.3",
+  );
+  assert.deepEqual(asked, ["1.2.3"]);
+});
+
+test("/changelog N lists the N most recent releases and clamps N to 1-20", async () => {
+  const asked: number[] = [];
+  const d = deps({
+    github: {
+      recent: async (n: number) => {
+        asked.push(n);
+        return [
+          release(),
+          release({
+            tag: "v1.33.0",
+            publishedAt: "2026-09-22T12:00:00.000Z",
+            url: "https://github.com/o/r/releases/tag/v1.33.0",
+          }),
+        ];
+      },
+    },
+  });
+  assert.equal(
+    await byName("changelog").run({} as any, "2", d),
+    `• v1.34.0 (2026-09-30) ${DASH} https://github.com/o/r/releases/tag/v1.34.0\n• v1.33.0 (2026-09-22) ${DASH} https://github.com/o/r/releases/tag/v1.33.0`,
+  );
+  await byName("changelog").run({} as any, "0", d);
+  await byName("changelog").run({} as any, "99", d);
+  assert.deepEqual(asked, [2, 1, 20]);
+});
+
+test("/stats asks for the window it names and refuses anything else", async (t) => {
+  const NOW = 1_790_000_000_000;
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  const windows: [number, number][] = [];
+  const row = {
+    total: 10,
+    text: 6,
+    audio: 2,
+    image: 1,
+    video: 1,
+    done: 7,
+    failed: 1,
+    abandoned: 1,
+    inflight: 1,
+  };
+  const d = deps({
+    repo: {
+      windowStats: async (from: number, to: number) => {
+        windows.push([from, to]);
+        return row;
+      },
+    },
+  });
+
+  assert.equal(
+    await byName("stats").run({} as any, "week", d),
+    "📊 last 7 days\nJots: 10\n  text 6 · voice 2 · image 1 · video 1\nDone 7 · in-flight 1 · failed 1 · abandoned 1",
+  );
+  assert.match(
+    (await byName("stats").run({} as any, "ALL", d)) as string,
+    /^📊 all time\n/,
+  );
+  // No argument means today, from local midnight.
+  assert.match(
+    (await byName("stats").run({} as any, "", d)) as string,
+    /^📊 today\n/,
+  );
+  assert.deepEqual(windows, [
+    [NOW - 7 * 86_400_000, NOW + 1000],
+    [0, NOW + 1000],
+    [startOfToday(NOW), NOW + 1000],
+  ]);
+
+  assert.equal(
+    await byName("stats").run({} as any, "month", d),
+    "usage: /stats [today|week|all]",
+  );
+  assert.equal(windows.length, 3, "a bad range never reaches the database");
+});
+
+test("/status joins the snapshot with the upstream health", async (t) => {
+  const NOW = 1_790_000_000_000;
+  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  const d = deps({
+    startedAt: NOW - 10_500_000,
+    repo: {
+      statusCounts: async () => ({
+        pending: 1,
+        processing: 1,
+        done: 5,
+        failed: 2,
+        abandoned: 1,
+        deleted: 4,
+      }),
+    },
+    queue: { depth: 3 },
+    transcriber: { chain: "groq → parakeet" },
+    links: { stats: () => ({ enabled: true, files: 12, aliases: 40 }) },
+    health: {
+      snapshot: () => [
+        {
+          name: "groq",
+          up: true,
+          latencyMs: 120,
+          error: null,
+          failures: 0,
+          since: NOW,
+        },
+        {
+          name: "parakeet",
+          up: false,
+          latencyMs: null,
+          error: "ECONNREFUSED",
+          failures: 2,
+          since: NOW - 90_000,
+        },
+      ],
+    },
+    sha: "abc1234def",
+  });
+  assert.equal(
+    await byName("status").run({} as any, "", d),
+    "🩺 scriba 1.34.0 (abc1234)\nUptime: 2h 55m\nJots: 5 done · 2 in-flight · 2 failed · 1 abandoned\nQueue depth: 3\nTranscriber: groq → parakeet\nLink index: 12 files / 40 aliases\n\nUpstreams:\n🟢 groq · 120 ms\n🔴 parakeet · down 1m 30s · not probed yet · ECONNREFUSED",
+  );
+});
+
+test("/unreject with a word and a note removes that rejection and says which", async () => {
+  // The note is the last token, so a multi-word surface keeps everything before it.
+  const seen: string[][] = [];
+  const removed = deps({
+    repo: {
+      unreject: async (surface: string, note: string) => {
+        seen.push([surface, note]);
+        return 1;
+      },
+    },
+  });
+  assert.equal(
+    await byName("unreject").run({} as any, "new york NYC", removed),
+    '↩️ "new york" may link to [[NYC]] again',
+  );
+  assert.deepEqual(seen, [["new york", "NYC"]]);
+  assert.equal(
+    await byName("unreject").run({} as any, "monday Monday", deps()),
+    'no rejection for "monday" → [[Monday]]',
+  );
+  assert.equal(
+    await byName("unreject").run({} as any, "monday", deps()),
+    "usage: /unreject <word> <note> (or /unreject with no args for a menu)",
+  );
+});
+
+test("/unreject with no args offers one button per rejected word", async () => {
+  const none = ctx();
+  assert.equal(
+    await byName("unreject").run(none.ctx, "", deps()),
+    "(no rejections)",
+  );
+  assert.equal(none.replies.length, 0);
+
+  const list = [
+    { surface: "monday", note: "Monday" },
+    { surface: "monday", note: "Mondays" },
+    { surface: "norway", note: "Norway" },
+  ];
+  const some = ctx();
+  await byName("unreject").run(
+    some.ctx,
+    "",
+    deps({ repo: { rejectionList: async () => list } }),
+  );
+  const [reply] = some.replies;
+  assert.equal(reply!.text, "Pick a rejected word to unreject:");
+  const rows = reply!.opts.reply_markup.inline_keyboard.filter(
+    (r: any[]) => r.length,
+  );
+  // One button per distinct word, however many notes it was rejected for.
+  assert.deepEqual(
+    rows.map((r: any[]) => [r[0].text, r[0].callback_data]),
+    [
+      ["monday", "ur:s:0"],
+      ["norway", "ur:s:1"],
+    ],
+  );
+});
+
+test("/unreject caps the keyboard at 30 words and names the cut", async () => {
+  const list = Array.from({ length: 35 }, (_, i) => ({
+    surface: `word${i}`,
+    note: "N",
+  }));
+  const some = ctx();
+  await byName("unreject").run(
+    some.ctx,
+    "",
+    deps({ repo: { rejectionList: async () => list } }),
+  );
+  const [reply] = some.replies;
+  assert.equal(
+    reply!.text,
+    `Pick a rejected word to unreject (30 of 35 ${DASH} /menu › 🔗 Link rules pages through the rest):`,
+  );
+  const rows = reply!.opts.reply_markup.inline_keyboard.filter(
+    (r: any[]) => r.length,
+  );
+  assert.equal(rows.length, 30);
+});
+
+test("/flush drains the queue and reports how many were waiting", async () => {
+  const flushed: string[] = [];
+  const d = deps({
+    queue: { depth: 3, flush: async () => void flushed.push("flush") },
+  });
+  assert.equal(
+    await byName("flush").run({} as any, "", d),
+    "⚡ flushed (3 queued)",
+  );
+  assert.deepEqual(flushed, ["flush"]);
+});
+
+test("/sweep runs the retry sweep and confirms", async () => {
+  const d = deps();
+  assert.equal(await byName("sweep").run({} as any, "", d), "🧹 sweep done");
+  assert.deepEqual(d.calls, ["retrySweep()"]);
+});
+
+test("/version names the running release and the first seven characters of the sha", async () => {
+  assert.equal(
+    await byName("version").run({} as any, "", deps({ sha: "abcdef0123456" })),
+    "scriba 1.34.0 (abcdef0)",
   );
 });
