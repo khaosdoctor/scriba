@@ -45,6 +45,7 @@ import type { DownloadedFile } from "./models/domain.ts";
 import type { StatusButtons } from "./models/ops.ts";
 import type { BotServices, JotProcessor } from "./runtime/processor.ts";
 import type { FlushQueue } from "./runtime/queue.ts";
+import { AgentService } from "./services/agent.ts";
 import type { Enricher } from "./services/enrich.ts";
 import type { GithubReleases } from "./services/github.ts";
 import type { HealthMonitor } from "./services/health.ts";
@@ -53,6 +54,7 @@ import type { ObsidianClient } from "./services/obsidian.ts";
 import { TaskNotesService } from "./services/task-notes.ts";
 import type { FallbackTranscriber } from "./services/transcribe.ts";
 import { VaultTools } from "./services/vault.ts";
+import { WebService } from "./services/web.ts";
 import { dayBounds, plainDate, plainTime } from "./time.ts";
 
 const log = logger("bot");
@@ -165,11 +167,15 @@ export class ScribaBot implements BotServices {
       (jot) => this.deleteJot(jot),
     );
     // /command: an agent session scoped to the vault. It gets no built-in tool that could
-    // reach the host — see flows/command.ts.
+    // reach the host; services/agent.ts holds the allow list.
     this.command = new CommandSession(
       this.bot,
       config,
-      new VaultTools(config.vaultPath || null, obsidian),
+      new AgentService(
+        new VaultTools(config.vaultPath || null, obsidian),
+        new WebService(),
+        config.command,
+      ),
     );
     // /task: every message becomes a task in one of the two task notes instead of a jot.
     // It and command mode both own the message stream, so neither opens over the other.
