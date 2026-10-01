@@ -1,6 +1,7 @@
-import { type CommandContext, Composer, type Context } from "grammy";
+import type { Composer, Context } from "grammy";
 import type { ViewDeps } from "../index.ts";
 import { changelog } from "./changelog.ts";
+import { commandMode } from "./command.ts";
 import { deleteCommand } from "./delete.ts";
 import { done } from "./done.ts";
 import { failed } from "./failed.ts";
@@ -34,26 +35,6 @@ export type CommandView = {
   view(deps: ViewDeps): Composer<Context>;
 };
 
-type Handler = (ctx: CommandContext<Context>) => unknown;
-
-/** A command whose body still lives on a flow, called straight through until that flow
- *  becomes a view of its own. */
-function flow(
-  command: string,
-  description: string,
-  handle: (deps: ViewDeps) => Handler,
-): CommandView {
-  return {
-    command,
-    description,
-    view(deps) {
-      const view = new Composer<Context>();
-      view.command(command, handle(deps));
-      return view;
-    },
-  };
-}
-
 /** Every slash command, in the order Telegram's `/` menu and /help list them. */
 export const COMMANDS: CommandView[] = [
   start,
@@ -61,13 +42,7 @@ export const COMMANDS: CommandView[] = [
   rate,
   habitsCommand,
   reprocess,
-  flow(
-    "command",
-    "Open a vault assistant session (/done to close)",
-    ({ command }) =>
-      (ctx) =>
-        command.start(ctx),
-  ),
+  commandMode,
   taskCommand,
   taskAddCommand,
   tasksCommand,

@@ -34,6 +34,9 @@ export interface MessageOptions {
   keyboard?: { inline_keyboard: readonly (readonly object[])[] };
   /** Point the owner's compose box at this message. */
   forceReply?: boolean;
+  /** Thread this message under the owner's message with this id, even once that one is
+   *  gone: losing the thread beats losing the message. */
+  replyTo?: number;
 }
 
 /** The owner's chat as a controller sees it: messages it starts on its own, outside any

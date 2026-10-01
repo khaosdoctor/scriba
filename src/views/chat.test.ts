@@ -54,12 +54,19 @@ test("the chat sends plain notices and HTML messages with a keyboard to the owne
   ]);
 });
 
-test("a message can ask for a forced reply, and one without the option does not", async () => {
+test("a message can ask for a forced reply or hang off an earlier message, and one without the options does neither", async () => {
   const { chat, rec } = harness();
   await chat.send("when?", { forceReply: true });
+  // Telegram refuses a reply to a message that's gone unless this is set.
+  await chat.send("done", { replyTo: 5 });
   await chat.send("when?");
   assert.deepEqual(rec.calls.map(wire), [
     { chat_id: OWNER, text: "when?", reply_markup: { force_reply: true } },
+    {
+      chat_id: OWNER,
+      text: "done",
+      reply_parameters: { message_id: 5, allow_sending_without_reply: true },
+    },
     { chat_id: OWNER, text: "when?" },
   ]);
 });

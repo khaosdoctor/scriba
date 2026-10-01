@@ -1,6 +1,6 @@
 import { Composer, type Context } from "grammy";
-import { COMMAND_NS } from "../../flows/command.ts";
 import type { ViewDeps } from "../index.ts";
+import { commandView } from "./command.ts";
 import { followupView } from "./followup.ts";
 import { habitsView } from "./habits.ts";
 import { menuView } from "./menu.ts";
@@ -28,7 +28,7 @@ export function callbackViews(deps: ViewDeps): Composer<Context>[] {
     namespace("em", (ctx, [jotId, on]) =>
       jots.handleEmbed(ctx, jotId, on === "1"),
     ),
-    namespace(COMMAND_NS, (ctx, rest) => command.handleTap(ctx, rest)),
+    commandView(command),
     tasksView(tasks),
     tilView(jotController),
     namespace("lk", (ctx, [verdict, pendingId]) =>

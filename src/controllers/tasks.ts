@@ -143,10 +143,6 @@ export class TaskController {
     return outcome;
   }
 
-  finish(): void {
-    this.deps.modes.close();
-  }
-
   /** One message in task mode, parsed token-free. False when it holds no task. */
   async handle(text: string): Promise<boolean> {
     this.deps.modes.touch();

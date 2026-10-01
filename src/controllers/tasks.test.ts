@@ -98,13 +98,13 @@ function setup(
     description: text,
     type: "personal",
   });
-  const state = { commandOpen: false };
+  const modes = new Modes(notifier);
   const tasks = new TaskController({
     repo: repo as any,
     notes,
     enricher: { extractTask: (text: string) => extract(text) } as any,
     notifier,
-    modes: new Modes(notifier, () => state.commandOpen),
+    modes,
     ownerId: OWNER,
   });
   const buttons = (opts?: any): string[] =>
@@ -120,7 +120,7 @@ function setup(
     drafts,
     vault,
     settings,
-    state,
+    modes,
     telegram,
     buttons,
     live: async (id: string) =>
@@ -649,9 +649,9 @@ test("task mode follows the modes owner: on and off, refused while command mode 
   assert.equal(h.tasks.start(), "opened");
   assert.equal(h.tasks.isOpen(), true);
   assert.equal(h.tasks.start(), "already");
-  h.tasks.finish();
+  h.modes.close();
   assert.equal(h.tasks.isOpen(), false);
-  h.state.commandOpen = true;
+  h.modes.open("command");
   assert.equal(h.tasks.start(), "busy");
   assert.equal(h.tasks.isOpen(), false);
 });
