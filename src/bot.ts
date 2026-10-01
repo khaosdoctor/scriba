@@ -3,6 +3,7 @@ import { Bot, InlineKeyboard } from "grammy";
 import { config } from "./config.ts";
 import type { AdminController } from "./controllers/admin.ts";
 import { JotController } from "./controllers/jots.ts";
+import { RatingController } from "./controllers/rating.ts";
 import {
   anchorLine,
   assetEmbed,
@@ -24,10 +25,8 @@ import {
 } from "./core.ts";
 import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
 import { CommandSession } from "./flows/command.ts";
-import { FollowupFlow } from "./flows/followup.ts";
 import { HabitsCommand } from "./flows/habits/index.ts";
 import { MenuController, type MenuDeps } from "./flows/menu.ts";
-import { RatingCommand } from "./flows/rating.ts";
 import { ReprocessCommand } from "./flows/reprocess.ts";
 import { TasksFlow } from "./flows/tasks/index.ts";
 import type { TaskDraft } from "./flows/tasks/parse.ts";
@@ -97,8 +96,7 @@ export class ScribaBot implements BotServices {
   private bot: Bot;
   private chat: Chat;
   private queue!: FlushQueue;
-  private rating: RatingCommand;
-  private followup: FollowupFlow;
+  private rating: RatingController;
   private habits: HabitsCommand;
   private menu: MenuController;
   private reprocess: ReprocessCommand;
@@ -129,14 +127,16 @@ export class ScribaBot implements BotServices {
       client: { timeoutSeconds: 60 },
     });
     this.chat = new Chat(this.bot.api, config.telegram.allowedUserId);
-    this.followup = new FollowupFlow(
-      this.bot,
+    this.rating = new RatingController({
       repo,
       obsidian,
-      (ctx, date, text) =>
-        this.intake(ctx, "text", { rawText: text, day: date }),
-    );
-    this.rating = new RatingCommand(this.bot, repo, obsidian, this.followup);
+      notifier: this.chat,
+      ratingTime: config.ratingTime,
+      headings: {
+        journal: config.obsidian.journalHeading,
+        til: config.obsidian.tilHeading,
+      },
+    });
     this.habits = new HabitsCommand(this.bot, obsidian);
     this.reprocess = new ReprocessCommand(this.bot, repo);
     this.menu = new MenuController(
@@ -176,7 +176,6 @@ export class ScribaBot implements BotServices {
     registerViews(this.bot, {
       ownerId: config.telegram.allowedUserId,
       rating: this.rating,
-      followup: this.followup,
       habits: this.habits,
       menu: this.menu,
       reprocess: this.reprocess,

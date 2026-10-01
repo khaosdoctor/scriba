@@ -3,7 +3,6 @@
  * Stopwords and rejections are injected (they live in the DB), not hardcoded here.
  */
 import { donePreview } from "./lib/jot.ts";
-import { sectionHasContent } from "./lib/note.ts";
 import { escapeHtml, pluralize, TELEGRAM_LIMIT } from "./lib/text.ts";
 import { plainDate } from "./lib/time.ts";
 import type { Jot, JotKind, JotStatus } from "./models/domain.ts";
@@ -163,52 +162,6 @@ export function parseEntrySize(text: string): number | null {
   if (!/^\d{1,4}$/.test(s)) return null;
   const n = Number(s);
   return n >= 40 && n <= 4000 ? n : null;
-}
-
-/** The follow-up questions after the nightly rating, in the order they are asked. */
-export const FOLLOWUP_QUESTIONS = ["journal", "til"] as const;
-export type FollowupQuestion = (typeof FOLLOWUP_QUESTIONS)[number];
-
-/** Which follow-up questions a day's note still needs: the journal line when "Journal" has
- *  no jots, the TIL when "TIL" is empty. `note` is null for a day that has no note yet.
- *  `after` leaves out that question and the ones before it. */
-export function followupQuestions(
-  note: string | null,
-  headings: { journal: string; til: string },
-  after?: FollowupQuestion,
-): FollowupQuestion[] {
-  const empty: Record<FollowupQuestion, boolean> = {
-    journal: !note || !sectionHasContent(note, headings.journal),
-    til: !note || !sectionHasContent(note, headings.til),
-  };
-  const from = after ? FOLLOWUP_QUESTIONS.indexOf(after) + 1 : 0;
-  return FOLLOWUP_QUESTIONS.slice(from).filter((q) => empty[q]);
-}
-
-/** Marker in a follow-up prompt's text, so a reply can be routed back to it (the same trick
- *  the habits flow uses): `(fu:j:2026-07-05)` for the journal line, `(fu:t:…)` for the TIL. */
-export const FOLLOWUP_CODES: Record<FollowupQuestion, string> = {
-  journal: "j",
-  til: "t",
-};
-
-export function followupRef(question: FollowupQuestion, date: string): string {
-  return `(fu:${FOLLOWUP_CODES[question]}:${date})`;
-}
-
-/** The question a `j`/`t` code stands for, from a prompt marker or a Skip button. */
-export function followupFromCode(
-  code: string | undefined,
-): FollowupQuestion | null {
-  return FOLLOWUP_QUESTIONS.find((q) => FOLLOWUP_CODES[q] === code) ?? null;
-}
-
-export function parseFollowupRef(
-  text: string,
-): { question: FollowupQuestion; date: string } | null {
-  const m = text.match(/\(fu:([a-z]):(\d{4}-\d{2}-\d{2})\)/);
-  const question = followupFromCode(m?.[1]);
-  return m && question ? { question, date: m[2]! } : null;
 }
 
 // --- /command live updates -------------------------------------------------------------

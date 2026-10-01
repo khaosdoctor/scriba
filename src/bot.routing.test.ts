@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseFollowupRef } from "./core.ts";
 import type { Jot } from "./db.ts";
 import { parseHabitRef } from "./flows/habits/parse.ts";
 import {
@@ -11,6 +10,7 @@ import {
   type Run,
   sampleJot,
 } from "./test/bot-harness.ts";
+import { parseFollowupRef } from "./views/replies/followup.ts";
 
 const FALLBACK = "scriba handles text, voice, images, and video for now.";
 const COMMAND_ON = "🧭 Command mode is on.";

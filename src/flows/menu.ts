@@ -1,6 +1,7 @@
 import { type Bot, InlineKeyboard } from "grammy";
 import { config } from "../config.ts";
 import type { AdminController } from "../controllers/admin.ts";
+import type { RatingController } from "../controllers/rating.ts";
 import {
   cleanNoteTitle,
   distinctSurfaces,
@@ -40,7 +41,6 @@ import {
   withClose,
 } from "../views/render/keyboard.ts";
 import type { HabitsCommand } from "./habits/index.ts";
-import type { RatingCommand } from "./rating.ts";
 import type { ReprocessCommand } from "./reprocess.ts";
 import type { TasksFlow } from "./tasks/index.ts";
 
@@ -107,7 +107,7 @@ export class MenuController {
 
   constructor(
     private bot: Bot,
-    private rating: RatingCommand,
+    private rating: RatingController,
     private habits: HabitsCommand,
     private reprocess: ReprocessCommand,
     private getDeps: () => MenuDeps,
