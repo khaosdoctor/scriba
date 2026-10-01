@@ -43,17 +43,24 @@ export class GithubReleases {
     };
   }
 
-  private async fetchOne(url: string): Promise<ReleaseNote | null> {
-    log.debug({ url }, "github: fetching release");
+  private async get<T>(
+    url: string,
+    what: string,
+    warnFields: object,
+  ): Promise<T | null> {
     const res = await fetch(url, {
       headers: this.headers(),
       signal: AbortSignal.timeout(15_000),
     });
-    if (!res.ok) {
-      log.warn({ url, status: res.status }, "github: fetching release failed");
-      return null;
-    }
-    return this.toNote((await res.json()) as RawRelease);
+    if (res.ok) return (await res.json()) as T;
+    log.warn({ ...warnFields, status: res.status }, `github: ${what} failed`);
+    return null;
+  }
+
+  private async fetchOne(url: string): Promise<ReleaseNote | null> {
+    log.debug({ url }, "github: fetching release");
+    const raw = await this.get<RawRelease>(url, "fetching release", { url });
+    return raw && this.toNote(raw);
   }
 
   /** The most recent published release. */
@@ -75,15 +82,7 @@ export class GithubReleases {
   async recent(count: number): Promise<ReleaseNote[]> {
     const url = `https://api.github.com/repos/${this.repo}/releases?per_page=${count}`;
     log.debug({ url, count }, "github: listing releases");
-    const res = await fetch(url, {
-      headers: this.headers(),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) {
-      log.warn({ status: res.status }, "github: listing releases failed");
-      return [];
-    }
-    const data = (await res.json()) as RawRelease[];
-    return data.map((r) => this.toNote(r));
+    const data = await this.get<RawRelease[]>(url, "listing releases", {});
+    return data ? data.map((r) => this.toNote(r)) : [];
   }
 }
