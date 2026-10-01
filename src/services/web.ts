@@ -1,5 +1,7 @@
+import { lookup as resolveHost } from "node:dns";
 import { lookup } from "node:dns/promises";
-import { Agent, type Dispatcher, fetch } from "undici";
+import type { LookupFunction } from "node:net";
+import { Agent, type Dispatcher, fetch, type Response } from "undici";
 import { htmlToText } from "../lib/text.ts";
 import { logger } from "../log.ts";
 
@@ -33,7 +35,40 @@ export function isPrivateAddress(ip: string): boolean {
     v6 === "::1" ||
     v6.startsWith("fc") ||
     v6.startsWith("fd") || // unique local
-    v6.startsWith("fe80") // link-local
+    /^fe[89ab]/.test(v6) // link-local, fe80::/10
+  );
+}
+
+/** The address undici dials, checked when it dials: a host that answered the pre-flight
+ *  lookup with a public address can't answer this one with a LAN address. */
+export const publicLookup: LookupFunction = (hostname, options, callback) => {
+  resolveHost(hostname, { ...options, all: true }, (err, addresses) => {
+    if (err) return callback(err, []);
+    const blocked = addresses.find((a) => isPrivateAddress(a.address));
+    if (blocked)
+      return callback(
+        new Error(
+          `refusing to connect to ${hostname}: it resolves to a private address (${blocked.address})`,
+        ),
+        [],
+      );
+    if (options.all) return callback(null, addresses);
+    const [first] = addresses;
+    callback(null, first?.address ?? "", first?.family);
+  });
+};
+
+/** The body as text, read no further than MAX_FETCH_BYTES whatever the headers claim. */
+async function readCapped(res: Response): Promise<string> {
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of res.body ?? []) {
+    chunks.push(chunk);
+    size += chunk.length;
+    if (size >= MAX_FETCH_BYTES) break;
+  }
+  return new TextDecoder().decode(
+    Buffer.concat(chunks).subarray(0, MAX_FETCH_BYTES),
   );
 }
 
@@ -47,7 +82,7 @@ export class WebService {
   constructor(
     // One dispatcher, so a slow page can't hold a socket forever.
     private dispatcher: Dispatcher = new Agent({
-      connect: { timeout: 10_000 },
+      connect: { timeout: 10_000, lookup: publicLookup },
       headersTimeout: FETCH_TIMEOUT_MS,
       bodyTimeout: FETCH_TIMEOUT_MS,
     }),
@@ -81,7 +116,7 @@ export class WebService {
       const size = Number(res.headers.get("content-length") ?? 0);
       if (size > MAX_FETCH_BYTES)
         throw new Error(`page too large (${size} bytes)`);
-      const body = (await res.text()).slice(0, MAX_FETCH_BYTES);
+      const body = await readCapped(res);
       const text = /html|xml/i.test(type) ? htmlToText(body) : body;
       log.info({ url: current, chars: text.length }, "command: web_fetch");
       return text.length > MAX_TEXT_CHARS

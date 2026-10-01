@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { MockAgent } from "undici";
-import { isPrivateAddress, WebService } from "./web.ts";
+import { isPrivateAddress, publicLookup, WebService } from "./web.ts";
 
 const ORIGIN = "http://93.184.216.34";
 
@@ -49,6 +49,7 @@ test("isPrivateAddress covers loopback, RFC1918, link-local and CGNAT", () => {
     "::1",
     "fd00::1",
     "fe80::1",
+    "febf::1",
     "::ffff:127.0.0.1",
   ])
     assert.equal(isPrivateAddress(ip), true, `${ip} should be private`);
@@ -59,8 +60,26 @@ test("isPrivateAddress covers loopback, RFC1918, link-local and CGNAT", () => {
     "172.32.0.1",
     "192.169.0.1",
     "2606:4700::1111",
+    "fec0::1",
   ])
     assert.equal(isPrivateAddress(ip), false, `${ip} should be public`);
+});
+
+test("the connection itself refuses a host that resolves to a private address", async () => {
+  const dial = (host: string, all: boolean) =>
+    new Promise<unknown>((resolve, reject) =>
+      publicLookup(host, { all }, (err, address, family) =>
+        err ? reject(err) : resolve(all ? address : [address, family]),
+      ),
+    );
+  await assert.rejects(
+    dial("127.0.0.1", true),
+    /refusing to connect to 127\.0\.0\.1: it resolves to a private address \(127\.0\.0\.1\)/,
+  );
+  assert.deepEqual(await dial("93.184.216.34", false), ["93.184.216.34", 4]);
+  assert.deepEqual(await dial("93.184.216.34", true), [
+    { address: "93.184.216.34", family: 4 },
+  ]);
 });
 
 test("web_fetch returns an HTML page as plain text", async () => {
@@ -140,4 +159,12 @@ test("web_fetch truncates a long text page at 200000 characters", async () => {
   });
   const text = await web.fetchPage(`${ORIGIN}/long`);
   assert.equal(text, `${"a".repeat(200_000)}\n… (truncated)`);
+});
+
+test("web_fetch stops reading at 4 MB when the page sends no Content-Length", async () => {
+  const { pool, web } = fixture();
+  pool
+    .intercept({ path: "/endless" })
+    .reply(200, `${"<i></i>".repeat(600_000)}tail`, html);
+  assert.doesNotMatch(await web.fetchPage(`${ORIGIN}/endless`), /tail/);
 });
