@@ -22,6 +22,7 @@ import {
   entryMaxChars,
   escapeHtml,
   feedMessage,
+  findSection,
   fitFeed,
   fitTelegram,
   followupQuestions,
@@ -72,6 +73,7 @@ import {
   setEmbeds,
   setFrontmatterValue,
   splitEntry,
+  stampCompletion,
   stripJournalLine,
   stripTilPrefix,
   switchEnabled,
@@ -130,6 +132,26 @@ preset on_or_before_this_file_name
 - [Health log](obsidian://open)
 `;
 const HEADINGS = { journal: "Journal", til: "TIL" };
+
+test("findSection returns the heading and the next heading of any level, or the note end", () => {
+  const lines = DAILY_TEMPLATE.split("\n");
+  const habits = findSection(lines, "Habits");
+  assert.equal(lines[habits!.headingIdx], "## Habits");
+  assert.equal(lines[habits!.end], "## TIL");
+  const log = findSection(lines, "Log");
+  assert.equal(log!.end, lines.length);
+  assert.equal(findSection(lines, "Nope"), null);
+  assert.equal(findSection(["Habits", "- x"], "Habits"), null);
+});
+
+test("stampCompletion appends the stamp once and leaves a stamped line as it is", () => {
+  assert.equal(
+    stampCompletion("- [x] Run #t  ", "2026-07-05"),
+    "- [x] Run #t [completion:: 2026-07-05]",
+  );
+  const stamped = "- [x] Run [Completion :: 2026-01-01]";
+  assert.equal(stampCompletion(stamped, "2026-07-05"), stamped);
+});
 
 test("sectionHasContent ignores the template's empty heading and placeholder bullet", () => {
   assert.equal(sectionHasContent(DAILY_TEMPLATE, "Journal"), false);

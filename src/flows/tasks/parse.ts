@@ -17,7 +17,13 @@
 
 import { createHash } from "node:crypto";
 import * as chrono from "chrono-node";
-import { escapeHtml, escapeRe, isDateLike } from "../../core.ts";
+import {
+  escapeHtml,
+  escapeRe,
+  findSection,
+  isDateLike,
+  stampCompletion,
+} from "../../core.ts";
 import type { TaskType } from "../../db.ts";
 import { DATE_RE, dateFromIso, plainDate } from "../../time.ts";
 
@@ -143,24 +149,6 @@ export function parseTaskLine(
   };
 }
 
-/** Bounds of the `## <heading>` section: [firstLineAfterHeading, endExclusive), or null
- *  when the note has no such heading. The section ends at the next heading of any level. */
-function sectionBounds(
-  lines: string[],
-  heading: string,
-): [number, number] | null {
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRe(heading)}\\s*$`);
-  const start = lines.findIndex((l) => headingRe.test(l));
-  if (start === -1) return null;
-  let end = lines.length;
-  for (let i = start + 1; i < lines.length; i++)
-    if (/^#{1,6}\s/.test(lines[i]!)) {
-      end = i;
-      break;
-    }
-  return [start + 1, end];
-}
-
 /** Every task under `heading`, in note order. Non-bullet lines are skipped. */
 export function parseTasks(
   note: string,
@@ -169,10 +157,10 @@ export function parseTasks(
   type: TaskType,
 ): Task[] {
   const lines = note.split("\n");
-  const bounds = sectionBounds(lines, heading);
-  if (!bounds) return [];
+  const section = findSection(lines, heading);
+  if (!section) return [];
   const out: Task[] = [];
-  for (let i = bounds[0]; i < bounds[1]; i++) {
+  for (let i = section.headingIdx + 1; i < section.end; i++) {
     const task = parseTaskLine(lines[i]!, out.length, type, tag);
     if (task) out.push(task);
   }
@@ -205,8 +193,8 @@ export function completeTaskLine(line: string, date: string): string {
   const out = line
     .replace(/^(\s*-\s*)\[[ \-/]\]/, "$1[x]")
     .replace(/\s*\[\s*cancelled\s*::[^\]]*\]/gi, "");
-  if (/\[\s*completion\s*::/i.test(out) || LEGACY_DONE_RE.test(out)) return out;
-  return `${out.replace(/\s*$/, "")} [completion:: ${date}]`;
+  if (LEGACY_DONE_RE.test(out)) return out;
+  return stampCompletion(out, date);
 }
 
 /** Untick a task and drop its completion stamp, in either notation. Idempotent. */
@@ -233,9 +221,10 @@ export function insertTaskLine(
   position: "top" | "bottom",
 ): string {
   const lines = note.split("\n");
-  const bounds = sectionBounds(lines, heading);
-  if (!bounds) throw new Error(`no "${heading}" heading in the note`);
-  const [from, end] = bounds;
+  const section = findSection(lines, heading);
+  if (!section) throw new Error(`no "${heading}" heading in the note`);
+  const from = section.headingIdx + 1;
+  const { end } = section;
   const bullets: number[] = [];
   for (let i = from; i < end; i++)
     if (/^\s*-\s/.test(lines[i]!)) bullets.push(i);
@@ -263,10 +252,10 @@ export function replaceTaskLineAt(
   newLine: string,
 ): string | null {
   const lines = note.split("\n");
-  const bounds = sectionBounds(lines, heading);
-  if (!bounds) return null;
+  const section = findSection(lines, heading);
+  if (!section) return null;
   let n = 0;
-  for (let i = bounds[0]; i < bounds[1]; i++) {
+  for (let i = section.headingIdx + 1; i < section.end; i++) {
     if (!CHECKBOX_RE.test(lines[i]!)) continue;
     if (n++ !== index) continue;
     if (fingerprint(lines[i]!) !== expected) return null;
