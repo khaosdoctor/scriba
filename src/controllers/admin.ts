@@ -1,5 +1,4 @@
 import { formatJotDetail } from "../core.ts";
-import type { Repository } from "../db.ts";
 import { clipUpdate } from "../lib/feed.ts";
 import { reprocessTargets } from "../lib/jot.ts";
 import { distinctSurfaces } from "../lib/links.ts";
@@ -14,6 +13,7 @@ import {
   TERMINAL_STATUSES,
 } from "../models/domain.ts";
 import type { Notifier, Stats, StatusCounts } from "../models/ops.ts";
+import type { Repository } from "../repositories/index.ts";
 import type { GithubReleases, ReleaseNote } from "../services/github.ts";
 import type { HealthMonitor, UpstreamStatus } from "../services/health.ts";
 import type { FallbackTranscriber } from "../services/transcribe.ts";

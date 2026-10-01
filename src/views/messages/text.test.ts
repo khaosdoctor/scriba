@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { Jot } from "../../db.ts";
+import type { Jot } from "../../models/domain.ts";
 import { botHarness } from "../../test/bot-harness.ts";
 
 const FOLLOWUP =

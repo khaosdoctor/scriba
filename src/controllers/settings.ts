@@ -9,7 +9,6 @@ import {
   WIZARD_STOPWORD_REF,
   WIZARD_VOICEFIX_MODEL_REF,
 } from "../core.ts";
-import type { Repository } from "../db.ts";
 import { noteSuggestions } from "../lib/links.ts";
 import { logger } from "../lib/log.ts";
 import { paginate } from "../lib/page.ts";
@@ -21,6 +20,7 @@ import type {
   SettingValue,
   SwitchKey,
 } from "../models/settings.ts";
+import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { VaultService } from "../services/vault.ts";
 

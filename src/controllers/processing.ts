@@ -1,5 +1,4 @@
 import { basename } from "node:path";
-import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
 import {
   assetEmbed,
   combineEnrichSource,
@@ -18,7 +17,9 @@ import { journalLine } from "../lib/note.ts";
 import { draftFromDetection, type TaskDraft } from "../lib/tasks.ts";
 import { escapeHtml, splitEntry } from "../lib/text.ts";
 import type { DetectedTask, DownloadedFile } from "../models/domain.ts";
+import { type Jot, MAX_ATTEMPTS } from "../models/domain.ts";
 import type { Notifier } from "../models/ops.ts";
+import type { Repository } from "../repositories/index.ts";
 import { type Enricher, ModelsDownError } from "../services/enrich.ts";
 import type { LinkIndex } from "../services/links.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
