@@ -22,7 +22,8 @@ import {
   toolIcon,
 } from "../core.ts";
 import { logger } from "../log.ts";
-import type { VaultTools } from "../services/vault.ts";
+import type { VaultService } from "../services/vault.ts";
+import { WebService } from "../services/web.ts";
 
 const log = logger("command");
 
@@ -213,12 +214,13 @@ export class CommandSession {
 
   constructor(
     private bot: Bot,
-    private vault: VaultTools,
+    private vault: VaultService,
     private query: typeof sdkQuery = sdkQuery,
     /** Minimum gap between edits of the live status message. */
     private feedEditMs = FEED_EDIT_MS,
     /** How long a running turn may produce nothing before it's given up on. */
     private turnSilenceMs = TURN_SILENCE_MS,
+    private web = new WebService(),
   ) {}
 
   register(): void {
@@ -698,7 +700,7 @@ export class CommandSession {
       this.tropeCache && Date.now() - this.tropeCache.at < TROPES_TTL_MS;
     if (fresh) return this.tropeCache!.text;
     try {
-      const page = await this.vault.fetchPage(TROPES_URL);
+      const page = await this.web.fetchPage(TROPES_URL);
       const start = page.indexOf(TROPES_START);
       const text = start >= 0 ? page.slice(start) : page;
       this.tropeCache = { text, at: Date.now() };
@@ -855,7 +857,7 @@ export class CommandSession {
               "Vault-relative folder, e.g. 'notes/people'. Omit for all.",
             ),
         },
-        async (args) => this.result(() => this.vault.list(args.dir ?? "")),
+        async (args) => this.result(() => this.vault.listNotes(args.dir ?? "")),
       ),
       tool(
         "vault_read",
@@ -871,7 +873,7 @@ export class CommandSession {
           dir: z.string().optional().describe("Limit to this folder"),
         },
         async (args) =>
-          this.result(() => this.vault.search(args.query, args.dir ?? "")),
+          this.result(() => this.vault.searchNotes(args.query, args.dir ?? "")),
       ),
       tool(
         "vault_write",
@@ -895,7 +897,7 @@ export class CommandSession {
         "web_fetch",
         "Fetch a public web page and return it as plain text. No JavaScript runs.",
         { url: z.string().describe("An http(s) URL") },
-        async (args) => this.result(() => this.vault.fetchPage(args.url)),
+        async (args) => this.result(() => this.web.fetchPage(args.url)),
       ),
     ];
   }

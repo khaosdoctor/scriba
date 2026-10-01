@@ -8,7 +8,7 @@ import { MockAgent, setGlobalDispatcher } from "undici";
 import { Repository } from "./db.ts";
 import { loadConfig } from "./models/config.ts";
 import { HealthMonitor } from "./services/health.ts";
-import { LinkIndex } from "./services/links.ts";
+import { VaultService } from "./services/vault.ts";
 
 // The classes still read the config singleton, which parses the environment on import.
 const env = {
@@ -142,7 +142,7 @@ dbTest("createScriba wires everything and starts nothing", async (t) => {
   const started = {
     scheduler: t.mock.method(Scheduler.prototype, "start"),
     health: t.mock.method(HealthMonitor.prototype, "start"),
-    links: t.mock.method(LinkIndex.prototype, "start"),
+    links: t.mock.method(VaultService.prototype, "startIndex"),
     polling: t.mock.method(Bot.prototype, "start"),
   };
   const closed = t.mock.method(Repository.prototype, "close");
