@@ -1,4 +1,5 @@
-import type { Context, ErrorHandler, InlineKeyboard } from "grammy";
+import type { Context, ErrorHandler } from "grammy";
+import { statusKeyboard } from "../lib/jot.ts";
 import { logger } from "../log.ts";
 import { Responder } from "./chat.ts";
 
@@ -7,15 +8,12 @@ const log = logger("bot");
 export type ErrorDeps = {
   /** The jot a failing message already created, when intake got that far. */
   jotForMessage(messageId: number): Promise<string | undefined>;
-  /** The Retry / Delete pair a failed jot's reply carries. */
-  failureButtons(jotId: string): InlineKeyboard;
 };
 
 /** `bot.catch`: a failed tap gets its spinner stopped with a toast; a failed message gets a
- *  reply, with the failure buttons when a jot row exists for it. */
+ *  reply, with the Retry / Delete pair when a jot row exists for it. */
 export function errorHandler({
   jotForMessage,
-  failureButtons,
 }: ErrorDeps): ErrorHandler<Context> {
   return async (err) => {
     const msg =
@@ -33,7 +31,9 @@ export function errorHandler({
       : undefined;
     await responder
       .reply(`⚠️ Couldn't save that: ${msg}`, {
-        keyboard: jotId ? failureButtons(jotId) : undefined,
+        keyboard: jotId
+          ? statusKeyboard(jotId, { retry: true, discard: true })
+          : undefined,
       })
       .catch(() => {});
   };

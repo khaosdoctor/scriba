@@ -3,21 +3,23 @@ import {
   assetEmbed,
   candidates,
   combineEnrichSource,
-  doneMessage,
   embedOffer,
   enrichableSource,
   escapeHtml,
   forcedCandidates,
-  gaveUpMessage,
-  heldNotice,
   isRecoverable,
   journalLine,
   linkDateWords,
   makeJotId,
-  retryNotice,
   splitEntry,
 } from "../core.ts";
 import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
+import {
+  doneMessage,
+  gaveUpMessage,
+  heldNotice,
+  retryNotice,
+} from "../lib/jot.ts";
 import { draftFromDetection, type TaskDraft } from "../lib/tasks.ts";
 import { logger } from "../log.ts";
 import type { DetectedTask, DownloadedFile } from "../models/domain.ts";

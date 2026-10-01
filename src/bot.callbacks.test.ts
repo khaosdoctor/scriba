@@ -239,7 +239,7 @@ async function openVoiceFix(fixture: Awaited<ReturnType<typeof harness>>) {
     "a <b> original",
     "the fixed one",
   );
-  while (!fixture.bot.voiceFixPending.has(ID)) await tick();
+  while (!fixture.bot.jotController.voiceFixPending.has(ID)) await tick();
   return pending;
 }
 
@@ -278,7 +278,7 @@ test("tapping a voice-fix button resolves the wait with that choice", async (tes
     await fixture.tap(data);
     assert.equal(await pending, choice);
     assert.deepEqual(fixture.answers(), [toast]);
-    assert.equal(fixture.bot.voiceFixPending.has(ID), false);
+    assert.equal(fixture.bot.jotController.voiceFixPending.has(ID), false);
   }
 });
 
@@ -289,7 +289,7 @@ test("an unanswered voice-fix prompt falls back to the original after five minut
   await tick();
   testContext.mock.timers.tick(5 * 60 * 1000);
   assert.equal(await pending, "original");
-  assert.equal(fixture.bot.voiceFixPending.has(ID), false);
+  assert.equal(fixture.bot.jotController.voiceFixPending.has(ID), false);
 
   await fixture.tap(`vf:p:${ID}`);
   assert.deepEqual(fixture.answers(), ["expired"]);

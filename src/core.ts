@@ -2,10 +2,8 @@
  * Pure, dependency-free helpers. Deterministic, token-free — unit-tested in isolation.
  * Stopwords and rejections are injected (they live in the DB), not hardcoded here.
  */
-import { donePreview } from "./lib/jot.ts";
-import { escapeHtml } from "./lib/text.ts";
 import { plainDate } from "./lib/time.ts";
-import type { Jot, JotKind, JotStatus } from "./models/domain.ts";
+import type { Jot, JotStatus } from "./models/domain.ts";
 
 export {
   assetEmbed,
@@ -73,77 +71,6 @@ export { OPENCODE_BASE_URL } from "./services/enrich.ts";
 export { modelsUrlFor } from "./services/health.ts";
 export { isInsideRoot } from "./services/vault.ts";
 export { entitiesToMarkdown } from "./views/input.ts";
-
-/** `total` is the number of jots folded into one line (leader + followers); 0 means no
- *  squash. The single confirmation notes it so the merge is explained. */
-export function squashLine(total: number): string {
-  return total > 1 ? `\n🧵 ${total} jots squashed into one entry` : "";
-}
-
-/** Final in-chat confirmation once a jot lands: the saved line blockquoted with its
- *  time so it stands out. HTML parse mode — content is escaped. */
-export function doneMessage(
-  time: string,
-  kind: JotKind,
-  textPart: string,
-  id: string,
-  squashedTotal = 0,
-  part?: { i: number; of: number },
-): string {
-  // `part` is set when the text was too long and got split: each piece is its own jot with
-  // its own message, so say which one this is.
-  const split = part ? `\n✂️ part ${part.i} of ${part.of}` : "";
-  return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squashLine(squashedTotal)}${split}`;
-}
-
-// A failure message is only as useful as what you can do about it, and both messages below
-// are posted with 🔄 Retry / 🗑 Delete under them. An error string can be a whole stack
-// trace, which would push the message past Telegram's limit, so it's cut here.
-const ERROR_PREVIEW_CHARS = 400;
-
-const errorBlock = (error: string) => {
-  const text = error.trim() || "(no error message)";
-  const cut = text.length > ERROR_PREVIEW_CHARS;
-  return `<code>${escapeHtml(cut ? `${text.slice(0, ERROR_PREVIEW_CHARS)}…` : text)}</code>`;
-};
-
-/** Status line for a jot that failed on a transient error and is still in the retry cycle.
- *  Without this the message sits on "Weaving it into your journal…" until the sweep comes
- *  round, which reads as a jot that's stuck rather than one that's waiting. */
-export function retryNotice(
-  kind: JotKind,
-  attempts: number,
-  max: number,
-  error: string,
-): string {
-  const left = Math.max(0, max - attempts);
-  const more = left === 1 ? "one more try" : `${left} more tries`;
-  return `⚠️ That ${kind} jot didn't go through (attempt ${attempts} of ${max}). I'll try again on my own — ${more} left, or decide it now.\n${errorBlock(error)}`;
-}
-
-/** Status line for a jot held back because every enrichment model is down. It keeps its
- *  place in the note and isn't charged a retry; the sweep picks it up once one is back. */
-export function heldNotice(kind: JotKind): string {
-  return `⏸ Every enrichment model is down right now, so this ${kind} jot is waiting. It goes into your journal on its own once one is back.`;
-}
-
-/** Status line once a jot is given up on. The text is in the note un-enriched, so what's
- *  left to decide is whether to run it again or take it out. */
-export function gaveUpMessage(
-  kind: JotKind,
-  reason: string,
-  error: string,
-  squashedTotal = 0,
-): string {
-  return `⚠️ Gave up on a ${kind} jot (${reason}). Posted it un-enriched.\n${errorBlock(error)}${squashLine(squashedTotal)}`;
-}
-
-/** In-chat confirmation after an edit is applied: the corrected line blockquoted so the
- *  new text is visible immediately, not just a bare "updated". HTML parse mode — content
- *  is escaped. */
-export function editConfirmation(time: string, text: string): string {
-  return `✏️ Updated\n<blockquote>🕒 ${time} · ${escapeHtml(text.trim() || "…")}</blockquote>`;
-}
 
 // --- entry splitting ---
 // A long jot reads as a wall of text on one journal line, so an entry over `maxChars` is

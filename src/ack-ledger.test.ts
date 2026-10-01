@@ -160,13 +160,15 @@ ledger("vf", [
   {
     tap: `vf:o:${ID}`,
     when: "keep the original",
-    setup: (harness) => harness.bot.voiceFixPending.set(ID, () => {}),
+    setup: (harness) =>
+      harness.bot.jotController.voiceFixPending.set(ID, () => {}),
     expect: "ack(keeping original)",
   },
   {
     tap: `vf:p:${ID}`,
     when: "use the fixed version",
-    setup: (harness) => harness.bot.voiceFixPending.set(ID, () => {}),
+    setup: (harness) =>
+      harness.bot.jotController.voiceFixPending.set(ID, () => {}),
     expect: "ack(using fixed version)",
   },
   { tap: `vf:o:${ID}`, when: "no pending choice", expect: "ack(expired)" },

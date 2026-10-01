@@ -7,9 +7,11 @@ import { menuView } from "./menu.ts";
 import { namespace } from "./namespace.ts";
 import { ratingView } from "./rating.ts";
 import { reprocessView } from "./reprocess.ts";
+import { retryView } from "./retry.ts";
 import { tasksView } from "./tasks.ts";
 import { tilView } from "./til.ts";
 import { unrejectView } from "./unreject.ts";
+import { voiceFixView } from "./voicefix.ts";
 
 /** One view per callback namespace, with the empty answer for an unknown namespace last so
  *  a stale button never leaves its spinner running. */
@@ -19,10 +21,8 @@ export function callbackViews(deps: ViewDeps): Composer<Context>[] {
   unknown.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
   return [
     menuView(deps),
-    namespace("vf", (ctx, [verdict, jotId]) =>
-      jots.handleVoiceFix(ctx, verdict, jotId),
-    ),
-    namespace("rt", (ctx, [jotId]) => jots.handleRetry(ctx, jotId)),
+    voiceFixView(jotController),
+    retryView(jotController),
     namespace("un", (ctx, [jotId]) => jots.handleRemove(ctx, jotId, "undo")),
     namespace("dl", (ctx, [jotId]) => jots.handleRemove(ctx, jotId, "discard")),
     namespace("em", (ctx, [jotId, on]) =>

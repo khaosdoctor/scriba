@@ -1,5 +1,5 @@
 import type { Message, MessageEntity } from "grammy/types";
-import type { JotKind } from "../models/domain.ts";
+import type { IntakeInput } from "../models/domain.ts";
 
 const ENTITY_WRAP: Partial<Record<string, readonly [string, string]>> = {
   bold: ["**", "**"],
@@ -41,18 +41,6 @@ export function entitiesToMarkdown(
   out += text.slice(last);
   return out;
 }
-
-/** A message as the intake sees it. */
-export type IntakeInput = {
-  kind: JotKind;
-  messageId: number;
-  /** When Telegram received the message, in ms. */
-  sentAt: number;
-  /** The entry text: the message as markdown, a caption (`""` when there is none), or
-   *  `null` for voice, audio and video notes, which carry no text of their own. */
-  rawText: string | null;
-  fileId?: string;
-};
 
 /** Build the intake input for a message, or nothing for a kind the bot does not take. */
 export function intakeInput(m: Message): IntakeInput | undefined {

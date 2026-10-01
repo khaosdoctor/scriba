@@ -1,11 +1,11 @@
 import type { Context, Filter } from "grammy";
 import type { Message } from "grammy/types";
+import type { JotController } from "../../controllers/jots.ts";
 import {
   type FollowupRef,
   followupFromCode,
   type RatingController,
 } from "../../controllers/rating.ts";
-import type { JotHandlers } from "../index.ts";
 import { entitiesToMarkdown } from "../input.ts";
 
 /** The question and day a follow-up prompt's marker names, or null for any other text. */
@@ -17,7 +17,7 @@ export function parseFollowupRef(text: string): FollowupRef | null {
 
 /** A reply to a follow-up prompt: its text, formatting kept, is filed as a jot for the
  *  prompt's day. */
-export function followupReply(rating: RatingController, jots: JotHandlers) {
+export function followupReply(rating: RatingController, jots: JotController) {
   return (
     ctx: Filter<Context, "message:text">,
     ref: FollowupRef,
@@ -27,6 +27,13 @@ export function followupReply(rating: RatingController, jots: JotHandlers) {
       ref,
       entitiesToMarkdown(ctx.message.text, ctx.message.entities).trim(),
       prompt.message_id,
-      (date, text) => jots.intake(ctx, "text", { rawText: text, day: date }),
+      (day, rawText) =>
+        jots.intake({
+          kind: "text",
+          messageId: ctx.message.message_id,
+          sentAt: ctx.message.date * 1000,
+          rawText,
+          day,
+        }),
     );
 }
