@@ -7,15 +7,12 @@ import {
   editConfirmation,
   feedMessage,
   fitFeed,
-  followupQuestions,
-  followupRef,
   formatJotDetail,
   formatToolCall,
   gaveUpMessage,
   jotPreview,
   monthGrid,
   parseEntrySize,
-  parseFollowupRef,
   parseWizardRef,
   previewList,
   queuedNotice,
@@ -30,74 +27,7 @@ import {
   WIZARD_REGISTER_REF,
   WIZARD_STOPWORD_REF,
 } from "./core.ts";
-import { parseHabitRef } from "./flows/habits/parse.ts";
 import type { Jot } from "./models/domain.ts";
-
-const DAILY_TEMPLATE = `---
-tags:
-  - type/daily-note
-overallRating: 5
----
-# 2026-07-05
----
-## ✅ Tasks
-\`\`\`tasks
-preset on_or_before_this_file_name
-\`\`\`
-## Journal
--
-## Habits
-- [ ] Practiced music #meta/habits/music
-## TIL
--
-## Log
-- [Health log](obsidian://open)
-`;
-const HEADINGS = { journal: "Journal", til: "TIL" };
-
-test("followupQuestions asks only what is still empty", () => {
-  const jot = "- _10:00:00 ::_ hi ^aaaaaaaa";
-  const til = "- a thing I learned";
-  const withJournal = DAILY_TEMPLATE.replace(
-    "## Journal\n-\n",
-    `## Journal\n${jot}\n`,
-  );
-  const withTil = DAILY_TEMPLATE.replace("## TIL\n-\n", `## TIL\n${til}\n`);
-  const withBoth = withJournal.replace("## TIL\n-\n", `## TIL\n${til}\n`);
-  assert.deepEqual(followupQuestions(DAILY_TEMPLATE, HEADINGS), [
-    "journal",
-    "til",
-  ]);
-  assert.deepEqual(followupQuestions(withJournal, HEADINGS), ["til"]);
-  assert.deepEqual(followupQuestions(withTil, HEADINGS), ["journal"]);
-  assert.deepEqual(followupQuestions(withBoth, HEADINGS), []);
-});
-
-test("followupQuestions asks both for a day with no note, and resumes after a question", () => {
-  assert.deepEqual(followupQuestions(null, HEADINGS), ["journal", "til"]);
-  assert.deepEqual(followupQuestions(null, HEADINGS, "journal"), ["til"]);
-  assert.deepEqual(followupQuestions(null, HEADINGS, "til"), []);
-});
-
-test("followupQuestions follows the configured headings", () => {
-  const note = "## Journal\n- \n## Learned\n- something\n";
-  assert.deepEqual(
-    followupQuestions(note, { journal: "Journal", til: "Learned" }),
-    ["journal"],
-  );
-});
-
-test("followupRef round-trips through parseFollowupRef", () => {
-  for (const q of ["journal", "til"] as const) {
-    const text = `Learned anything today? Reply to this message.\n${followupRef(q, "2026-07-05")}`;
-    assert.deepEqual(parseFollowupRef(text), {
-      question: q,
-      date: "2026-07-05",
-    });
-  }
-  assert.equal(parseFollowupRef("(fu:x:2026-07-05)"), null);
-  assert.equal(parseFollowupRef("(hb:2026-07-05:1)"), null);
-});
 
 test("doneMessage marks which piece a split jot is", () => {
   const one = doneMessage("10:00:00", "text", "hi", "a1b2c3d4");
@@ -209,34 +139,6 @@ test("parseWizardRef recognises the rating-time prompt", () => {
 test("ratingDay reads an unpadded hour", () => {
   const now = new Date(2026, 6, 6, 12, 0).getTime();
   assert.equal(ratingDay("9:30", now), "2026-07-05");
-});
-
-test("followupQuestions counts a missing section as empty", () => {
-  assert.deepEqual(
-    followupQuestions("## Journal\n- a\n", { journal: "Journal", til: "TIL" }),
-    ["til"],
-  );
-  assert.deepEqual(
-    followupQuestions("## TIL\n- a\n", { journal: "Journal", til: "TIL" }),
-    ["journal"],
-  );
-  assert.deepEqual(
-    followupQuestions("# 2026-07-05\n", { journal: "Journal", til: "TIL" }),
-    ["journal", "til"],
-  );
-});
-
-test("a follow-up marker is not read by the other flows' parsers, nor theirs by it", () => {
-  const prompt = `question ${followupRef("journal", "2026-07-05")}`;
-  assert.equal(parseHabitRef(prompt), null);
-  assert.equal(parseWizardRef(prompt), null);
-  for (const other of [
-    "(hb:2026-07-05:1)",
-    "(rt:time)",
-    "(lw:sw)",
-    "(tk:d:abcdef12)",
-  ])
-    assert.equal(parseFollowupRef(other), null, other);
 });
 
 test("jotPreview falls back to (kind) for a captionless attach-only jot", () => {

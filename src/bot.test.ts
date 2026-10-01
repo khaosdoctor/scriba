@@ -98,8 +98,10 @@ async function harness(over: Fakes = {}) {
   bot.embedFor = async () => undefined;
   const sent: string[] = [];
   const apiDeleted: [number, number][] = [];
-  bot.bot.api.sendMessage = async (_chat: number, text: string) =>
-    void sent.push(text);
+  bot.bot.api.sendMessage = async (_chat: number, text: string) => {
+    sent.push(text);
+    return { message_id: 900 + sent.length };
+  };
   bot.bot.api.deleteMessage = async (chat: number, id: number) =>
     void apiDeleted.push([chat, id]);
 
@@ -489,24 +491,30 @@ test("a reply instruction to a TIL jot still processing is queued verbatim", asy
 const rated = previousDate(NOW);
 const ratedPath = `notes/daily notes/${rated}.md`;
 
-/** A reply to a follow-up prompt, as grammY would hand it to FollowupFlow.handleReply. */
-const answerCtx = (h: { reacts: string[] }, text: string, sec = SEC) => ({
-  chat: { id: 1 },
-  message: {
-    date: sec,
-    message_id: 77,
+/** A reply to a follow-up prompt, filed the way the reply view files it: as a jot for the
+ *  rated day, through the real intake. */
+const answerFollowup = (
+  h: Awaited<ReturnType<typeof harness>>,
+  text: string,
+  question: "journal" | "til",
+  sec = SEC,
+) => {
+  const ctx = {
+    message: { date: sec, message_id: 77, text },
+    react: async (e: string) => void h.reacts.push(e),
+  };
+  return h.bot.rating.answerFollowup(
+    { question, date: rated },
     text,
-    reply_to_message: { message_id: 9 },
-  },
-  react: async (e: string) => void h.reacts.push(e),
-});
+    9,
+    (date: string, jotText: string) =>
+      h.bot.intake(ctx, "text", { rawText: jotText, day: date }),
+  );
+};
 
 test("a journal answer is filed under the rated day as its last entry", async () => {
   const h = await harness();
-  await h.bot.followup.handleReply(answerCtx(h, "Quiet day"), {
-    question: "journal",
-    date: rated,
-  });
+  await answerFollowup(h, "Quiet day", "journal");
   assert.equal(h.inserted.length, 1);
   const row = h.inserted[0]!;
   assert.equal(row.note_path, ratedPath);
@@ -520,10 +528,7 @@ test("a journal answer is filed under the rated day as its last entry", async ()
 
 test("a TIL answer goes through the TIL prefix into the til section", async () => {
   const h = await harness();
-  await h.bot.followup.handleReply(answerCtx(h, "owls"), {
-    question: "til",
-    date: rated,
-  });
+  await answerFollowup(h, "owls", "til");
   const row = h.inserted[0]!;
   assert.equal(row.section, "til");
   assert.equal(row.raw_text, "owls");
@@ -533,14 +538,8 @@ test("a TIL answer goes through the TIL prefix into the til section", async () =
 
 test("two answers for one past day never squash, even seconds apart", async () => {
   const h = await harness({ chain: true });
-  await h.bot.followup.handleReply(answerCtx(h, "one"), {
-    question: "journal",
-    date: rated,
-  });
-  await h.bot.followup.handleReply(answerCtx(h, "two", SEC + 2), {
-    question: "journal",
-    date: rated,
-  });
+  await answerFollowup(h, "one", "journal");
+  await answerFollowup(h, "two", "journal", SEC + 2);
   assert.equal(h.inserted.length, 2);
   for (const row of h.inserted) assert.equal(row.anchor, row.id);
   assert.deepEqual(h.lookups, []);
@@ -582,11 +581,6 @@ test("the day override gives 23:59:59 on DST change days", async () => {
     if (saved === undefined) delete process.env.TZ;
     else process.env.TZ = saved;
   }
-});
-
-test("the rating command is wired to the same follow-up flow", async () => {
-  const h = await harness();
-  assert.equal(h.bot.rating.followup, h.bot.followup);
 });
 
 test("setScheduler hands the scheduler to the menu", async () => {
@@ -631,7 +625,7 @@ async function route(
   const calls: string[] = [];
   const bot = h.bot;
   bot.bot.botInfo = BOT_INFO;
-  bot.followup.handleReply = async (_c: unknown, ref: unknown) =>
+  bot.rating.answerFollowup = async (ref: unknown) =>
     void calls.push(`followup:${JSON.stringify(ref)}`);
   bot.habits.handleReply = async () => void calls.push("habits");
   bot.menu.handleWizardReply = async () => void calls.push("wizard");
@@ -688,12 +682,14 @@ test("an ordinary reply still goes to jot editing, and an unreplied message to i
 test("the Skip button is routed to the follow-up flow with its payload", async () => {
   const h = await harness();
   const taps: unknown[][] = [];
-  h.bot.followup.handleTap = async (...args: unknown[]) =>
-    void taps.push(args.slice(1));
+  h.bot.rating.claimSkip = (...args: unknown[]) => {
+    taps.push(args.slice(0, 2));
+    return false;
+  };
   for (const data of ["fu:j:2026-07-05", "fu:t:2026-07-05"])
-    assert.equal(await tap(h, data), 0, data);
+    assert.equal(await tap(h, data), 1, data);
   assert.deepEqual(taps, [
-    ["j", "2026-07-05"],
-    ["t", "2026-07-05"],
+    ["journal", "2026-07-05"],
+    ["til", "2026-07-05"],
   ]);
 });

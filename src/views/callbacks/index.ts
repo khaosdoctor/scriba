@@ -1,12 +1,12 @@
 import { Composer, type Context } from "grammy";
 import { COMMAND_NS } from "../../flows/command.ts";
-import { FOLLOWUP_NS } from "../../flows/followup.ts";
 import { HABITS_NS } from "../../flows/habits/index.ts";
-import { RATING_NS } from "../../flows/rating.ts";
 import { REPROCESS_NS } from "../../flows/reprocess.ts";
 import { TASKS_NS } from "../../flows/tasks/index.ts";
 import type { ViewDeps } from "../index.ts";
+import { followupView } from "./followup.ts";
 import { namespace } from "./namespace.ts";
+import { ratingView } from "./rating.ts";
 import { tilView } from "./til.ts";
 import { unrejectView } from "./unreject.ts";
 
@@ -18,7 +18,6 @@ export function callbackViews({
   tasks,
   jotController,
   rating,
-  followup,
   habits,
   reprocess,
   jots,
@@ -44,10 +43,8 @@ export function callbackViews({
       jots.handleLink(ctx, verdict, pendingId),
     ),
     unrejectView(admin),
-    namespace(RATING_NS, (ctx, [date, n]) => rating.handleTap(ctx, date, n)),
-    namespace(FOLLOWUP_NS, (ctx, [code, date]) =>
-      followup.handleTap(ctx, code, date),
-    ),
+    ratingView(rating),
+    followupView(rating),
     namespace(HABITS_NS, (ctx, [date, action, verdict]) =>
       habits.handleTap(ctx, date, action, verdict),
     ),

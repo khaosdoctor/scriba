@@ -7,6 +7,7 @@ import { failed } from "./failed.ts";
 import { flush } from "./flush.ts";
 import { help } from "./help.ts";
 import { jot } from "./jot.ts";
+import { rate } from "./rate.ts";
 import { rejections } from "./rejections.ts";
 import { retry } from "./retry.ts";
 import { start } from "./start.ts";
@@ -57,13 +58,7 @@ export const COMMANDS: CommandView[] = [
       (ctx) =>
         menu.open(ctx),
   ),
-  flow(
-    "rate",
-    "Rate a day 1–10 (today, or /rate YYYY-MM-DD)",
-    ({ rating }) =>
-      (ctx) =>
-        rating.slashRate(ctx),
-  ),
+  rate,
   flow(
     "habits",
     "Review habits (yesterday, or /habits YYYY-MM-DD)",
