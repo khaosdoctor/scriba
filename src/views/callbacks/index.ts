@@ -5,9 +5,9 @@ import { HABITS_NS } from "../../flows/habits/index.ts";
 import { RATING_NS } from "../../flows/rating.ts";
 import { REPROCESS_NS } from "../../flows/reprocess.ts";
 import { TASKS_NS } from "../../flows/tasks/index.ts";
-import { TIL_NS } from "../../flows/til.ts";
 import type { ViewDeps } from "../index.ts";
 import { namespace } from "./namespace.ts";
+import { tilView } from "./til.ts";
 import { unrejectView } from "./unreject.ts";
 
 /** One view per callback namespace, with the empty answer for an unknown namespace last so
@@ -16,7 +16,7 @@ export function callbackViews({
   menu,
   command,
   tasks,
-  til,
+  jotController,
   rating,
   followup,
   habits,
@@ -39,7 +39,7 @@ export function callbackViews({
     ),
     namespace(COMMAND_NS, (ctx, rest) => command.handleTap(ctx, rest)),
     namespace(TASKS_NS, (ctx, rest) => tasks.handleTap(ctx, rest)),
-    namespace(TIL_NS, (ctx, rest) => til.handleTap(ctx, rest)),
+    tilView(jotController),
     namespace("lk", (ctx, [verdict, pendingId]) =>
       jots.handleLink(ctx, verdict, pendingId),
     ),

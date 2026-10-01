@@ -361,7 +361,7 @@ test("a TIL jot is never offered the card", async () => {
 test("a reprocess after the card was sent does not ask again", async () => {
   const scenario = pipeline({ til: true });
   await scenario.processor.processJot(scenario.leaderId);
-  scenario.offered.add(scenario.leaderId); // what TilFlow.ask does once the card is out
+  scenario.offered.add(scenario.leaderId); // what JotController.askTil does once the card is out
   await scenario.processor.processJot(scenario.leaderId);
   assert.equal(scenario.tilAsks.length, 1);
 });
