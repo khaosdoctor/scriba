@@ -1,4 +1,15 @@
+import { z } from "zod";
 import type { JotStatus } from "./domain.ts";
+
+/** The fields we read from a GitHub release. */
+export const ReleaseSchema = z.object({
+  tag_name: z.string(),
+  name: z.string().nullable(),
+  body: z.string().nullable(),
+  html_url: z.string(),
+  published_at: z.string(),
+});
+export type Release = z.infer<typeof ReleaseSchema>;
 
 /** Jot counts over a window, broken down by kind and outcome, for the /stats command. */
 export interface Stats {

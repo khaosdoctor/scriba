@@ -1,4 +1,6 @@
+import { z } from "zod";
 import { logger } from "../log.ts";
+import { type Release, ReleaseSchema } from "../models/ops.ts";
 
 const log = logger("github");
 
@@ -9,15 +11,6 @@ export interface ReleaseNote {
   body: string; // release notes markdown (the changelog section for this version)
   url: string; // GitHub Release page
   publishedAt: string; // ISO timestamp
-}
-
-/** Shape of the GitHub API response we read from. */
-interface RawRelease {
-  tag_name: string;
-  name: string | null;
-  body: string | null;
-  html_url: string;
-  published_at: string;
 }
 
 /** Thin client over the public GitHub Releases API for this repo. Release notes are
@@ -32,7 +25,7 @@ export class GithubReleases {
     return { Accept: "application/vnd.github+json", "User-Agent": "scriba" };
   }
 
-  private toNote(r: RawRelease): ReleaseNote {
+  private toNote(r: Release): ReleaseNote {
     return {
       tag: r.tag_name,
       version: r.tag_name.replace(/^v/, ""),
@@ -43,23 +36,24 @@ export class GithubReleases {
     };
   }
 
-  private async get<T>(
+  private async get<S extends z.ZodType>(
     url: string,
     what: string,
     warnFields: object,
-  ): Promise<T | null> {
+    schema: S,
+  ): Promise<z.infer<S> | null> {
     const res = await fetch(url, {
       headers: this.headers(),
       signal: AbortSignal.timeout(15_000),
     });
-    if (res.ok) return (await res.json()) as T;
+    if (res.ok) return schema.parse(await res.json());
     log.warn({ ...warnFields, status: res.status }, `github: ${what} failed`);
     return null;
   }
 
   private async fetchOne(url: string): Promise<ReleaseNote | null> {
     log.debug({ url }, "github: fetching release");
-    const raw = await this.get<RawRelease>(url, "fetching release", { url });
+    const raw = await this.get(url, "fetching release", { url }, ReleaseSchema);
     return raw && this.toNote(raw);
   }
 
@@ -82,7 +76,12 @@ export class GithubReleases {
   async recent(count: number): Promise<ReleaseNote[]> {
     const url = `https://api.github.com/repos/${this.repo}/releases?per_page=${count}`;
     log.debug({ url, count }, "github: listing releases");
-    const data = await this.get<RawRelease[]>(url, "listing releases", {});
+    const data = await this.get(
+      url,
+      "listing releases",
+      {},
+      z.array(ReleaseSchema),
+    );
     return data ? data.map((r) => this.toNote(r)) : [];
   }
 }

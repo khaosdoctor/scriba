@@ -74,6 +74,30 @@ test("parakeet parses json {text} responses", async (t) => {
   assert.equal(out, "hi");
 });
 
+test("parakeet rejects a json reply whose text is not a string", async (t) => {
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () => fakeResponse(JSON.stringify({ text: 42 }), true) as any,
+  );
+  await assert.rejects(
+    new ParakeetTranscriber("http://p").transcribe(new Uint8Array([1]), "ogg"),
+  );
+});
+
+test("parakeet returns an empty transcript for json without text", async (t) => {
+  t.mock.method(
+    globalThis,
+    "fetch",
+    async () => fakeResponse(JSON.stringify({}), true) as any,
+  );
+  const out = await new ParakeetTranscriber("http://p").transcribe(
+    new Uint8Array([1]),
+    "ogg",
+  );
+  assert.equal(out, "");
+});
+
 test("parakeet parses plain-text responses", async (t) => {
   t.mock.method(
     globalThis,

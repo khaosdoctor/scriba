@@ -63,6 +63,15 @@ test("recent returns the mapped list, and [] on a non-ok response", async (t) =>
   assert.deepEqual(await new GithubReleases("owner/repo").recent(2), []);
 });
 
+test("a release payload missing its tag rejects instead of mapping undefined fields", async (t) => {
+  const { tag_name: _tag, ...noTag } = RAW;
+  t.mock.method(globalThis, "fetch", async () => fakeResponse(noTag));
+  await assert.rejects(new GithubReleases("owner/repo").latest());
+
+  t.mock.method(globalThis, "fetch", async () => fakeResponse([noTag]));
+  await assert.rejects(new GithubReleases("owner/repo").recent(1));
+});
+
 test("falls back to the tag name when the release has no name", async (t) => {
   t.mock.method(globalThis, "fetch", async () =>
     fakeResponse({ ...RAW, name: null }),
