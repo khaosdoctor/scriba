@@ -91,6 +91,12 @@ const DOWN = -1;
  *  model, or every step being down at once. */
 export type SwitchTarget = "fallback" | "primary" | "down";
 
+type SwitchNotifier = (
+  to: SwitchTarget,
+  model: string,
+  err?: unknown,
+) => void | Promise<void>;
+
 export interface EnrichInput {
   text: string;
   candidates: Candidate[];
@@ -173,21 +179,12 @@ const detectedTaskSchema = z.object({
   type: z.string().optional(),
 });
 
-/** JSON Schema twin of detectedTaskSchema, for the SDK's outputFormat. */
-const TASK_OUTPUT_FORMAT: OutputFormat = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      description: { type: "string" },
-      start: { type: "string" },
-      due: { type: "string" },
-      type: { type: "string", enum: ["work", "personal"] },
-    },
-    required: ["description", "type"],
-    additionalProperties: false,
-  },
-};
+const TaskOutputStrict = z.strictObject({
+  description: z.string(),
+  start: z.string().optional(),
+  due: z.string().optional(),
+  type: z.enum(["work", "personal"]),
+});
 
 const ambiguousSchema = z.array(
   z.object({ surface: z.string(), note: z.string() }),
@@ -205,47 +202,31 @@ const enrichedPayloadSchema = z.object({
   til: z.boolean().optional(),
 });
 
-/** JSON Schema twin of enrichedPayloadSchema, for the SDK's outputFormat request param
- *  (which takes raw JSON Schema, not a Zod schema). Keep the two in sync by hand — the
- *  shape is small and stable. */
-const ENRICH_OUTPUT_FORMAT: OutputFormat = {
-  type: "json_schema",
-  schema: {
-    type: "object",
-    properties: {
-      text: { type: "string" },
-      ambiguous: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            surface: { type: "string" },
-            note: { type: "string" },
-          },
-          required: ["surface", "note"],
-          additionalProperties: false,
-        },
-      },
-      tasks: {
-        type: "array",
-        items: {
-          type: "object",
-          properties: {
-            description: { type: "string" },
-            start: { type: "string" },
-            due: { type: "string" },
-            type: { type: "string", enum: ["work", "personal"] },
-          },
-          required: ["description"],
-          additionalProperties: false,
-        },
-      },
-      til: { type: "boolean" },
-    },
-    required: ["text", "ambiguous", "tasks", "til"],
-    additionalProperties: false,
-  },
+/** What the SDK's outputFormat asks the model for: every field present, nothing extra. A
+ *  task inside an enrichment may leave its type out, which the lenient schemas above
+ *  accept the same way. */
+const EnrichOutputStrict = z.strictObject({
+  text: z.string(),
+  ambiguous: z.array(z.strictObject({ surface: z.string(), note: z.string() })),
+  tasks: z.array(TaskOutputStrict.partial({ type: true })),
+  til: z.boolean(),
+});
+
+/** The SDK takes raw JSON Schema without the `$schema` key zod adds. */
+const outputFormat = (schema: z.ZodType): OutputFormat => {
+  const { $schema, ...jsonSchema } = z.toJSONSchema(schema);
+  return { type: "json_schema", schema: jsonSchema };
 };
+
+const TASK_OUTPUT_FORMAT = outputFormat(TaskOutputStrict);
+const ENRICH_OUTPUT_FORMAT = outputFormat(EnrichOutputStrict);
+
+const userMessage = (content: unknown) => ({
+  type: "user" as const,
+  message: { role: "user" as const, content },
+  parent_tool_use_id: null,
+  session_id: "",
+});
 
 /** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
 const fence = (s: string): string => s.replaceAll('"""', "");
@@ -256,11 +237,7 @@ export class Enricher {
   // Which step of the chain the last call ran on (0 = the chosen model). The user is
   // warned only when it changes: once on the way down, once on recovery, not per jot.
   private tier = 0;
-  private notifySwitch?: (
-    to: SwitchTarget,
-    model: string,
-    err?: unknown,
-  ) => void | Promise<void>;
+  private notifySwitch?: SwitchNotifier;
   // One breaker per step, keyed by model/fallback name, so a step that keeps timing out
   // or erroring is skipped outright instead of costing every jot a wait on the way past.
   private breakers = new Map<string, CircuitBreaker>();
@@ -315,13 +292,7 @@ export class Enricher {
 
   /** Late-wired (bot exists after the enricher): called on each model switch so the
    *  bot can warn the user in Telegram. Failures here never break enrichment. */
-  setSwitchNotifier(
-    fn: (
-      to: SwitchTarget,
-      model: string,
-      err?: unknown,
-    ) => void | Promise<void>,
-  ): void {
+  setSwitchNotifier(fn: SwitchNotifier): void {
     this.notifySwitch = fn;
   }
 
@@ -371,18 +342,14 @@ export class Enricher {
       "enrich: calling agent",
     );
     // Parsed inside the chain: an unusable answer moves on to the next model.
-    return this.run(
+    return this.run({
       prompt,
-      SYSTEM + USE_OUTPUT_TOOL,
-      [
-        { role: "system", content: SYSTEM + ENRICH_JSON_ONLY },
-        { role: "user", content: prompt },
-      ],
-      ENRICH_OUTPUT_FORMAT,
-      undefined,
-      ({ text, usage, structuredOutput }) =>
+      system: SYSTEM,
+      jsonTail: ENRICH_JSON_ONLY,
+      outputFormat: ENRICH_OUTPUT_FORMAT,
+      parse: ({ text, usage, structuredOutput }) =>
         this.parseEnriched(text, usage, structuredOutput),
-    );
+    });
   }
 
   private parseEnriched(
@@ -451,25 +418,20 @@ export class Enricher {
   async extractTask(text: string): Promise<DetectedTask> {
     const prompt = `Line:\n"""${fence(text)}"""`;
     log.info({ chars: text.length }, "extractTask: calling agent");
-    return this.run(
+    return this.run({
       prompt,
-      TASK_SYSTEM + USE_OUTPUT_TOOL,
-      [
-        { role: "system", content: TASK_SYSTEM + TASK_JSON_ONLY },
-        { role: "user", content: prompt },
-      ],
-      TASK_OUTPUT_FORMAT,
-      undefined,
-      ({ text, structuredOutput }) => this.parseTask(text, structuredOutput),
-    );
+      system: TASK_SYSTEM,
+      jsonTail: TASK_JSON_ONLY,
+      outputFormat: TASK_OUTPUT_FORMAT,
+      parse: ({ text, structuredOutput }) =>
+        this.parseTask(text, structuredOutput),
+    });
   }
 
   private parseTask(raw: string, structuredOutput: unknown): DetectedTask {
     const parsed =
-      (structuredOutput !== undefined
-        ? detectedTaskSchema.safeParse(structuredOutput)
-        : { success: false as const, data: undefined }
-      ).data ?? detectedTaskSchema.safeParse(parseModelJson(raw)).data;
+      detectedTaskSchema.safeParse(structuredOutput).data ??
+      detectedTaskSchema.safeParse(parseModelJson(raw)).data;
     if (!parsed?.description)
       throw new Error(
         `task extraction returned no usable JSON: ${raw.slice(0, 200)}`,
@@ -491,31 +453,24 @@ export class Enricher {
     const caption =
       "Write a short, factual caption (max 12 words) for this image, for a personal journal. Return only the caption.";
     const prompt = (async function* () {
-      yield {
-        type: "user" as const,
-        message: {
-          role: "user" as const,
-          content: [
-            {
-              type: "image",
-              source: { type: "base64", media_type: mediaType, data },
-            },
-            { type: "text", text: caption },
-          ],
+      yield userMessage([
+        {
+          type: "image",
+          source: { type: "base64", media_type: mediaType, data },
         },
-        parent_tool_use_id: null,
-        session_id: "",
-      };
+        { type: "text", text: caption },
+      ]);
     })();
     log.debug(
       { mediaType, bytes: bytes.length },
       "describeImage: calling vision",
     );
-    // SDK-only, no groqMessages: Groq has no production vision model, so there's no
-    // free fallback for captioning. If the SDK is out of usage, degrade to no caption —
-    // the image still saves and embeds, just without an AI-written display line.
+    // SDK-only (run skips the chat fallbacks for a non-text prompt): Groq has no
+    // production vision model, so there's no free fallback for captioning. If the SDK is
+    // out of usage, degrade to no caption. The image still saves and embeds, just
+    // without an AI-written display line.
     try {
-      const { text } = await this.run(prompt as any);
+      const { text } = await this.run({ prompt });
       log.debug({ caption: text.trim() }, "describeImage: got caption");
       return text.trim();
     } catch (err) {
@@ -535,16 +490,11 @@ export class Enricher {
   async fixTranscript(text: string, model: string): Promise<string> {
     const prompt = `Voice transcript to clean up:\n"""${fence(text)}"""\n\nReturn ONLY the cleaned text, nothing else.`;
     log.info({ chars: text.length, model }, "fixTranscript: calling agent");
-    const { text: fixed } = await this.run(
+    const { text: fixed } = await this.run({
       prompt,
-      VOICE_FIX_SYSTEM,
-      [
-        { role: "system", content: VOICE_FIX_SYSTEM },
-        { role: "user", content: prompt },
-      ],
-      undefined,
+      system: VOICE_FIX_SYSTEM,
       model,
-    );
+    });
     const result = fixed.trim() || text;
     log.info(
       { originalChars: text.length, fixedChars: result.length },
@@ -557,29 +507,45 @@ export class Enricher {
   async editText(current: string, instruction: string): Promise<string> {
     const prompt = `Current journal text:\n"""${fence(current)}"""\n\nEdit instruction: ${fence(instruction)}\n\nReturn ONLY the edited text, nothing else. Preserve voice and any [[wikilinks]] unless the edit changes them.`;
     log.debug({ instruction }, "editText: calling agent");
-    const { text } = await this.run(prompt, undefined, [
-      { role: "user", content: prompt },
-    ]);
+    const { text } = await this.run({ prompt });
     return text.trim() || current;
   }
 
   /** Single-turn call down the fallback chain: the chosen Claude model, then the backup
    *  Claude model, then the free Groq model. Each step runs only when the one before it
    *  throws (usage exhausted, overload, network) or answers something `parse` rejects.
-   *  `groqMessages` is the same prompt in OpenAI chat shape — omit it to keep a call
-   *  Claude-only (vision has no Groq model). */
-  private async run<T = SdkOut>(
-    prompt: unknown,
-    systemPrompt?: string,
-    groqMessages?: GroqMessage[],
-    outputFormat?: OutputFormat,
-    modelOverride?: string,
-    parse: (out: SdkOut) => T = (out) => out as T,
-  ): Promise<T> {
+   *  The Groq messages are built from the same `prompt` and `system`, with `jsonTail`
+   *  appended to the system text because the chat fallbacks have no structured output. */
+  private async run<T = SdkOut>({
+    prompt,
+    system,
+    jsonTail = "",
+    outputFormat,
+    model: modelOverride,
+    parse = (out) => out as T,
+  }: {
+    prompt: string | AsyncIterable<unknown>;
+    system?: string;
+    jsonTail?: string;
+    outputFormat?: OutputFormat;
+    model?: string;
+    parse?: (out: SdkOut) => T;
+  }): Promise<T> {
+    const sdkSystem =
+      system && outputFormat ? system + USE_OUTPUT_TOOL : system;
+    const groqMessages: GroqMessage[] | undefined =
+      typeof prompt === "string"
+        ? [
+            ...(system
+              ? [{ role: "system" as const, content: system + jsonTail }]
+              : []),
+            { role: "user", content: prompt },
+          ]
+        : undefined;
     const steps: { name: string; call: () => Promise<SdkOut> }[] = [
       ...this.models(modelOverride ?? this.model).map((model) => ({
         name: model ?? "default",
-        call: () => this.runSdk(prompt, systemPrompt, outputFormat, model),
+        call: () => this.runSdk(prompt, sdkSystem, outputFormat, model),
       })),
       ...(groqMessages
         ? this.fallbacks.map((fb) => ({
