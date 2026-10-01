@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { RatingRepository } from "../repositories/ratings.ts";
 import { withDb } from "../test/sqlite.ts";
+import { RatingRepository } from "./ratings.ts";
 
 test("a day's rating is write-once: the first record wins", async (t) => {
   await withDb(t, async (k) => {

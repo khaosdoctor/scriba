@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LinkRuleRepository } from "../repositories/link-rules.ts";
 import { withDb } from "../test/sqlite.ts";
+import { LinkRuleRepository } from "./link-rules.ts";
 
 test("learned link rejections can be listed and undone", async (t) => {
   await withDb(t, async (k) => {
