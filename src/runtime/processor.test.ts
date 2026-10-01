@@ -13,6 +13,7 @@ import {
 import type { Jot } from "../db.ts";
 import { MAX_ATTEMPTS, Repository } from "../db.ts";
 import { ModelsDownError } from "../services/enrich.ts";
+import { noteOps } from "../test/note-ops.ts";
 import { HELD as HELD_MARKER, JotProcessor } from "./processor.ts";
 
 /** Status messages the bot was asked to post, with the buttons each one carried. */
@@ -243,10 +244,10 @@ function pipeline(
     tilOffered: async (id: string) => offered.has(id),
     insertJot: async () => {},
   };
-  const obsidian = {
+  const obsidian: any = {
     ensureDailyNote: async () => "",
-    withNoteLock: async (_p: string, fn: () => Promise<unknown>) => fn(),
-    readNote: async () => note,
+    ...noteOps(() => obsidian),
+    readNote: async (_p: string) => note,
     writeNote: async (_p: string, content: string) => {
       if (over.writeFails) throw new Error("obsidian is down");
       note = content;
@@ -408,10 +409,10 @@ test("a held notice that couldn't be sent isn't marked, so the next sweep tries 
  *  insertJournalLine the way ObsidianClient does it. */
 function noteHarness(note: string) {
   const state = { note, writes: 0, appended: [] as [string, string, string][] };
-  const obsidian = {
+  const obsidian: any = {
     ensureDailyNote: async () => "",
-    withNoteLock: async (_p: string, fn: () => Promise<unknown>) => fn(),
-    readNote: async () => state.note,
+    ...noteOps(() => obsidian),
+    readNote: async (_p: string) => state.note,
     writeNote: async (_p: string, content: string) => {
       state.writes++;
       state.note = content;
@@ -541,10 +542,10 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
       );
   };
 
-  const obsidian = {
+  const obsidian: any = {
     ensureDailyNote: async () => "",
-    withNoteLock: async (_p: string, fn: () => Promise<unknown>) => fn(),
-    readNote: async () => note,
+    ...noteOps(() => obsidian),
+    readNote: async (_p: string) => note,
     writeNote: async (_p: string, content: string) => {
       note = content;
     },

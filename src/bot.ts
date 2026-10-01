@@ -19,7 +19,6 @@ import {
   parseFollowupRef,
   parseLiteralEdit,
   placeholderLine,
-  replaceAnchorLine,
   setEmbeds,
   stripJournalLine,
   stripTilPrefix,
@@ -916,35 +915,28 @@ export class ScribaBot implements BotServices {
   /** Apply one or more edit instructions to a jot's line, merged into a single write
    *  (and a single agent call for the freeform ones). Returns a short status. */
   private async applyEdits(jot: Jot, instructions: string[]): Promise<string> {
-    // Delete short-circuits to deleteJot (which takes the note lock itself) BEFORE we
-    // acquire it here — locking here and then calling deleteJot would deadlock on the path.
+    // deleteJot takes the note lock itself, so it must run before the lock below.
     if (instructions.some((i) => i.trim().toLowerCase() === "delete"))
       return this.deleteJot(jot);
-    const result = await this.obsidian.withNoteLock(jot.note_path, async () => {
-      const note = await this.obsidian.readNote(jot.note_path);
-      const line = anchorLine(note, jot.anchor);
-      if (!line) return null;
-
-      let text = stripJournalLine(line, jot.time);
-      const freeform: string[] = [];
-      for (const ins of instructions) {
-        const lit = parseLiteralEdit(ins);
-        if (lit)
-          text = text.replaceAll(lit.old, lit.new); // deterministic, free
-        else freeform.push(ins);
-      }
-      // Merge all freeform edits into one agent call rather than one per instruction.
-      if (freeform.length)
-        text = await this.enricher.editText(text, freeform.join("; then "));
-
-      const out = replaceAnchorLine(
-        note,
-        jot.anchor,
-        journalLine(jot.time, text, jot.anchor),
-      );
-      if (out) await this.obsidian.writeNote(jot.note_path, out);
-      return text;
-    });
+    const result = await this.obsidian.updateLine(
+      jot.note_path,
+      jot.anchor,
+      async (line, write) => {
+        let text = stripJournalLine(line, jot.time);
+        const freeform: string[] = [];
+        for (const ins of instructions) {
+          const lit = parseLiteralEdit(ins);
+          if (lit)
+            text = text.replaceAll(lit.old, lit.new); // deterministic, free
+          else freeform.push(ins);
+        }
+        // Merge all freeform edits into one agent call rather than one per instruction.
+        if (freeform.length)
+          text = await this.enricher.editText(text, freeform.join("; then "));
+        write(journalLine(jot.time, text, jot.anchor));
+        return text;
+      },
+    );
     if (result === null) return "Couldn't find that line in the note.";
     await this.syncEditedSource(jot, result);
     return editConfirmation(jot.time, result);
@@ -955,17 +947,15 @@ export class ScribaBot implements BotServices {
    *  editing an image's caption must not drop the image out of the note. */
   private async replaceJotText(jot: Jot, newText: string): Promise<string> {
     const content = [newText, assetEmbed(jot)].filter(Boolean).join(" ");
-    const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
-      const note = await this.obsidian.readNote(jot.note_path);
-      const replaced = replaceAnchorLine(
-        note,
-        jot.anchor,
-        journalLine(jot.time, content, jot.anchor),
-      );
-      if (replaced) await this.obsidian.writeNote(jot.note_path, replaced);
-      return replaced;
-    });
-    if (!out) return "Couldn't find that line in the note.";
+    const found = await this.obsidian.updateLine(
+      jot.note_path,
+      jot.anchor,
+      (_line, write) => {
+        write(journalLine(jot.time, content, jot.anchor));
+        return true;
+      },
+    );
+    if (!found) return "Couldn't find that line in the note.";
     await this.syncEditedSource(jot, newText);
     return editConfirmation(jot.time, newText);
   }
@@ -993,11 +983,9 @@ export class ScribaBot implements BotServices {
   /** Remove a jot's line from its daily note and mark it deleted (a terminal state, so a
    *  retry sweep never resurrects it). Shared by the blank-edit path and /delete. */
   private async deleteJot(jot: Jot): Promise<string> {
-    const out = await this.obsidian.withNoteLock(jot.note_path, async () => {
-      const note = await this.obsidian.readNote(jot.note_path);
+    const out = await this.obsidian.updateNote(jot.note_path, (note, write) => {
       const removed = deleteAnchorLine(note, jot.anchor);
-      if (removed !== null)
-        await this.obsidian.writeNote(jot.note_path, removed);
+      if (removed !== null) write(removed);
       return removed;
     });
     // Line already gone (double delete, or removed by hand in Obsidian)? Still mark it
@@ -1120,19 +1108,15 @@ export class ScribaBot implements BotServices {
       log.warn({ jotId, status: jot?.status }, "embed: jot not editable");
       return void ctx.answerCallbackQuery({ text: "gone" });
     }
-    const text = await this.obsidian.withNoteLock(jot.note_path, async () => {
-      const note = await this.obsidian.readNote(jot.note_path);
-      const line = anchorLine(note, jot.anchor);
-      if (!line) return null;
-      const next = setEmbeds(stripJournalLine(line, jot.time), embed);
-      const out = replaceAnchorLine(
-        note,
-        jot.anchor,
-        journalLine(jot.time, next, jot.anchor),
-      );
-      if (out) await this.obsidian.writeNote(jot.note_path, out);
-      return next;
-    });
+    const text = await this.obsidian.updateLine(
+      jot.note_path,
+      jot.anchor,
+      (line, write) => {
+        const next = setEmbeds(stripJournalLine(line, jot.time), embed);
+        write(journalLine(jot.time, next, jot.anchor));
+        return next;
+      },
+    );
     if (text === null) {
       log.warn({ jotId }, "embed: anchored line not found");
       return void ctx.answerCallbackQuery({ text: "line not found" });
@@ -1261,23 +1245,21 @@ export class ScribaBot implements BotServices {
       );
     }
 
-    let applied = false;
     const jot = await this.repo.getJot(rec.jot_id);
-    if (jot) {
-      const note = await this.obsidian.readNote(jot.note_path);
-      const line = anchorLine(note, jot.anchor);
-      const linked = line?.replace(
-        rec.surface,
-        `[[${rec.note}|${rec.surface}]]`,
-      );
-      if (line && linked && linked !== line) {
-        const out = replaceAnchorLine(note, jot.anchor, linked);
-        if (out) {
-          await this.obsidian.writeNote(jot.note_path, out);
-          applied = true;
-        }
-      }
-    }
+    const applied =
+      jot !== undefined &&
+      (await this.obsidian.updateLine(
+        jot.note_path,
+        jot.anchor,
+        (line, write) => {
+          const linked = line.replace(
+            rec.surface,
+            `[[${rec.note}|${rec.surface}]]`,
+          );
+          write(linked);
+          return linked !== line;
+        },
+      )) === true;
     log.info(
       { surface: rec.surface, note: rec.note, applied },
       "link confirmation handled",

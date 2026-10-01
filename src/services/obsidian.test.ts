@@ -199,38 +199,144 @@ test("a failed creation doesn't poison the next attempt", async () => {
   assert.ok(fake.vault.has(path));
 });
 
-test("withNoteLock serializes read-modify-write, so no update is clobbered", async () => {
+test("updateNote serializes read-modify-write, so no update is lost", async () => {
   const { obsidian, fake } = await client();
   const path = "notes/a.md";
   fake.vault.set(path, "start");
 
-  // Both stacks read-modify-write the same note. Unserialized they'd both read "start"
-  // and the later PUT would drop the earlier's append.
+  // Unserialized, both stacks would read "start" and the later PUT would drop the
+  // earlier's append.
   const append = (suffix: string) =>
-    obsidian.withNoteLock(path, async () => {
-      const note = await obsidian.readNote(path);
-      await new Promise((r) => setTimeout(r, 10)); // widen the window
-      await obsidian.writeNote(path, `${note}+${suffix}`);
+    obsidian.updateNote(path, async (note, write) => {
+      await new Promise((r) => setTimeout(r, 10));
+      write(`${note}+${suffix}`);
     });
   await Promise.all([append("one"), append("two")]);
   assert.equal(fake.vault.get(path), "start+one+two");
 });
 
-test("a lock holder that throws surfaces the error and frees the path", async () => {
+test("updateNote answers what fn returned, and writes nothing unless fn wrote new text", async () => {
+  const { obsidian, fake } = await client();
+  const path = "notes/a.md";
+  fake.vault.set(path, "start");
+
+  assert.equal(
+    await obsidian.updateNote(path, () => "nothing to do"),
+    "nothing to do",
+  );
+  assert.equal(
+    await obsidian.updateNote(path, (note, write) => {
+      write(note);
+      return "same text";
+    }),
+    "same text",
+  );
+  assert.equal(counted(fake, "PUT", path), 0);
+
+  assert.equal(
+    await obsidian.updateNote(path, (note, write) => {
+      write(`${note}!`);
+      return "changed";
+    }),
+    "changed",
+  );
+  assert.equal(fake.vault.get(path), "start!");
+  assert.equal(counted(fake, "PUT", path), 1);
+});
+
+test("an updateNote that throws surfaces the error, writes nothing and frees the path", async () => {
   const { obsidian, fake } = await client();
   fake.vault.set("notes/a.md", "start");
   await assert.rejects(
     () =>
-      obsidian.withNoteLock("notes/a.md", async () => {
-        throw new Error("write failed");
+      obsidian.updateNote("notes/a.md", (_note, write) => {
+        write("half done");
+        throw new Error("agent failed");
       }),
-    /write failed/,
+    /agent failed/,
   );
+  assert.equal(fake.vault.get("notes/a.md"), "start");
   // The chain stores a caught tail, so one failure can't wedge the note forever.
-  const out = await obsidian.withNoteLock("notes/a.md", async () =>
-    obsidian.readNote("notes/a.md"),
+  await obsidian.updateNote("notes/a.md", (note, write) => write(`${note}+`));
+  assert.equal(fake.vault.get("notes/a.md"), "start+");
+});
+
+test("updateNote on a missing note rejects and creates nothing", async () => {
+  const { obsidian, fake } = await client();
+  await assert.rejects(
+    () => obsidian.updateNote("nope.md", (_note, write) => write("x")),
+    /note not found/,
   );
-  assert.equal(out, "start");
+  assert.equal(fake.vault.has("nope.md"), false);
+});
+
+const LINES_PATH = "notes/daily notes/2026-08-16.md";
+const LINES_NOTE = "## Journal\n- one ^aaaaaaaa\n- two ^bbbbbbbb\n";
+
+test("updateLine hands fn the anchored line and replaces only that line", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set(LINES_PATH, LINES_NOTE);
+  const seen: string[] = [];
+  const out = await obsidian.updateLine(
+    LINES_PATH,
+    "bbbbbbbb",
+    (line, write) => {
+      seen.push(line);
+      write("- TWO ^bbbbbbbb");
+      return "edited";
+    },
+  );
+  assert.equal(out, "edited");
+  assert.deepEqual(seen, ["- two ^bbbbbbbb"]);
+  assert.equal(
+    fake.vault.get(LINES_PATH),
+    "## Journal\n- one ^aaaaaaaa\n- TWO ^bbbbbbbb\n",
+  );
+});
+
+test("updateLine answers null without calling fn or writing when the anchor is gone", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set(LINES_PATH, LINES_NOTE);
+  let called = false;
+  const out = await obsidian.updateLine(LINES_PATH, "ffffffff", () => {
+    called = true;
+    return "edited";
+  });
+  assert.equal(out, null);
+  assert.equal(called, false);
+  assert.equal(counted(fake, "PUT", LINES_PATH), 0);
+});
+
+test("updateLine writes nothing when the line comes back unchanged", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set(LINES_PATH, LINES_NOTE);
+  const out = await obsidian.updateLine(
+    LINES_PATH,
+    "aaaaaaaa",
+    (line, write) => {
+      write(line);
+      return true;
+    },
+  );
+  assert.equal(out, true);
+  assert.equal(counted(fake, "PUT", LINES_PATH), 0);
+});
+
+test("setFrontmatter adds or replaces a key, and skips the write when the value is already set", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set("notes/a.md", "---\ntitle: x\n---\n\nbody\n");
+  await obsidian.setFrontmatter("notes/a.md", "habitsReviewed", "true");
+  assert.equal(
+    fake.vault.get("notes/a.md"),
+    "---\ntitle: x\nhabitsReviewed: true\n---\n\nbody\n",
+  );
+  await obsidian.setFrontmatter("notes/a.md", "habitsReviewed", "true");
+  assert.equal(counted(fake, "PUT", "notes/a.md"), 1);
+  await obsidian.setFrontmatter("notes/a.md", "title", "y");
+  assert.equal(
+    fake.vault.get("notes/a.md"),
+    "---\ntitle: y\nhabitsReviewed: true\n---\n\nbody\n",
+  );
 });
 
 test("appendJournalLine puts the bullet under the heading, not below a blank line", async () => {

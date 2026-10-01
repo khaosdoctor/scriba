@@ -1,5 +1,4 @@
 import { type Bot, InlineKeyboard } from "grammy";
-import { setFrontmatterValue } from "../../core.ts";
 import { logger } from "../../log.ts";
 import type { Config } from "../../models/config.ts";
 import type { ObsidianClient } from "../../services/obsidian.ts";
@@ -185,9 +184,8 @@ export class HabitsCommand {
     }
     if (verd === "y") {
       const updated = completeHabitLine(habit.line, date);
-      await this.obsidian.writeNote(
-        daily.path,
-        daily.content.replace(habit.line, () => updated),
+      await this.obsidian.updateNote(daily.path, (note, write) =>
+        write(note.replace(habit.line, () => updated)),
       );
       log.info({ date, index, label: habit.label }, "habit marked done");
     } else {
@@ -223,9 +221,8 @@ export class HabitsCommand {
       return void ctx.reply("Couldn't find that habit to update.");
     }
     const updated = completeHabitLine(habit.line, ref.date, value);
-    await this.obsidian.writeNote(
-      daily.path,
-      daily.content.replace(habit.line, () => updated),
+    await this.obsidian.updateNote(daily.path, (note, write) =>
+      write(note.replace(habit.line, () => updated)),
     );
     log.info(
       { date: ref.date, index: ref.index, label: habit.label },
@@ -241,13 +238,7 @@ export class HabitsCommand {
   /** Stamp `habitsReviewed: true` in the note's frontmatter so a second run won't
    *  overwrite answers. */
   private async markReviewed(date: string, path: string): Promise<void> {
-    await this.obsidian.withNoteLock(path, async () => {
-      const note = await this.obsidian.readNote(path);
-      await this.obsidian.writeNote(
-        path,
-        setFrontmatterValue(note, "habitsReviewed", "true"),
-      );
-    });
+    await this.obsidian.setFrontmatter(path, "habitsReviewed", "true");
     log.info({ date, path }, "habitsReviewed frontmatter set");
   }
 

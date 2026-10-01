@@ -16,7 +16,6 @@ import {
   journalLine,
   linkDateWords,
   makeJotId,
-  replaceAnchorLine,
   retryNotice,
   splitEntry,
   TIL_DETECTION_KEY,
@@ -668,15 +667,12 @@ export class JotProcessor {
     // Recreate the daily note if intake never got to it (Obsidian was down at arrival).
     // Idempotent + cached, so it's ~one GET when the note already exists.
     await this.obsidian.ensureDailyNote(jotDay(jot));
-    // Read + replace + write under the per-note lock so a concurrent write (another jot,
-    // an edit, the retry sweep) can't clobber the line we just placed.
-    const replaced = await this.obsidian.withNoteLock(
+    const replaced = await this.obsidian.updateLine(
       jot.note_path,
-      async () => {
-        const note = await this.obsidian.readNote(jot.note_path); // live — user may have edited
-        const out = replaceAnchorLine(note, jot.anchor, line);
-        if (out) await this.obsidian.writeNote(jot.note_path, out);
-        return out !== null;
+      jot.anchor,
+      (_line, write) => {
+        write(line);
+        return true;
       },
     );
     if (replaced) {
@@ -684,7 +680,7 @@ export class JotProcessor {
       return;
     }
     // Anchor missing (line hand-deleted, or note recreated). appendJournalLine takes the
-    // same lock itself, so it must run AFTER the block above releases — no re-entrancy.
+    // same lock itself, so it must run after the update above releases it.
     log.warn(
       { id: jot.id, anchor: jot.anchor },
       "anchor missing — appending line instead",

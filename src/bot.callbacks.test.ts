@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { journalLine } from "./core.ts";
 import type { Jot } from "./db.ts";
 import { testConfig } from "./test/config.ts";
+import { noteOps } from "./test/note-ops.ts";
 
 const NOW = Date.UTC(2026, 7, 16, 10, 0, 0);
 const SEC = NOW / 1000;
@@ -122,7 +123,7 @@ async function harness(over: Opts = {}) {
       events.push("obsidian.write");
       notes.set(path, content);
     },
-    withNoteLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
+    ...noteOps(() => obsidian),
   };
   const enricher: any = {
     editText: async (text: string, instruction: string) => {

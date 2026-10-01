@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TaskNotesService } from "../../services/task-notes.ts";
 import { testConfig } from "../../test/config.ts";
+import { noteOps } from "../../test/note-ops.ts";
 import {
   parseTaskPromptRef,
   TasksFlow,
@@ -74,15 +75,15 @@ function harness(
   // A minimal Obsidian stand-in: one note in memory, read and written whole.
   const vault = { content: note };
   let broken = false;
-  const obsidian = {
-    readNote: async () => {
+  const obsidian: any = {
+    readNote: async (_p: string) => {
       if (broken) throw new Error("obsidian is down");
       return vault.content;
     },
     writeNote: async (_p: string, c: string) => {
       vault.content = c;
     },
-    withNoteLock: async <T>(_p: string, fn: () => Promise<T>) => fn(),
+    ...noteOps(() => obsidian),
   };
   const store = new TaskNotesService(obsidian as any, {
     work: {
