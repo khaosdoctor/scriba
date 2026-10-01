@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { AdminController } from "../controllers/admin.ts";
 import { testConfig } from "../test/config.ts";
 import { FakeSettings } from "../test/fakes.ts";
 import { MenuController } from "./menu.ts";
@@ -377,19 +378,22 @@ function wizardHarness(
     },
     resetProcessing: async () => 2,
   };
+  const links = {
+    list: () => init.aliases ?? [],
+    stats: () => ({ enabled: true, aliases: 3, files: 2 }),
+  };
+  const queue = {
+    depth: 3,
+    add: (ids: string[]) => events.push(`queue ${ids.join(",")}`),
+    flush: async () => void events.push("flush"),
+  };
+  const processing = { retrySweep: async () => void events.push("sweep") };
   const deps = {
     repo,
-    links: {
-      list: () => init.aliases ?? [],
-      stats: () => ({ enabled: true, aliases: 3, files: 2 }),
-    },
+    links,
     enricher: { setModel: (model: string) => events.push(`enricher ${model}`) },
-    queue: {
-      depth: 3,
-      add: (ids: string[]) => events.push(`queue ${ids.join(",")}`),
-      flush: async () => void events.push("flush"),
-    },
-    processor: { retrySweep: async () => void events.push("sweep") },
+    queue,
+    admin: new AdminController({ repo, queue, processing, links } as never),
   };
   const bot = {
     api: {

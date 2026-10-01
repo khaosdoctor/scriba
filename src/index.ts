@@ -1,8 +1,8 @@
 import { ScribaBot } from "./bot.ts";
-import { formatDeployNotice } from "./core.ts";
+import { AdminController } from "./controllers/admin.ts";
 import { Repository } from "./db.ts";
 import { Scheduler } from "./lib/scheduler.ts";
-import { plainDate, previousDate, startOfToday } from "./lib/time.ts";
+import { previousDate } from "./lib/time.ts";
 import { logger } from "./log.ts";
 import type { Config } from "./models/config.ts";
 import { JotProcessor } from "./runtime/processor.ts";
@@ -80,21 +80,6 @@ async function buildEnricher(config: Config, repo: Repository) {
 
 const RETRY_EVERY_MS = 5 * 60_000;
 
-/** Tells the owner how the day went in jots; says nothing on a day without any. */
-export async function dailySummary(
-  repo: Pick<Repository, "windowStats">,
-  notify: (text: string) => Promise<void>,
-): Promise<void> {
-  const s = await repo.windowStats(startOfToday(), Date.now());
-  const failed = s.failed + s.abandoned;
-  log.info({ jots: s.total, audio: s.audio, failed }, "daily summary");
-  if (s.total === 0) return;
-
-  const lines = [`📓 ${plainDate()}`, `Jots: ${s.total} (voice: ${s.audio})`];
-  if (failed) lines.push(`⚠️ Failed/abandoned: ${failed}`);
-  await notify(lines.join("\n"));
-}
-
 /** Builds and wires everything. Nothing runs until `start()`: no timer is armed and no
  *  update is polled before it. */
 export async function createScriba(
@@ -122,10 +107,6 @@ export async function createScriba(
     enricher,
     transcriber,
     links,
-    github,
-    version,
-    sha,
-    startedAt,
   );
   const processor = new JotProcessor(
     repo,
@@ -135,7 +116,6 @@ export async function createScriba(
     links,
     bot,
   );
-  bot.setProcessor(processor);
   enricher.setSwitchNotifier((to, model, err) => {
     const reason = err instanceof Error ? err.message : String(err);
     switch (to) {
@@ -161,11 +141,37 @@ export async function createScriba(
   });
   bot.setQueue(queue);
 
+  const health = new HealthMonitor(
+    upstreams(
+      {
+        groqApiKey: config.enrich.groqApiKey,
+        opencodeApiKey: config.enrich.opencodeApiKey,
+        obsidianUrl: config.obsidian.url,
+        parakeetUrl: config.transcription.parakeetUrl,
+      },
+      obsidian.dispatcher,
+    ),
+    (t) => bot.notify(t),
+  );
+  const admin = new AdminController({
+    repo,
+    queue,
+    processing: processor,
+    transcriber,
+    links,
+    github,
+    health,
+    notifier: bot,
+    build: { version, sha },
+    startedAt,
+  });
+  bot.setAdmin(admin);
+
   const scheduler = new Scheduler();
   scheduler.daily(
     "summary",
     () => config.summaryTime,
-    () => dailySummary(repo, (t) => bot.notify(t)),
+    () => admin.dailySummary(),
   );
   // The next night is armed first, so a prompt that hangs or fails cannot stop the ones
   // after it.
@@ -191,44 +197,6 @@ export async function createScriba(
   scheduler.every("retry", RETRY_EVERY_MS, () => processor.retrySweep());
   bot.setScheduler(scheduler);
 
-  const health = new HealthMonitor(
-    upstreams(
-      {
-        groqApiKey: config.enrich.groqApiKey,
-        opencodeApiKey: config.enrich.opencodeApiKey,
-        obsidianUrl: config.obsidian.url,
-        parakeetUrl: config.transcription.parakeetUrl,
-      },
-      obsidian.dispatcher,
-    ),
-    (t) => bot.notify(t),
-  );
-  bot.setHealth(health);
-
-  // Notify only on an actual new deploy (version or sha changed since the last boot we
-  // recorded), so a plain restart on the same image stays quiet.
-  async function announceDeploy(): Promise<void> {
-    const deployId = `${version}@${sha}`;
-    const lastDeployId = await repo.getSetting("deployId");
-    if (lastDeployId === deployId) return;
-    log.info({ deployId, lastDeployId }, "new deploy detected, notifying");
-    // The notice still goes out without "what's new" when the GitHub lookup fails.
-    const releaseNote = await github.byVersion(version).catch((err) => {
-      log.warn(
-        { err, version },
-        "release note lookup failed for deploy notice",
-      );
-      return null;
-    });
-    // Recorded only once the notice sends, so a Telegram outage retries on the next boot.
-    try {
-      await bot.notify(formatDeployNotice(version, sha, releaseNote));
-      await repo.setSetting("deployId", deployId);
-    } catch (err) {
-      log.warn({ err }, "deploy notice failed to send, will retry next boot");
-    }
-  }
-
   return {
     bot,
     async start() {
@@ -245,7 +213,7 @@ export async function createScriba(
       health.start();
       await bot.start();
       log.info("scriba ready");
-      await announceDeploy();
+      await admin.announceDeploy();
     },
     async stop() {
       await bot.stop();

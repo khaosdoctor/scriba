@@ -1,5 +1,5 @@
 import type { Bot, Context } from "grammy";
-import type { Deps } from "../commands/index.ts";
+import type { AdminController } from "../controllers/admin.ts";
 import type { CommandSession } from "../flows/command.ts";
 import type { FollowupFlow } from "../flows/followup.ts";
 import type { HabitsCommand } from "../flows/habits/index.ts";
@@ -49,7 +49,6 @@ export interface JotHandlers {
     embed: boolean,
   ): Promise<void>;
   handleLink(ctx: Context, verdict?: string, pendingId?: string): Promise<void>;
-  handleUnreject(ctx: Context, rest: string[]): Promise<void>;
 }
 
 export type ViewDeps = {
@@ -63,8 +62,8 @@ export type ViewDeps = {
   tasks: TasksFlow;
   til: TilFlow;
   jots: JotHandlers;
-  /** What the admin commands act on, assembled per invocation. */
-  admin: () => Deps;
+  /** Read per tap or command: the controller is built after the bot, in index.ts. */
+  admin: () => AdminController;
   errors: ErrorDeps;
 };
 

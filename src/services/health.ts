@@ -1,10 +1,20 @@
 import { type Dispatcher, fetch } from "undici";
-import type { UpstreamStatus } from "../core.ts";
 import { formatDuration } from "../lib/text.ts";
 import { logger } from "../log.ts";
 import { OPENCODE_BASE_URL } from "./enrich.ts";
 
 const log = logger("health");
+
+/** One upstream as the health monitor last saw it. `latencyMs` is null until the first
+ *  probe answers; `error` is the latest failed probe's, cleared by the next success. */
+export interface UpstreamStatus {
+  name: string;
+  up: boolean;
+  latencyMs: number | null;
+  error: string | null;
+  failures: number;
+  since: number;
+}
 
 /** The model listing next to an OpenAI-style transcription endpoint:
  *  `.../v1/audio/transcriptions` → `.../v1/models`. A GET there generates nothing, which

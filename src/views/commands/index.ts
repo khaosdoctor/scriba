@@ -1,11 +1,22 @@
 import { type CommandContext, Composer, type Context } from "grammy";
-import { type Command, commands } from "../../commands/index.ts";
-import { fitTelegram } from "../../core.ts";
 import type { ViewDeps } from "../index.ts";
+import { changelog } from "./changelog.ts";
 import { deleteCommand } from "./delete.ts";
 import { done } from "./done.ts";
+import { failed } from "./failed.ts";
+import { flush } from "./flush.ts";
 import { help } from "./help.ts";
+import { jot } from "./jot.ts";
+import { rejections } from "./rejections.ts";
+import { retry } from "./retry.ts";
 import { start } from "./start.ts";
+import { stats } from "./stats.ts";
+import { status } from "./status.ts";
+import { stopword } from "./stopword.ts";
+import { sweep } from "./sweep.ts";
+import { unreject } from "./unreject.ts";
+import { unstick } from "./unstick.ts";
+import { version } from "./version.ts";
 
 /** One slash command: what Telegram's `/` menu shows for it and the view that answers it. */
 export type CommandView = {
@@ -31,24 +42,6 @@ function flow(
     view(deps) {
       const view = new Composer<Context>();
       view.command(command, handle(deps));
-      return view;
-    },
-  };
-}
-
-/** An admin command from the registry. Every string it returns passes through fitTelegram,
- *  so an oversized answer becomes a labelled cut instead of a rejected send. */
-function admin(cmd: Command): CommandView {
-  return {
-    command: cmd.name,
-    description: cmd.description,
-    admin: true,
-    view({ admin }) {
-      const view = new Composer<Context>();
-      view.command(cmd.name, async (ctx) => {
-        const out = await cmd.run(ctx, String(ctx.match ?? ""), admin());
-        if (typeof out === "string") await ctx.reply(fitTelegram(out));
-      });
       return view;
     },
   };
@@ -115,6 +108,18 @@ export const COMMANDS: CommandView[] = [
   ),
   done,
   deleteCommand,
-  ...commands.map(admin),
+  version,
+  changelog,
+  stats,
+  status,
+  failed,
+  jot,
+  flush,
+  retry,
+  sweep,
+  unstick,
+  stopword,
+  rejections,
+  unreject,
 ];
 COMMANDS.push(help(COMMANDS));

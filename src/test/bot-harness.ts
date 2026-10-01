@@ -1,6 +1,7 @@
 // Drives the real ScribaBot through grammy's handleUpdate with in-memory collaborators.
 // Every call a handler makes to the repository, Obsidian, the queue or Telegram is recorded
 // on one ordered timeline, which is what the routing and ack-ledger tests assert against.
+import { AdminController } from "../controllers/admin.ts";
 import type { Jot } from "../db.ts";
 import { testConfig } from "./config.ts";
 import { type ApiCall, BOT_INFO, FakeSettings, recordingApi } from "./fakes.ts";
@@ -186,6 +187,11 @@ export async function botHarness() {
     stats: () => ({ enabled: true, files: 2, aliases: 3 }),
   };
   const health = { snapshot: () => [] };
+  const github = {
+    latest: async () => null,
+    recent: async () => [],
+    byVersion: async () => null,
+  };
 
   const bot: any = new ScribaBot(
     testConfig,
@@ -194,14 +200,22 @@ export async function botHarness() {
     enricher,
     transcriber,
     linkIndex as any,
-    {} as any,
-    "0.0.0",
-    "0123456789",
-    NOW,
   );
   bot.setQueue(queue);
-  bot.setProcessor(processor);
-  bot.setHealth(health as any);
+  bot.setAdmin(
+    new AdminController({
+      repo,
+      queue,
+      processing: processor,
+      transcriber,
+      links: linkIndex,
+      github,
+      health,
+      notifier: bot,
+      build: { version: "0.0.0", sha: "0123456789" },
+      startedAt: NOW,
+    } as never),
+  );
   bot.setScheduler(scheduler);
   bot.bot.botInfo = BOT_INFO;
   bot.bot.api.config.use(telegram.transformer as never);
