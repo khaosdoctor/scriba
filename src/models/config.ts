@@ -1,0 +1,184 @@
+import { z } from "zod";
+
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM");
+
+// Whole environment is one schema: coercion, defaults, and cross-field checks
+// all live here so a misconfigured deploy fails at boot with a readable message.
+export const EnvSchema = z.object({
+  TELEGRAM_BOT_TOKEN: z.string().min(1),
+  ALLOWED_TELEGRAM_USER_ID: z.coerce.number(),
+  PORT: z.coerce.number().default(8080), // health endpoint only (long polling needs no inbound webhook)
+
+  // Voice goes to Groq when a key is set, and to the Parakeet sidecar (always up) when
+  // Groq fails or there is no key.
+  GROQ_API_KEY: z.string().optional(),
+  // Parakeet is the last step for voice, so a blank or broken URL fails at boot.
+  PARAKEET_URL: z.url().default("http://parakeet:5092/v1/audio/transcriptions"),
+
+  OBSIDIAN_API_URL: z
+    .string()
+    .default("https://127.0.0.1:27124")
+    .transform((s) => s.replace(/\/$/, "")),
+  OBSIDIAN_API_KEY: z.string().min(1),
+  // Skip TLS verification for a non-loopback Obsidian URL (self-signed cert on a
+  // trusted LAN, e.g. the homelab deploy). Loopback always skips regardless.
+  OBSIDIAN_INSECURE_TLS: z
+    .enum(["true", "false"])
+    .default("false")
+    .transform((s) => s === "true"),
+  DAILY_NOTES_DIR: z.string().default("notes/daily notes"),
+  DAILY_NOTE_TEMPLATE: z.string().default("internal/templates/Daily Note"),
+  JOURNAL_HEADING: z.string().default("Journal"),
+  TIL_HEADING: z.string().trim().min(1).default("TIL"),
+  HABITS_HEADING: z.string().default("Habits"),
+  ASSETS_DIR: z.string().default("internal/assets/journal"),
+
+  // The two task notes. Tasks are checklist bullets under one heading in each: the
+  // work note's list runs newest-first, the personal one is appended to. Both use
+  // `[start:: ]` (planned start, optional) and `[due:: ]` (the deadline, mandatory).
+  TASKS_WORK_NOTE: z
+    .string()
+    .default("notes/work notes/What's going on at work.md"),
+  TASKS_WORK_HEADING: z.string().default("Other Tasks"),
+  TASKS_WORK_TAG: z.string().default("#type/todo/work"),
+  TASKS_WORK_INSERT: z.enum(["top", "bottom"]).default("top"),
+  TASKS_PERSONAL_NOTE: z
+    .string()
+    .default("notes/tracking notes/dashboards/Todos.md"),
+  TASKS_PERSONAL_HEADING: z.string().default("Things to do"),
+  TASKS_PERSONAL_TAG: z.string().default("#type/todo"),
+  TASKS_PERSONAL_INSERT: z.enum(["top", "bottom"]).default("bottom"),
+
+  // Where the app READS the vault. Set SCRIBA_VAULT_HOST_PATH to point at a real
+  // vault dir (local run); unset means /vault, the containerized bind-mount. Empty
+  // disables the link index.
+  SCRIBA_VAULT_HOST_PATH: z.string().default("/vault"),
+  DB_PATH: z.string().default("/data/scriba.db"),
+  SUMMARY_TIME: hhmm.default("23:30"),
+  RATING_TIME: hhmm.default("00:00"), // nightly "how was your day?" 1-10 prompt
+  HABITS_TIME: hhmm.default("00:00"), // nightly "did you do yesterday's habits?" prompt
+  TASKS_TIME: hhmm.default("09:00"), // morning "here is your day" task summary
+
+  FLUSH_IDLE_MS: z.coerce.number().default(30_000),
+  FLUSH_MAX_BATCH: z.coerce.number().default(8),
+  FLUSH_MAX_WAIT_MS: z.coerce.number().default(120_000),
+
+  // Rapid-fire text/voice jots within this window fold into one enriched journal
+  // line (rolling window: measured from the previous jot, not the first). 0 disables.
+  SQUASH_WINDOW_MS: z.coerce.number().default(15_000),
+
+  // Enrichment runs on the Claude Agent SDK (subscription auth). Haiku is the default:
+  // low cost, plenty of headroom, and the task (translate + insert wikilinks) is simple.
+  // When the SDK call fails (usage exhausted, overload, network), enrichment retries on
+  // ENRICH_BACKUP_MODEL, then on a free Groq model (reusing GROQ_API_KEY). No key means
+  // no Groq step: jots post un-enriched once both Claude models fail.
+  // gpt-oss-120b is Groq's strongest open-weight model for structured JSON in/out.
+  // Text-only: image captioning can't fall back (Groq has no production vision model),
+  // so a captionless image posts embedded-but-uncaptioned when the primary is down.
+  AGENT_MODEL: z.string().default("claude-haiku-4-5"),
+  ENRICH_BACKUP_MODEL: z.string().default("claude-sonnet-5"),
+  ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
+  // OpenCode Go: OpenAI-compatible fallback after Groq. Requires an API key from
+  // opencode.ai/go. The model runs through OpenCode's proxy, not direct DeepSeek.
+  OPENCODE_GO_API_KEY: z.string().optional(),
+  OPENCODE_FALLBACK_MODEL: z.string().default("deepseek-v4.1-flash"),
+  // Cap on one enrichment call, per step of the chain. A call past it counts as a failure
+  // towards that step's circuit breaker, and the next step is tried.
+  ENRICH_TIMEOUT_MS: z.coerce.number().positive().default(15_000),
+
+  // Voice-fix: when enabled, a second model lightly cleans the transcript before
+  // enrichment. Sonnet by default: haiku paraphrases too aggressively.
+  VOICE_FIX_MODEL: z.string().default("claude-sonnet-5"),
+
+  // /command runs an agent over the vault: research, judgement about an existing note's
+  // shape, and writing that has to read like the owner. Haiku is the wrong tool for
+  // that, so command mode gets its own (stronger) model.
+  COMMAND_MODEL: z.string().default("claude-sonnet-5"),
+  // Thinking budget for command mode. The session relays the agent's reasoning to the
+  // chat as it works, which is only worth anything if the model actually thinks. 0
+  // turns extended thinking off (and with it the thinking lines).
+  COMMAND_THINKING_TOKENS: z.coerce.number().min(0).default(4000),
+});
+
+type Env = z.infer<typeof EnvSchema>;
+
+function toConfig(env: Env) {
+  return {
+    telegram: {
+      token: env.TELEGRAM_BOT_TOKEN,
+      allowedUserId: env.ALLOWED_TELEGRAM_USER_ID,
+      port: env.PORT,
+    },
+    transcription: {
+      groqApiKey: env.GROQ_API_KEY ?? "",
+      parakeetUrl: env.PARAKEET_URL,
+    },
+    obsidian: {
+      url: env.OBSIDIAN_API_URL,
+      key: env.OBSIDIAN_API_KEY,
+      insecureTls: env.OBSIDIAN_INSECURE_TLS,
+      dailyDir: env.DAILY_NOTES_DIR,
+      dailyTemplate: env.DAILY_NOTE_TEMPLATE,
+      journalHeading: env.JOURNAL_HEADING,
+      tilHeading: env.TIL_HEADING,
+      habitsHeading: env.HABITS_HEADING,
+      assetsDir: env.ASSETS_DIR,
+    },
+    tasks: {
+      work: {
+        path: env.TASKS_WORK_NOTE,
+        heading: env.TASKS_WORK_HEADING,
+        tag: env.TASKS_WORK_TAG,
+        insert: env.TASKS_WORK_INSERT,
+      },
+      personal: {
+        path: env.TASKS_PERSONAL_NOTE,
+        heading: env.TASKS_PERSONAL_HEADING,
+        tag: env.TASKS_PERSONAL_TAG,
+        insert: env.TASKS_PERSONAL_INSERT,
+      },
+    },
+    enrich: {
+      model: env.AGENT_MODEL,
+      backupModel: env.ENRICH_BACKUP_MODEL,
+      fallbackModel: env.ENRICH_FALLBACK_MODEL,
+      // Reuses the transcription Groq key; empty disables the fallback.
+      groqApiKey: env.GROQ_API_KEY ?? "",
+      opencodeApiKey: env.OPENCODE_GO_API_KEY ?? "",
+      opencodeModel: env.OPENCODE_FALLBACK_MODEL,
+      timeoutMs: env.ENRICH_TIMEOUT_MS,
+    },
+    voiceFix: {
+      model: env.VOICE_FIX_MODEL,
+    },
+    command: {
+      model: env.COMMAND_MODEL,
+      thinkingTokens: env.COMMAND_THINKING_TOKENS,
+    },
+    vaultPath: env.SCRIBA_VAULT_HOST_PATH,
+    dbPath: env.DB_PATH,
+    summaryTime: env.SUMMARY_TIME,
+    ratingTime: env.RATING_TIME,
+    habitsTime: env.HABITS_TIME,
+    tasksTime: env.TASKS_TIME,
+    flush: {
+      idleMs: env.FLUSH_IDLE_MS,
+      maxBatch: env.FLUSH_MAX_BATCH,
+      maxWaitMs: env.FLUSH_MAX_WAIT_MS,
+    },
+    squash: {
+      windowMs: env.SQUASH_WINDOW_MS,
+    },
+  } as const;
+}
+
+export type Config = ReturnType<typeof toConfig>;
+
+export function loadConfig(
+  env: Readonly<Record<string, string | undefined>>,
+): Config {
+  const parsed = EnvSchema.safeParse(env);
+  if (!parsed.success)
+    throw new Error(`Invalid configuration\n${z.prettifyError(parsed.error)}`);
+  return toConfig(parsed.data);
+}
