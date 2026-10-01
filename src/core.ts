@@ -455,7 +455,7 @@ export function stripJournalLine(line: string, time: string): string {
 
 /** Line range of the section under `heading`: the heading's index and the index of the next
  *  heading (or the end of the note). Null when the note has no such heading. */
-function findSection(
+export function findSection(
   lines: string[],
   heading: string,
 ): { headingIdx: number; end: number } | null {
@@ -470,6 +470,12 @@ function findSection(
     }
   }
   return { headingIdx, end };
+}
+
+/** Append `[completion:: date]` to a task or habit line unless it already has one. */
+export function stampCompletion(line: string, date: string): string {
+  if (/\[\s*completion\s*::/i.test(line)) return line;
+  return `${line.replace(/\s*$/, "")} [completion:: ${date}]`;
 }
 
 /** Does the section under `heading` hold anything beyond what the template puts there?
@@ -666,8 +672,7 @@ export function moveAnchorLine(
 ): MoveResult {
   const line = anchorLine(note, anchor);
   if (line === null) return { missing: "line" };
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRe(heading)}\\s*$`, "m");
-  if (!headingRe.test(note)) return { missing: "heading" };
+  if (!findSection(note.split("\n"), heading)) return { missing: "heading" };
   const without = note.replace(
     new RegExp(`${anchorRe(anchor).source}\\n?`, "m"),
     "",

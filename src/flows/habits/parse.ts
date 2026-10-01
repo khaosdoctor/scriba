@@ -11,7 +11,7 @@
  * never treated as the habit's own value.
  */
 
-import { escapeRe } from "../../core.ts";
+import { findSection, stampCompletion } from "../../core.ts";
 
 /** One inline `[key:: value]` field. */
 export interface HabitField {
@@ -51,13 +51,11 @@ function habitLabel(rest: string, field: HabitField | null): string {
 /** Parse the checklist bullets under the `## <heading>` section into ordered habits. */
 export function parseHabits(note: string, heading = "Habits"): Habit[] {
   const lines = note.split("\n");
-  const headingRe = new RegExp(`^#{1,6}\\s+${escapeRe(heading)}\\s*$`);
-  const headingIdx = lines.findIndex((l) => headingRe.test(l));
-  if (headingIdx === -1) return [];
+  const section = findSection(lines, heading);
+  if (!section) return [];
   const out: Habit[] = [];
-  for (let i = headingIdx + 1; i < lines.length; i++) {
+  for (let i = section.headingIdx + 1; i < section.end; i++) {
     const l = lines[i]!;
-    if (/^#{1,6}\s/.test(l)) break; // next heading ends the section
     const m = l.match(/^\s*-\s*\[( |x|X)\]\s*(.*)$/);
     if (!m) continue;
     const field = habitField(l);
@@ -89,9 +87,7 @@ export function completeHabitLine(
       return `[${String(k).trim()}:: ${value}]`;
     });
   }
-  if (!/\[\s*completion\s*::/i.test(out))
-    out = `${out.replace(/\s*$/, "")} [completion:: ${date}]`;
-  return out;
+  return stampCompletion(out, date);
 }
 
 /** Machine ref embedded in a habit question so a text reply days later routes back to the
