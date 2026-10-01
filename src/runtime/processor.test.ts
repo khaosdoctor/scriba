@@ -592,6 +592,10 @@ async function world(t: TestContext, options: WorldOptions = {}) {
     onJotDone: async () => {},
     downloadFile: async (fileId: string) => {
       calls.push(`download:${fileId}`);
+      if (fileId === "voice-file")
+        return { bytes: new Uint8Array(3), ext: "oga", mime: "audio/ogg" };
+      if (fileId === "video-file")
+        return { bytes: new Uint8Array(3), ext: "mp4", mime: "video/mp4" };
       return { bytes: new Uint8Array(3), ext: "jpg", mime: "image/jpeg" };
     },
     awaitVoiceFix: async (_id: string, original: string, proposed: string) => {
@@ -943,7 +947,7 @@ test("a voice note without a transcript is downloaded and transcribed, never att
   );
   await w.processor.processJot("abcd1234");
 
-  assert.deepEqual(w.calls, ["download:voice-file", "transcribe:3:jpg"]);
+  assert.deepEqual(w.calls, ["download:voice-file", "transcribe:3:oga"]);
   const row = await w.repo.getJot("abcd1234");
   assert.equal(row?.transcript, "spoken words");
   assert.equal(row?.asset_path, null);
@@ -958,13 +962,13 @@ test("a video is saved and embedded but never transcribed, captioned or enriched
 
   assert.deepEqual(w.calls, [
     "download:video-file",
-    "saveAsset:2026-08-16_100000_abcd1234.jpg:3:image/jpeg",
+    "saveAsset:2026-08-16_100000_abcd1234.mp4:3:video/mp4",
   ]);
   assert.deepEqual(w.enriched, []);
   const row = await w.repo.getJot("abcd1234");
   assert.equal(row?.status, "done");
   assert.equal(row?.raw_text, "");
-  assert.match(w.note(), /!\[\[assets\/2026-08-16_100000_abcd1234\.jpg\]\]/);
+  assert.match(w.note(), /!\[\[assets\/2026-08-16_100000_abcd1234\.mp4\]\]/);
 });
 
 test("media already on file is not downloaded again", async (t) => {
@@ -1008,13 +1012,9 @@ test("an over-long entry's spillover jots copy the parent row, til_offered inclu
   await w.repo.markTilOffered("abcd1234");
   await w.processor.processJot("abcd1234");
 
-  const rows = (await (w.repo as any)
-    .k("jots")
-    .orderBy("received_at")) as (Jot & {
-    til_offered: number;
-  })[];
+  const rows = await w.repo.recentJots(3);
   assert.equal(rows.length, 2);
-  const [parent, piece] = rows;
+  const [piece, parent] = rows;
   assert.equal(parent?.id, "abcd1234");
   assert.equal(parent?.raw_text, "The first sentence is a fairly long one.");
   assert.equal(piece?.raw_text, "The second sentence is also a long one.");
@@ -1022,6 +1022,5 @@ test("an over-long entry's spillover jots copy the parent row, til_offered inclu
   assert.equal(piece?.section, "journal");
   assert.equal(piece?.anchor, piece?.id);
   assert.equal(piece?.received_at, 1001);
-  assert.equal(Number(piece?.til_offered), 1);
   assert.equal(await w.repo.tilOffered(piece!.id), true);
 });

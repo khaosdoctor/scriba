@@ -4,9 +4,9 @@ import { journalLine } from "./core.ts";
 import type { Jot } from "./db.ts";
 
 // config.ts reads process.env at import time, so the bot is imported after these are set.
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
+process.env.TELEGRAM_BOT_TOKEN = "t";
+process.env.ALLOWED_TELEGRAM_USER_ID = "1";
+process.env.OBSIDIAN_API_KEY = "o";
 
 const NOW = Date.UTC(2026, 7, 16, 10, 0, 0);
 const SEC = NOW / 1000;
