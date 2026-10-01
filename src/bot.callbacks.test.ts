@@ -151,6 +151,7 @@ async function harness(over: Opts = {}) {
   return {
     bot,
     repo,
+    obsidian,
     events,
     api: rec.calls,
     apiResult: rec.results,
@@ -944,7 +945,7 @@ test("a failed button tap gets a toast of at most 200 characters and no other me
 
 test("a failed message that already has a jot gets Retry and Delete buttons", async () => {
   const fixture = await harness({ jots: [], mapped: [] });
-  fixture.bot.obsidian.appendJournalLine = async () => {
+  fixture.obsidian.appendJournalLine = async () => {
     throw new Error("obsidian is down");
   };
   await fixture.send("buy milk");

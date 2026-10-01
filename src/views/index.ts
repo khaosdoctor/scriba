@@ -1,13 +1,13 @@
 import type { Bot, Context } from "grammy";
 import type { AdminController } from "../controllers/admin.ts";
 import type { CommandController } from "../controllers/command.ts";
+import type { EditController } from "../controllers/edits.ts";
 import type { HabitController } from "../controllers/habits.ts";
 import type { JotController } from "../controllers/jots.ts";
 import type { Modes } from "../controllers/modes.ts";
 import type { RatingController } from "../controllers/rating.ts";
 import type { SettingsController } from "../controllers/settings.ts";
 import type { TaskController } from "../controllers/tasks.ts";
-import type { Jot } from "../db.ts";
 import { logger } from "../log.ts";
 import { callbackViews } from "./callbacks/index.ts";
 import { COMMANDS } from "./commands/index.ts";
@@ -23,24 +23,10 @@ import { voiceView } from "./messages/voice.ts";
 
 const log = logger("bot");
 
-/** The edit handlers the message and callback views still call back into on the bot. */
+/** The one handler the voice view still calls back into on the bot: a spoken task needs the
+ *  file download and the transcriber, which live on the bot. */
 export interface JotHandlers {
   spokenTask(ctx: Context, fileId: string): Promise<void>;
-  handleEdit(ctx: Context): Promise<void>;
-  applyMessageEdit(ctx: Context, edited: string): Promise<void>;
-  handleDeleteCommand(ctx: Context): Promise<void>;
-  handleRemove(
-    ctx: Context,
-    jotId: string | undefined,
-    source: "undo" | "discard",
-  ): Promise<void>;
-  handleEmbed(
-    ctx: Context,
-    jotId: string | undefined,
-    embed: boolean,
-  ): Promise<void>;
-  handleLink(ctx: Context, verdict?: string, pendingId?: string): Promise<void>;
-  deleteJot(jot: Jot): Promise<string>;
 }
 
 export type ViewDeps = {
@@ -53,6 +39,7 @@ export type ViewDeps = {
   command: CommandController;
   tasks: TaskController;
   jotController: JotController;
+  edits: EditController;
   jots: JotHandlers;
   /** Read per tap or command: the controller is built after the bot, in index.ts. */
   admin: () => AdminController;

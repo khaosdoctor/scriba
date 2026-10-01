@@ -204,8 +204,16 @@ async function jotDetail(
  *  a tap that only draws a screen answer first. The link wizard (`menu:l*`) gets every
  *  action this view does not name. */
 export function menuView(deps: ViewDeps): Composer<Context> {
-  const { settings, admin, menus, rating, habits, tasks, jotController, jots } =
-    deps;
+  const {
+    settings,
+    admin,
+    menus,
+    rating,
+    habits,
+    tasks,
+    jotController,
+    edits,
+  } = deps;
   const links = linkRulesTap(deps);
   return namespace("menu", async (ctx, rest) => {
     const [action, arg] = rest;
@@ -398,7 +406,7 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         // past Telegram's callback-query window: the edited message carries the result.
         await responder.ack();
         log.info({ jotId: arg }, "menu: delete jot");
-        return ctx.editMessageText(await jots.deleteJot(jot), {
+        return ctx.editMessageText(await edits.deleteJot(jot), {
           reply_markup: backTo("menu:jots", CLOSE),
         });
       }

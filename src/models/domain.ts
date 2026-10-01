@@ -118,3 +118,10 @@ export interface IntakeInput {
    *  after rating yesterday). */
   day?: string;
 }
+
+/** An edited message: its id and the new text as markdown (the caption for media, `""`
+ *  when it was removed). */
+export interface EditInput {
+  messageId: number;
+  text: string;
+}

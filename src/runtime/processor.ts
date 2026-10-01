@@ -324,7 +324,7 @@ export class JotProcessor {
       // This jot now owns only its first piece — fold that back into its source so a
       // later /reprocess re-enriches that piece alone instead of splitting all over
       // again. Skipped for a squashed leader: its source is several jots' text combined,
-      // so there's no single field to fold into (same rule as ScribaBot.syncEditedSource).
+      // so there's no single field to fold into (same rule as EditController.syncEditedSource).
       // `linked` is the piece's text only — the embed is added by composeLine, so an
       // image's raw_text stays pure caption and its embed isn't folded in twice.
       if (spillover.length && !merged)
