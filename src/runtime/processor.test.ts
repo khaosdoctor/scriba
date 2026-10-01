@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
-import { insertJournalLine } from "../core.ts";
+import { randomBytes } from "node:crypto";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { type TestContext, test } from "node:test";
+import {
+  ENTRY_MAX_CHARS_KEY,
+  insertJournalLine,
+  VOICE_FIX_KEY,
+  VOICE_FIX_MODEL_KEY,
+} from "../core.ts";
 import type { Jot } from "../db.ts";
-import { MAX_ATTEMPTS } from "../db.ts";
+import { MAX_ATTEMPTS, Repository } from "../db.ts";
 import { ModelsDownError } from "../services/enrich.ts";
 import { HELD as HELD_MARKER, JotProcessor } from "./processor.ts";
 
@@ -467,4 +476,552 @@ test("a split piece stays in its parent's section", () => {
     processor.pieceJot(jot({ section: "journal" }), "tail", 1).section,
     "journal",
   );
+});
+
+// --- processBatch, retrySweep and the media/voice steps, over a real sqlite repository ---
+
+type Seen = { id: string; html: string; opts: any };
+
+const stored = (over: Partial<Jot> = {}): Jot =>
+  jot({
+    status: "pending",
+    received_at: 1000,
+    updated_at: 1000,
+    ...over,
+  });
+
+interface WorldOptions {
+  settings?: Record<string, string>;
+  enrichText?: string;
+  fixTranscript?: (original: string, model: string) => Promise<string>;
+  voiceChoice?: "original" | "proposed";
+}
+
+async function world(t: TestContext, options: WorldOptions = {}) {
+  const dbPath = join(
+    tmpdir(),
+    `scriba-processor-${randomBytes(6).toString("hex")}.db`,
+  );
+  let repo: Repository;
+  try {
+    repo = await Repository.open(dbPath);
+  } catch (e) {
+    t.skip(`native sqlite unavailable: ${(e as Error).message.slice(0, 80)}`);
+    return null;
+  }
+  t.after(async () => {
+    await repo.close();
+    await rm(dbPath, { force: true });
+    await rm(`${dbPath}-wal`, { force: true });
+    await rm(`${dbPath}-shm`, { force: true });
+  });
+  for (const [key, value] of Object.entries(options.settings ?? {}))
+    await repo.setSetting(key, value);
+
+  const statuses: Seen[] = [];
+  const reactions: [string, string][] = [];
+  const calls: string[] = [];
+  const enriched: string[] = [];
+  const assets: string[] = [];
+  const voiceFixAsks: [string, string][] = [];
+  let note = "## Journal\n";
+
+  const add = async (j: Jot) => {
+    await repo.insertJot(j);
+    if (j.anchor === j.id)
+      note = insertJournalLine(
+        note,
+        "Journal",
+        `- _${j.time} ::_ ⏳ ^${j.anchor}`,
+      );
+  };
+
+  const obsidian = {
+    ensureDailyNote: async () => "",
+    withNoteLock: async (_p: string, fn: () => Promise<unknown>) => fn(),
+    readNote: async () => note,
+    writeNote: async (_p: string, content: string) => {
+      note = content;
+    },
+    appendJournalLine: async (_d: string, line: string) => {
+      note = insertJournalLine(note, "Journal", line);
+    },
+    saveAsset: async (name: string, bytes: Uint8Array, mime: string) => {
+      calls.push(`saveAsset:${name}:${bytes.length}:${mime}`);
+      assets.push(name);
+      return `assets/${name}`;
+    },
+  };
+  const transcriber = {
+    transcribe: async (bytes: Uint8Array, ext: string) => {
+      calls.push(`transcribe:${bytes.length}:${ext}`);
+      return "spoken words";
+    },
+  };
+  const enricher = {
+    available: () => true,
+    enrich: async (input: { text: string }) => {
+      enriched.push(input.text);
+      return {
+        text: options.enrichText ?? input.text,
+        ambiguous: [],
+        tasks: [],
+        til: false,
+        usage: { input: 0, output: 0 },
+      };
+    },
+    fixTranscript:
+      options.fixTranscript ?? (async (original: string) => original),
+    describeImage: async (bytes: Uint8Array, mime: string) => {
+      calls.push(`describeImage:${bytes.length}:${mime}`);
+      return "a red door";
+    },
+  };
+  const bot = {
+    typing: async () => {},
+    status: async (id: string, html: string, opts?: any) => {
+      statuses.push({ id, html, opts });
+    },
+    react: async (id: string, state: string) => {
+      reactions.push([id, state]);
+    },
+    deleteStatus: async () => {},
+    askLink: async () => {},
+    askTask: async () => {},
+    askTil: async () => {},
+    onJotDone: async () => {},
+    downloadFile: async (fileId: string) => {
+      calls.push(`download:${fileId}`);
+      return { bytes: new Uint8Array(3), ext: "jpg", mime: "image/jpeg" };
+    },
+    awaitVoiceFix: async (_id: string, original: string, proposed: string) => {
+      voiceFixAsks.push([original, proposed]);
+      return options.voiceChoice ?? "proposed";
+    },
+  };
+  const processor = new JotProcessor(
+    repo,
+    obsidian as any,
+    transcriber as any,
+    enricher as any,
+    { list: () => [] } as any,
+    bot as any,
+  );
+  return {
+    repo,
+    processor,
+    add,
+    note: () => note,
+    statuses,
+    reactions,
+    calls,
+    enriched,
+    assets,
+    voiceFixAsks,
+    htmls: () => statuses.map((s) => s.html),
+  };
+}
+
+test("a batch processes its jots one after the other, in the order given", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  await w.add(
+    stored({ id: "aaaaaaaa", anchor: "aaaaaaaa", raw_text: "first" }),
+  );
+  await w.add(
+    stored({ id: "bbbbbbbb", anchor: "bbbbbbbb", raw_text: "second" }),
+  );
+  await w.processor.processBatch(["bbbbbbbb", "aaaaaaaa"]);
+
+  assert.deepEqual(w.enriched, ["second", "first"]);
+  assert.equal((await w.repo.getJot("aaaaaaaa"))?.status, "done");
+  assert.equal((await w.repo.getJot("bbbbbbbb"))?.status, "done");
+  assert.deepEqual(w.reactions, [
+    ["bbbbbbbb", "done"],
+    ["aaaaaaaa", "done"],
+  ]);
+  assert.match(w.note(), /first \^aaaaaaaa/);
+  assert.match(w.note(), /second \^bbbbbbbb/);
+});
+
+test("a batch naming a jot that no longer exists skips it and carries on", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  await w.add(stored({ id: "aaaaaaaa", anchor: "aaaaaaaa" }));
+  await w.processor.processBatch(["gone0000", "aaaaaaaa"]);
+  assert.equal((await w.repo.getJot("aaaaaaaa"))?.status, "done");
+});
+
+test("retrySweep picks up pending jots and failed ones under the cap, and nothing else", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  const row = (id: string, status: Jot["status"], attempts = 0) =>
+    w.add(
+      stored({
+        id,
+        anchor: id,
+        status,
+        attempts,
+        raw_text: `text ${id}`,
+        received_at: Number.parseInt(id.slice(0, 1), 16) + 1,
+      }),
+    );
+  await row("1aaaaaaa", "pending");
+  await row("2aaaaaaa", "failed", MAX_ATTEMPTS - 1);
+  await row("3aaaaaaa", "failed", MAX_ATTEMPTS);
+  await row("4aaaaaaa", "done");
+  await row("5aaaaaaa", "abandoned");
+  await row("6aaaaaaa", "processing");
+  await row("7aaaaaaa", "deleted");
+
+  await w.processor.retrySweep();
+
+  assert.deepEqual(w.enriched, ["text 1aaaaaaa", "text 2aaaaaaa"]);
+  const statusOf = async (id: string) => (await w.repo.getJot(id))?.status;
+  assert.equal(await statusOf("1aaaaaaa"), "done");
+  assert.equal(await statusOf("2aaaaaaa"), "done");
+  assert.equal(await statusOf("3aaaaaaa"), "failed");
+  assert.equal(await statusOf("6aaaaaaa"), "processing");
+});
+
+test("retrySweep with nothing pending does no work", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  await w.add(stored({ status: "done" }));
+  await w.processor.retrySweep();
+  assert.deepEqual(w.enriched, []);
+  assert.deepEqual(w.statuses, []);
+});
+
+test("a squashed follower waits for its leader and does no work of its own", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  await w.add(stored({ id: "aaaaaaaa", anchor: "aaaaaaaa" }));
+  await w.add(
+    stored({ id: "ffff0001", anchor: "aaaaaaaa", received_at: 1001 }),
+  );
+  await w.processor.processJot("ffff0001");
+
+  assert.deepEqual(w.enriched, []);
+  assert.deepEqual(w.statuses, []);
+  assert.equal((await w.repo.getJot("ffff0001"))?.status, "pending");
+});
+
+test("a follower left behind by a finished leader is marked done, not processed again", async (t) => {
+  for (const leaderStatus of ["done", "abandoned"] as const) {
+    const w = await world(t);
+    if (!w) return;
+    await w.add(
+      stored({ id: "aaaaaaaa", anchor: "aaaaaaaa", status: leaderStatus }),
+    );
+    await w.add(
+      stored({
+        id: "ffff0001",
+        anchor: "aaaaaaaa",
+        status: "failed",
+        error: "left over",
+        received_at: 1001,
+      }),
+    );
+    await w.processor.processJot("ffff0001");
+
+    const follower = await w.repo.getJot("ffff0001");
+    assert.equal(follower?.status, "done");
+    assert.equal(follower?.error, null);
+    assert.deepEqual(w.enriched, []);
+  }
+});
+
+test("a follower whose leader was deleted is processed on its own and appended to the note", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  await w.add(
+    stored({ id: "aaaaaaaa", anchor: "aaaaaaaa", status: "deleted" }),
+  );
+  await w.add(
+    stored({
+      id: "ffff0001",
+      anchor: "aaaaaaaa",
+      raw_text: "orphaned thought",
+      received_at: 1001,
+    }),
+  );
+  await w.processor.processJot("ffff0001");
+
+  assert.deepEqual(w.enriched, ["orphaned thought"]);
+  assert.equal((await w.repo.getJot("ffff0001"))?.status, "done");
+  assert.match(w.note(), /orphaned thought \^aaaaaaaa/);
+});
+
+const voiceSettings = {
+  [VOICE_FIX_MODEL_KEY]: "haiku-test",
+  [VOICE_FIX_KEY]: "on",
+};
+const voiceJot = (transcript: string) =>
+  stored({
+    kind: "audio",
+    raw_text: null,
+    transcript,
+    file_id: "voice-file",
+  });
+
+test("a voice fix with a change asks which one to keep, and the pick is what gets enriched", async (t) => {
+  const w = await world(t, {
+    settings: voiceSettings,
+    fixTranscript: async () => "Ship the release on Friday.",
+    voiceChoice: "proposed",
+  });
+  if (!w) return;
+  await w.add(voiceJot("ship the release on friday"));
+  await w.processor.processJot("abcd1234");
+
+  assert.deepEqual(w.htmls().slice(0, 4), [
+    "🎤 Transcribing your voice note…",
+    "🎤 <i>ship the release on friday</i>\n\n✨ Weaving it into your journal…",
+    "🎤 <i>ship the release on friday</i>\n\n🔧 Checking transcript…",
+    "🎤 <i>Ship the release on Friday.</i>\n\n✨ Weaving it into your journal…",
+  ]);
+  assert.deepEqual(w.voiceFixAsks, [
+    ["ship the release on friday", "Ship the release on Friday."],
+  ]);
+  assert.deepEqual(w.enriched, ["Ship the release on Friday."]);
+  assert.equal(
+    (await w.repo.getJot("abcd1234"))?.transcript,
+    "Ship the release on Friday.",
+  );
+});
+
+test("picking the original keeps the transcript as it was", async (t) => {
+  const w = await world(t, {
+    settings: voiceSettings,
+    fixTranscript: async () => "Ship the release on Friday.",
+    voiceChoice: "original",
+  });
+  if (!w) return;
+  await w.add(voiceJot("ship the release on friday"));
+  await w.processor.processJot("abcd1234");
+
+  assert.equal(
+    w.htmls()[3],
+    "🎤 <i>ship the release on friday</i>\n\n✨ Weaving it into your journal…",
+  );
+  assert.deepEqual(w.enriched, ["ship the release on friday"]);
+  assert.equal(
+    (await w.repo.getJot("abcd1234"))?.transcript,
+    "ship the release on friday",
+  );
+});
+
+test("a voice fix that changes nothing asks nobody and escapes the transcript in HTML", async (t) => {
+  const w = await world(t, { settings: voiceSettings });
+  if (!w) return;
+  await w.add(voiceJot("if a < b & c"));
+  await w.processor.processJot("abcd1234");
+
+  assert.deepEqual(w.voiceFixAsks, []);
+  assert.deepEqual(w.htmls().slice(0, 4), [
+    "🎤 Transcribing your voice note…",
+    "🎤 <i>if a &lt; b &amp; c</i>\n\n✨ Weaving it into your journal…",
+    "🎤 <i>if a &lt; b &amp; c</i>\n\n🔧 Checking transcript…",
+    "🎤 <i>if a &lt; b &amp; c</i>\n\n✨ Weaving it into your journal…",
+  ]);
+  assert.deepEqual(w.enriched, ["if a < b & c"]);
+});
+
+test("a voice fix that errors keeps the original transcript and the jot still completes", async (t) => {
+  const w = await world(t, {
+    settings: voiceSettings,
+    fixTranscript: async () => {
+      throw new Error("fix model 500");
+    },
+  });
+  if (!w) return;
+  await w.add(voiceJot("plain words"));
+  await w.processor.processJot("abcd1234");
+
+  assert.deepEqual(w.voiceFixAsks, []);
+  assert.deepEqual(w.enriched, ["plain words"]);
+  assert.equal((await w.repo.getJot("abcd1234"))?.status, "done");
+});
+
+test("the voice fix is skipped when it is off or has no model", async (t) => {
+  const variants: Record<string, string>[] = [
+    { [VOICE_FIX_MODEL_KEY]: "haiku-test" },
+    { [VOICE_FIX_KEY]: "on" },
+    { [VOICE_FIX_MODEL_KEY]: "haiku-test", [VOICE_FIX_KEY]: "off" },
+  ];
+  for (const settings of variants) {
+    const w = await world(t, {
+      settings,
+      fixTranscript: async () => {
+        throw new Error("must not be called");
+      },
+    });
+    if (!w) return;
+    await w.add(voiceJot("plain words"));
+    await w.processor.processJot("abcd1234");
+
+    assert.equal((await w.repo.getJot("abcd1234"))?.status, "done");
+    assert.ok(!w.htmls().some((h) => h.includes("Checking transcript")));
+  }
+});
+
+test("every model down during the voice fix holds the jot: pending, no attempt charged, held notice", async (t) => {
+  const w = await world(t, {
+    settings: voiceSettings,
+    fixTranscript: async () => {
+      throw new ModelsDownError(new Error("overloaded 529"));
+    },
+  });
+  if (!w) return;
+  await w.add(voiceJot("plain words"));
+  const before = w.note();
+  await w.processor.processJot("abcd1234");
+
+  const row = await w.repo.getJot("abcd1234");
+  assert.equal(row?.status, "pending");
+  assert.equal(row?.attempts, 0);
+  assert.equal(row?.error, HELD_MARKER);
+  assert.deepEqual(w.voiceFixAsks, []);
+  assert.deepEqual(w.enriched, []);
+  assert.equal(w.note(), before);
+  const last = w.statuses.at(-1);
+  assert.match(last!.html, /Every enrichment model is down/);
+  assert.deepEqual(last!.opts, { discard: true });
+});
+
+test("an image with a caption is saved to the vault, embedded, and never sent to vision", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  await w.add(
+    stored({
+      kind: "image",
+      raw_text: "the front door",
+      file_id: "photo-file",
+    }),
+  );
+  await w.processor.processJot("abcd1234");
+
+  assert.deepEqual(w.calls, [
+    "download:photo-file",
+    "saveAsset:2026-08-16_100000_abcd1234.jpg:3:image/jpeg",
+  ]);
+  const row = await w.repo.getJot("abcd1234");
+  assert.equal(row?.asset_path, "assets/2026-08-16_100000_abcd1234.jpg");
+  assert.equal(row?.raw_text, "the front door");
+  assert.match(
+    w.note(),
+    /the front door !\[\[assets\/2026-08-16_100000_abcd1234\.jpg\]\] \^abcd1234/,
+  );
+});
+
+test("a captionless image gets a vision caption that becomes its entry text", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  await w.add(stored({ kind: "image", raw_text: "", file_id: "photo-file" }));
+  await w.processor.processJot("abcd1234");
+
+  assert.deepEqual(w.calls, [
+    "download:photo-file",
+    "saveAsset:2026-08-16_100000_abcd1234.jpg:3:image/jpeg",
+    "describeImage:3:image/jpeg",
+  ]);
+  assert.equal((await w.repo.getJot("abcd1234"))?.raw_text, "a red door");
+  assert.deepEqual(w.enriched, ["a red door"]);
+});
+
+test("a voice note without a transcript is downloaded and transcribed, never attached", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  await w.add(
+    stored({
+      kind: "audio",
+      raw_text: null,
+      transcript: null,
+      file_id: "voice-file",
+    }),
+  );
+  await w.processor.processJot("abcd1234");
+
+  assert.deepEqual(w.calls, ["download:voice-file", "transcribe:3:jpg"]);
+  const row = await w.repo.getJot("abcd1234");
+  assert.equal(row?.transcript, "spoken words");
+  assert.equal(row?.asset_path, null);
+  assert.deepEqual(w.enriched, ["spoken words"]);
+});
+
+test("a video is saved and embedded but never transcribed, captioned or enriched", async (t) => {
+  const w = await world(t, { settings: voiceSettings });
+  if (!w) return;
+  await w.add(stored({ kind: "video", raw_text: "", file_id: "video-file" }));
+  await w.processor.processJot("abcd1234");
+
+  assert.deepEqual(w.calls, [
+    "download:video-file",
+    "saveAsset:2026-08-16_100000_abcd1234.jpg:3:image/jpeg",
+  ]);
+  assert.deepEqual(w.enriched, []);
+  const row = await w.repo.getJot("abcd1234");
+  assert.equal(row?.status, "done");
+  assert.equal(row?.raw_text, "");
+  assert.match(w.note(), /!\[\[assets\/2026-08-16_100000_abcd1234\.jpg\]\]/);
+});
+
+test("media already on file is not downloaded again", async (t) => {
+  const w = await world(t);
+  if (!w) return;
+  await w.add(
+    stored({
+      id: "aaaaaaaa",
+      anchor: "aaaaaaaa",
+      kind: "image",
+      raw_text: "kept",
+      file_id: "photo-file",
+      asset_path: "assets/already.jpg",
+    }),
+  );
+  await w.add(
+    stored({
+      id: "bbbbbbbb",
+      anchor: "bbbbbbbb",
+      kind: "audio",
+      raw_text: null,
+      transcript: "already heard",
+      file_id: "voice-file",
+    }),
+  );
+  await w.add(stored({ id: "cccccccc", anchor: "cccccccc", file_id: null }));
+  await w.processor.processBatch(["aaaaaaaa", "bbbbbbbb", "cccccccc"]);
+
+  assert.deepEqual(w.calls, []);
+  assert.equal((await w.repo.getJot("aaaaaaaa"))?.status, "done");
+});
+
+test("an over-long entry's spillover jots copy the parent row, til_offered included", async (t) => {
+  const w = await world(t, {
+    settings: { [ENTRY_MAX_CHARS_KEY]: "40" },
+    enrichText:
+      "The first sentence is a fairly long one. The second sentence is also a long one.",
+  });
+  if (!w) return;
+  await w.add(stored());
+  await w.repo.markTilOffered("abcd1234");
+  await w.processor.processJot("abcd1234");
+
+  const rows = (await (w.repo as any)
+    .k("jots")
+    .orderBy("received_at")) as (Jot & {
+    til_offered: number;
+  })[];
+  assert.equal(rows.length, 2);
+  const [parent, piece] = rows;
+  assert.equal(parent?.id, "abcd1234");
+  assert.equal(parent?.raw_text, "The first sentence is a fairly long one.");
+  assert.equal(piece?.raw_text, "The second sentence is also a long one.");
+  assert.equal(piece?.status, "done");
+  assert.equal(piece?.section, "journal");
+  assert.equal(piece?.anchor, piece?.id);
+  assert.equal(piece?.received_at, 1001);
+  assert.equal(Number(piece?.til_offered), 1);
+  assert.equal(await w.repo.tilOffered(piece!.id), true);
 });
