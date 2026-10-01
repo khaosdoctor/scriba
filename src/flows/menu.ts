@@ -36,10 +36,10 @@ import type { FlushQueue } from "../runtime/queue.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { VaultService } from "../services/vault.ts";
 import { plainDate } from "../time.ts";
+import { ROOT_TEXT, rootKeyboard } from "../views/callbacks/reprocess.ts";
 import { closeMessage } from "../views/chat.ts";
 import { openTaskMode } from "../views/commands/task.ts";
 import { backTo, pagedScreen, withClose } from "../views/render/keyboard.ts";
-import type { ReprocessCommand } from "./reprocess.ts";
 
 const log = logger("menu");
 
@@ -106,7 +106,6 @@ export class MenuController {
     private bot: Bot,
     private rating: RatingController,
     private habits: HabitController,
-    private reprocess: ReprocessCommand,
     private getDeps: () => MenuDeps,
     private deleteJot: (jot: Jot) => Promise<string>,
   ) {}
@@ -287,7 +286,12 @@ export class MenuController {
         await ctx.answerCallbackQuery({
           text: "Opening reprocess menu below ↓",
         });
-        return this.reprocess.promptRoot();
+        await this.bot.api.sendMessage(
+          config.telegram.allowedUserId,
+          ROOT_TEXT,
+          { reply_markup: rootKeyboard() },
+        );
+        return;
       case "jot":
         return this.menuJotDetail(ctx, arg);
       case "jr":

@@ -1,11 +1,11 @@
 import { Composer, type Context } from "grammy";
 import { COMMAND_NS } from "../../flows/command.ts";
-import { REPROCESS_NS } from "../../flows/reprocess.ts";
 import type { ViewDeps } from "../index.ts";
 import { followupView } from "./followup.ts";
 import { habitsView } from "./habits.ts";
 import { namespace } from "./namespace.ts";
 import { ratingView } from "./rating.ts";
+import { reprocessView } from "./reprocess.ts";
 import { tasksView } from "./tasks.ts";
 import { tilView } from "./til.ts";
 import { unrejectView } from "./unreject.ts";
@@ -19,7 +19,6 @@ export function callbackViews({
   jotController,
   rating,
   habits,
-  reprocess,
   jots,
   admin,
 }: ViewDeps): Composer<Context>[] {
@@ -46,7 +45,7 @@ export function callbackViews({
     ratingView(rating),
     followupView(rating),
     habitsView(habits),
-    namespace(REPROCESS_NS, (ctx, rest) => reprocess.handleTap(ctx, rest)),
+    reprocessView(admin),
     unknown,
   ];
 }

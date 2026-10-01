@@ -374,18 +374,3 @@ export function jotPreview(j: Jot, maxLen = 40): string {
     .replace(/\s+/g, " ")
     .slice(0, maxLen);
 }
-
-/** Calendar grid for a year/month (1-12): weeks (Sun-first) of day-of-month numbers,
- *  0 for padding cells outside the month. Pure date math for the /reprocess date picker. */
-export function monthGrid(year: number, month: number): number[][] {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const startDow = new Date(year, month - 1, 1).getDay();
-  const cells = [
-    ...Array(startDow).fill(0),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-  while (cells.length % 7 !== 0) cells.push(0);
-  const weeks: number[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  return weeks;
-}

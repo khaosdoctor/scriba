@@ -24,7 +24,6 @@ function harness() {
     bot as any,
     {} as any,
     {} as any,
-    {} as any,
     (() => ({})) as any,
     (async () => "") as any,
   ) as any;
@@ -76,7 +75,6 @@ function settingsHarness(initial: Record<string, string> = {}) {
   );
   const menu = new MenuController(
     bot as any,
-    {} as any,
     {} as any,
     {} as any,
     (() => ({ repo })) as any,
@@ -399,7 +397,6 @@ function wizardHarness(
   };
   const menu = new MenuController(
     bot as any,
-    {} as any,
     {} as any,
     {} as any,
     (() => deps) as any,
