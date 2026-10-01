@@ -4,6 +4,7 @@ import { parseHabitRef } from "../../lib/habits.ts";
 import type { ViewDeps } from "../index.ts";
 import { followupReply, parseFollowupRef } from "./followup.ts";
 import { habitReply } from "./habit.ts";
+import { parseTaskRef, taskReply } from "./task.ts";
 
 type Reply = Filter<Context, "message:text">;
 
@@ -42,9 +43,6 @@ export function promptReplies({
       claim((prompt) => menu.isWizardPrompt(prompt)),
       (ctx, prompt) => menu.handleWizardReply(ctx, prompt),
     ),
-    replyTo(
-      claim((prompt) => tasks.isTaskPrompt(prompt)),
-      (ctx, prompt) => tasks.handleReply(ctx, prompt),
-    ),
+    replyTo(parseTaskRef, taskReply(tasks)),
   ];
 }

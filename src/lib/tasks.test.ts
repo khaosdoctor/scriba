@@ -12,6 +12,8 @@ import {
   parseTasks,
   renderTaskLine,
   type Task,
+  taskButtonLabel,
+  taskCard,
   uncompleteTaskLine,
   weekBounds,
 } from "./tasks.ts";
@@ -489,5 +491,40 @@ test("a detected task with no timing at all keeps none — the card asks", () =>
       TODAY,
     ).type,
     "personal",
+  );
+});
+
+test("the card and the row labels say what's missing", () => {
+  const card = taskCard({
+    description: "Buy cat sand",
+    type: "personal",
+    start: null,
+    due: null,
+  });
+  assert.match(card, /Due: — <i>\(needed\)<\/i>/);
+  assert.match(card, /🏠 Personal/);
+  assert.match(card, /Start: —/); // nothing to start from yet: no deadline either
+  // Given only a deadline, that is when it starts.
+  assert.match(
+    taskCard({
+      description: "x",
+      type: "work",
+      start: null,
+      due: "2026-09-02",
+    }),
+    /Start: 2026-09-02/,
+  );
+  assert.match(
+    taskCard({
+      description: "x",
+      type: "work",
+      start: "2026-09-01",
+      due: "2026-09-02",
+    }),
+    /Start: 2026-09-01/,
+  );
+  assert.equal(
+    taskButtonLabel(task({ text: "a".repeat(50) }), 3, 10),
+    `☐ 3. ${"a".repeat(9)}…`,
   );
 });

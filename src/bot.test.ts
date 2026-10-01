@@ -635,8 +635,14 @@ async function route(
     return "gone";
   };
   bot.menu.handleWizardReply = async () => void calls.push("wizard");
-  bot.tasks.handleReply = async () => void calls.push("taskPrompt");
-  bot.tasks.handle = async () => void calls.push("tasks");
+  bot.tasks.answer = async () => {
+    calls.push("taskPrompt");
+    return "ok";
+  };
+  bot.tasks.handle = async () => {
+    calls.push("tasks");
+    return true;
+  };
   bot.tasks.isOpen = () => opts.tasksOpen ?? false;
   bot.handleEdit = async () => void calls.push("edit");
   bot.intake = async () => void calls.push("intake");

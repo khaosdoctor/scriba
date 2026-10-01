@@ -4,7 +4,9 @@ import { config } from "./config.ts";
 import type { AdminController } from "./controllers/admin.ts";
 import { HabitController } from "./controllers/habits.ts";
 import { JotController } from "./controllers/jots.ts";
+import { Modes } from "./controllers/modes.ts";
 import { RatingController } from "./controllers/rating.ts";
+import { TaskController } from "./controllers/tasks.ts";
 import {
   anchorLine,
   assetEmbed,
@@ -28,9 +30,8 @@ import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
 import { CommandSession } from "./flows/command.ts";
 import { MenuController, type MenuDeps } from "./flows/menu.ts";
 import { ReprocessCommand } from "./flows/reprocess.ts";
-import { TasksFlow } from "./flows/tasks/index.ts";
-import type { TaskDraft } from "./flows/tasks/parse.ts";
 import type { Scheduler } from "./lib/scheduler.ts";
+import type { TaskDraft } from "./lib/tasks.ts";
 import { logger } from "./log.ts";
 import type { DownloadedFile } from "./models/domain.ts";
 import type { StatusButtons } from "./models/ops.ts";
@@ -47,6 +48,7 @@ import { WebService } from "./services/web.ts";
 import { dayBounds, plainDate, plainTime } from "./time.ts";
 import { Chat } from "./views/chat.ts";
 import { COMMANDS } from "./views/commands/index.ts";
+import { taskMessage } from "./views/commands/task.ts";
 import { registerViews } from "./views/index.ts";
 
 const log = logger("bot");
@@ -101,7 +103,7 @@ export class ScribaBot implements BotServices {
   private menu: MenuController;
   private reprocess: ReprocessCommand;
   private command: CommandSession;
-  private tasks: TasksFlow;
+  private tasks: TaskController;
   private jotController: JotController;
   private adminController!: AdminController;
   // jotId -> the live status message we edit in place through the jot's lifecycle.
@@ -163,13 +165,14 @@ export class ScribaBot implements BotServices {
     );
     // /task: every message becomes a task in one of the two task notes instead of a jot.
     // It and command mode both own the message stream, so neither opens over the other.
-    this.tasks = new TasksFlow(
-      this.bot,
+    this.tasks = new TaskController({
       repo,
-      new TaskNotesService(obsidian, config.tasks),
+      notes: new TaskNotesService(obsidian, config.tasks),
       enricher,
-      () => this.command.isOpen(),
-    );
+      notifier: this.chat,
+      modes: new Modes(this.chat, () => this.command.isOpen()),
+      ownerId: config.telegram.allowedUserId,
+    });
     this.jotController = new JotController({
       repo,
       obsidian,
@@ -486,7 +489,7 @@ export class ScribaBot implements BotServices {
     const file = await this.downloadFile(fileId);
     const text = await this.transcriber.transcribe(file.bytes, file.ext);
     log.info({ chars: text.length }, "task mode: voice note transcribed");
-    await this.tasks.handle(ctx, text);
+    await taskMessage(ctx, this.tasks, text);
   }
 
   /** Attachment intake (image/video): save + embed the file, keeping the caption as the

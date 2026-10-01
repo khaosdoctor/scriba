@@ -1,12 +1,12 @@
 import { Composer, type Context } from "grammy";
 import { COMMAND_NS } from "../../flows/command.ts";
 import { REPROCESS_NS } from "../../flows/reprocess.ts";
-import { TASKS_NS } from "../../flows/tasks/index.ts";
 import type { ViewDeps } from "../index.ts";
 import { followupView } from "./followup.ts";
 import { habitsView } from "./habits.ts";
 import { namespace } from "./namespace.ts";
 import { ratingView } from "./rating.ts";
+import { tasksView } from "./tasks.ts";
 import { tilView } from "./til.ts";
 import { unrejectView } from "./unreject.ts";
 
@@ -37,7 +37,7 @@ export function callbackViews({
       jots.handleEmbed(ctx, jotId, on === "1"),
     ),
     namespace(COMMAND_NS, (ctx, rest) => command.handleTap(ctx, rest)),
-    namespace(TASKS_NS, (ctx, rest) => tasks.handleTap(ctx, rest)),
+    tasksView(tasks),
     tilView(jotController),
     namespace("lk", (ctx, [verdict, pendingId]) =>
       jots.handleLink(ctx, verdict, pendingId),

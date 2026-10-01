@@ -18,7 +18,7 @@ import {
   splitEntry,
 } from "../core.ts";
 import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
-import { draftFromDetection, type TaskDraft } from "../flows/tasks/parse.ts";
+import { draftFromDetection, type TaskDraft } from "../lib/tasks.ts";
 import { logger } from "../log.ts";
 import type { DetectedTask, DownloadedFile } from "../models/domain.ts";
 import type { StatusButtons } from "../models/ops.ts";

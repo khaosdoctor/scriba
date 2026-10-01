@@ -9,7 +9,7 @@ import {
   type Task,
   type TaskDraft,
   uncompleteTaskLine,
-} from "../flows/tasks/parse.ts";
+} from "../lib/tasks.ts";
 import { logger } from "../log.ts";
 import type { TaskType } from "../models/domain.ts";
 import { plainDate } from "../time.ts";
@@ -33,7 +33,7 @@ export interface TaskNoteConfig {
 
 /**
  * Read and write the two task notes. All the vault I/O for tasks lives here; the shaping of
- * a line is pure and lives in flows/tasks/parse.ts. Every write is a read-modify-write under
+ * a line is pure and lives in lib/tasks.ts. Every write is a read-modify-write under
  * the per-note lock, so a task added from Telegram can't overwrite an edit made in Obsidian
  * a second earlier, the same discipline every journal write already follows.
  */

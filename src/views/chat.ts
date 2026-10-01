@@ -18,6 +18,16 @@ function params({ html, keyboard }: SendOptions = {}) {
   };
 }
 
+/** A new message can also point the compose box at itself; an edit cannot. */
+function sendParams(opts: SendOptions = {}) {
+  return {
+    ...params(opts),
+    ...(opts.forceReply
+      ? { reply_markup: { force_reply: true as const } }
+      : {}),
+  };
+}
+
 /** The update being answered: its chat, its message and the tap that led to it. */
 export class Responder {
   constructor(private ctx: Context) {}
@@ -35,7 +45,7 @@ export class Responder {
 
   /** A new message in this chat; resolves to its id. */
   async reply(text: string, opts?: SendOptions): Promise<number> {
-    const sent = await this.ctx.reply(text, params(opts));
+    const sent = await this.ctx.reply(text, sendParams(opts));
     return sent.message_id;
   }
 
@@ -84,7 +94,11 @@ export class Chat implements Notifier {
   }
 
   async send(text: string, opts?: SendOptions): Promise<number> {
-    const sent = await this.api.sendMessage(this.chatId, text, params(opts));
+    const sent = await this.api.sendMessage(
+      this.chatId,
+      text,
+      sendParams(opts),
+    );
     return sent.message_id;
   }
 
