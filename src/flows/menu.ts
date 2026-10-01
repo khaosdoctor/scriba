@@ -1173,7 +1173,7 @@ export class MenuController {
           );
         }
         await repo.setSetting("ratingTime", time);
-        this.scheduler?.setRatingTime(time);
+        await this.scheduler?.rearm("rating");
         log.info({ time }, "menu: rating time changed");
         return this.replyMenu(
           ctx,

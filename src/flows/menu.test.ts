@@ -237,14 +237,14 @@ const PROMPT = `when? ${WIZARD_RATING_TIME_REF}`;
 
 test("a valid typed time is stored, handed to the scheduler, and confirmed with a menu button", async () => {
   const { menu, sets } = settingsHarness();
-  const times: string[] = [];
-  const scheduler = { setRatingTime: (t: string) => void times.push(t) };
+  const rearmed: string[] = [];
+  const scheduler = { rearm: async (n: string) => void rearmed.push(n) };
   menu.setScheduler(scheduler);
   assert.equal(menu.scheduler, scheduler);
   const r = timeReply("23:30");
   await menu.handleWizardReply(r.ctx, PROMPT);
   assert.deepEqual(sets, [["ratingTime", "23:30"]]);
-  assert.deepEqual(times, ["23:30"]);
+  assert.deepEqual(rearmed, ["rating"]);
   assert.equal(r.menus[0]?.text, "🕛 nightly rating at 23:30");
   assert.ok(findButton(r.menus[0]!.opts.reply_markup, "menu:root"));
 });
@@ -283,8 +283,8 @@ test("an unusable typed time gets the format message and changes nothing", async
     "-1:30",
   ]) {
     const { menu, sets } = settingsHarness();
-    const times: string[] = [];
-    menu.setScheduler({ setRatingTime: (t: string) => void times.push(t) });
+    const rearmed: string[] = [];
+    menu.setScheduler({ rearm: async (n: string) => void rearmed.push(n) });
     const r = timeReply(body);
     await menu.handleWizardReply(r.ctx, PROMPT);
     assert.deepEqual(
@@ -292,7 +292,7 @@ test("an unusable typed time gets the format message and changes nothing", async
       ["That isn't a time. Use HH:MM in 24-hour time, like 23:30 or 00:00."],
       JSON.stringify(body.slice(0, 20)),
     );
-    assert.deepEqual([sets, times, r.menus], [[], [], []]);
+    assert.deepEqual([sets, rearmed, r.menus], [[], [], []]);
   }
 });
 

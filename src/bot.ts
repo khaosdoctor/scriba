@@ -287,8 +287,8 @@ export class ScribaBot implements BotServices {
   }
 
   /** Nightly rating prompt (the scheduler calls this). Delegates to the rating command. */
-  async promptRating(date: string): Promise<void> {
-    await this.rating.prompt(date);
+  async nightlyRating(): Promise<void> {
+    await this.rating.nightly();
   }
 
   /** Nightly habit review prompt (the scheduler calls this). Delegates to the habits command. */

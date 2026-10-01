@@ -169,15 +169,7 @@ export async function botHarness() {
     },
   );
   const processor = recorder("processor", timeline, processorImpl, {});
-  const scheduler = recorder(
-    "scheduler",
-    timeline,
-    schedulerImpl,
-    {},
-    {
-      sync: ["setRatingTime"],
-    },
-  );
+  const scheduler = recorder("scheduler", timeline, schedulerImpl, {});
   const transcriber = recorder(
     "transcriber",
     timeline,

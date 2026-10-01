@@ -1,155 +1,110 @@
-import { config } from "../config.ts";
-import { parseClockTime, ratingDay } from "../core.ts";
-import type { Repository } from "../db.ts";
-import type { JotProcessor } from "../runtime/processor.ts";
 import { logger } from "./log.ts";
-import { msUntilNext, plainDate, previousDate, startOfToday } from "./time.ts";
+import { msUntilNext } from "./time.ts";
 
 const log = logger("scheduler");
 
-/** Owns the recurring jobs: the nightly summary, the rating and habit prompts, the morning
- *  task summary, and the forever-retry sweep. */
+type Job = () => Promise<void>;
+
+interface Daily {
+  name: string;
+  time: () => string | Promise<string>;
+  run: Job;
+  armBeforeRun: boolean;
+  at?: string;
+  timer?: NodeJS.Timeout;
+}
+
+interface Interval {
+  name: string;
+  ms: number;
+  run: Job;
+  timer?: NodeJS.Timeout;
+}
+
+/** Runs named jobs: `daily` ones at an HH:MM that can change at runtime, `every` ones on
+ *  a fixed interval. Jobs are registered before `start`; nothing is armed until it. */
 export class Scheduler {
-  private timers: NodeJS.Timeout[] = [];
-  // The rating time is the one that changes at runtime (from /menu), so it has its own timer.
-  private ratingAt: string = config.ratingTime;
-  private ratingTimer?: NodeJS.Timeout;
+  private dailies = new Map<string, Daily>();
+  private intervals: Interval[] = [];
   private started = false;
 
-  constructor(
-    private repo: Repository,
-    private processor: JotProcessor,
-    private notify: (text: string) => Promise<void>,
-    private askRating: (date: string) => Promise<void>,
-    private askHabits: (date: string) => Promise<void>,
-    private sendTaskSummary: () => Promise<void>,
-    private retryMs = 5 * 60_000,
-  ) {}
+  /** `time` is read at `start` and on every `rearm`. A job that arms before it runs keeps
+   *  the next day's timer alive when the job hangs or fails; the default arms after. */
+  daily(
+    name: string,
+    time: Daily["time"],
+    run: Job,
+    { armBeforeRun = false }: { armBeforeRun?: boolean } = {},
+  ): void {
+    this.dailies.set(name, { name, time, run, armBeforeRun });
+  }
 
-  start(): void {
-    this.scheduleDaily(
-      config.summaryTime,
-      () => this.sendSummary(),
-      "daily summary",
-    );
+  /** Runs every `ms`; a run that is still going makes the next tick a no-op. */
+  every(name: string, ms: number, run: Job): void {
+    this.intervals.push({ name, ms, run });
+  }
+
+  async start(): Promise<void> {
     this.started = true;
-    this.armRating();
-    // Fires at 00:00 → review the day that just ended, i.e. yesterday.
-    this.scheduleDaily(
-      config.habitsTime,
-      () => this.askHabits(previousDate()),
-      "daily habit review",
-    );
-    // The one message of the day meant to interrupt: what's due today and what is still
-    // hanging over from before, in the morning, whether or not you ask.
-    this.scheduleDaily(
-      config.tasksTime,
-      () => this.sendTaskSummary(),
-      "daily task summary",
-    );
+    const dailies = [...this.dailies.values()];
+    for (const job of dailies) job.at = await job.time();
+    if (!this.started) return;
+    for (const job of dailies) this.arm(job);
+    for (const job of this.intervals) this.tick(job);
     log.info(
       {
-        retryMs: this.retryMs,
-        summaryTime: config.summaryTime,
-        ratingTime: this.ratingAt,
-        habitsTime: config.habitsTime,
-        tasksTime: config.tasksTime,
+        daily: Object.fromEntries(dailies.map((j) => [j.name, j.at])),
+        every: Object.fromEntries(this.intervals.map((j) => [j.name, j.ms])),
       },
       "scheduler started",
     );
-    let sweeping = false; // don't let a slow sweep overlap the next tick
-    const retry = setInterval(async () => {
-      if (sweeping) return;
-      sweeping = true;
-      try {
-        await this.processor.retrySweep();
-      } catch (e) {
-        log.error({ err: e }, "retry sweep failed");
-      } finally {
-        sweeping = false;
-      }
-    }, this.retryMs);
-    retry.unref();
-    this.timers.push(retry);
   }
 
   stop(): void {
     this.started = false;
-    clearTimeout(this.ratingTimer);
-    for (const t of this.timers) clearTimeout(t);
+    for (const job of this.dailies.values()) clearTimeout(job.timer);
+    for (const job of this.intervals) clearInterval(job.timer);
   }
 
-  /** Move the nightly rating to `time` (HH:MM). Before `start` it only records the time;
-   *  once running it re-arms, so the change applies to the very next occurrence. */
-  setRatingTime(time: string): void {
-    const at = parseClockTime(time);
-    if (!at) {
-      log.warn({ time }, "rating time rejected: not HH:MM");
-      return;
-    }
-    this.ratingAt = at;
-    log.info({ time: at }, "rating time set");
-    if (this.started) this.armRating();
+  /** Re-reads a daily job's time and, once started, moves its timer to the next
+   *  occurrence. Before `start` it only records the time. */
+  async rearm(name: string): Promise<void> {
+    const job = this.dailies.get(name);
+    if (!job) throw new Error(`no daily job named ${name}`);
+    job.at = await job.time();
+    log.info({ name, at: job.at }, "daily job time set");
+    this.arm(job);
   }
 
-  /** Arm the rating prompt for the next occurrence of `ratingAt`, replacing any timer
-   *  already armed. The next night is armed before the prompt runs, so a prompt that hangs
-   *  or fails can't stop the ones after it. */
-  private armRating(): void {
-    clearTimeout(this.ratingTimer);
-    const wait = msUntilNext(this.ratingAt);
-    log.debug(
-      { inMs: wait, at: this.ratingAt },
-      "next rating prompt scheduled",
-    );
-    this.ratingTimer = setTimeout(async () => {
-      this.armRating();
-      try {
-        await this.fireRating();
-      } catch (e) {
-        log.error({ err: e }, "daily rating prompt failed");
-      }
+  private arm(job: Daily): void {
+    clearTimeout(job.timer);
+    if (!this.started || job.at === undefined) return;
+    const wait = msUntilNext(job.at);
+    log.debug({ inMs: wait, at: job.at }, `next ${job.name} scheduled`);
+    job.timer = setTimeout(async () => {
+      if (job.armBeforeRun) this.arm(job);
+      await this.guarded(job);
+      if (!job.armBeforeRun) this.arm(job);
     }, wait);
-    this.ratingTimer.unref();
+    job.timer.unref();
   }
 
-  private async fireRating(): Promise<void> {
-    if (!(await this.repo.getSetting("nightlyRating"))) {
-      log.info("nightly rating is off, skipping");
-      return;
+  private tick(job: Interval): void {
+    let running = false;
+    job.timer = setInterval(async () => {
+      if (running) return;
+      running = true;
+      await this.guarded(job);
+      running = false;
+    }, job.ms);
+    job.timer.unref();
+  }
+
+  private async guarded(job: Daily | Interval): Promise<void> {
+    try {
+      await job.run();
+    } catch (e) {
+      log.error({ err: e, job: job.name }, "scheduled job failed");
     }
-    await this.askRating(ratingDay(this.ratingAt));
-  }
-
-  /** Arm a `time`-of-day job: wait until the next HH:MM occurrence, run `task`, then
-   *  re-arm for tomorrow regardless of outcome. `label` names the job in its logs. */
-  private scheduleDaily(
-    time: string,
-    task: () => Promise<void>,
-    label: string,
-  ): void {
-    const wait = msUntilNext(time);
-    log.debug({ inMs: wait, at: time }, `next ${label} scheduled`);
-    const t = setTimeout(async () => {
-      try {
-        await task();
-      } catch (e) {
-        log.error({ err: e }, `${label} failed`);
-      }
-      this.scheduleDaily(time, task, label); // re-arm for tomorrow
-    }, wait);
-    t.unref();
-    this.timers.push(t);
-  }
-
-  private async sendSummary(): Promise<void> {
-    const s = await this.repo.windowStats(startOfToday(), Date.now());
-    const failed = s.failed + s.abandoned;
-    log.info({ jots: s.total, audio: s.audio, failed }, "daily summary");
-    if (s.total === 0) return; // nothing today → say nothing
-
-    const lines = [`📓 ${plainDate()}`, `Jots: ${s.total} (voice: ${s.audio})`];
-    if (failed) lines.push(`⚠️ Failed/abandoned: ${failed}`);
-    await this.notify(lines.join("\n"));
   }
 }

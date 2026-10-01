@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 // index.ts pulls in config.ts, which validates process.env at import time, so give it the
-// bare minimum first (the same trick scheduler.test.ts uses).
+// bare minimum first (the same trick rating.test.ts uses).
 process.env.TELEGRAM_BOT_TOKEN ??= "t";
 process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";

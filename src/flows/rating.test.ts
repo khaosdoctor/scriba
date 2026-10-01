@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { type TestContext, test } from "node:test";
+import { FakeSettings } from "../test/fakes.ts";
 
 // rating.ts pulls in config.ts, which validates process.env at import time, so give it the
-// bare minimum first (the same trick scheduler.test.ts uses).
+// bare minimum first.
 process.env.TELEGRAM_BOT_TOKEN ??= "t";
 process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
@@ -144,4 +145,68 @@ test("/rate prompts for the day given, and refuses a malformed date with the usa
 
   await rate(ctx(""));
   assert.match(sent[1]?.text ?? "", /^📊 How was \d{4}-\d{2}-\d{2}\?/);
+});
+
+/** A command whose repository holds `stored` settings; `sent` collects the prompt texts. */
+function nightlyHarness(stored: Record<string, string> = {}) {
+  const sent: string[] = [];
+  const bot = {
+    api: {
+      sendMessage: async (_chat: unknown, text: string) => void sent.push(text),
+    },
+  };
+  const settings = new Map(Object.entries(stored));
+  const rating: any = new RatingCommand(
+    bot as any,
+    new FakeSettings(settings) as any,
+    {} as any,
+    {} as any,
+  );
+  return { rating, sent, settings };
+}
+
+const promptFor = (date: string) => `📊 How was ${date}? Rate it 1–10:`;
+
+/** The clock at a local time on 2026-03-10 (or the 11th), for the day a prompt is about. */
+function clockAt(t: TestContext, hour: number, minute = 0, day = 10) {
+  t.mock.timers.enable({
+    apis: ["Date"],
+    now: new Date(2026, 2, day, hour, minute).getTime(),
+  });
+}
+
+test("the nightly rating is read at every firing, so its switch needs no restart", async (t) => {
+  clockAt(t, 12, 1);
+  const h = nightlyHarness({ nightlyRating: "off", ratingTime: "12:00" });
+  await h.rating.nightly();
+  assert.deepEqual(h.sent, []);
+
+  h.settings.set("nightlyRating", "on");
+  await h.rating.nightly();
+  assert.deepEqual(h.sent, [promptFor("2026-03-10")]);
+
+  h.settings.set("nightlyRating", "off");
+  await h.rating.nightly();
+  assert.equal(h.sent.length, 1);
+});
+
+test("a midnight rating is for the day that just ended, by exact date", async (t) => {
+  clockAt(t, 0, 0, 11);
+  const h = nightlyHarness({ ratingTime: "00:00" });
+  await h.rating.nightly();
+  assert.deepEqual(h.sent, [promptFor("2026-03-10")]);
+});
+
+test("the noon cutoff: 11:59 rates yesterday, 12:00 rates today, and the stored time decides", async (t) => {
+  for (const [time, day] of [
+    ["11:59", "2026-03-09"],
+    ["12:00", "2026-03-10"],
+    ["22:00", "2026-03-10"],
+  ] as const) {
+    clockAt(t, 12, 1);
+    const h = nightlyHarness({ ratingTime: time });
+    await h.rating.nightly();
+    assert.deepEqual(h.sent, [promptFor(day)], time);
+    t.mock.timers.reset();
+  }
 });
