@@ -99,3 +99,49 @@ test("a bad payload is refused before anything is recorded", async () => {
     assert.deepEqual(h.events, ["answer:bad rating"], `${date} ${n}`);
   }
 });
+
+test("/rate prompts for the day given, and refuses a malformed date with the usage line", async () => {
+  const sent: { text: string; opts: any }[] = [];
+  const handlers = new Map<string, (ctx: unknown) => Promise<unknown>>();
+  const bot = {
+    command: (name: string, handler: (ctx: unknown) => Promise<unknown>) =>
+      void handlers.set(name, handler),
+    api: {
+      sendMessage: async (_chat: unknown, text: string, opts: any) =>
+        void sent.push({ text, opts }),
+    },
+  };
+  const rating: any = new RatingCommand(
+    bot as any,
+    {} as any,
+    {} as any,
+    {} as any,
+  );
+  rating.register();
+  const rate = handlers.get("rate");
+  assert.ok(rate);
+
+  const replies: string[] = [];
+  const ctx = (match: string) => ({
+    match,
+    reply: async (t: string) => void replies.push(t),
+  });
+  await rate(ctx("tomorrow"));
+  assert.deepEqual(replies, ["Usage: /rate or /rate YYYY-MM-DD"]);
+  assert.equal(sent.length, 0);
+
+  await rate(ctx(` ${DATE} `));
+  assert.equal(sent[0]?.text, `📊 How was ${DATE}? Rate it 1–10:`);
+  const rows: { callback_data: string }[][] =
+    sent[0]?.opts.reply_markup.inline_keyboard;
+  assert.deepEqual(
+    rows.map((row) => row.map((b) => b.callback_data)),
+    [
+      [1, 2, 3, 4, 5].map((n) => `rate:${DATE}:${n}`),
+      [6, 7, 8, 9, 10].map((n) => `rate:${DATE}:${n}`),
+    ],
+  );
+
+  await rate(ctx(""));
+  assert.match(sent[1]?.text ?? "", /^📊 How was \d{4}-\d{2}-\d{2}\?/);
+});
