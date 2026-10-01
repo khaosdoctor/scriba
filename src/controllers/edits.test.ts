@@ -59,10 +59,22 @@ function setup(over: { jot?: Jot | null; mapped?: boolean } = {}) {
     const found = anchorLine(notes.get(NOTE) ?? "", ID);
     return found === null ? null : stripJournalLine(found, TIME);
   };
-  return { edits, queued, statuses, deleted, line };
+  return { edits, jots, queued, statuses, deleted, line };
 }
 
 const edited = (text: string) => ({ messageId: 77, text });
+
+test("a blank edit whose last status can't be shown fails the update instead of going unhandled", async () => {
+  const h = setup();
+  h.jots.status = async (_id: string, html: string) => {
+    if (html.startsWith("🗑️ removed")) throw new Error("telegram is down");
+  };
+  await assert.rejects(
+    h.edits.editByMessageEdit(edited("")),
+    /telegram is down/,
+  );
+  assert.equal(h.line(), null);
+});
 
 test("an edited TIL message loses a re-typed marker before it is applied", async () => {
   const h = setup({ jot: tilJot() });

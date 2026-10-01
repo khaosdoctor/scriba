@@ -128,7 +128,7 @@ export class EditController {
     if (blank) {
       log.info({ jotId }, "edited message cleared — removing journal line");
       await jots.status(jotId, "🗑️ got it — removing…");
-      void jots.status(jotId, await this.deleteJot(jot));
+      await jots.status(jotId, await this.deleteJot(jot));
       return "applied";
     }
     log.info({ jotId, text: markdown }, "applying edit to processed jot");
