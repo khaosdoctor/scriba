@@ -600,11 +600,11 @@ test("a rating time typed in the menu reaches the scheduler, and works without o
   });
 
   const wired = await harness();
-  const times: string[] = [];
-  wired.bot.setScheduler({ setRatingTime: (t: string) => void times.push(t) });
+  const rearmed: string[] = [];
+  wired.bot.setScheduler({ rearm: async (n: string) => void rearmed.push(n) });
   await wired.bot.menu.handleWizardReply(reply(wired), prompt);
   assert.deepEqual(wired.sets, [["ratingTime", "23:30"]]);
-  assert.deepEqual(times, ["23:30"]);
+  assert.deepEqual(rearmed, ["rating"]);
 
   const bare = await harness();
   await bare.bot.menu.handleWizardReply(reply(bare), prompt);

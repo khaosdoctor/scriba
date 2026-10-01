@@ -2,6 +2,7 @@ import { ScribaBot } from "./bot.ts";
 import { formatDeployNotice } from "./core.ts";
 import { Repository } from "./db.ts";
 import { Scheduler } from "./lib/scheduler.ts";
+import { plainDate, previousDate, startOfToday } from "./lib/time.ts";
 import { logger } from "./log.ts";
 import type { Config } from "./models/config.ts";
 import { JotProcessor } from "./runtime/processor.ts";
@@ -77,6 +78,23 @@ async function buildEnricher(config: Config, repo: Repository) {
   );
 }
 
+const RETRY_EVERY_MS = 5 * 60_000;
+
+/** Tells the owner how the day went in jots; says nothing on a day without any. */
+export async function dailySummary(
+  repo: Pick<Repository, "windowStats">,
+  notify: (text: string) => Promise<void>,
+): Promise<void> {
+  const s = await repo.windowStats(startOfToday(), Date.now());
+  const failed = s.failed + s.abandoned;
+  log.info({ jots: s.total, audio: s.audio, failed }, "daily summary");
+  if (s.total === 0) return;
+
+  const lines = [`📓 ${plainDate()}`, `Jots: ${s.total} (voice: ${s.audio})`];
+  if (failed) lines.push(`⚠️ Failed/abandoned: ${failed}`);
+  await notify(lines.join("\n"));
+}
+
 /** Builds and wires everything. Nothing runs until `start()`: no timer is armed and no
  *  update is polled before it. */
 export async function createScriba(
@@ -143,16 +161,34 @@ export async function createScriba(
   });
   bot.setQueue(queue);
 
-  const scheduler = new Scheduler(
-    config,
-    repo,
-    processor,
-    (t) => bot.notify(t),
-    (d) => bot.promptRating(d),
-    (d) => bot.promptHabits(d),
+  const scheduler = new Scheduler();
+  scheduler.daily(
+    "summary",
+    () => config.summaryTime,
+    () => dailySummary(repo, (t) => bot.notify(t)),
+  );
+  // The next night is armed first, so a prompt that hangs or fails cannot stop the ones
+  // after it.
+  scheduler.daily(
+    "rating",
+    () => repo.ratingTime(config.ratingTime),
+    () => bot.nightlyRating(),
+    { armBeforeRun: true },
+  );
+  // Fires at 00:00 by default, so the day to review is the one that just ended.
+  scheduler.daily(
+    "habits",
+    () => config.habitsTime,
+    () => bot.promptHabits(previousDate()),
+  );
+  // The one message of the day meant to interrupt: what's due today and what is still
+  // hanging over from before.
+  scheduler.daily(
+    "tasks",
+    () => config.tasksTime,
     () => bot.promptTaskSummary(),
   );
-  scheduler.setRatingTime(await repo.ratingTime(config.ratingTime));
+  scheduler.every("retry", RETRY_EVERY_MS, () => processor.retrySweep());
   bot.setScheduler(scheduler);
 
   const health = new HealthMonitor(
@@ -204,7 +240,7 @@ export async function createScriba(
         voiceFixModel: config.voiceFix.model,
       });
       links.startIndex();
-      scheduler.start();
+      await scheduler.start();
       void processor.retrySweep();
       health.start();
       await bot.start();

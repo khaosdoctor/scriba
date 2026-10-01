@@ -6,7 +6,7 @@ import { type TestContext, test } from "node:test";
 import { Bot } from "grammy";
 import { MockAgent, setGlobalDispatcher } from "undici";
 import { Repository } from "./db.ts";
-import { createScriba } from "./index.ts";
+import { createScriba, dailySummary } from "./index.ts";
 import { Scheduler } from "./lib/scheduler.ts";
 import { loadConfig } from "./models/config.ts";
 import type { SettingKey } from "./models/settings.ts";
@@ -156,6 +156,77 @@ dbTest("createScriba wires everything and starts nothing", async (t) => {
 
   await app.stop();
   assert.equal(closed.mock.callCount(), 1);
+});
+
+dbTest(
+  "the daily jobs read their own configured times, and only the rating arms before it runs",
+  async (t) => {
+    const daily = t.mock.method(Scheduler.prototype, "daily");
+    const every = t.mock.method(Scheduler.prototype, "every");
+    const app = await createScriba(
+      configFor(":memory:", {
+        SUMMARY_TIME: "21:00",
+        RATING_TIME: "22:00",
+        HABITS_TIME: "23:00",
+        TASKS_TIME: "07:00",
+      }),
+      { version: "9.9.9", sha: "abc" },
+      { obsidian: fakeObsidian, transcriber: fakeTranscriber },
+    );
+
+    const jobs = [];
+    for (const { arguments: args } of daily.mock.calls) {
+      const [name, time, , options] = args as unknown as [
+        string,
+        () => Promise<string> | string,
+        unknown,
+        { armBeforeRun?: boolean } | undefined,
+      ];
+      jobs.push([name, await time(), options?.armBeforeRun ?? false]);
+    }
+    await app.stop();
+    assert.deepEqual(jobs, [
+      ["summary", "21:00", false],
+      ["rating", "22:00", true],
+      ["habits", "23:00", false],
+      ["tasks", "07:00", false],
+    ]);
+    assert.deepEqual(
+      every.mock.calls.map((c) => c.arguments.slice(0, 2)),
+      [["retry", 5 * 60_000]],
+    );
+  },
+);
+
+async function summaryFor(stats: Record<string, number>) {
+  const sent: string[] = [];
+  await dailySummary(
+    { windowStats: async () => stats } as never,
+    async (text) => void sent.push(text),
+  );
+  return sent;
+}
+const NO_JOTS = { total: 0, audio: 0, failed: 0, abandoned: 0 };
+
+test("the daily summary stays quiet on a day with no jots", async () => {
+  assert.deepEqual(await summaryFor(NO_JOTS), []);
+});
+
+test("the daily summary counts jots, and names failures only when there are some", async () => {
+  const clean = await summaryFor({ ...NO_JOTS, total: 4, audio: 1 });
+  assert.equal(clean.length, 1);
+  assert.match(clean[0]!, /Jots: 4 \(voice: 1\)/);
+  assert.ok(!clean[0]!.includes("Failed"));
+
+  // failed and abandoned are one number to the reader: both mean "didn't finish cleanly".
+  const bad = await summaryFor({
+    ...NO_JOTS,
+    total: 4,
+    audio: 1,
+    failed: 1,
+    abandoned: 2,
+  });
+  assert.match(bad[0]!, /⚠️ Failed\/abandoned: 3/);
 });
 
 dbTest(

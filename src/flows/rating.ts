@@ -4,7 +4,7 @@ import { logger } from "../log.ts";
 import type { Config } from "../models/config.ts";
 import { RatingSchema } from "../models/settings.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
-import { DATE_RE, plainDate } from "../time.ts";
+import { DATE_RE, plainDate, ratingDay } from "../time.ts";
 import type { FollowupFlow } from "./followup.ts";
 
 const log = logger("rating");
@@ -47,6 +47,17 @@ export class RatingCommand {
       }
       await this.prompt(arg || plainDate());
     });
+  }
+
+  /** The scheduled prompt: skipped while its switch is off, else for the day the
+   *  configured rating time belongs to. */
+  async nightly(): Promise<void> {
+    if (!(await this.repo.getSetting("nightlyRating"))) {
+      log.info("nightly rating is off, skipping");
+      return;
+    }
+    const at = await this.repo.ratingTime(this.config.ratingTime);
+    await this.prompt(ratingDay(at));
   }
 
   /** Ask "how was your day?" for `date` with a 1–10 button grid. Called nightly by the
