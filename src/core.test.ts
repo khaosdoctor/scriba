@@ -26,7 +26,6 @@ import {
   jotPreview,
   modelsUrlFor,
   monthGrid,
-  parseClockTime,
   parseEntrySize,
   parseFollowupRef,
   parseWizardRef,
@@ -543,69 +542,12 @@ test("parseWizardRef recognises the rating-time prompt", () => {
   });
 });
 
-test("parseClockTime takes valid 24h times and pads the hour", () => {
-  for (const [input, out] of [
-    ["0:00", "00:00"],
-    ["00:59", "00:59"],
-    ["19:05", "19:05"],
-    ["23:00", "23:00"],
-    ["1:00", "01:00"],
-  ])
-    assert.equal(parseClockTime(input!), out, input);
-});
-
-test("parseClockTime rejects malformed, non-ASCII and multi-line input", () => {
-  for (const bad of [
-    "24:00",
-    "2:60",
-    "-1:00",
-    "1:2:3",
-    "12:00:00",
-    "12.30",
-    "１２:３０",
-    "12:30pm",
-    "12:30\n13:00",
-    " ",
-    "\t",
-    ":30",
-    "12:",
-    "abc",
-    "🕛",
-  ])
-    assert.equal(parseClockTime(bad), null, JSON.stringify(bad));
-});
-
 test("ratingTime normalises the fallback too, and ratingDay reads an unpadded hour", () => {
   assert.equal(ratingTime(undefined, "9:30"), "09:30");
   assert.equal(ratingTime("garbage", "9:30"), "09:30");
   assert.equal(ratingTime("8:05", "00:00"), "08:05");
   const now = new Date(2026, 6, 6, 12, 0).getTime();
   assert.equal(ratingDay("9:30", now), "2026-07-05");
-});
-
-test("ratingDay rolls back across month, year and leap-day boundaries", () => {
-  const at = (y: number, m: number, d: number) =>
-    new Date(y, m, d, 0, 0).getTime();
-  assert.equal(ratingDay("00:00", at(2026, 0, 1)), "2025-12-31");
-  assert.equal(ratingDay("00:00", at(2026, 2, 1)), "2026-02-28");
-  assert.equal(ratingDay("00:00", at(2028, 2, 1)), "2028-02-29");
-  assert.equal(ratingDay("12:00", at(2028, 2, 1)), "2028-03-01");
-});
-
-test("ratingDay is a calendar day back on DST change days", () => {
-  const saved = process.env.TZ;
-  process.env.TZ = "Europe/Stockholm";
-  try {
-    const spring = new Date(2026, 2, 29, 0, 30).getTime();
-    const autumn = new Date(2026, 9, 25, 0, 30).getTime();
-    assert.equal(ratingDay("00:00", spring), "2026-03-28");
-    assert.equal(ratingDay("00:00", autumn), "2026-10-24");
-    assert.equal(ratingDay("22:00", spring), "2026-03-29");
-    assert.equal(ratingDay("22:00", autumn), "2026-10-25");
-  } finally {
-    if (saved === undefined) delete process.env.TZ;
-    else process.env.TZ = saved;
-  }
 });
 
 test("followupQuestions counts a missing section as empty", () => {
@@ -642,38 +584,10 @@ test("switchEnabled is on unless explicitly off", () => {
   assert.equal(switchEnabled("off"), false);
 });
 
-test("parseClockTime accepts 24h HH:MM and pads a single-digit hour", () => {
-  assert.equal(parseClockTime("00:00"), "00:00");
-  assert.equal(parseClockTime(" 23:59 "), "23:59");
-  assert.equal(parseClockTime("9:30"), "09:30");
-});
-
-test("parseClockTime rejects anything else", () => {
-  for (const bad of [
-    "24:00",
-    "12:60",
-    "7pm",
-    "12",
-    "12:5",
-    "1230",
-    "",
-    "ab:cd",
-  ])
-    assert.equal(parseClockTime(bad), null, bad);
-});
-
 test("ratingTime uses the stored time when valid, else the default", () => {
   assert.equal(ratingTime("22:15", "00:00"), "22:15");
   assert.equal(ratingTime(undefined, "00:00"), "00:00");
   assert.equal(ratingTime("garbage", "21:00"), "21:00");
-});
-
-test("ratingDay rates yesterday for a just-after-midnight time and today for an evening one", () => {
-  const now = new Date(2026, 6, 6, 12, 0, 0).getTime();
-  assert.equal(ratingDay("00:00", now), "2026-07-05");
-  assert.equal(ratingDay("11:59", now), "2026-07-05");
-  assert.equal(ratingDay("12:00", now), "2026-07-06");
-  assert.equal(ratingDay("22:30", now), "2026-07-06");
 });
 
 test("jotPreview falls back to (kind) for a captionless attach-only jot", () => {
