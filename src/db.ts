@@ -1,18 +1,18 @@
-import knexLib, { type Knex } from "knex";
-import { logger } from "./log.ts";
-import {
-  JOT_STATUSES,
-  type Jot,
-  type JotSection,
-  type JotStatus,
-  MAX_ATTEMPTS,
-  type PendingLink,
-  type TaskDraftRow,
-  TERMINAL_STATUSES,
+import type { Knex } from "knex";
+import type {
+  Jot,
+  JotSection,
+  LinkRule,
+  PendingLink,
+  TaskDraftRow,
 } from "./models/domain.ts";
 import type { Stats, StatusCounts } from "./models/ops.ts";
-
-const log = logger("db");
+import { openDb } from "./repositories/db.ts";
+import { JotRepository } from "./repositories/jots.ts";
+import { LinkRuleRepository } from "./repositories/link-rules.ts";
+import { RatingRepository } from "./repositories/ratings.ts";
+import { SettingsRepository } from "./repositories/settings.ts";
+import { TaskDraftRepository } from "./repositories/task-drafts.ts";
 
 export type {
   Jot,
@@ -25,486 +25,197 @@ export type {
 export { MAX_ATTEMPTS, TERMINAL_STATUSES } from "./models/domain.ts";
 
 /**
- * The single data-access boundary. ALL knex/SQL lives here — nothing else in the
- * codebase touches the query builder. Callers speak in domain methods only.
+ * A facade over the repositories, kept so importers do not change. Each method is a
+ * one-line delegation; the SQL itself lives in `src/repositories/`.
  */
 export class Repository {
-  private constructor(private k: Knex) {}
+  private constructor(
+    private k: Knex,
+    private jots: JotRepository,
+    private linkRules: LinkRuleRepository,
+    private settings: SettingsRepository,
+    private taskDrafts: TaskDraftRepository,
+    private ratings: RatingRepository,
+  ) {}
 
   static async open(dbPath: string): Promise<Repository> {
-    // ponytail: app builds knex config inline; the root knexfile.js drives the CLI.
-    const k = knexLib({
-      client: "better-sqlite3",
-      connection: { filename: dbPath },
-      useNullAsDefault: true,
-      migrations: { directory: "./migrations", loadExtensions: [".js"] },
-      pool: {
-        afterCreate: (conn: any, done: (e: Error | null, c: any) => void) => {
-          conn.pragma("journal_mode = WAL");
-          conn.pragma("foreign_keys = ON");
-          done(null, conn);
-        },
-      },
-    });
-    const [batch, done] = await k.migrate.latest();
-    if (done.length)
-      log.info({ batch, count: done.length }, "migrations applied");
-    return new Repository(k);
+    const k = await openDb(dbPath);
+    return new Repository(
+      k,
+      new JotRepository(k),
+      new LinkRuleRepository(k),
+      new SettingsRepository(k),
+      new TaskDraftRepository(k),
+      new RatingRepository(k),
+    );
   }
 
-  // --- jots ---
   async insertJot(j: Jot): Promise<void> {
-    await this.k("jots").insert(j);
-    log.debug({ id: j.id, kind: j.kind, note: j.note_path }, "jot inserted");
+    return this.jots.insertJot(j);
   }
   async getJot(id: string): Promise<Jot | undefined> {
-    return this.k<Jot>("jots").where({ id }).first();
+    return this.jots.getJot(id);
   }
   async updateJot(id: string, patch: Partial<Jot>): Promise<void> {
-    await this.k("jots")
-      .where({ id })
-      .update({ ...patch, updated_at: Date.now() });
-    log.debug({ id, ...patch }, "jot updated");
+    return this.jots.updateJot(id, patch);
   }
-  /**
-   * Atomically claim a jot for processing. Returns true only for the caller that won
-   * the transition pending|failed -> processing, so flush and retry sweeps can't
-   * double-process the same jot.
-   */
   async claim(id: string): Promise<boolean> {
-    const n = await this.k("jots")
-      .where({ id })
-      .whereIn("status", ["pending", "failed"])
-      .update({ status: "processing", updated_at: Date.now() });
-    const won = n > 0;
-    log.debug({ id, won }, "claim attempt");
-    return won;
+    return this.jots.claim(id);
   }
-  /** Crash recovery: any jot stuck in `processing` from a previous run goes back to pending. */
   async resetProcessing(): Promise<number> {
-    return this.k("jots")
-      .where({ status: "processing" })
-      .update({ status: "pending", updated_at: Date.now() });
+    return this.jots.resetProcessing();
   }
-  /** Most recent still-pending text/voice jot in a note — the open end of a squash run.
-   *  A new enrichable jot arriving within the squash window folds into this one's line.
-   *  Only jots in the same section count, so a TIL jot between two journal jots doesn't
-   *  split their run. */
   async lastPendingEnrichableJot(
     notePath: string,
     section: JotSection,
   ): Promise<Jot | undefined> {
-    return this.k<Jot>("jots")
-      .where({ note_path: notePath, status: "pending", section })
-      .whereIn("kind", ["text", "audio"])
-      .orderBy("received_at", "desc")
-      .first();
+    return this.jots.lastPendingEnrichableJot(notePath, section);
   }
-  /** Pull a squashed follower back out of its merge — the user's 🤝 opt-out. Atomic
-   *  compare-and-swap like `claim()`: only flips `anchor` to the jot's own id (making it
-   *  a standalone leader) while it's still `pending`. Returns false if the leader already
-   *  folded it in (or it was never a follower), so the caller knows not to write a
-   *  placeholder for a jot that's already merged into another line. */
   async unsquash(id: string): Promise<boolean> {
-    const n = await this.k("jots")
-      .where({ id, status: "pending" })
-      .whereNot("anchor", id)
-      .update({ anchor: id, updated_at: Date.now() });
-    const won = n > 0;
-    log.debug({ id, won }, "unsquash attempt");
-    return won;
+    return this.jots.unsquash(id);
   }
-  /** Followers folded into a leader's line: other live jots sharing its anchor, oldest
-   *  first. The leader (id === anchor) is excluded; deleted jots are skipped. */
   async groupFollowers(leaderId: string): Promise<Jot[]> {
-    return this.k<Jot>("jots")
-      .where({ anchor: leaderId })
-      .whereNot({ id: leaderId })
-      .whereNot({ status: "deleted" })
-      .orderBy("received_at");
+    return this.jots.groupFollowers(leaderId);
   }
-  /** Jots eligible for (re)processing: fresh, or failed but under the retry cap. */
   async pendingJots(): Promise<Jot[]> {
-    return this.k<Jot>("jots")
-      .where({ status: "pending" })
-      .orWhere((q) =>
-        q.where({ status: "failed" }).andWhere("attempts", "<", MAX_ATTEMPTS),
-      )
-      .orderBy("received_at");
+    return this.jots.pendingJots();
   }
-
-  // --- telegram message → jot map (reply-to-edit) ---
   async mapMessage(tgMessageId: number, jotId: string): Promise<void> {
-    await this.k("msg_map")
-      .insert({ tg_message_id: tgMessageId, jot_id: jotId })
-      .onConflict("tg_message_id")
-      .merge();
+    return this.jots.mapMessage(tgMessageId, jotId);
   }
   async jotForMessage(tgMessageId: number): Promise<string | undefined> {
-    const r = await this.k("msg_map")
-      .where({ tg_message_id: tgMessageId })
-      .first();
-    return r?.jot_id;
+    return this.jots.jotForMessage(tgMessageId);
   }
   async messageForJot(jotId: string): Promise<number | undefined> {
-    const r = await this.k("msg_map").where({ jot_id: jotId }).first();
-    return r?.tg_message_id;
+    return this.jots.messageForJot(jotId);
   }
-  /** Forget a telegram message → jot mapping (e.g. a status message we just deleted). */
   async unmapMessage(tgMessageId: number): Promise<void> {
-    await this.k("msg_map").where({ tg_message_id: tgMessageId }).delete();
+    return this.jots.unmapMessage(tgMessageId);
   }
-
-  // --- learned link rejections ---
   async rejections(): Promise<Set<string>> {
-    const rows = await this.rejectionList();
-    return new Set(rows.map((r) => `${r.surface} ${r.note}`)); // surface stored lowercased
+    return this.linkRules.rejections();
   }
   async reject(surface: string, note: string): Promise<void> {
-    await this.k("rejections")
-      .insert({ surface: surface.toLowerCase(), note, created_at: Date.now() })
-      .onConflict(["surface", "note"])
-      .ignore();
+    return this.linkRules.reject(surface, note);
   }
-
-  // --- stopwords (editable in DB) ---
-  /** Stopwords as a deterministically ordered list, so the link-rules wizard can index
-   *  into it by row position and re-derive the same order on the next tap. */
   async stopwordList(): Promise<string[]> {
-    const rows = await this.k("stopwords").select("word").orderBy("word");
-    return rows.map((r) => String(r.word));
+    return this.linkRules.stopwordList();
   }
   async stopwords(): Promise<Set<string>> {
-    const words = await this.stopwordList();
-    return new Set(words.map((w) => w.toLowerCase()));
+    return this.linkRules.stopwords();
   }
-
-  // --- registered links: user-curated surface->note pairs that always force a link
-  // (the opposite of a rejection). Read as a list, not a set, since forcedCandidates
-  // needs the note target per surface, not just membership.
-  async registeredLinks(): Promise<{ surface: string; note: string }[]> {
-    // Ordered by (surface, note) so an interactive picker (mirroring /unreject's) can
-    // index into this list by position and re-derive the same order on each tap.
-    return this.k("registered_links")
-      .select("surface", "note")
-      .orderBy(["surface", "note"]);
+  async registeredLinks(): Promise<LinkRule[]> {
+    return this.linkRules.registeredLinks();
   }
   async addRegisteredLink(surface: string, note: string): Promise<void> {
-    await this.k("registered_links")
-      .insert({
-        surface: surface.trim().toLowerCase(),
-        note: note.trim(),
-        created_at: Date.now(),
-      })
-      .onConflict(["surface", "note"])
-      .ignore();
+    return this.linkRules.addRegisteredLink(surface, note);
   }
   async delRegisteredLink(surface: string, note: string): Promise<number> {
-    return this.k("registered_links")
-      .where({ surface: surface.trim().toLowerCase(), note: note.trim() })
-      .del();
+    return this.linkRules.delRegisteredLink(surface, note);
   }
-
-  // --- pending ambiguous-link questions ---
   async addPendingLink(
     id: string,
     jotId: string,
     surface: string,
     note: string,
   ): Promise<void> {
-    await this.k("pending_links").insert({
-      id,
-      jot_id: jotId,
-      surface,
-      note,
-      created_at: Date.now(),
-    });
+    return this.linkRules.addPendingLink(id, jotId, surface, note);
   }
-  /** Atomic take: only one of two fast button taps gets the row. */
   async takePendingLink(id: string): Promise<PendingLink | undefined> {
-    return this.k.transaction(async (trx) => {
-      const row = await trx("pending_links").where({ id }).first();
-      if (!row) return undefined;
-      await trx("pending_links").where({ id }).del();
-      return { jot_id: row.jot_id, surface: row.surface, note: row.note };
-    });
+    return this.linkRules.takePendingLink(id);
   }
-
-  // --- edits queued while a jot was still processing ---
   async queueEdit(jotId: string, instruction: string): Promise<void> {
-    await this.k("queued_edits").insert({
-      jot_id: jotId,
-      instruction,
-      created_at: Date.now(),
-    });
+    return this.jots.queueEdit(jotId, instruction);
   }
-  /** Peek at queued edits without removing them, oldest first. The caller applies them
-   *  and then calls clearQueuedEdits — so a failed apply doesn't lose the edits. */
   async queuedEdits(jotId: string): Promise<string[]> {
-    const rows = await this.k("queued_edits")
-      .where({ jot_id: jotId })
-      .orderBy("created_at");
-    return rows.map((r) => r.instruction as string);
+    return this.jots.queuedEdits(jotId);
   }
   async clearQueuedEdits(jotId: string): Promise<void> {
-    await this.k("queued_edits").where({ jot_id: jotId }).del();
+    return this.jots.clearQueuedEdits(jotId);
   }
-
-  // --- daily ratings (write-once gate) ---
-  /** Atomically claim a day's rating. Returns `recorded: false` with the existing value
-   *  if the day is already rated, so a double-tap or a second prompt can't overwrite it. */
   async recordRating(
     date: string,
     rating: number,
   ): Promise<{ recorded: boolean; current: number }> {
-    return this.k.transaction(async (trx) => {
-      const row = await trx("ratings").where({ date }).first();
-      if (row) return { recorded: false, current: Number(row.rating) };
-      await trx("ratings").insert({ date, rating, created_at: Date.now() });
-      return { recorded: true, current: rating };
-    });
+    return this.ratings.recordRating(date, rating);
   }
-  /** Release a claimed rating so it can be retried (used when the vault write fails). */
   async clearRating(date: string): Promise<void> {
-    await this.k("ratings").where({ date }).del();
+    return this.ratings.clearRating(date);
   }
-
-  /** Jot counts by kind + outcome over a [from,to) epoch-ms window, for /stats and the
-   *  daily summary. */
   async windowStats(from: number, to: number): Promise<Stats> {
-    const row = await this.k("jots")
-      .where("received_at", ">=", from)
-      .andWhere("received_at", "<", to)
-      .select(
-        this.k.raw("COUNT(*) as total"),
-        this.k.raw("SUM(CASE WHEN kind='text' THEN 1 ELSE 0 END) as text"),
-        this.k.raw("SUM(CASE WHEN kind='audio' THEN 1 ELSE 0 END) as audio"),
-        this.k.raw("SUM(CASE WHEN kind='image' THEN 1 ELSE 0 END) as image"),
-        this.k.raw("SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) as video"),
-        ...TERMINAL_STATUSES.map((s) =>
-          this.k.raw(`SUM(CASE WHEN status='${s}' THEN 1 ELSE 0 END) as ${s}`),
-        ),
-        this.k.raw(
-          "SUM(CASE WHEN status IN ('pending','processing') THEN 1 ELSE 0 END) as inflight",
-        ),
-      )
-      .first();
-    const n = (v: unknown) => Number(v ?? 0);
-    return {
-      total: n(row?.total),
-      text: n(row?.text),
-      audio: n(row?.audio),
-      image: n(row?.image),
-      video: n(row?.video),
-      ...(Object.fromEntries(
-        TERMINAL_STATUSES.map((s) => [s, n(row?.[s])]),
-      ) as Pick<Stats, (typeof TERMINAL_STATUSES)[number]>),
-      inflight: n(row?.inflight),
-    };
+    return this.jots.windowStats(from, to);
   }
-
-  /** Live jot counts per status (whole table), for /status. */
   async statusCounts(): Promise<StatusCounts> {
-    const rows = await this.k("jots")
-      .select("status")
-      .count("* as n")
-      .groupBy("status");
-    const out = Object.fromEntries(
-      JOT_STATUSES.map((s) => [s, 0]),
-    ) as StatusCounts;
-    for (const r of rows) out[r.status as JotStatus] = Number(r.n);
-    return out;
+    return this.jots.statusCounts();
   }
-
-  /** Most recently touched failed/abandoned jots, for /failed. */
   async failedJots(limit = 10): Promise<Jot[]> {
-    return this.k<Jot>("jots")
-      .whereIn("status", ["failed", "abandoned"])
-      .orderBy("updated_at", "desc")
-      .limit(limit);
+    return this.jots.failedJots(limit);
   }
-
-  /** Most recent live jots (any status except deleted), newest first — for the /menu
-   *  jots browser, which gives a read/edit surface the reply-to-message flow can't. */
   async recentJots(limit = 10): Promise<Jot[]> {
-    return this.k<Jot>("jots")
-      .whereNot({ status: "deleted" })
-      .orderBy("received_at", "desc")
-      .limit(limit);
+    return this.jots.recentJots(limit);
   }
-
-  /** Reprocess-eligible jots (done/failed/abandoned — not deleted, not in flight) whose
-   *  `received_at` falls in [from, to). Backs /reprocess's day and date-range pickers.
-   *  Only `id`/`anchor` are selected — callers dedupe/resolve to a leader's anchor, they
-   *  never touch the (potentially large) raw_text/transcript payloads. */
   async jotsInRange(
     from: number,
     to: number,
   ): Promise<Pick<Jot, "id" | "anchor">[]> {
-    return this.k<Jot>("jots")
-      .select("id", "anchor")
-      .where("received_at", ">=", from)
-      .andWhere("received_at", "<", to)
-      .whereIn("status", [...TERMINAL_STATUSES])
-      .orderBy("received_at");
+    return this.jots.jotsInRange(from, to);
   }
-
-  /** Page of reprocess-eligible jots, newest first — /reprocess's "one jot" picker, which
-   *  browses full history rather than recentJots' fixed top-10. */
   async jotsPage(offset: number, limit: number): Promise<Jot[]> {
-    return this.k<Jot>("jots")
-      .whereIn("status", [...TERMINAL_STATUSES])
-      .orderBy("received_at", "desc")
-      .limit(limit)
-      .offset(offset);
+    return this.jots.jotsPage(offset, limit);
   }
-
-  // SQLite's bound-parameter cap (SQLITE_MAX_VARIABLE_NUMBER, 32766 on the bundled
-  // better-sqlite3 build) — resetForReprocess chunks whereIn("id", ids) to this size so
-  // an unusually large date-range reprocess can't hit "too many SQL variables".
-  private static readonly ID_CHUNK = 500;
-
-  /** Reset a specific set of jots to pending for reprocessing (clears attempts/error) —
-   *  only touches ones still eligible (done/failed/abandoned), so a jot that started
-   *  processing meanwhile isn't clobbered. A single atomic UPDATE...WHERE per chunk (the
-   *  same claim-style pattern as `claim()`) rather than a select-then-update: the latter
-   *  leaves a race window where a jot could flip to `processing` between the two
-   *  statements and get clobbered back to `pending` anyway. Returns the ids actually
-   *  reset (a subset of `ids`, via RETURNING), so the caller enqueues only jots it
-   *  actually flipped to pending rather than ones that raced to `processing` or came
-   *  from a stale/crafted callback. */
   async resetForReprocess(ids: string[]): Promise<string[]> {
-    const reset: string[] = [];
-    for (let i = 0; i < ids.length; i += Repository.ID_CHUNK) {
-      const chunk = ids.slice(i, i + Repository.ID_CHUNK);
-      const rows: { id: string }[] = await this.k("jots")
-        .whereIn("id", chunk)
-        .whereIn("status", [...TERMINAL_STATUSES])
-        .update({
-          status: "pending",
-          attempts: 0,
-          error: null,
-          updated_at: Date.now(),
-        })
-        .returning("id");
-      reset.push(...rows.map((r) => r.id));
-    }
-    return reset;
+    return this.jots.resetForReprocess(ids);
   }
-
-  /** Requeue failed (and optionally abandoned) jots: reset to pending, clear attempts.
-   *  Returns how many were reset. */
   async resetFailed(includeAbandoned: boolean): Promise<number> {
-    const statuses = includeAbandoned ? ["failed", "abandoned"] : ["failed"];
-    return this.k("jots").whereIn("status", statuses).update({
-      status: "pending",
-      attempts: 0,
-      error: null,
-      updated_at: Date.now(),
-    });
+    return this.jots.resetFailed(includeAbandoned);
   }
-
-  /** Reset one jot to be retried from scratch (clears attempts + error). The caller
-   *  re-queues it (the queue lives outside the persistence boundary). */
   async resetForRetry(id: string): Promise<void> {
-    await this.updateJot(id, { status: "pending", attempts: 0, error: null });
+    return this.jots.resetForRetry(id);
   }
-
-  /** Terminal state for a jot whose journal line the user removed. Distinct from
-   *  `abandoned` so /retry --abandoned never resurrects a deliberate deletion. */
   async markDeleted(id: string): Promise<void> {
-    await this.updateJot(id, { status: "deleted" });
+    return this.jots.markDeleted(id);
   }
-
-  // --- stopwords: writes (reads via stopwords() above) ---
   async addStopword(word: string): Promise<void> {
-    await this.k("stopwords")
-      .insert({ word: word.toLowerCase() })
-      .onConflict("word")
-      .ignore();
+    return this.linkRules.addStopword(word);
   }
   async delStopword(word: string): Promise<number> {
-    return this.k("stopwords").where({ word: word.toLowerCase() }).del();
+    return this.linkRules.delStopword(word);
   }
-
-  // --- rejections: list + undo (set-shaped read via rejections() above) ---
-  async rejectionList(): Promise<{ surface: string; note: string }[]> {
-    // Ordered by (surface, note) so the interactive /unreject menu can index into
-    // this list by position and re-derive the same order on each button tap.
-    return this.k("rejections")
-      .select("surface", "note")
-      .orderBy(["surface", "note"]);
+  async rejectionList(): Promise<LinkRule[]> {
+    return this.linkRules.rejectionList();
   }
   async unreject(surface: string, note: string): Promise<number> {
-    return this.k("rejections")
-      .where({ surface: surface.toLowerCase(), note })
-      .del();
+    return this.linkRules.unreject(surface, note);
   }
-
-  // --- task drafts (a task awaiting its confirmation card) ---
   async insertTaskDraft(d: TaskDraftRow): Promise<void> {
-    await this.k("task_drafts").insert(d);
-    log.debug(
-      { id: d.id, source: d.source, type: d.type },
-      "task draft inserted",
-    );
+    return this.taskDrafts.insertTaskDraft(d);
   }
   async getTaskDraft(id: string): Promise<TaskDraftRow | undefined> {
-    return this.k<TaskDraftRow>("task_drafts").where({ id }).first();
+    return this.taskDrafts.getTaskDraft(id);
   }
   async updateTaskDraft(
     id: string,
     patch: Partial<TaskDraftRow>,
   ): Promise<void> {
-    await this.k("task_drafts")
-      .where({ id })
-      .update({ ...patch, updated_at: Date.now() });
-    log.debug({ id, ...patch }, "task draft updated");
+    return this.taskDrafts.updateTaskDraft(id, patch);
   }
-  /** Atomically claim a draft for creation — the same compare-and-swap `claim()` uses for
-   *  jots. Only the tap that wins flips it `pending → created`, so a double-tapped ✅ can't
-   *  write the same task into the note twice. Returns false when it was already settled. */
   async claimTaskDraft(id: string): Promise<boolean> {
-    const n = await this.k("task_drafts")
-      .where({ id, status: "pending" })
-      .update({ status: "created", updated_at: Date.now() });
-    const won = n > 0;
-    log.debug({ id, won }, "task draft claim attempt");
-    return won;
+    return this.taskDrafts.claimTaskDraft(id);
   }
-
-  /** How many drafts a jot has already produced. Non-zero means its tasks were proposed
-   *  once and answered (created, or dismissed) — so a later /reprocess of that jot must
-   *  not ask about them all over again. */
   async taskDraftsForJot(jotId: string): Promise<number> {
-    const row = await this.k("task_drafts")
-      .where({ jot_id: jotId })
-      .count("* as n")
-      .first();
-    return Number(row?.n ?? 0);
+    return this.taskDrafts.taskDraftsForJot(jotId);
   }
-
-  /** Whether this jot was already asked "Move this to TIL?", whatever the answer was. */
   async tilOffered(jotId: string): Promise<boolean> {
-    const row = await this.k("jots").where({ id: jotId }).first("til_offered");
-    return Boolean(row?.til_offered);
+    return this.jots.tilOffered(jotId);
   }
-
   async markTilOffered(jotId: string): Promise<void> {
-    await this.k("jots").where({ id: jotId }).update({ til_offered: true });
-    log.debug({ id: jotId }, "til offered");
+    return this.jots.markTilOffered(jotId);
   }
-
-  // --- runtime settings (key/value; survives restart) ---
   async getSetting(key: string): Promise<string | undefined> {
-    const r = await this.k("settings").where({ key }).first();
-    return r?.value;
+    return this.settings.getSetting(key);
   }
   async setSetting(key: string, value: string): Promise<void> {
-    await this.k("settings")
-      .insert({ key, value, updated_at: Date.now() })
-      .onConflict("key")
-      .merge();
+    return this.settings.setSetting(key, value);
   }
 
   async close(): Promise<void> {

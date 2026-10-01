@@ -5,7 +5,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import knexLib, { type Knex } from "knex";
-import { Repository } from "./db.ts";
+import { openDb } from "./repositories/db.ts";
+import { JotRepository } from "./repositories/jots.ts";
 
 const BEFORE_SECTION = "20260922000000";
 const SECTION = "20260930000000";
@@ -139,7 +140,8 @@ test("jot_section gives rows that predate it the journal section", async (t) => 
     await k.destroy();
 
     // The repository sees that old row as a journal jot and never as a TIL one.
-    const repo = await Repository.open(dbPath);
+    const k2 = await openDb(dbPath);
+    const repo = new JotRepository(k2);
     try {
       assert.equal(
         (await repo.lastPendingEnrichableJot("n.md", "journal"))?.id,
@@ -150,7 +152,7 @@ test("jot_section gives rows that predate it the journal section", async (t) => 
         undefined,
       );
     } finally {
-      await repo.close();
+      await k2.destroy();
     }
   });
 });
