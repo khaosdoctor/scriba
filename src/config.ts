@@ -1,4 +1,4 @@
-import { logger } from "./log.ts";
+import { logger } from "./lib/log.ts";
 import { loadConfig } from "./models/config.ts";
 
 export const config = loadConfig(process.env);

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { logger } from "../log.ts";
+import { logger } from "../lib/log.ts";
 import { type Release, ReleaseSchema } from "../models/ops.ts";
 
 const log = logger("github");

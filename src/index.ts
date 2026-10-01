@@ -2,11 +2,11 @@ import { ScribaBot } from "./bot.ts";
 import { AdminController } from "./controllers/admin.ts";
 import { ProcessingController } from "./controllers/processing.ts";
 import { Repository } from "./db.ts";
+import { logger } from "./lib/log.ts";
+import { FlushQueue } from "./lib/queue.ts";
 import { Scheduler } from "./lib/scheduler.ts";
 import { previousDate } from "./lib/time.ts";
-import { logger } from "./log.ts";
 import type { Config } from "./models/config.ts";
-import { FlushQueue } from "./runtime/queue.ts";
 import {
   Enricher,
   type EnrichFallback,

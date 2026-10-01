@@ -1,7 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { Agent, type Dispatcher, fetch } from "undici";
+import { logger } from "../lib/log.ts";
 import { htmlToText } from "../lib/text.ts";
-import { logger } from "../log.ts";
 
 const log = logger("web");
 

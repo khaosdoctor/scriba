@@ -1,6 +1,6 @@
 import type { Context, ErrorHandler } from "grammy";
 import { statusKeyboard } from "../lib/jot.ts";
-import { logger } from "../log.ts";
+import { logger } from "../lib/log.ts";
 import { Responder } from "./chat.ts";
 
 const log = logger("bot");

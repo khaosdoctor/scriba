@@ -1,5 +1,5 @@
 import type { Knex } from "knex";
-import { logger } from "../log.ts";
+import { logger } from "../lib/log.ts";
 import {
   JOT_STATUSES,
   type Jot,

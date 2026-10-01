@@ -4,12 +4,12 @@ import Groq from "groq-sdk";
 import { z } from "zod";
 import { isRecoverable } from "../lib/jot.ts";
 import type { Candidate } from "../lib/links.ts";
+import { logger } from "../lib/log.ts";
 import {
   CircuitBreaker,
   parseModelJson,
   unwrapModelPayload,
 } from "../lib/model.ts";
-import { logger } from "../log.ts";
 import type { DetectedTask } from "../models/domain.ts";
 import {
   ENRICH_JSON_ONLY,

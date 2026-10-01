@@ -17,10 +17,10 @@
 import { createHash } from "node:crypto";
 import * as chrono from "chrono-node";
 import type { TaskDraft, TaskType } from "../models/domain.ts";
-import { DATE_RE, dateFromIso, plainDate } from "../time.ts";
 import { isDateLike } from "./links.ts";
 import { findSection, stampCompletion } from "./note.ts";
 import { escapeHtml, escapeRe } from "./text.ts";
+import { DATE_RE, dateFromIso, plainDate } from "./time.ts";
 
 export type { TaskDraft, TaskType } from "../models/domain.ts";
 /** `- [ ]` open, `- [x]` done, `- [-]` cancelled (terminal, never listed or reopened). */
