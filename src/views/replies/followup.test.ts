@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { followupRef } from "../../controllers/rating.ts";
 import { parseWizardRef } from "../../core.ts";
 import type { Jot } from "../../db.ts";
-import { parseHabitRef } from "../../flows/habits/parse.ts";
+import { parseHabitRef } from "../../lib/habits.ts";
 import { botHarness, NOW } from "../../test/bot-harness.ts";
 import { parseFollowupRef } from "./followup.ts";
 

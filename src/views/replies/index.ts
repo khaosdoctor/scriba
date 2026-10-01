@@ -1,8 +1,9 @@
 import { Composer, type Context, type Filter } from "grammy";
 import type { Message } from "grammy/types";
-import { parseHabitRef } from "../../flows/habits/index.ts";
+import { parseHabitRef } from "../../lib/habits.ts";
 import type { ViewDeps } from "../index.ts";
 import { followupReply, parseFollowupRef } from "./followup.ts";
+import { habitReply } from "./habit.ts";
 
 type Reply = Filter<Context, "message:text">;
 
@@ -35,7 +36,7 @@ export function promptReplies({
   tasks,
 }: ViewDeps): Composer<Context>[] {
   return [
-    replyTo(parseHabitRef, (ctx) => habits.handleReply(ctx)),
+    replyTo(parseHabitRef, habitReply(habits)),
     replyTo(parseFollowupRef, followupReply(rating, jots)),
     replyTo(
       claim((prompt) => menu.isWizardPrompt(prompt)),

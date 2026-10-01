@@ -1,6 +1,7 @@
 import { extname } from "node:path";
 import { Bot, InlineKeyboard } from "grammy";
 import type { AdminController } from "./controllers/admin.ts";
+import { HabitController } from "./controllers/habits.ts";
 import { JotController } from "./controllers/jots.ts";
 import { RatingController } from "./controllers/rating.ts";
 import {
@@ -24,7 +25,6 @@ import {
 } from "./core.ts";
 import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
 import { CommandSession } from "./flows/command.ts";
-import { HabitsCommand } from "./flows/habits/index.ts";
 import { MenuController, type MenuDeps } from "./flows/menu.ts";
 import { ReprocessCommand } from "./flows/reprocess.ts";
 import { TasksFlow } from "./flows/tasks/index.ts";
@@ -97,7 +97,7 @@ export class ScribaBot implements BotServices {
   private chat: Chat;
   private queue!: FlushQueue;
   private rating: RatingController;
-  private habits: HabitsCommand;
+  private habits: HabitController;
   private menu: MenuController;
   private reprocess: ReprocessCommand;
   private command: CommandSession;
@@ -138,7 +138,11 @@ export class ScribaBot implements BotServices {
         til: config.obsidian.tilHeading,
       },
     });
-    this.habits = new HabitsCommand(this.bot, config, obsidian);
+    this.habits = new HabitController({
+      obsidian,
+      notifier: this.chat,
+      heading: config.obsidian.habitsHeading,
+    });
     this.reprocess = new ReprocessCommand(this.bot, config, repo);
     this.menu = new MenuController(
       this.bot,
@@ -256,7 +260,7 @@ export class ScribaBot implements BotServices {
     await this.rating.nightly();
   }
 
-  /** Nightly habit review prompt (the scheduler calls this). Delegates to the habits command. */
+  /** Nightly habit review prompt (the scheduler calls this). */
   async promptHabits(date: string): Promise<void> {
     await this.habits.prompt(date);
   }

@@ -1,10 +1,10 @@
 import { Composer, type Context } from "grammy";
 import { COMMAND_NS } from "../../flows/command.ts";
-import { HABITS_NS } from "../../flows/habits/index.ts";
 import { REPROCESS_NS } from "../../flows/reprocess.ts";
 import { TASKS_NS } from "../../flows/tasks/index.ts";
 import type { ViewDeps } from "../index.ts";
 import { followupView } from "./followup.ts";
+import { habitsView } from "./habits.ts";
 import { namespace } from "./namespace.ts";
 import { ratingView } from "./rating.ts";
 import { tilView } from "./til.ts";
@@ -45,9 +45,7 @@ export function callbackViews({
     unrejectView(admin),
     ratingView(rating),
     followupView(rating),
-    namespace(HABITS_NS, (ctx, [date, action, verdict]) =>
-      habits.handleTap(ctx, date, action, verdict),
-    ),
+    habitsView(habits),
     namespace(REPROCESS_NS, (ctx, rest) => reprocess.handleTap(ctx, rest)),
     unknown,
   ];
