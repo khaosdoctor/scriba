@@ -14,8 +14,8 @@
     "node": ">=24"
   },
   "scripts": {
-    "start": "node --import tsx src/index.ts",
-    "dev": "node --watch --import tsx src/index.ts",
+    "start": "node --import tsx src/main.ts",
+    "dev": "node --watch --import tsx src/main.ts",
     "migrate": "knex migrate:latest",
     "test": "node --import tsx --test 'src/**/*.test.ts'",
     "test:coverage": "node --import tsx --test --experimental-test-coverage --test-coverage-exclude='src/main.ts' --test-coverage-exclude='src/test/**' --test-coverage-exclude='src/**/*.test.ts' --test-coverage-lines=98 --test-coverage-branches=92 'src/**/*.test.ts'",
