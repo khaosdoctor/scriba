@@ -21,7 +21,7 @@ const log = logger("tasks");
 export interface TaskNoteConfig {
   /** Vault-relative path of the note. */
   path: string;
-  /** The heading whose checklist holds the tasks — everything else in the note is
+  /** The heading whose checklist holds the tasks. Everything else in the note is
    *  ignored, which is what keeps the work note's project sections out of the way. */
   heading: string;
   /** The tag every task in that note carries. */
@@ -34,10 +34,10 @@ export interface TaskNoteConfig {
 /**
  * Read and write the two task notes. All the vault I/O for tasks lives here; the shaping of
  * a line is pure and lives in flows/tasks/parse.ts. Every write is a read-modify-write under
- * the per-note lock, so a task added from Telegram can't clobber an edit made in Obsidian a
- * second earlier — the same discipline every journal write already follows.
+ * the per-note lock, so a task added from Telegram can't overwrite an edit made in Obsidian
+ * a second earlier, the same discipline every journal write already follows.
  */
-export class TaskStore {
+export class TaskNotesService {
   constructor(
     private obsidian: ObsidianClient,
     private notes: Record<TaskType, TaskNoteConfig>,
@@ -57,7 +57,7 @@ export class TaskStore {
     return out;
   }
 
-  /** Write a new task into its note. Returns the line as it landed. */
+  /** Write a new task into its note. Returns the line as written. */
   async add(draft: TaskDraft, sourceDate: string): Promise<string> {
     const cfg = this.notes[draft.type];
     const line = renderTaskLine(draft, cfg.tag, sourceDate);
@@ -91,7 +91,7 @@ export class TaskStore {
       if (!task || task.fingerprint !== fingerprint) {
         log.warn(
           { type, index, fingerprint, found: task?.fingerprint ?? null },
-          "task tap ignored — the note changed underneath",
+          "task tap ignored, the note changed underneath",
         );
         return null;
       }

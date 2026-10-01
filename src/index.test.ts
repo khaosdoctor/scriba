@@ -7,7 +7,7 @@ import { Bot } from "grammy";
 import { MockAgent, setGlobalDispatcher } from "undici";
 import { Repository } from "./db.ts";
 import { loadConfig } from "./models/config.ts";
-import { HealthMonitor } from "./runtime/health.ts";
+import { HealthMonitor } from "./services/health.ts";
 import { LinkIndex } from "./services/links.ts";
 
 // The classes still read the config singleton, which parses the environment on import.
@@ -20,7 +20,7 @@ const env = {
 Object.assign(process.env, env);
 
 const { createScriba } = await import("./index.ts");
-const { Scheduler } = await import("./runtime/scheduler.ts");
+const { Scheduler } = await import("./lib/scheduler.ts");
 const { Enricher } = await import("./services/enrich.ts");
 
 type Scriba = Awaited<ReturnType<typeof createScriba>>;

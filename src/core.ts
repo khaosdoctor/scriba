@@ -2,7 +2,6 @@
  * Pure, dependency-free helpers. Deterministic, token-free — unit-tested in isolation.
  * Stopwords and rejections are injected (they live in the DB), not hardcoded here.
  */
-import { sep } from "node:path";
 import type { MessageEntity } from "grammy/types";
 import { donePreview } from "./lib/jot.ts";
 import { sectionHasContent } from "./lib/note.ts";
@@ -86,21 +85,9 @@ export {
   switchEnabled,
   voiceFixEnabled,
 } from "./models/settings.ts";
-
-// --- command mode sandbox ---
-// `/command` runs an agent against the vault. Its limits are enforced in code, not asked
-// for in the prompt: it gets no built-in tool at all (no Bash, no Read — those would reach
-// the whole container: the sqlite db, the env, the tokens), only the handful of custom
-// tools in services/vault.ts, and every path they take goes through the check below.
-
-/** True when `target` is `root` itself or sits under it. Both must already be resolved to
- *  absolute paths; the caller still realpaths afterwards, since this is string-only and a
- *  symlink inside the vault can still point out of it. */
-export function isInsideRoot(root: string, target: string): boolean {
-  if (!root || !target) return false;
-  const r = root.endsWith(sep) ? root.slice(0, -1) : root;
-  return target === r || target.startsWith(r + sep);
-}
+export { OPENCODE_BASE_URL } from "./services/enrich.ts";
+export { modelsUrlFor } from "./services/health.ts";
+export { isInsideRoot } from "./services/vault.ts";
 
 const ENTITY_WRAP: Partial<Record<string, readonly [string, string]>> = {
   bold: ["**", "**"],
@@ -516,23 +503,6 @@ export function formatHealth(rows: UpstreamStatus[], now: number): string {
     lines.push(parts.join(" · "));
   }
   return lines.join("\n");
-}
-
-/** OpenCode Go's OpenAI-compatible API root: the enrichment fallback's `baseUrl` and the
- *  health probe's `/models` listing both hang off it. */
-export const OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1";
-
-/** The model listing next to an OpenAI-style transcription endpoint:
- *  `.../v1/audio/transcriptions` → `.../v1/models`. A GET there generates nothing, which
- *  is why the health probe uses it instead of the endpoint itself. */
-export function modelsUrlFor(transcriptionsUrl: string): string {
-  const u = new URL(transcriptionsUrl);
-  const base = u.pathname
-    .replace(/\/audio\/transcriptions\/?$/, "")
-    .replace(/\/$/, "");
-  u.pathname = `${base}/models`;
-  u.search = "";
-  return u.toString();
 }
 
 /** GitHub Release bodies are conventional-changelog markdown: `### Section` headers and

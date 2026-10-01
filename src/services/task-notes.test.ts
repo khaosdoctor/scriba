@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 import { ObsidianClient } from "./obsidian.ts";
-import { TaskStore } from "./tasks.ts";
+import { TaskNotesService } from "./task-notes.ts";
 
 /**
  * The same loopback stand-in obsidian.test.ts uses: a real ObsidianClient over a real
@@ -94,7 +94,7 @@ async function store() {
   });
   return {
     vault,
-    tasks: new TaskStore(obsidian, {
+    tasks: new TaskNotesService(obsidian, {
       work: {
         path: WORK_PATH,
         heading: "Other Tasks",

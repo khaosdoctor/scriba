@@ -6,9 +6,9 @@ import {
   switchEnabled,
 } from "../core.ts";
 import type { Repository } from "../db.ts";
-import { logger } from "../log.ts";
-import { msUntilNext, plainDate, previousDate, startOfToday } from "../time.ts";
-import type { JotProcessor } from "./processor.ts";
+import type { JotProcessor } from "../runtime/processor.ts";
+import { logger } from "./log.ts";
+import { msUntilNext, plainDate, previousDate, startOfToday } from "./time.ts";
 
 const log = logger("scheduler");
 

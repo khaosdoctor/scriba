@@ -1,12 +1,26 @@
 import { lookup } from "node:dns/promises";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
-import { dirname, extname, join, relative, resolve } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { Agent, fetch } from "undici";
-import { htmlToText, isInsideRoot } from "../core.ts";
+import { htmlToText } from "../lib/text.ts";
 import { logger } from "../log.ts";
 import type { ObsidianClient } from "./obsidian.ts";
 
 const log = logger("vault");
+
+// `/command` runs an agent against the vault. Its limits are enforced in code, not asked
+// for in the prompt: it gets no built-in tool at all (no Bash, no Read, which would reach
+// the whole container: the sqlite db, the env, the tokens), only the handful of custom
+// tools below, and every path they take goes through the check here.
+
+/** True when `target` is `root` itself or lies under it. Both must already be resolved to
+ *  absolute paths; the caller still realpaths afterwards, since this is string-only and a
+ *  symlink inside the vault can still point out of it. */
+export function isInsideRoot(root: string, target: string): boolean {
+  if (!root || !target) return false;
+  const r = root.endsWith(sep) ? root.slice(0, -1) : root;
+  return target === r || target.startsWith(r + sep);
+}
 
 // Hard caps. The agent is told about them, but they're enforced here — a prompt that asks
 // for "the whole vault" gets a truncated answer, not an unbounded read.

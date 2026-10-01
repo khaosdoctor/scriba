@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-// scheduler.ts pulls in config.ts, which validates process.env at import time — give it the
-// bare minimum before loading, the same trick config.test.ts uses.
+// scheduler.ts pulls in config.ts, which validates process.env at import time, so give it
+// the bare minimum before loading, the same trick config.test.ts uses.
 process.env.TELEGRAM_BOT_TOKEN ??= "t";
 process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
 const { Scheduler } = await import("./scheduler.ts");
-const { plainDate } = await import("../time.ts");
+const { plainDate } = await import("./time.ts");
 
 const DAY = 24 * 60 * 60_000;
 
@@ -121,7 +121,7 @@ test("a sweep that throws is logged and the next one still runs", async (t) => {
   t.mock.timers.tick(1000);
   await flush();
   assert.equal(h.sweeps(), 1);
-  // The guard is cleared in a finally — without it one failure stops sweeping forever.
+  // The guard is cleared in a finally: without it one failure stops the retry pass forever.
   boom = false;
   t.mock.timers.tick(1000);
   await flush();

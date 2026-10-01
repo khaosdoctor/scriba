@@ -9,7 +9,7 @@ process.env.OBSIDIAN_API_KEY ??= "o";
 const { TasksFlow, parseTaskPromptRef, taskDetectionEnabled } = await import(
   "./index.ts"
 );
-const { TaskStore } = await import("../../services/tasks.ts");
+const { TaskNotesService } = await import("../../services/task-notes.ts");
 
 type Sent = { chat: number; text: string; markup?: any; silent?: unknown };
 type Edited = { chat: number; msg: number; text: string; markup?: any };
@@ -87,7 +87,7 @@ function harness(
     },
     withNoteLock: async <T>(_p: string, fn: () => Promise<T>) => fn(),
   };
-  const store = new TaskStore(obsidian as any, {
+  const store = new TaskNotesService(obsidian as any, {
     work: {
       path: "work.md",
       heading: "Other Tasks",

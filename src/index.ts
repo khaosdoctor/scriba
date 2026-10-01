@@ -2,20 +2,23 @@ import { ScribaBot } from "./bot.ts";
 import {
   ENRICH_MODEL_KEY,
   formatDeployNotice,
-  OPENCODE_BASE_URL,
   RATING_TIME_KEY,
   ratingTime,
   VOICE_FIX_MODEL_KEY,
 } from "./core.ts";
 import { Repository } from "./db.ts";
+import { Scheduler } from "./lib/scheduler.ts";
 import { logger } from "./log.ts";
 import type { Config } from "./models/config.ts";
-import { HealthMonitor, upstreams } from "./runtime/health.ts";
 import { JotProcessor } from "./runtime/processor.ts";
 import { FlushQueue } from "./runtime/queue.ts";
-import { Scheduler } from "./runtime/scheduler.ts";
-import { Enricher, type EnrichFallback } from "./services/enrich.ts";
+import {
+  Enricher,
+  type EnrichFallback,
+  OPENCODE_BASE_URL,
+} from "./services/enrich.ts";
 import { GithubReleases } from "./services/github.ts";
+import { HealthMonitor, upstreams } from "./services/health.ts";
 import { LinkIndex } from "./services/links.ts";
 import { ObsidianClient } from "./services/obsidian.ts";
 import {
