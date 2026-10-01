@@ -57,3 +57,6 @@ jobs:
       - run: npm ci
 
       - run: npm test
+
+      - name: coverage ratchet
+        run: npm run test:coverage
