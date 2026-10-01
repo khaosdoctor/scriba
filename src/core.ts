@@ -2,12 +2,11 @@
  * Pure, dependency-free helpers. Deterministic, token-free — unit-tested in isolation.
  * Stopwords and rejections are injected (they live in the DB), not hardcoded here.
  */
-import { randomBytes } from "node:crypto";
 import { sep } from "node:path";
-import * as chrono from "chrono-node";
 import type { MessageEntity } from "grammy/types";
-import type { Jot, JotKind, JotSection, JotStatus, StatsRow } from "./db.ts";
-import { sectionHasContent, stripTilPrefix } from "./lib/note.ts";
+import type { Jot, JotKind, JotStatus, StatsRow } from "./db.ts";
+import { donePreview } from "./lib/jot.ts";
+import { sectionHasContent } from "./lib/note.ts";
 import {
   escapeHtml,
   formatDuration,
@@ -15,8 +14,43 @@ import {
   TELEGRAM_LIMIT,
 } from "./lib/text.ts";
 import type { ReleaseNote } from "./services/github.ts";
-import { dateFromIso, plainDate, previousDate } from "./time.ts";
+import { plainDate, previousDate } from "./time.ts";
 
+export {
+  assetEmbed,
+  combineEnrichSource,
+  donePreview,
+  editedJotText,
+  embedOffer,
+  enrichableSource,
+  isEditableJot,
+  isRecoverable,
+  makeJotId,
+  parseLiteralEdit,
+  reprocessTargets,
+  setEmbeds,
+  withinSquashWindow,
+} from "./lib/jot.ts";
+export type { AliasEntry, Candidate } from "./lib/links.ts";
+export {
+  candidates,
+  cleanNoteTitle,
+  distinctSurfaces,
+  forcedCandidates,
+  isDateLike,
+  isEmbeddableUrl,
+  linkDateWords,
+  matchAlias,
+  noteSuggestions,
+  parseRuleWords,
+  tokenize,
+} from "./lib/links.ts";
+export type { ModelPayload } from "./lib/model.ts";
+export {
+  CircuitBreaker,
+  parseModelJson,
+  unwrapModelPayload,
+} from "./lib/model.ts";
 export type { MoveResult } from "./lib/note.ts";
 export {
   anchorLine,
@@ -57,156 +91,6 @@ export function isInsideRoot(root: string, target: string): boolean {
   if (!root || !target) return false;
   const r = root.endsWith(sep) ? root.slice(0, -1) : root;
   return target === r || target.startsWith(r + sep);
-}
-
-/** Fixed 8-char hex id, also used as the Obsidian block anchor. */
-export function makeJotId(): string {
-  return randomBytes(4).toString("hex");
-}
-
-/** Errors worth retrying (transient infra); anything else is treated as unrecoverable. */
-export function isRecoverable(err: unknown): boolean {
-  const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  // "connection error" / "timed out" are the OpenAI-shaped SDKs' (Groq, OpenCode) words
-  // for the same network failures.
-  return /timeout|timed out|connection error|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
-    m,
-  );
-}
-
-/**
- * Per-upstream circuit breaker, token-free. `threshold` failures in a row open it for
- * `cooldownMs`, during which `allows()` is false and callers skip straight to the next
- * option. Once the cooldown is up one trial call is let through: success closes it, a
- * failure opens it for another cooldown.
- */
-export class CircuitBreaker {
-  private failures = 0;
-  private openUntil = 0;
-  lastError: unknown;
-
-  constructor(
-    private threshold: number,
-    private cooldownMs: number,
-    private now: () => number = Date.now,
-  ) {}
-
-  allows(): boolean {
-    return this.now() >= this.openUntil;
-  }
-
-  success(): void {
-    this.failures = 0;
-    this.openUntil = 0;
-    this.lastError = undefined;
-  }
-
-  failure(err: unknown): void {
-    this.failures++;
-    this.lastError = err;
-    if (this.failures >= this.threshold)
-      this.openUntil = this.now() + this.cooldownMs;
-  }
-}
-
-/** A jot's line can be edited/deleted only once it exists in the note: done, or abandoned
- *  (posted un-enriched). Anything earlier still needs processing, so edits are queued. */
-export function isEditableJot(status: JotStatus): boolean {
-  return status === "done" || status === "abandoned";
-}
-
-/** Pick the enrichable source text for a jot's kind: the transcript for audio (falling back
- *  to `audioFallback` when there isn't one), the raw text for text, and an image's caption —
- *  what you typed alongside the photo is the entry, same as any other jot, so it gets
- *  enriched and wikilinked rather than being demoted to the embed's alt text. A captionless
- *  image uses its vision caption here. Video is still attach-only. */
-export function enrichableSource(jot: Jot, audioFallback = ""): string {
-  if (jot.kind === "audio") return jot.transcript ?? audioFallback;
-  if (jot.kind === "text" || jot.kind === "image") return jot.raw_text ?? "";
-  return "";
-}
-
-/** Obsidian embed for a jot's saved asset, or "" when it has none. An image's caption is
- *  the entry text (see enrichableSource), so its embed carries no alias — Telegram's Bot API
- *  exposes no alt-text field to copy one from, and repeating the entry text inside the embed
- *  would only duplicate the line. Video stays attach-only, so its caption is the display. */
-export function assetEmbed(jot: Jot): string {
-  if (!jot.asset_path) return "";
-  const alias = jot.kind === "video" && jot.raw_text;
-  return alias
-    ? `![[${jot.asset_path}|${jot.raw_text}]]`
-    : `![[${jot.asset_path}]]`;
-}
-
-/** URLs Obsidian renders inline when written as `![](url)`: YouTube videos, tweets and
- *  external images. Any other page needs an `<iframe>`, so it stays a plain link.
- *  ponytail: hand-kept list from Obsidian's "Embed web pages" help page — add a pattern
- *  when Obsidian learns a new host. */
-const EMBEDDABLE = [
-  /^https?:\/\/(www\.|m\.)?(youtube\.com\/watch\?|youtu\.be\/)/i,
-  /^https?:\/\/(www\.|mobile\.)?(twitter|x)\.com\/\w+\/status\/\d+/i,
-  /^https?:\/\/[^?#]+\.(png|jpe?g|gif|webp|avif|svg|bmp)([?#]|$)/i,
-];
-
-export function isEmbeddableUrl(url: string): boolean {
-  return EMBEDDABLE.some((re) => re.test(url));
-}
-
-// One matcher for every URL form in a line: `![alt](url)` (embedded), `[text](url)`
-// (markdown link), or a bare URL. Trailing punctuation belongs to the sentence.
-const URL_FORMS =
-  /(!?)\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)|(?<![\w/([<])(https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"])/g;
-
-/** Which embed toggle a line can offer: `"embed"` when it holds an embeddable URL written
- *  as a link, `"plain"` when every one is already embedded, undefined when it has none. */
-export function embedOffer(text: string): "embed" | "plain" | undefined {
-  let embedded = false;
-  for (const m of text.matchAll(URL_FORMS)) {
-    if (!isEmbeddableUrl(m[3] ?? m[4] ?? "")) continue;
-    if (m[1] !== "!") return "embed";
-    embedded = true;
-  }
-  return embedded ? "plain" : undefined;
-}
-
-/** Rewrite every embeddable URL in a line as an Obsidian embed (`embed: true`) or back to
- *  a link. `[text](url)` keeps its text as the embed's alt; a bare URL embeds as `![](url)`
- *  and comes back bare. Other URLs are left alone. */
-export function setEmbeds(text: string, embed: boolean): string {
-  return text.replace(URL_FORMS, (all, bang, label, linked, bare) => {
-    const url = linked ?? bare;
-    if (!isEmbeddableUrl(url)) return all;
-    if (embed) return `![${label ?? ""}](${url})`;
-    if (bang !== "!") return all;
-    return label ? `[${label}](${url})` : url;
-  });
-}
-
-/** Rolling-gap test for squashing: a new jot folds into the previous still-open one
- *  when it arrived within `windowMs` of it. A `windowMs` of 0 disables squashing. */
-export function withinSquashWindow(
-  prevReceivedAt: number,
-  nowReceivedAt: number,
-  windowMs: number,
-): boolean {
-  return windowMs > 0 && nowReceivedAt - prevReceivedAt <= windowMs;
-}
-
-/** Join a squash group's source texts into one blob for a single enrichment pass.
- *  Blank parts are dropped so an empty caption or failed transcript adds no noise. */
-export function combineEnrichSource(parts: string[]): string {
-  return parts
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
-/** Confirmation of what landed in the note, shown in full. Attach-only jots carry no text. */
-export function donePreview(kind: JotKind, textPart: string): string {
-  const text = textPart.trim();
-  if (text) return text;
-  if (kind === "image" || kind === "video") return `${kind} saved to the note`;
-  return "saved";
 }
 
 const ENTITY_WRAP: Partial<Record<string, readonly [string, string]>> = {
@@ -367,13 +251,6 @@ export function parseEntrySize(text: string): number | null {
   return n >= 40 && n <= 4000 ? n : null;
 }
 
-/** Text of a natively edited message as it belongs on the jot's line: a TIL jot keeps its
- *  marker out of the note, so an edit that still starts with "TIL" loses it again. */
-export function editedJotText(section: JotSection, text: string): string {
-  if (section !== "til") return text;
-  return stripTilPrefix(text) ?? text;
-}
-
 /** `settings` keys for the nightly rating and its follow-up (set from /menu, survive a
  *  restart). Unset means on; the rating time falls back to `RATING_TIME`. */
 export const RATING_SWITCH_KEY = "nightlyRating";
@@ -454,169 +331,6 @@ export function parseFollowupRef(
 /** `settings` key for the "Move this to TIL?" cards (set from the task menu, survives a
  *  restart). Unset means on, like task detection. */
 export const TIL_DETECTION_KEY = "tilDetection";
-
-export interface AliasEntry {
-  note: string;
-  alias: string;
-}
-export interface Candidate {
-  surface: string;
-  note: string;
-  // Set for user-registered pairs (the opposite of a rejection): the enricher must
-  // apply these unconditionally instead of judging them in context.
-  forced?: boolean;
-}
-
-/** Split text into lowercased word tokens, unicode-aware (keeps accented letters). */
-export function tokenize(text: string): string[] {
-  return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
-}
-
-/** `alias` and `lower` are lowercased; a multi-word alias is a substring match, a single
- *  word must be a whole token. */
-export function matchAlias(
-  alias: string,
-  lower: string,
-  tokens: Set<string>,
-): boolean {
-  return alias.includes(" ") ? lower.includes(alias) : tokens.has(alias);
-}
-
-/**
- * Propose link candidates from an alias index — no model call. Drops junk (short or
- * stopword aliases) and anything the user rejected; survivors go to the agent.
- * `stopwords` are lowercased; `rejected` keys are `${lowercased-surface} ${note}`.
- */
-export function candidates(
-  text: string,
-  index: AliasEntry[],
-  stopwords: Set<string>,
-  rejected: Set<string>,
-): Candidate[] {
-  const tokens = new Set(tokenize(text));
-  const lower = text.toLowerCase();
-  const out: Candidate[] = [];
-  const seen = new Set<string>();
-  for (const { note, alias } of index) {
-    const a = alias.trim();
-    const al = a.toLowerCase();
-    if (a.length < 3 || stopwords.has(al)) continue; // 1-2 char aliases are junk; stopwords catch the rest
-    if (!matchAlias(al, lower, tokens)) continue;
-    const key = `${al} ${note}`;
-    if (rejected.has(key) || seen.has(key)) continue;
-    seen.add(key);
-    out.push({ surface: a, note });
-  }
-  return out;
-}
-
-const wikilinkRe = /\[\[.*?\]\]/g;
-
-/**
- * Spot relative-date phrases ("yesterday", "three weeks ago", "next Friday") and turn
- * each into a wikilink to that day's daily note, aliased to the original words — the
- * note doesn't need to exist yet, Obsidian creates it lazily on first click.
- * `referenceDate` is the jot's own day (not "now"), so a phrase in an old entry resolves
- * relative to that entry's day. Token-free (chrono-node is a deterministic parser, not
- * a model call) and never touches text already inside an existing `[[wikilink]]`.
- */
-/**
- * A chrono hit that pins down an actual day. chrono also matches bare times ("at 3pm",
- * "meeting at 9") by defaulting the day to the reference date — a clock time, not a date
- * — so the parse must have fixed a day/weekday/month. "now" resolves to today but reads as
- * "this moment", so its casual-reference tag rules it out. "for a week" / "for 3 days" is
- * a duration that chrono resolves to a day that far ahead ("been in the dryer for a week
- * now" became next Monday), so it's out too.
- */
-export function isDateLike(r: chrono.ParsedResult): boolean {
-  return (
-    (r.start.isCertain("day") ||
-      r.start.isCertain("weekday") ||
-      r.start.isCertain("month")) &&
-    !r.start.tags().has("casualReference/now") &&
-    !/^for\s/i.test(r.text)
-  );
-}
-
-export function linkDateWords(text: string, referenceDate: string): string {
-  if (!text.trim()) return text;
-  const linkSpans = [...text.matchAll(wikilinkRe)].map(
-    (m) => [m.index, m.index + m[0].length] as const,
-  );
-  const overlapsLink = (start: number, end: number) =>
-    linkSpans.some(([s, e]) => start < e && end > s);
-
-  const ref = dateFromIso(referenceDate);
-  // chrono leans on `\b`, which is ASCII-only in JS: in "Pokémon" the accented é counts as
-  // a non-word char, so "mon" looks like a standalone weekday and the word gets a Monday
-  // link spliced into the middle of it. Re-check both edges against a Unicode letter/digit
-  // class so a match only survives when it really is a whole word.
-  const wordChar = /[\p{L}\p{N}]/u;
-  const insideWord = (start: number, end: number) =>
-    wordChar.test(text[start - 1] ?? "") || wordChar.test(text[end] ?? "");
-  const matches = chrono.en.casual
-    .parse(text, ref)
-    .filter(
-      (r) =>
-        isDateLike(r) &&
-        !overlapsLink(r.index, r.index + r.text.length) &&
-        !insideWord(r.index, r.index + r.text.length),
-    )
-    .sort((a, b) => b.index - a.index); // right-to-left so earlier indices stay valid
-
-  let out = text;
-  for (const r of matches) {
-    const date = plainDate(r.start.date().getTime());
-    const start = r.index;
-    const end = start + r.text.length;
-    out = `${out.slice(0, start)}[[${date}|${r.text}]]${out.slice(end)}`;
-  }
-  return out;
-}
-
-/**
- * Force-link candidates from user-registered surface->note pairs (`/register`) — the
- * opposite of a rejection: hand-curated, so no length/stopword filtering applies. Marked
- * `forced` so the enricher links them unconditionally rather than judging context.
- */
-export function forcedCandidates(
-  text: string,
-  registered: { surface: string; note: string }[],
-): Candidate[] {
-  const tokens = new Set(tokenize(text));
-  const lower = text.toLowerCase();
-  const out: Candidate[] = [];
-  for (const { surface, note } of registered) {
-    const trimmed = surface.trim();
-    const al = trimmed.toLowerCase();
-    if (!al) continue;
-    if (!matchAlias(al, lower, tokens)) continue;
-    out.push({ surface: trimmed, note, forced: true });
-  }
-  return out;
-}
-
-/**
- * Parse a literal edit instruction into an {old,new} swap, or null if freeform
- * (freeform goes to the agent). Supports `s/old/new/` and `replace X with Y`.
- */
-export function parseLiteralEdit(
-  msg: string,
-): { old: string; new: string } | null {
-  const s = msg.trim();
-  const sed = s.match(/^s\/((?:\\.|[^/])+)\/((?:\\.|[^/])*)\/?$/);
-  if (sed && sed[1] !== undefined && sed[2] !== undefined) {
-    return {
-      old: sed[1].replace(/\\\//g, "/"),
-      new: sed[2].replace(/\\\//g, "/"),
-    };
-  }
-  const repl = s.match(/^replace\s+"?(.+?)"?\s+with\s+"?(.+?)"?$/i);
-  if (repl && repl[1] !== undefined && repl[2] !== undefined) {
-    return { old: repl[1], new: repl[2] };
-  }
-  return null;
-}
 
 // --- /command live updates -------------------------------------------------------------
 // While the vault assistant works, its reasoning, tool calls and intermediate prose are
@@ -981,68 +695,6 @@ export function parseWizardRef(text: string): WizardPrompt | null {
   return Number.isInteger(index) ? { kind: "rgw", index } : null;
 }
 
-/** Words out of a reply that may list several: newline- or comma-separated. Inner spaces
- *  are kept, so "Path Of Exile" is one word, not three. Trimmed, lowercased (surfaces are
- *  matched case-insensitively), deduped; empty and over-long fragments are dropped. */
-export function parseRuleWords(text: string, limit = 20): string[] {
-  const out = new Set<string>();
-  for (const part of text.split(/[\n,]/)) {
-    const word = part.trim().replace(/\s+/g, " ").toLowerCase();
-    if (word && word.length <= 60) out.add(word);
-    if (out.size >= limit) break;
-  }
-  return [...out];
-}
-
-/** A note title out of a typed reply: `[[wikilink]]` brackets and stray quotes stripped,
- *  whitespace collapsed. Empty means the caller should re-prompt. */
-export function cleanNoteTitle(text: string): string {
-  return text
-    .trim()
-    .replace(/^\[\[|\]\]$/g, "")
-    .replace(/^["']|["']$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/**
- * Notes matching `query`, best first, from the vault alias index — so the note side of a
- * rule is searched and tapped instead of typed from memory (the vault runs to thousands
- * of notes). Token-free: exact alias beats prefix beats substring, ties break on the
- * shorter alias (the more specific note), and each note appears once however many of its
- * aliases hit. The caller paginates; `limit` only caps how deep a vague query can dig.
- */
-export function noteSuggestions(
-  query: string,
-  index: AliasEntry[],
-  limit = 200,
-): string[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-  const best = new Map<string, number>();
-  for (const { note, alias } of index) {
-    const a = alias.toLowerCase();
-    const rank = a === q ? 0 : a.startsWith(q) ? 1 : a.includes(q) ? 2 : -1;
-    if (rank < 0) continue;
-    // alias length is the tiebreak, scaled so it can never outweigh the rank above
-    const score = rank * 1000 + Math.min(alias.length, 999);
-    const seen = best.get(note);
-    if (seen === undefined || score < seen) best.set(note, score);
-  }
-  return [...best.entries()]
-    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
-    .slice(0, limit)
-    .map(([note]) => note);
-}
-
-/** Unique surfaces from an ordered rejection list, preserving the list's order. Powers
- *  the first step of the interactive /unreject menu. */
-export function distinctSurfaces<T extends { surface: string }>(
-  list: T[],
-): string[] {
-  return [...new Set(list.map((r) => r.surface))];
-}
-
 /** One glyph per jot status — the /menu jots browser and /reprocess pickers. */
 export const STATUS_ICON: Record<JotStatus, string> = {
   pending: "⏳",
@@ -1074,97 +726,4 @@ export function monthGrid(year: number, month: number): number[][] {
   const weeks: number[][] = [];
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
   return weeks;
-}
-
-/** From a set of jots (e.g. a /reprocess date/range query), the distinct ids to actually
- *  reprocess: a squashed follower's line lives on its leader's anchor, so a follower
- *  resolves to that leader's id rather than being reprocessed standalone. Order of first
- *  appearance is preserved. */
-export function reprocessTargets(jots: Pick<Jot, "anchor">[]): string[] {
-  return [...new Set(jots.map((j) => j.anchor))];
-}
-
-/** Escape raw control characters (a literal newline, tab…) that sit inside JSON string
- *  literals. Weaker chat models write a multi-paragraph "text" with real line breaks,
- *  which JSON.parse rejects outright; outside a string they're whitespace and stay. */
-function escapeControlsInStrings(s: string): string {
-  let out = "";
-  let inString = false;
-  let escaped = false;
-  for (const ch of s) {
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (ch === "\\") escaped = true;
-      else if (ch === '"') inString = false;
-      else if (ch < " ") {
-        out += JSON.stringify(ch).slice(1, -1); // \n, \t, \u0001…
-        continue;
-      }
-    } else if (ch === '"') inString = true;
-    out += ch;
-  }
-  return out;
-}
-
-/** Read a model's free-text answer as a JSON object. Usually it is clean JSON; sometimes
- *  it's wrapped in a ```json fence or a stray sentence, or carries raw line breaks inside
- *  a string. Tries the clean parse first, then the outermost {...} span, each strictly
- *  and then with those line breaks escaped. `null` when nothing parses to an object. */
-export function parseModelJson(s: string): Record<string, unknown> | null {
-  const cleaned = s
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
-  const a = cleaned.indexOf("{"),
-    b = cleaned.lastIndexOf("}");
-  const spans = [cleaned];
-  if (a >= 0 && b > a) spans.push(cleaned.slice(a, b + 1));
-  for (const span of spans)
-    for (const attempt of [span, escapeControlsInStrings(span)]) {
-      try {
-        const v = JSON.parse(attempt);
-        if (v && typeof v === "object" && !Array.isArray(v)) return v;
-      } catch {
-        /* next attempt */
-      }
-    }
-  return null;
-}
-
-/** The enrichment payload, as far as it could be read. */
-export interface ModelPayload {
-  text: string;
-  ambiguous?: unknown;
-  tasks?: unknown;
-  til?: unknown;
-}
-
-/**
- * Undo the ways a model mangles the "text" field of an enrichment answer: the whole JSON
- * answer nested inside it again (`{"text": "{\"text\": ...}"}`, or the raw object as a
- * string), and the `"""` fence the prompt wraps the entry in echoed back around it.
- * Nested payloads are unwrapped a few levels deep; the innermost `ambiguous`/`tasks`
- * win when the outer ones are empty, since that's where the model actually put them.
- */
-export function unwrapModelPayload(p: ModelPayload): ModelPayload {
-  let out = { ...p };
-  for (let i = 0; i < 3; i++) {
-    const t = out.text.trim();
-    if (!t.startsWith("{") && !t.startsWith("```")) break;
-    const inner = parseModelJson(t);
-    if (!inner || typeof inner.text !== "string") break;
-    const empty = (v: unknown) => !Array.isArray(v) || v.length === 0;
-    out = {
-      text: inner.text,
-      ambiguous: empty(out.ambiguous)
-        ? (inner.ambiguous ?? out.ambiguous)
-        : out.ambiguous,
-      tasks: empty(out.tasks) ? (inner.tasks ?? out.tasks) : out.tasks,
-      til: out.til === true ? true : (inner.til ?? out.til),
-    };
-  }
-  const fenced = out.text.trim().match(/^"""([\s\S]*)"""$/);
-  if (fenced) out.text = (fenced[1] ?? "").trim();
-  return out;
 }
