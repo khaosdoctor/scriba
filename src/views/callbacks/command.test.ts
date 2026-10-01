@@ -28,3 +28,12 @@ test("a confirmation tap marks the question answered, drops its buttons and sett
   ]);
   assert.deepEqual(decided, [true, false]);
 });
+
+test("a confirmation whose tap Telegram refuses to answer still settles the agent's wait", async () => {
+  const h = await botHarness();
+  const decided: boolean[] = [];
+  ask(h, "c1", decided);
+  h.failApi.add("answerCallbackQuery");
+  await h.tap("cm:y:c1", { message: { text: "✏️ Write a.md?" } });
+  assert.deepEqual(decided, [true]);
+});

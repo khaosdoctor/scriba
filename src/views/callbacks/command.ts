@@ -17,13 +17,16 @@ export function commandView(command: CommandController): Composer<Context> {
     const decide = command.takeConfirmation(id);
     if (!decide) return responder.ack("expired");
     const allowed = verdict === "y";
-    await responder.ack(allowed ? "doing it" : "skipped");
-    await ctx
-      .editMessageText(
-        `${ctx.callbackQuery.message?.text ?? ""}\n${allowed ? "✅ approved" : "❌ declined"}`,
-        { reply_markup: new InlineKeyboard() },
-      )
-      .catch(() => {});
-    decide(allowed);
+    try {
+      await responder.ack(allowed ? "doing it" : "skipped");
+      await ctx
+        .editMessageText(
+          `${ctx.callbackQuery.message?.text ?? ""}\n${allowed ? "✅ approved" : "❌ declined"}`,
+          { reply_markup: new InlineKeyboard() },
+        )
+        .catch(() => {});
+    } finally {
+      decide(allowed);
+    }
   });
 }
