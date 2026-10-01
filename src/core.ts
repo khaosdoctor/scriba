@@ -13,8 +13,8 @@ import {
   pluralize,
   TELEGRAM_LIMIT,
 } from "./lib/text.ts";
+import { parseClockTime, plainDate } from "./lib/time.ts";
 import type { ReleaseNote } from "./services/github.ts";
-import { plainDate, previousDate } from "./time.ts";
 
 export {
   assetEmbed,
@@ -77,6 +77,7 @@ export {
   splitEntry,
   TELEGRAM_LIMIT,
 } from "./lib/text.ts";
+export { parseClockTime, ratingDay } from "./lib/time.ts";
 
 // --- command mode sandbox ---
 // `/command` runs an agent against the vault. Its limits are enforced in code, not asked
@@ -262,24 +263,10 @@ export function switchEnabled(raw: string | undefined): boolean {
   return raw !== "off";
 }
 
-/** A typed 24-hour clock time, normalised to `HH:MM` ("9:30" becomes "09:30"). Null when it
- *  isn't one. */
-export function parseClockTime(text: string): string | null {
-  const m = text.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  return m ? `${m[1]!.padStart(2, "0")}:${m[2]}` : null;
-}
-
 /** The nightly rating time in force: the stored setting when it is a valid time, else the
  *  configured default. */
 export function ratingTime(raw: string | undefined, fallback: string): string {
   return parseClockTime(raw ?? "") ?? parseClockTime(fallback) ?? fallback;
-}
-
-/** The day a nightly rating firing at `time` is about: a time before noon is just after
- *  midnight, so the day that ended is yesterday; a later one rates the day still going. */
-export function ratingDay(time: string, now: number = Date.now()): string {
-  const hour = Number((parseClockTime(time) ?? time).slice(0, 2));
-  return hour < 12 ? previousDate(now) : plainDate(now);
 }
 
 /** The follow-up questions after the nightly rating, in the order they are asked. */

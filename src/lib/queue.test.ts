@@ -107,7 +107,7 @@ test("add(ids) with an empty array is a no-op", (t) => {
 });
 
 test("add(ids) doesn't blow the call stack on a very large batch", (t) => {
-  // push(...ids) would spread every element as an individual argument — fine normally,
+  // push(...ids) would spread every element as an individual argument: fine normally,
   // but a RangeError for a batch this size (a wide /reprocess date range). Regression
   // guard for that; the cap-triggered flush chain isn't what's under test here.
   t.mock.timers.enable({ apis: ["setTimeout"] });
