@@ -5,8 +5,8 @@ import type { FlushQueue } from "../runtime/queue.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { GithubReleases } from "../services/github.ts";
 import type { HealthMonitor } from "../services/health.ts";
-import type { LinkIndex } from "../services/links.ts";
 import type { FallbackTranscriber } from "../services/transcribe.ts";
+import type { VaultService } from "../services/vault.ts";
 
 /** Everything the admin commands act on. The bot assembles this per invocation. */
 export interface Deps {
@@ -15,7 +15,7 @@ export interface Deps {
   processor: JotProcessor;
   enricher: Enricher;
   transcriber: FallbackTranscriber;
-  links: LinkIndex;
+  links: VaultService;
   github: GithubReleases;
   health: HealthMonitor;
   version: string;

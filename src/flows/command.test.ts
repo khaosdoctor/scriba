@@ -96,10 +96,8 @@ async function harness(feedEditMs = 0, turnSilenceMs = 30_000) {
       },
     },
   };
-  const vault = {
-    enabled: true,
-    fetchPage: async () => "# AI Writing Tropes to Avoid\nnope",
-  };
+  const vault = { enabled: true };
+  const web = { fetchPage: async () => "# AI Writing Tropes to Avoid\nnope" };
   const agent = new FakeAgent();
   const session: any = new CommandSession(
     bot as any,
@@ -108,6 +106,7 @@ async function harness(feedEditMs = 0, turnSilenceMs = 30_000) {
     agent.query as any,
     feedEditMs,
     turnSilenceMs,
+    web as any,
   );
 
   /** Every ctx.reply, with the id of the message it produced and the one it answers. */

@@ -1,17 +1,19 @@
-import { lookup } from "node:dns/promises";
+import { type FSWatcher, watch } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
-import { dirname, extname, join, relative, resolve, sep } from "node:path";
-import { Agent, fetch } from "undici";
-import { htmlToText } from "../lib/text.ts";
+import {
+  basename,
+  dirname,
+  extname,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
+import type { AliasEntry } from "../lib/links.ts";
 import { logger } from "../log.ts";
 import type { ObsidianClient } from "./obsidian.ts";
 
 const log = logger("vault");
-
-// `/command` runs an agent against the vault. Its limits are enforced in code, not asked
-// for in the prompt: it gets no built-in tool at all (no Bash, no Read, which would reach
-// the whole container: the sqlite db, the env, the tokens), only the handful of custom
-// tools below, and every path they take goes through the check here.
 
 /** True when `target` is `root` itself or lies under it. Both must already be resolved to
  *  absolute paths; the caller still realpaths afterwards, since this is string-only and a
@@ -22,24 +24,40 @@ export function isInsideRoot(root: string, target: string): boolean {
   return target === r || target.startsWith(r + sep);
 }
 
-// Hard caps. The agent is told about them, but they're enforced here — a prompt that asks
-// for "the whole vault" gets a truncated answer, not an unbounded read.
+// Enforced here, not asked for in the prompt: a request for "the whole vault" gets a
+// truncated answer, not an unbounded read.
 const MAX_READ_CHARS = 200_000;
-const MAX_FETCH_BYTES = 4_000_000;
-const FETCH_TIMEOUT_MS = 20_000;
-const MAX_REDIRECTS = 5;
 const MAX_LIST = 400;
 const MAX_HITS = 60;
 
-/** Reads never leave the vault mount; writes and deletes go through Obsidian's REST API
- *  (the mount is read-only), and every path is checked against the vault root first. */
-export class VaultTools {
-  // One dispatcher, so a slow page can't hold a socket forever.
-  private dispatcher = new Agent({
-    connect: { timeout: 10_000 },
-    headersTimeout: FETCH_TIMEOUT_MS,
-    bodyTimeout: FETCH_TIMEOUT_MS,
-  });
+interface WalkOptions {
+  /** Stop descending once this many notes are collected. */
+  limit?: number;
+  /** Include symlinked notes. The agent never follows a link, see safePath. */
+  symlinks?: boolean;
+  /** One directory name to skip besides the dot-directories. */
+  skip?: string;
+}
+
+const AGENT_WALK: WalkOptions = { limit: MAX_LIST * 4 };
+const INDEX_WALK: WalkOptions = { symlinks: true, skip: "internal" };
+
+/**
+ * The vault, read from its read-only mount. Two jobs share one path check and one walker:
+ * the sandboxed note tools of the `/command` agent (writes and deletes go through
+ * Obsidian's REST API, since the mount is read-only) and the title+alias index behind
+ * wikilink candidates. The index re-reads only files whose mtime changed, refreshes on a
+ * recursive fs.watch, and rebuilds periodically in case the watch drops events.
+ */
+export class VaultService {
+  private byFile = new Map<
+    string,
+    { mtimeMs: number; aliases: AliasEntry[] }
+  >();
+  private flat: AliasEntry[] = [];
+  private timer: NodeJS.Timeout | null = null;
+  private debounce: NodeJS.Timeout | null = null;
+  private watcher: FSWatcher | null = null;
 
   constructor(
     private root: string | null,
@@ -56,7 +74,9 @@ export class VaultTools {
    * the vault pointing out of it. For a path that doesn't exist yet (a new note) the
    * nearest existing parent is what gets realpathed.
    */
-  private async safePath(p: string): Promise<{ abs: string; rel: string }> {
+  private async safePath(
+    p: string,
+  ): Promise<{ abs: string; rel: string; root: string }> {
     if (!this.root) throw new Error("vault path is not configured");
     if (typeof p !== "string" || !p.trim()) throw new Error("path is required");
     if (p.includes("\0")) throw new Error("invalid path");
@@ -64,8 +84,6 @@ export class VaultTools {
     const abs = resolve(root, p.replace(/^\/+/, ""));
     if (!isInsideRoot(root, abs))
       throw new Error(`path escapes the vault: ${p}`);
-    // Walk up to the nearest existing ancestor and realpath that, so symlinked
-    // directories can't be used to step outside.
     let probe = abs;
     for (;;) {
       try {
@@ -80,16 +98,48 @@ export class VaultTools {
         probe = parent;
       }
     }
-    return { abs, rel: relative(root, abs) };
+    return { abs, rel: relative(root, abs), root };
+  }
+
+  private async walk(
+    dir: string,
+    opts: WalkOptions,
+    acc: string[] = [],
+  ): Promise<string[]> {
+    if (acc.length > (opts.limit ?? Number.POSITIVE_INFINITY)) return acc;
+    const entries = await readdir(dir, { withFileTypes: true }).catch(
+      () => null,
+    );
+    if (!entries) {
+      // `dir` may be a single note (list/search called with a note path).
+      const s = await stat(dir).catch(() => null);
+      if (s?.isFile() && extname(dir) === ".md") acc.push(dir);
+      return acc;
+    }
+    for (const e of entries) {
+      if (e.name.startsWith(".") || e.name === opts.skip) continue; // .obsidian, .trash, .git
+      if (e.isSymbolicLink() && !opts.symlinks) continue;
+      const p = join(dir, e.name);
+      if (e.isDirectory()) await this.walk(p, opts, acc);
+      else if (extname(e.name) === ".md") acc.push(p);
+    }
+    return acc;
+  }
+
+  private async notesUnder(dir: string) {
+    const { abs, root } = await this.safePath(dir || ".");
+    return { root, files: await this.walk(abs, AGENT_WALK) };
+  }
+
+  private async notePath(path: string): Promise<string> {
+    const { rel } = await this.safePath(path);
+    return extname(rel) ? rel : `${rel}.md`;
   }
 
   /** Vault-relative paths of the notes under `dir` (default: the whole vault). */
-  async list(dir = ""): Promise<string> {
-    const { abs } = await this.safePath(dir || ".");
-    const found: string[] = [];
-    await this.walk(abs, found);
-    const root = await realpath(this.root!);
-    const rels = found.map((f) => relative(root, f)).sort();
+  async listNotes(dir = ""): Promise<string> {
+    const { root, files } = await this.notesUnder(dir);
+    const rels = files.map((f) => relative(root, f)).sort();
     const shown = rels.slice(0, MAX_LIST);
     const cut =
       rels.length > shown.length
@@ -109,13 +159,10 @@ export class VaultTools {
   }
 
   /** Case-insensitive substring search across the vault's notes, with line context. */
-  async search(query: string, dir = ""): Promise<string> {
+  async searchNotes(query: string, dir = ""): Promise<string> {
     const q = query.trim().toLowerCase();
     if (!q) throw new Error("query is required");
-    const { abs } = await this.safePath(dir || ".");
-    const root = await realpath(this.root!);
-    const files: string[] = [];
-    await this.walk(abs, files);
+    const { root, files } = await this.notesUnder(dir);
     const hits: string[] = [];
     for (const f of files) {
       if (hits.length >= MAX_HITS) break;
@@ -132,10 +179,9 @@ export class VaultTools {
     return hits.length ? hits.join("\n") : `no note matches "${query}"`;
   }
 
-  /** Create or overwrite a note. Goes through the REST API — the mount is read-only. */
+  /** Create or overwrite a note. */
   async write(path: string, content: string): Promise<string> {
-    const { rel } = await this.safePath(path);
-    const vaultPath = extname(rel) ? rel : `${rel}.md`;
+    const vaultPath = await this.notePath(path);
     await this.obsidian.writeNote(vaultPath, content);
     log.info(
       { path: vaultPath, chars: content.length },
@@ -145,121 +191,116 @@ export class VaultTools {
   }
 
   async delete(path: string): Promise<string> {
-    const { rel } = await this.safePath(path);
-    const vaultPath = extname(rel) ? rel : `${rel}.md`;
+    const vaultPath = await this.notePath(path);
     await this.obsidian.deleteNote(vaultPath);
     log.info({ path: vaultPath }, "command: vault_delete");
     return `deleted ${vaultPath}`;
   }
 
-  /**
-   * Fetch a page and return it as text. http(s) only, redirects re-checked at every hop,
-   * and anything resolving to a private/loopback address is refused — the bot sits inside
-   * a home LAN full of unauthenticated services, so "fetch a URL" must not become a way to
-   * read them. No JS runs: the body is a string that gets tags stripped.
-   */
-  async fetchPage(url: string): Promise<string> {
-    let current = url;
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      await this.assertPublicHttpUrl(current);
-      const res = await fetch(current, {
-        redirect: "manual",
-        dispatcher: this.dispatcher,
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        headers: {
-          // Some sites 403 an unknown agent; be honest about what this is.
-          "user-agent":
-            "scriba-bot/1.0 (+https://github.com/khaosdoctor/scriba)",
-          accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
-        },
-      });
-      const location = res.headers.get("location");
-      if (res.status >= 300 && res.status < 400 && location) {
-        current = new URL(location, current).toString();
-        log.debug({ from: url, to: current }, "command: web_fetch redirect");
-        continue;
-      }
-      if (!res.ok) throw new Error(`fetch failed: HTTP ${res.status}`);
-      const type = res.headers.get("content-type") ?? "";
-      if (!/text\/|json|xml/i.test(type))
-        throw new Error(`not a text page (content-type: ${type || "unknown"})`);
-      const size = Number(res.headers.get("content-length") ?? 0);
-      if (size > MAX_FETCH_BYTES)
-        throw new Error(`page too large (${size} bytes)`);
-      const body = (await res.text()).slice(0, MAX_FETCH_BYTES);
-      const text = /html|xml/i.test(type) ? htmlToText(body) : body;
-      log.info({ url: current, chars: text.length }, "command: web_fetch");
-      return text.length > MAX_READ_CHARS
-        ? `${text.slice(0, MAX_READ_CHARS)}\n… (truncated)`
-        : text;
-    }
-    throw new Error("too many redirects");
+  /** Alias entries for wikilink candidates. */
+  list(): AliasEntry[] {
+    return this.flat;
   }
 
-  /** http(s) only, and never an address on the local machine or the home network. */
-  private async assertPublicHttpUrl(raw: string): Promise<void> {
-    let u: URL;
-    try {
-      u = new URL(raw);
-    } catch {
-      throw new Error(`not a URL: ${raw}`);
-    }
-    if (u.protocol !== "http:" && u.protocol !== "https:")
-      throw new Error(`only http(s) URLs can be fetched, got ${u.protocol}`);
-    const addrs = await lookup(u.hostname, { all: true }).catch(() => {
-      throw new Error(`cannot resolve ${u.hostname}`);
-    });
-    for (const { address } of addrs)
-      if (isPrivateAddress(address))
-        throw new Error(
-          `refusing to fetch ${u.hostname}: it resolves to a private address (${address})`,
-        );
+  /** Index health for /status: whether it's enabled and how much it holds. */
+  stats(): { enabled: boolean; files: number; aliases: number } {
+    return {
+      enabled: this.enabled,
+      files: this.byFile.size,
+      aliases: this.flat.length,
+    };
   }
 
-  private async walk(dir: string, acc: string[]): Promise<void> {
-    if (acc.length > MAX_LIST * 4) return; // stop runaway scans early
-    const entries = await readdir(dir, { withFileTypes: true }).catch(
-      () => null,
-    );
-    if (!entries) {
-      // `dir` may be a single file (list/search called with a note path).
-      const s = await stat(dir).catch(() => null);
-      if (s?.isFile() && extname(dir) === ".md") acc.push(dir);
+  /** Initial scan, then watch for changes with a slow periodic rebuild as backstop. */
+  startIndex(periodicMs = 30 * 60_000): void {
+    if (!this.root) {
+      log.warn(
+        "no SCRIBA_VAULT_HOST_PATH, link index disabled, no wikilinks will be suggested",
+      );
       return;
     }
-    for (const e of entries) {
-      if (e.name.startsWith(".")) continue; // .obsidian, .trash, .git
-      const p = join(dir, e.name);
-      if (e.isSymbolicLink()) continue; // never followed — see safePath
-      if (e.isDirectory()) await this.walk(p, acc);
-      else if (extname(e.name) === ".md") acc.push(p);
+    log.info({ vaultPath: this.root, periodicMs }, "link index starting");
+    void this.rebuild();
+    this.startWatch(this.root);
+    this.timer = setInterval(() => void this.rebuild(), periodicMs);
+    this.timer.unref();
+  }
+
+  stopIndex(): void {
+    if (this.timer) clearInterval(this.timer);
+    if (this.debounce) clearTimeout(this.debounce);
+    this.watcher?.close();
+  }
+
+  /** Re-scan the vault, re-reading only changed/added files and dropping deleted ones. */
+  async rebuild(): Promise<number> {
+    if (!this.root) {
+      this.byFile.clear();
+      this.flat = [];
+      return 0;
+    }
+
+    const found = await this.walk(this.root, INDEX_WALK);
+    const present = new Set(found);
+    for (const p of this.byFile.keys())
+      if (!present.has(p)) this.byFile.delete(p);
+
+    for (const f of found) {
+      const mtimeMs = (await stat(f).catch(() => null))?.mtimeMs;
+      if (mtimeMs === undefined || this.byFile.get(f)?.mtimeMs === mtimeMs)
+        continue;
+      const text = await readFile(f, "utf8").catch(() => null);
+      if (text === null) continue;
+      this.byFile.set(f, { mtimeMs, aliases: parseAliasEntries(f, text) });
+    }
+
+    this.flat = [...this.byFile.values()].flatMap((e) => e.aliases);
+    log.debug(
+      { files: this.byFile.size, aliases: this.flat.length },
+      "vault index rebuilt",
+    );
+    return this.byFile.size;
+  }
+
+  private startWatch(root: string): void {
+    try {
+      this.watcher = watch(root, { recursive: true }, (_event, file) => {
+        const f = file ? String(file) : "";
+        // Ignore dotdirs (e.g. .obsidian writes constantly) and non-markdown churn.
+        if (
+          f &&
+          (f.split(/[/\\]/).some((seg) => seg.startsWith(".")) ||
+            !f.endsWith(".md"))
+        )
+          return;
+        if (this.debounce) clearTimeout(this.debounce);
+        this.debounce = setTimeout(() => void this.rebuild(), 1500); // coalesce bursts
+        this.debounce.unref();
+      });
+      this.watcher.on("error", () => {
+        /* periodic rebuild is the backstop */
+      });
+    } catch {
+      /* watch unsupported here, rely on the periodic rebuild */
     }
   }
 }
 
-/** Loopback, link-local, CGNAT and the RFC1918 ranges, v4 and v6. */
-export function isPrivateAddress(ip: string): boolean {
-  const v4 = ip.replace(/^::ffff:/i, "");
-  const parts = v4.split(".").map(Number);
-  if (parts.length === 4 && parts.every((n) => Number.isInteger(n))) {
-    const [a = 0, b = 0] = parts;
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127) || // CGNAT
-      a >= 224 // multicast + reserved
-    );
-  }
-  const v6 = ip.toLowerCase();
-  return (
-    v6 === "::" ||
-    v6 === "::1" ||
-    v6.startsWith("fc") ||
-    v6.startsWith("fd") || // unique local
-    v6.startsWith("fe80") // link-local
-  );
+// bot.ts and processor.ts still construct VaultTools
+export { VaultService as VaultTools };
+
+const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, "");
+
+function parseAliasEntries(path: string, text: string): AliasEntry[] {
+  const note = basename(path, ".md");
+  const out: AliasEntry[] = [{ note, alias: note }]; // the title is always an alias
+  const front = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
+  const inline = front.match(/^aliases:\s*\[(.*?)\]/m)?.[1];
+  const block = front.match(/^aliases:\s*\n((?:\s*-\s*.+\n?)+)/m)?.[1];
+  const items = inline?.trim()
+    ? inline.split(",")
+    : (block?.split("\n").map((l) => l.replace(/^\s*-\s*/, "")) ?? []);
+  for (const a of items.map(unquote).filter(Boolean))
+    out.push({ note, alias: a });
+  return out;
 }

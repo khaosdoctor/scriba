@@ -11,7 +11,7 @@ import { Scheduler } from "./lib/scheduler.ts";
 import { loadConfig } from "./models/config.ts";
 import { Enricher } from "./services/enrich.ts";
 import { HealthMonitor } from "./services/health.ts";
-import { LinkIndex } from "./services/links.ts";
+import { VaultService } from "./services/vault.ts";
 
 const env = {
   TELEGRAM_BOT_TOKEN: "t",
@@ -139,7 +139,7 @@ dbTest("createScriba wires everything and starts nothing", async (t) => {
   const started = {
     scheduler: t.mock.method(Scheduler.prototype, "start"),
     health: t.mock.method(HealthMonitor.prototype, "start"),
-    links: t.mock.method(LinkIndex.prototype, "start"),
+    links: t.mock.method(VaultService.prototype, "startIndex"),
     polling: t.mock.method(Bot.prototype, "start"),
   };
   const closed = t.mock.method(Repository.prototype, "close");

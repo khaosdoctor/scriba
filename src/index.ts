@@ -19,12 +19,12 @@ import {
 } from "./services/enrich.ts";
 import { GithubReleases } from "./services/github.ts";
 import { HealthMonitor, upstreams } from "./services/health.ts";
-import { LinkIndex } from "./services/links.ts";
 import { ObsidianClient } from "./services/obsidian.ts";
 import {
   buildTranscriber,
   type FallbackTranscriber,
 } from "./services/transcribe.ts";
+import { VaultService } from "./services/vault.ts";
 
 const log = logger("main");
 
@@ -100,7 +100,7 @@ export async function createScriba(
     externalServices.transcriber ?? buildTranscriber(config.transcription);
   const enricher =
     externalServices.enricher ?? (await buildEnricher(config, repo));
-  const links = new LinkIndex(config.vaultPath);
+  const links = new VaultService(config.vaultPath, obsidian);
   const github = new GithubReleases();
 
   const bot = new ScribaBot(
@@ -211,7 +211,7 @@ export async function createScriba(
         await repo.setSetting(ENRICH_MODEL_KEY, config.enrich.model);
       if (!(await repo.getSetting(VOICE_FIX_MODEL_KEY)))
         await repo.setSetting(VOICE_FIX_MODEL_KEY, config.voiceFix.model);
-      links.start();
+      links.startIndex();
       scheduler.start();
       void processor.retrySweep();
       health.start();
@@ -223,7 +223,7 @@ export async function createScriba(
       await bot.stop();
       scheduler.stop();
       health.stop();
-      links.stop();
+      links.stopIndex();
       await repo.close();
     },
   };
