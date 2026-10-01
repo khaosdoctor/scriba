@@ -1022,3 +1022,75 @@ test("an API error reported as a success result moves down the chain", async () 
   ).enrich({ text: "x", candidates: [] });
   assert.equal(out.text, "rescued");
 });
+
+const taskProperties = {
+  description: { type: "string" },
+  start: { type: "string" },
+  due: { type: "string" },
+  type: { type: "string", enum: ["work", "personal"] },
+};
+
+test("the SDK receives these exact output schemas for enrichment and task extraction", async () => {
+  const enrich = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      structured_output: { text: "a", ambiguous: [], tasks: [], til: false },
+    },
+  ]);
+  await new Enricher(undefined, enrich.fn).enrich({
+    text: "a",
+    candidates: [],
+  });
+  assert.deepEqual(enrich.calls[0]!.options.outputFormat, {
+    type: "json_schema",
+    schema: {
+      type: "object",
+      properties: {
+        text: { type: "string" },
+        ambiguous: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              surface: { type: "string" },
+              note: { type: "string" },
+            },
+            required: ["surface", "note"],
+            additionalProperties: false,
+          },
+        },
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: taskProperties,
+            required: ["description"],
+            additionalProperties: false,
+          },
+        },
+        til: { type: "boolean" },
+      },
+      required: ["text", "ambiguous", "tasks", "til"],
+      additionalProperties: false,
+    },
+  });
+
+  const task = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      structured_output: { description: "d", type: "personal" },
+    },
+  ]);
+  await new Enricher(undefined, task.fn).extractTask("d");
+  assert.deepEqual(task.calls[0]!.options.outputFormat, {
+    type: "json_schema",
+    schema: {
+      type: "object",
+      properties: taskProperties,
+      required: ["description", "type"],
+      additionalProperties: false,
+    },
+  });
+});
