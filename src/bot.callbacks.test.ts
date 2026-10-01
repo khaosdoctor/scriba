@@ -233,11 +233,8 @@ async function harness(over: Opts = {}) {
 // --- vf: voice fix choice ---
 
 async function openVoiceFix(h: Awaited<ReturnType<typeof harness>>) {
-  const pending: Promise<"original" | "proposed"> = h.bot.awaitVoiceFix(
-    ID,
-    "a <b> original",
-    "the fixed one",
-  );
+  const pending: Promise<"original" | "proposed"> =
+    h.bot.jotController.awaitVoiceFix(ID, "a <b> original", "the fixed one");
   while (!h.bot.jotController.voiceFixPending.has(ID)) await tick();
   return pending;
 }
@@ -680,7 +677,7 @@ test("edits queued during processing are applied once the jot is done, in one st
   const h = await harness({
     queuedEdits: { [ID]: ["s/milk/oat milk/", "s/bought/got/"] },
   });
-  await h.bot.onJotDone(ID);
+  await h.bot.edits.drainQueued(ID);
   assert.equal(h.note(), noteWith("got oat milk"));
   assert.equal(h.events.at(-1), "api.sendMessage");
   assert.ok(
@@ -690,13 +687,13 @@ test("edits queued during processing are applied once the jot is done, in one st
   assert.match(h.sends()[0]!, /\(applied 2 queued edits\)$/);
 
   const none = await harness();
-  await none.bot.onJotDone(ID);
+  await none.bot.edits.drainQueued(ID);
   assert.deepEqual(none.events, []);
 });
 
 test("one queued edit is reported in the singular", async () => {
   const h = await harness({ queuedEdits: { [ID]: ["s/milk/tea/"] } });
-  await h.bot.onJotDone(ID);
+  await h.bot.edits.drainQueued(ID);
   assert.match(h.sends()[0]!, /\(applied 1 queued edit\)$/);
 });
 
@@ -778,7 +775,10 @@ test("editing a message with no jot behind it does nothing", async () => {
 
 test("the first status message is sent and mapped to the jot, later ones edit it in place", async () => {
   const h = await harness({ mapped: [] });
-  await h.bot.status(ID, "working", { retry: true, discard: true });
+  await h.bot.jotController.status(ID, "working", {
+    retry: true,
+    discard: true,
+  });
   const first = h.api[0]!;
   assert.equal(first.method, "sendMessage");
   assert.equal(first.payload.parse_mode, "HTML");
@@ -788,22 +788,22 @@ test("the first status message is sent and mapped to the jot, later ones edit it
   ]);
   assert.equal(h.messages.get(900), ID);
 
-  await h.bot.status(ID, "done", { undo: true });
+  await h.bot.jotController.status(ID, "done", { undo: true });
   const second = h.api[1]!;
   assert.equal(second.method, "editMessageText");
   assert.equal(second.payload.message_id, 900);
   assert.equal(second.payload.text, "done");
   assert.deepEqual(h.buttons(second), [["↩️ Undo", `un:${ID}`]]);
 
-  await h.bot.status(ID, "plain");
+  await h.bot.jotController.status(ID, "plain");
   assert.deepEqual(h.buttons(h.api[2]), []);
 });
 
 test("a status edit Telegram rejects is sent as a fresh message that replaces the old one", async () => {
   const h = await harness({ mapped: [] });
-  await h.bot.status(ID, "one");
+  await h.bot.jotController.status(ID, "one");
   h.failApi.add("editMessageText");
-  await h.bot.status(ID, "two");
+  await h.bot.jotController.status(ID, "two");
   assert.deepEqual(
     h.api.map((c) => c.method),
     ["sendMessage", "editMessageText", "sendMessage"],
@@ -811,38 +811,38 @@ test("a status edit Telegram rejects is sent as a fresh message that replaces th
   assert.equal(h.messages.get(901), ID);
 
   h.failApi.delete("editMessageText");
-  await h.bot.status(ID, "three");
+  await h.bot.jotController.status(ID, "three");
   assert.equal(h.api.at(-1)?.payload.message_id, 901);
 });
 
 test("deleting a status message unmaps it and tolerates Telegram refusing", async () => {
   const none = await harness();
-  await none.bot.deleteStatus(ID);
+  await none.bot.jotController.deleteStatus(ID);
   assert.deepEqual(none.api, []);
 
   const h = await harness({ mapped: [] });
-  await h.bot.status(ID, "stray");
-  await h.bot.deleteStatus(ID);
+  await h.bot.jotController.status(ID, "stray");
+  await h.bot.jotController.deleteStatus(ID);
   assert.equal(h.messages.has(900), false);
   assert.deepEqual(h.api.at(-1), {
     method: "deleteMessage",
     payload: { chat_id: 1, message_id: 900 },
   });
-  await h.bot.deleteStatus(ID);
+  await h.bot.jotController.deleteStatus(ID);
   assert.equal(h.api.length, 2);
 
   const refused = await harness({ mapped: [] });
-  await refused.bot.status(ID, "stray");
+  await refused.bot.jotController.status(ID, "stray");
   refused.failApi.add("deleteMessage");
-  await refused.bot.deleteStatus(ID);
+  await refused.bot.jotController.deleteStatus(ID);
   assert.equal(refused.messages.has(900), false);
 });
 
 test("the outcome reaction follows the jot's message and never throws", async () => {
   const h = await harness();
-  await h.bot.react(ID, "done");
-  await h.bot.react(ID, "retrying");
-  await h.bot.react(ID, "failed");
+  await h.bot.jotController.react(ID, "done");
+  await h.bot.jotController.react(ID, "retrying");
+  await h.bot.jotController.react(ID, "failed");
   assert.deepEqual(
     h.api.map((c) => [c.method, c.payload.message_id, c.payload.reaction]),
     [
@@ -853,10 +853,10 @@ test("the outcome reaction follows the jot's message and never throws", async ()
   );
 
   h.failApi.add("setMessageReaction");
-  await h.bot.react(ID, "done");
+  await h.bot.jotController.react(ID, "done");
 
   const unmapped = await harness({ mapped: [] });
-  await unmapped.bot.react(ID, "done");
+  await unmapped.bot.jotController.react(ID, "done");
   assert.deepEqual(unmapped.api, []);
 });
 

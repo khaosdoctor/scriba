@@ -65,7 +65,7 @@ sequenceDiagram
     actor U as You (Telegram)
     participant B as ScribaBot
     participant Q as FlushQueue
-    participant P as JotProcessor
+    participant P as ProcessingController
     participant T as Transcriber<br/>(Groq / Parakeet)
     participant E as Enricher<br/>(Claude Agent)
     participant O as Obsidian<br/>(Local REST API)
@@ -87,10 +87,10 @@ sequenceDiagram
         E-->>P: enriched text + ambiguous links
     end
     P->>O: replace "^id" line with the final entry
-    P->>B: onJotDone → edit status message, react 👌, apply queued edits
+    P->>P: edit status message, react 👌, apply edits queued while processing
 
     opt ambiguous link
-        B->>U: "Link X → [[Note]]?" (Yes / No)
+        P->>U: "Link X → [[Note]]?" (Yes / No)
         U->>B: choice
         B->>O: apply link (Yes), or remember the "no" forever
     end

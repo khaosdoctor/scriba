@@ -13,12 +13,12 @@ import {
   TERMINAL_STATUSES,
 } from "../models/domain.ts";
 import type { Notifier, Stats, StatusCounts } from "../models/ops.ts";
-import type { JotProcessor } from "../runtime/processor.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
 import type { GithubReleases, ReleaseNote } from "../services/github.ts";
 import type { HealthMonitor, UpstreamStatus } from "../services/health.ts";
 import type { FallbackTranscriber } from "../services/transcribe.ts";
 import type { VaultService } from "../services/vault.ts";
+import type { ProcessingController } from "./processing.ts";
 
 // One logger per command keeps today's logger names in the log stream.
 const log = {
@@ -58,7 +58,7 @@ export type ReprocessScope =
 export interface AdminDeps {
   repo: Repository;
   queue: FlushQueue;
-  processing: JotProcessor;
+  processing: ProcessingController;
   transcriber: FallbackTranscriber;
   links: VaultService;
   github: GithubReleases;
@@ -209,7 +209,7 @@ export class AdminController {
 
   async retryPass(): Promise<string> {
     log.sweep.info("/sweep command");
-    await this.d.processing.retrySweep();
+    await this.d.processing.retryPass();
     return "🧹 sweep done";
   }
 
@@ -230,7 +230,7 @@ export class AdminController {
     // No arg takes the failed jots, `all` adds the abandoned ones; the pass picks them
     // up once reset.
     const n = await repo.resetFailed(arg === "all");
-    if (n) void processing.retrySweep();
+    if (n) void processing.retryPass();
     log.retry.info({ count: n, all: arg === "all" }, "/retry command");
     return `🔄 requeued ${pluralize(n, "jot")}${arg === "all" ? " (incl. abandoned)" : ""}`;
   }

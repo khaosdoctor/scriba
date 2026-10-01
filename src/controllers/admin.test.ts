@@ -67,7 +67,7 @@ function setup(over: Record<string, any> = {}) {
       add: (ids: string[]) => void calls.push(`queue.add(${ids.join(",")})`),
       ...over.queue,
     },
-    processing: { retrySweep: track("retrySweep"), ...over.processing },
+    processing: { retryPass: track("retryPass"), ...over.processing },
     transcriber: { chain: "groq → parakeet", ...over.transcriber },
   };
   return { admin: new AdminController(deps as never), calls };
@@ -79,7 +79,7 @@ test("/retry with an id resets and queues that jot alone", async () => {
   assert.ok(calls.includes("resetForRetry(abcd1234)"));
   assert.ok(calls.includes("queue.add(abcd1234)"));
   // One jot, so the pass isn't kicked for the whole backlog.
-  assert.ok(!calls.some((c) => c.startsWith("retrySweep")));
+  assert.ok(!calls.some((c) => c.startsWith("retryPass")));
 });
 
 test("/retry with an unknown id says so instead of queueing nothing", async () => {
@@ -99,7 +99,7 @@ test("/retry with no args takes the failed ones; `all` includes the abandoned", 
 
   const first = setup({ repo: { resetFailed: resetFailed(3) } });
   assert.equal(await first.admin.retry(""), "🔄 requeued 3 jots");
-  assert.ok(first.calls.some((c) => c.startsWith("retrySweep")));
+  assert.ok(first.calls.some((c) => c.startsWith("retryPass")));
 
   const all = setup({ repo: { resetFailed: resetFailed(1) } });
   assert.equal(
@@ -112,7 +112,7 @@ test("/retry with no args takes the failed ones; `all` includes the abandoned", 
 test("/retry doesn't run a pass when nothing was requeued", async () => {
   const { admin, calls } = setup({ repo: { resetFailed: async () => 0 } });
   await admin.retry("");
-  assert.ok(!calls.some((c) => c.startsWith("retrySweep")));
+  assert.ok(!calls.some((c) => c.startsWith("retryPass")));
 });
 
 test("/stopword add and del need a word, and say what changed", async () => {
@@ -419,7 +419,7 @@ test("/flush drains the queue and reports how many were waiting", async () => {
 test("/sweep runs the retry pass and confirms", async () => {
   const { admin, calls } = setup();
   assert.equal(await admin.retryPass(), "🧹 sweep done");
-  assert.deepEqual(calls, ["retrySweep()"]);
+  assert.deepEqual(calls, ["retryPass()"]);
 });
 
 test("/version names the running release and the first seven characters of the sha", () => {

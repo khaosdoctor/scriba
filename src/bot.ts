@@ -1,5 +1,5 @@
 import { extname } from "node:path";
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot } from "grammy";
 import { config } from "./config.ts";
 import type { AdminController } from "./controllers/admin.ts";
 import { CommandController } from "./controllers/command.ts";
@@ -12,11 +12,8 @@ import { SettingsController } from "./controllers/settings.ts";
 import { TaskController } from "./controllers/tasks.ts";
 import type { Repository } from "./db.ts";
 import type { Scheduler } from "./lib/scheduler.ts";
-import type { TaskDraft } from "./lib/tasks.ts";
 import { logger } from "./log.ts";
 import type { DownloadedFile } from "./models/domain.ts";
-import type { StatusButtons } from "./models/ops.ts";
-import type { BotServices } from "./runtime/processor.ts";
 import type { FlushQueue } from "./runtime/queue.ts";
 import { AgentService } from "./services/agent.ts";
 import type { Enricher } from "./services/enrich.ts";
@@ -52,18 +49,17 @@ const MIME: Record<string, string> = {
   webm: "video/webm",
 };
 
-/** All Telegram wiring. Long polling, no webhook. Implements BotServices so the
- *  processor can notify, ask link questions, download files, and apply queued edits. */
-export class ScribaBot implements BotServices {
+/** All Telegram wiring. Long polling, no webhook. */
+export class ScribaBot {
   private bot: Bot;
-  private chat: Chat;
+  readonly chat: Chat;
   private queue!: FlushQueue;
   private rating: RatingController;
   private habits: HabitController;
   private command: CommandController;
-  private tasks: TaskController;
-  private jotController: JotController;
-  private edits: EditController;
+  readonly tasks: TaskController;
+  readonly jotController: JotController;
+  readonly edits: EditController;
   private adminController!: AdminController;
 
   constructor(
@@ -191,7 +187,6 @@ export class ScribaBot implements BotServices {
     await this.bot.stop();
   }
 
-  // --- BotServices ---
   async notify(text: string): Promise<void> {
     log.debug({ text }, "notify user");
     await this.chat.notify(text);
@@ -212,57 +207,6 @@ export class ScribaBot implements BotServices {
     await this.tasks.dailySummary();
   }
 
-  async askLink(
-    pendingId: string,
-    surface: string,
-    note: string,
-  ): Promise<void> {
-    log.debug({ pendingId, surface, note }, "asking user to confirm link");
-    const kb = new InlineKeyboard()
-      .text("Yes", `lk:y:${pendingId}`)
-      .text("No", `lk:n:${pendingId}`);
-    await this.chat.send(`Link "${surface}" → [[${note}]]?`, { keyboard: kb });
-  }
-
-  /** Propose a task the enricher spotted in a jot: the same confirmation card task mode
-   *  uses, so a suggestion is edited and created exactly like one you typed yourself. */
-  async askTask(
-    draft: TaskDraft,
-    jotId: string,
-    jotDate: string,
-  ): Promise<void> {
-    await this.tasks.suggest(draft, jotId, jotDate);
-  }
-
-  /** Offer to move a jot the enricher read as a TIL to the TIL section. */
-  async askTil(jotId: string, text: string): Promise<void> {
-    await this.jotController.askTil(jotId, text);
-  }
-
-  awaitVoiceFix(
-    jotId: string,
-    original: string,
-    proposed: string,
-  ): Promise<"original" | "proposed"> {
-    return this.jotController.awaitVoiceFix(jotId, original, proposed);
-  }
-
-  status(jotId: string, html: string, opts?: StatusButtons): Promise<void> {
-    return this.jotController.status(jotId, html, opts);
-  }
-
-  deleteStatus(jotId: string): Promise<void> {
-    return this.jotController.deleteStatus(jotId);
-  }
-
-  react(jotId: string, state: "done" | "failed" | "retrying"): Promise<void> {
-    return this.jotController.react(jotId, state);
-  }
-
-  async typing(): Promise<void> {
-    await this.chat.typing();
-  }
-
   async downloadFile(fileId: string): Promise<DownloadedFile> {
     const file = await this.bot.api.getFile(fileId);
     if (!file.file_path) throw new Error(`no file_path for ${fileId}`);
@@ -276,10 +220,6 @@ export class ScribaBot implements BotServices {
     const ext = (extname(file.file_path).slice(1) || "bin").toLowerCase();
     log.debug({ fileId, ext, bytes: bytes.length }, "downloaded telegram file");
     return { bytes, ext, mime: MIME[ext] ?? "application/octet-stream" };
-  }
-
-  onJotDone(jotId: string): Promise<void> {
-    return this.edits.drainQueued(jotId);
   }
 
   /** A voice note sent while task mode is open. It is transcribed like any other voice

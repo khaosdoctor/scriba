@@ -98,8 +98,8 @@ deployed on the homelab (Coolify). Single user.
   entry at `entryMaxChars` characters — a tweet (280) by default, changed from `/menu` →
   ✂️ Entry size (presets or a typed number; the value lives in the `settings` table under
   `entryMaxChars`, `0` turns splitting off). The split happens once, right after enrichment,
-  in `JotProcessor.processJot`: the jot keeps the first piece and each remaining piece
-  becomes a **new jot** (`pieceJot` — fresh id, own anchor, `kind: "text"`, inserted
+  in `ProcessingController.processJot`: the jot keeps the first piece and each remaining
+  piece becomes a **new jot** (`pieceJot` — fresh id, own anchor, `kind: "text"`, inserted
   already `done`) with its own journal line and its own Telegram status message, so it is
   edited, undone and reprocessed on its own. All the lines go in as ONE
   `replaceAnchorLine` over the placeholder, so they land together and in order. Rows are
@@ -282,7 +282,7 @@ deployed on the homelab (Coolify). Single user.
   fallback has no structured output to enforce the shape.
 - **A jot that reads like a TIL gets a card, from the same enrichment call.** The enricher's
   JSON carries a `til` boolean beside `tasks` (optional coming back in, for the same Groq
-  reason). `JotProcessor.tilWanted` applies the guards: the switch (`tilDetection` in
+  reason). `ProcessingController.tilWanted` applies the guards: the switch (`tilDetection` in
   `settings`, toggled from the task menu next to task spotting), a jot that is already in
   the TIL section (`jot.section === "til"`, which the `TIL` prefix sets at intake), and
   `Repository.tilOffered`, since each jot is asked once (`jots.til_offered`) and
@@ -320,10 +320,11 @@ deployed on the homelab (Coolify). Single user.
   sweep came round, which reads as stuck rather than waiting; it now posts `retryNotice`
   (`core.ts`) naming the attempt and how many are left. Giving up posts `gaveUpMessage`.
   Both quote the error escaped and capped, since an error can be a whole stack trace, and
-  both go out through `JotProcessor.say`, which swallows a Telegram failure so a hiccup in
-  the failure path can't throw out of `fail()` and abandon the rest of the batch. The two
-  buttons guard each other: Retry refuses a jot that's already `deleted`, and Delete answers
-  "already deleted" rather than tearing down twice. `/failed` lists the same pair per row.
+  both go out through `ProcessingController.say`, which swallows a Telegram failure so a
+  hiccup in the failure path can't throw out of `fail()` and abandon the rest of the
+  batch. The two buttons guard each other: Retry refuses a jot that's already `deleted`,
+  and Delete answers "already deleted" rather than tearing down twice. `/failed` lists the
+  same pair per row.
 - **Edits fold back into the source, so reprocess doesn't undo them.** Correcting a jot's
   line (reply `s/old/new/`, a freeform reply instruction, or Telegram's native message-edit)
   also writes the corrected text into the jot's own `transcript` (audio) or `raw_text`

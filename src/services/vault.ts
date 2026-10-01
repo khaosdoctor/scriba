@@ -286,7 +286,7 @@ export class VaultService {
   }
 }
 
-// bot.ts and processor.ts still construct VaultTools
+// bot.ts and processing.ts still construct VaultTools
 export { VaultService as VaultTools };
 
 const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, "");
