@@ -1,4 +1,5 @@
 import { basename } from "node:path";
+import type { StatusButtons } from "../bot.ts";
 import {
   assetEmbed,
   candidates,
@@ -32,7 +33,11 @@ import {
   type TaskDraft,
 } from "../flows/tasks/parse.ts";
 import { logger } from "../log.ts";
-import { type Enricher, ModelsDownError } from "../services/enrich.ts";
+import {
+  type DetectedTask,
+  type Enricher,
+  ModelsDownError,
+} from "../services/enrich.ts";
 import type { LinkIndex } from "../services/links.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import type { Transcriber } from "../services/transcribe.ts";
@@ -42,13 +47,22 @@ const log = logger("processor");
 // `error` marker on a jot held back while every model is down.
 export const HELD = "held: every enrichment model is down";
 
+/** The daily note's date, which is the note file's name. */
+const jotDay = (jot: Jot): string => basename(jot.note_path, ".md");
+
+const WEAVING = "✨ Weaving it into your journal…";
+
 /** First status line shown per jot kind while it's being worked on. */
 const STARTING: Record<Jot["kind"], string> = {
   audio: "🎤 Transcribing your voice note…",
-  text: "✨ Weaving it into your journal…",
+  text: WEAVING,
   image: "🖼️ Saving your image…",
   video: "🎬 Saving your video…",
 };
+
+/** Status text for a voice note: its transcript in italics, then the current step. */
+const voiceStatus = (transcript: string, step: string): string =>
+  `🎤 <i>${escapeHtml(transcript.trim())}</i>\n\n${step}`;
 
 export interface DownloadedFile {
   bytes: Uint8Array;
@@ -62,16 +76,7 @@ export interface BotServices {
   // Create-or-edit the one live status message for a jot (HTML parse mode). Edited in
   // place through the jot's lifecycle so the chat stays a clean audit trail, not spam.
   // `retry`/`discard` attach the 🔄 Retry / 🗑 Delete pair every failure carries.
-  status: (
-    jotId: string,
-    html: string,
-    opts?: {
-      retry?: boolean;
-      undo?: boolean;
-      discard?: boolean;
-      embed?: "embed" | "plain";
-    },
-  ) => Promise<void>;
+  status: (jotId: string, html: string, opts?: StatusButtons) => Promise<void>;
   // Delete a jot's live status message if one exists (used to collapse stray
   // per-follower messages into the leader's single confirmation on a squash).
   deleteStatus: (jotId: string) => Promise<void>;
@@ -167,10 +172,7 @@ export class JotProcessor {
       let jot = await this.ensureMedia(loaded);
       // Voice notes: show the transcript the moment it exists, then the enriching step.
       if (jot.kind === "audio" && jot.transcript?.trim()) {
-        await this.bot.status(
-          id,
-          `🎤 <i>${escapeHtml(jot.transcript.trim())}</i>\n\n✨ Weaving it into your journal…`,
-        );
+        await this.bot.status(id, voiceStatus(jot.transcript, WEAVING));
       }
       // Voice fix: when enabled, ask a stronger model to lightly clean the transcript
       // and let the user pick between original and proposed before enrichment proceeds.
@@ -184,7 +186,7 @@ export class JotProcessor {
         const original = jot.transcript.trim();
         await this.bot.status(
           id,
-          `🎤 <i>${escapeHtml(original)}</i>\n\n🔧 Checking transcript…`,
+          voiceStatus(original, "🔧 Checking transcript…"),
         );
         // Voice fix is an optional clean-up: when it can't run, the original goes on
         // to enrichment instead of failing the whole jot. Held on ModelsDownError, like
@@ -199,7 +201,6 @@ export class JotProcessor {
             );
             return original;
           });
-        await this.repo.updateJot(id, { proposed_text: proposed });
         // Only ask when there's an actual difference.
         if (proposed !== original) {
           const choice = await this.bot.awaitVoiceFix(id, original, proposed);
@@ -210,10 +211,7 @@ export class JotProcessor {
         } else {
           log.info({ id }, "voice fix: no change proposed");
         }
-        await this.bot.status(
-          id,
-          `🎤 <i>${escapeHtml(jot.transcript!.trim())}</i>\n\n✨ Weaving it into your journal…`,
-        );
+        await this.bot.status(id, voiceStatus(jot.transcript!, WEAVING));
       }
       // Fold in any squashed followers (jots sharing this leader's anchor): transcribe
       // their audio, then enrich the whole burst as one entry. Attach-only leaders
@@ -265,6 +263,7 @@ export class JotProcessor {
           {
             id,
             indexSize: index.length,
+            chars: source.length,
             count: cands.length,
             forced: forced.length,
             stopwords: stopwords.size,
@@ -275,10 +274,6 @@ export class JotProcessor {
             ),
           },
           `enricher: ${cands.length} link candidate(s) (${forced.length} registered) from local index of ${index.length} aliases`,
-        );
-        log.info(
-          { id, chars: source.length, candidates: cands.length },
-          "enricher: calling agent",
         );
         const res = await this.enricher.enrich({
           text: source,
@@ -394,7 +389,7 @@ export class JotProcessor {
         // Tasks come after the entry is safely in the note: a card is a question about
         // something already journalled, never a step on the way to journalling it.
         for (const draft of detected)
-          await this.bot.askTask(draft, jot.id, basename(jot.note_path, ".md"));
+          await this.bot.askTask(draft, jot.id, jotDay(jot));
         if (tilCard) await this.bot.askTil(jot.id, linked);
         await this.bot.onJotDone(jot.id); // apply anything queued while we were working
         // Each follower's own message gets the done reaction + its queued edits drained;
@@ -542,7 +537,7 @@ export class JotProcessor {
     );
     const patch: Partial<Jot> = {};
     if (jot.kind === "image" || jot.kind === "video") {
-      const date = basename(jot.note_path, ".md");
+      const date = jotDay(jot);
       const name = `${date}_${jot.time.replaceAll(":", "")}_${jot.id}.${file.ext}`;
       patch.asset_path = await this.obsidian.saveAsset(
         name,
@@ -580,12 +575,7 @@ export class JotProcessor {
    * against the jot's own day, so "tomorrow" means the day after the entry.
    */
   private async tasksFrom(
-    detected: {
-      description: string;
-      start?: string;
-      due?: string;
-      type?: string;
-    }[],
+    detected: DetectedTask[],
     jot: Jot,
   ): Promise<TaskDraft[]> {
     if (!detected?.length) return [];
@@ -600,7 +590,7 @@ export class JotProcessor {
       );
       return [];
     }
-    const day = basename(jot.note_path, ".md");
+    const day = jotDay(jot);
     const drafts = detected
       .map((d) => draftFromDetection(d, day))
       .filter((d) => d.description.trim());
@@ -644,7 +634,7 @@ export class JotProcessor {
 
   /** Resolve relative-date phrases against the jot's own day, once, for reuse in both the journal line and the Telegram preview. */
   private linkDates(jot: Jot, textPart: string): string {
-    return linkDateWords(textPart, basename(jot.note_path, ".md"));
+    return linkDateWords(textPart, jotDay(jot));
   }
 
   /** A jot for one spillover piece of an over-long entry: a plain text jot, already done
@@ -686,7 +676,7 @@ export class JotProcessor {
   private async writeLine(jot: Jot, line: string): Promise<void> {
     // Recreate the daily note if intake never got to it (Obsidian was down at arrival).
     // Idempotent + cached, so it's ~one GET when the note already exists.
-    await this.obsidian.ensureDailyNote(basename(jot.note_path, ".md"));
+    await this.obsidian.ensureDailyNote(jotDay(jot));
     // Read + replace + write under the per-note lock so a concurrent write (another jot,
     // an edit, the retry sweep) can't clobber the line we just placed.
     const replaced = await this.obsidian.withNoteLock(
@@ -708,10 +698,6 @@ export class JotProcessor {
       { id: jot.id, anchor: jot.anchor },
       "anchor missing — appending line instead",
     );
-    await this.obsidian.appendJournalLine(
-      basename(jot.note_path, ".md"),
-      line,
-      jot.section,
-    );
+    await this.obsidian.appendJournalLine(jotDay(jot), line, jot.section);
   }
 }

@@ -412,7 +412,7 @@ function wizardHarness(
     enricher: { setModel: (model: string) => events.push(`enricher ${model}`) },
     queue: {
       depth: 3,
-      add: (id: string) => events.push(`queue ${id}`),
+      add: (ids: string[]) => events.push(`queue ${ids.join(",")}`),
       flush: async () => void events.push("flush"),
     },
     processor: { retrySweep: async () => void events.push("sweep") },

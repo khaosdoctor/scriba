@@ -829,7 +829,7 @@ export class ScribaBot implements BotServices {
       );
       log.debug({ id, notePath }, "placeholder line written");
     }
-    this.queue.add(id);
+    this.queue.add([id]);
     log.debug({ id }, "jot queued for flush");
   }
 
@@ -1149,7 +1149,7 @@ export class ScribaBot implements BotServices {
    *  rather than waiting for the sweep. */
   private async handleRetry(ctx: any, jotId?: string): Promise<void> {
     const jot = jotId ? await this.repo.getJot(jotId) : undefined;
-    if (!jotId || !jot) {
+    if (!jot) {
       log.warn({ jotId }, "retry: jot is gone");
       return void ctx.answerCallbackQuery({ text: "gone" });
     }
@@ -1160,8 +1160,8 @@ export class ScribaBot implements BotServices {
       return void ctx.answerCallbackQuery({ text: "deleted — not retrying" });
     }
     log.info({ jotId, status: jot.status }, "manual retry requested");
-    await this.repo.resetForRetry(jotId);
-    this.queue.add(jotId);
+    await this.repo.resetForRetry(jot.id);
+    this.queue.add([jot.id]);
     await ctx.answerCallbackQuery({ text: "retrying" });
     await ctx.editMessageText("🔄 retrying…");
   }

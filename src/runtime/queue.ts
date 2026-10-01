@@ -27,21 +27,14 @@ export class FlushQueue {
     return this.ids.length;
   }
 
-  add(id: string): void {
-    this.ids.push(id);
-    // While a flush is running, just accumulate — arm() runs again when it finishes.
-    if (!this.draining) this.arm();
-  }
-
-  /** Bulk-enqueue: push every id, then arm once — a loop of add() calls re-arms the
-   *  idle/max timers on every single push, which is needless churn for a large batch
-   *  (e.g. /reprocess over a wide date range). */
-  addMany(ids: string[]): void {
+  /** Enqueue every id, then arm once: re-arming the idle/max timers per id is needless
+   *  churn for a large batch (e.g. /reprocess over a wide date range). */
+  add(ids: string[]): void {
     if (!ids.length) return;
-    // push(...ids) would spread every element onto the call stack — fine for a normal
-    // batch, but a RangeError waiting to happen for a genuinely large one (a wide
-    // /reprocess date range). concat() takes the array itself, no spread involved.
+    // push(...ids) would spread every element onto the call stack, a RangeError for a
+    // genuinely large batch. concat() takes the array itself, no spread involved.
     this.ids = this.ids.concat(ids);
+    // While a flush is running, just accumulate: arm() runs again when it finishes.
     if (!this.draining) this.arm();
   }
 
@@ -75,7 +68,7 @@ export class FlushQueue {
       this.clearTimers();
       return;
     }
-    // At most maxBatch per flush — addMany() can queue far more than that in one
+    // At most maxBatch per flush: add() can queue far more than that in one
     // call, and draining it all in a single onFlush would bypass the cap the rest of
     // this class exists to enforce. splice() mutates `ids` down to the remainder.
     const batch = this.ids.splice(0, this.opts.maxBatch);

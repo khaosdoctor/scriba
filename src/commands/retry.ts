@@ -17,7 +17,7 @@ export const retry: Command = {
         return `no jot ${arg}`;
       }
       await d.repo.resetForRetry(arg);
-      d.queue.add(arg);
+      d.queue.add([arg]);
       log.info({ id: arg }, "/retry: single jot requeued");
       return `🔄 retrying ${arg}`;
     }

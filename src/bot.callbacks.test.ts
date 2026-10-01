@@ -145,7 +145,9 @@ async function harness(over: Opts = {}) {
     "sha",
     0,
   );
-  bot.setQueue({ add: (id: string) => void events.push(`queue.add:${id}`) });
+  bot.setQueue({
+    add: (ids: string[]) => void events.push(`queue.add:${ids.join(",")}`),
+  });
   bot.bot.botInfo = {
     id: 99,
     is_bot: true,

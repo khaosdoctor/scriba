@@ -43,10 +43,6 @@ export class TaskStore {
     private notes: Record<TaskType, TaskNoteConfig>,
   ) {}
 
-  config(type: TaskType): TaskNoteConfig {
-    return this.notes[type];
-  }
-
   /** Every task of one type, or of both (work first) in note order. */
   async list(type?: TaskType): Promise<Task[]> {
     const types: TaskType[] = type ? [type] : ["work", "personal"];
