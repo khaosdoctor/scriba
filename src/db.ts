@@ -5,13 +5,22 @@ const log = logger("db");
 
 export type JotKind = "text" | "audio" | "image" | "video";
 export type JotSection = "journal" | "til";
-export type JotStatus =
-  | "pending" // placeholder written, awaiting processing
-  | "processing" // claimed by a worker (atomic) — in flight
-  | "done" // enriched + written
-  | "failed" // last attempt failed; retried until attempts hit the cap
-  | "abandoned" // gave up (cap or unrecoverable); posted un-enriched
-  | "deleted"; // user removed the line (blank edit or /delete) — terminal, never requeued
+export const JOT_STATUSES = [
+  "pending", // placeholder written, awaiting processing
+  "processing", // claimed by a worker (atomic), in flight
+  "done", // enriched + written
+  "failed", // last attempt failed; retried until attempts hit the cap
+  "abandoned", // gave up (cap or unrecoverable); posted un-enriched
+  "deleted", // user removed the line (blank edit or /delete); terminal, never requeued
+] as const;
+export type JotStatus = (typeof JOT_STATUSES)[number];
+
+/** Finished processing and eligible for reprocess (deleted jots are not). */
+export const TERMINAL_STATUSES = [
+  "done",
+  "failed",
+  "abandoned",
+] as const satisfies readonly JotStatus[];
 
 export const MAX_ATTEMPTS = 10;
 
@@ -207,7 +216,7 @@ export class Repository {
 
   // --- learned link rejections ---
   async rejections(): Promise<Set<string>> {
-    const rows = await this.k("rejections").select("surface", "note");
+    const rows = await this.rejectionList();
     return new Set(rows.map((r) => `${r.surface} ${r.note}`)); // surface stored lowercased
   }
   async reject(surface: string, note: string): Promise<void> {
@@ -225,8 +234,8 @@ export class Repository {
     return rows.map((r) => String(r.word));
   }
   async stopwords(): Promise<Set<string>> {
-    const rows = await this.k("stopwords").select("word");
-    return new Set(rows.map((r) => String(r.word).toLowerCase()));
+    const words = await this.stopwordList();
+    return new Set(words.map((w) => w.toLowerCase()));
   }
 
   // --- registered links: user-curated surface->note pairs that always force a link
@@ -333,12 +342,8 @@ export class Repository {
         this.k.raw("SUM(CASE WHEN kind='audio' THEN 1 ELSE 0 END) as audio"),
         this.k.raw("SUM(CASE WHEN kind='image' THEN 1 ELSE 0 END) as image"),
         this.k.raw("SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) as video"),
-        this.k.raw("SUM(CASE WHEN status='done' THEN 1 ELSE 0 END) as done"),
-        this.k.raw(
-          "SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed",
-        ),
-        this.k.raw(
-          "SUM(CASE WHEN status='abandoned' THEN 1 ELSE 0 END) as abandoned",
+        ...TERMINAL_STATUSES.map((s) =>
+          this.k.raw(`SUM(CASE WHEN status='${s}' THEN 1 ELSE 0 END) as ${s}`),
         ),
         this.k.raw(
           "SUM(CASE WHEN status IN ('pending','processing') THEN 1 ELSE 0 END) as inflight",
@@ -352,9 +357,9 @@ export class Repository {
       audio: n(row?.audio),
       image: n(row?.image),
       video: n(row?.video),
-      done: n(row?.done),
-      failed: n(row?.failed),
-      abandoned: n(row?.abandoned),
+      ...(Object.fromEntries(
+        TERMINAL_STATUSES.map((s) => [s, n(row?.[s])]),
+      ) as Pick<StatsRow, (typeof TERMINAL_STATUSES)[number]>),
       inflight: n(row?.inflight),
     };
   }
@@ -365,14 +370,10 @@ export class Repository {
       .select("status")
       .count("* as n")
       .groupBy("status");
-    const out: Record<JotStatus, number> = {
-      pending: 0,
-      processing: 0,
-      done: 0,
-      failed: 0,
-      abandoned: 0,
-      deleted: 0,
-    };
+    const out = Object.fromEntries(JOT_STATUSES.map((s) => [s, 0])) as Record<
+      JotStatus,
+      number
+    >;
     for (const r of rows) out[r.status as JotStatus] = Number(r.n);
     return out;
   }
@@ -406,7 +407,7 @@ export class Repository {
       .select("id", "anchor")
       .where("received_at", ">=", from)
       .andWhere("received_at", "<", to)
-      .whereIn("status", ["done", "failed", "abandoned"])
+      .whereIn("status", [...TERMINAL_STATUSES])
       .orderBy("received_at");
   }
 
@@ -414,7 +415,7 @@ export class Repository {
    *  browses full history rather than recentJots' fixed top-10. */
   async jotsPage(offset: number, limit: number): Promise<Jot[]> {
     return this.k<Jot>("jots")
-      .whereIn("status", ["done", "failed", "abandoned"])
+      .whereIn("status", [...TERMINAL_STATUSES])
       .orderBy("received_at", "desc")
       .limit(limit)
       .offset(offset);
@@ -440,7 +441,7 @@ export class Repository {
       const chunk = ids.slice(i, i + Repository.ID_CHUNK);
       const rows: { id: string }[] = await this.k("jots")
         .whereIn("id", chunk)
-        .whereIn("status", ["done", "failed", "abandoned"])
+        .whereIn("status", [...TERMINAL_STATUSES])
         .update({
           status: "pending",
           attempts: 0,

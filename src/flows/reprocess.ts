@@ -7,7 +7,7 @@ import {
   reprocessTargets,
   STATUS_ICON,
 } from "../core.ts";
-import type { Repository } from "../db.ts";
+import { type JotStatus, type Repository, TERMINAL_STATUSES } from "../db.ts";
 import { logger } from "../log.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
 import { dayBounds, isValidDate, plainDate } from "../time.ts";
@@ -401,11 +401,7 @@ export class ReprocessCommand {
     // A stale button (the jot list was rendered earlier) or a race (retry sweep,
     // concurrent processing) can leave this jot no longer reprocessable — reject with
     // a clear toast now rather than showing a confirm prompt that fails later.
-    if (
-      jot.status !== "done" &&
-      jot.status !== "failed" &&
-      jot.status !== "abandoned"
-    ) {
+    if (!(TERMINAL_STATUSES as readonly JotStatus[]).includes(jot.status)) {
       log.warn(
         { id, status: jot.status },
         "reprocess: jot pick rejected: no longer reprocessable",
