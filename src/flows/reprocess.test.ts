@@ -277,6 +277,32 @@ test("paging the end calendar keeps the start", async () => {
   assert.deepEqual(pairs(fixture.edits[0]!.kb)[0]!.length, 7);
 });
 
+test("the calendar title names every month with its three-letter English label", async () => {
+  const labels: string[] = [];
+  for (let month = 1; month <= 12; month++) {
+    const h = setup();
+    await h.tap("day", "2026", String(month));
+    labels.push(h.edits[0]!.text);
+  }
+  assert.deepEqual(
+    labels.map((t) => t.slice(t.indexOf("(") + 1, -2)),
+    [
+      "Jan 2026",
+      "Feb 2026",
+      "Mar 2026",
+      "Apr 2026",
+      "May 2026",
+      "Jun 2026",
+      "Jul 2026",
+      "Aug 2026",
+      "Sep 2026",
+      "Oct 2026",
+      "Nov 2026",
+      "Dec 2026",
+    ],
+  );
+});
+
 // --- one day ---
 
 test("tapping a day asks to confirm with the count of distinct targets", async () => {
@@ -374,6 +400,36 @@ test("an end before the start swaps the range instead of erroring", async () => 
   assert.deepEqual(fixture.ranges, [
     [dayBounds("2026-10-05")[0], dayBounds("2026-10-09")[1]],
   ]);
+});
+
+test("a range that starts and ends on the same day is still worded and executed as a range", async () => {
+  const h = setup({ jotsInRange: async () => [jot()] });
+  await h.tap("rangeend", "2026-10-05", "2026", "10", "5");
+  assert.equal(
+    h.edits[0]!.text,
+    "Reprocess 1 jot from 2026-10-05 to 2026-10-05?",
+  );
+  assert.equal(
+    h.edits[0]!.kb.inline_keyboard[0]![0]!.callback_data,
+    "rp:go:r:2026-10-05:2026-10-05",
+  );
+
+  const empty = setup();
+  await empty.tap("rangeend", "2026-10-05", "2026", "10", "5");
+  assert.equal(
+    empty.edits[0]!.text,
+    "No reprocessable jots between 2026-10-05 and 2026-10-05.",
+  );
+
+  const go = setup({
+    jotsInRange: async () => [jot({ anchor: "a1" })],
+    resetForReprocess: async () => ["a1"],
+  });
+  await go.tap("go", "r", "2026-10-05", "2026-10-05");
+  assert.equal(
+    go.edits[0]!.text,
+    "🔁 Reprocessing 1 jot from 2026-10-05 → 2026-10-05…",
+  );
 });
 
 test("an empty range names both ends and offers Back", async () => {

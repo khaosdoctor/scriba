@@ -20,30 +20,27 @@ const log = logger("reprocess");
 export const REPROCESS_NS = "rp";
 
 const CLOSE = `${REPROCESS_NS}:close`;
-
-const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
+const ROOT = `${REPROCESS_NS}:root`;
+const ROOT_TEXT = "🔁 Reprocess — choose scope:";
 const JOT_PAGE = 8;
+
 const pad = (n: string | number) => String(n).padStart(2, "0");
+const ymd = (y?: string, m?: string, d?: string) =>
+  `${y}-${pad(m ?? "")}-${pad(d ?? "")}`;
+const back = () => ({ reply_markup: backTo(ROOT, CLOSE) });
+
+/** Both ends validated, a backwards pair swapped, as the epoch window covering whole days. */
+function span(a: string, b: string) {
+  if (!isValidDate(a) || !isValidDate(b)) return undefined;
+  const [lo, hi] = a <= b ? [a, b] : [b, a];
+  return { lo, hi, from: dayBounds(lo)[0], to: dayBounds(hi)[1] };
+}
 
 /** The interactive /reprocess flow: rerun enrichment for jots already saved, replacing
- *  their journal line in place (same pipeline a new message goes through — reset to
- *  pending, then the normal queue/processor picks it up). Three entry points: a single
- *  day (calendar picker), a date range (calendar twice), or one jot (paged list). A
- *  squashed follower always resolves to its leader's id, since the leader carries the
- *  combined line. */
+ *  their journal line in place (reset to pending, then the normal queue/processor picks
+ *  it up). Entry points: one day or a date range (calendar picker), or one jot (paged
+ *  list). A squashed follower always resolves to its leader's id, since the leader
+ *  carries the combined line. */
 export class ReprocessCommand {
   private queue?: FlushQueue;
 
@@ -52,8 +49,7 @@ export class ReprocessCommand {
     private repo: Repository,
   ) {}
 
-  /** Wired after construction — the queue doesn't exist yet when ScribaBot builds this
-   *  (see ScribaBot.setQueue). */
+  /** Wired after construction: the queue doesn't exist yet when ScribaBot builds this. */
   setQueue(queue: FlushQueue): void {
     this.queue = queue;
   }
@@ -61,21 +57,19 @@ export class ReprocessCommand {
   register(): void {
     this.bot.command("reprocess", async (ctx) => {
       log.info("reprocess menu opened");
-      await ctx.reply("🔁 Reprocess — choose scope:", {
+      await ctx.reply(ROOT_TEXT, {
         reply_markup: withClose(this.rootMenu(), CLOSE),
       });
     });
   }
 
-  /** Post a fresh scope-picker message. Used by /reprocess directly and by /menu's
-   *  "Reprocess" entry (which can't edit its own message into this multi-step flow). */
+  /** Post a fresh scope-picker message for /menu's "Reprocess" entry, which can't edit
+   *  its own message into this multi-step flow. */
   async promptRoot(): Promise<void> {
     log.info("reprocess menu opened (via /menu)");
-    await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
-      "🔁 Reprocess — choose scope:",
-      { reply_markup: withClose(this.rootMenu(), CLOSE) },
-    );
+    await this.bot.api.sendMessage(config.telegram.allowedUserId, ROOT_TEXT, {
+      reply_markup: withClose(this.rootMenu(), CLOSE),
+    });
   }
 
   private rootMenu(): InlineKeyboard {
@@ -93,27 +87,45 @@ export class ReprocessCommand {
     switch (action) {
       case "root":
         await ctx.answerCallbackQuery();
-        await ctx.editMessageText("🔁 Reprocess — choose scope:", {
+        await ctx.editMessageText(ROOT_TEXT, {
           reply_markup: withClose(this.rootMenu(), CLOSE),
         });
         return;
       case "noop":
         return void ctx.answerCallbackQuery();
       case "day":
-        return args.length >= 3
-          ? this.confirmDay(ctx, `${args[0]}-${pad(args[1]!)}-${pad(args[2]!)}`)
-          : this.renderDayCalendar(ctx, args[0], args[1]);
+        if (args.length >= 3) {
+          const date = ymd(args[0], args[1], args[2]);
+          return this.confirmRange(ctx, date, date, true);
+        }
+        return this.calendar(
+          ctx,
+          `${REPROCESS_NS}:day`,
+          "📅 Pick a day to reprocess",
+          args[0],
+          args[1],
+        );
       case "range":
         return args.length >= 3
           ? this.pickRangeStart(ctx, args)
-          : this.renderRangeStartCalendar(ctx, args[0], args[1]);
+          : this.calendar(
+              ctx,
+              `${REPROCESS_NS}:range`,
+              "📆 Pick the range start",
+              args[0],
+              args[1],
+            );
       case "rangeend":
         return args.length >= 4
-          ? this.pickRangeEnd(ctx, args)
+          ? this.confirmRange(
+              ctx,
+              args[0] ?? "",
+              ymd(args[1], args[2], args[3]),
+              false,
+            )
           : this.renderRangeEndCalendar(ctx, args);
       case "jot":
-        // A crafted/stale button could carry a negative page — clamp rather than
-        // pass it through to jotsPage()'s offset.
+        // A crafted or stale button can carry a negative page.
         return this.showJotPage(ctx, Math.max(0, Number(args[0]) || 0));
       case "jotpick":
         return this.confirmJot(ctx, args[0]);
@@ -121,8 +133,6 @@ export class ReprocessCommand {
         return this.execute(ctx, args);
       case "cancel":
       case "close":
-        // A picker you backed out of is litter — take the whole message away rather
-        // than leaving "Cancelled." in the timeline.
         await ctx.answerCallbackQuery();
         return closeMessage(ctx, "Cancelled.").catch(() => {});
       default:
@@ -131,12 +141,9 @@ export class ReprocessCommand {
     }
   }
 
-  /** Parse year/month callback args into a valid pair, falling back to the current month
-   *  for anything missing, non-numeric, or outside range (a stale/crafted callback) —
-   *  otherwise an out-of-range month renders a mislabeled calendar, a NaN month makes
-   *  monthGrid's `Array(startDow)` throw outright, and a 0-99 year hits JS Date's
-   *  1900-relative special case (desyncing the label from the math) while also building
-   *  a callback date string DATE_RE would later reject for not being 4 digits. */
+  /** Year/month callback args, falling back to the current month for anything missing or
+   *  outside range. A NaN month would make monthGrid throw, and a 0-99 year hits JS
+   *  Date's 1900-relative special case. */
   private parseYearMonth(
     y?: string,
     m?: string,
@@ -156,25 +163,21 @@ export class ReprocessCommand {
     };
   }
 
-  /** Prev/next month for calendar nav, wrapping across year boundaries. */
-  private monthNav(year: number, month: number) {
-    return {
-      py: month === 1 ? year - 1 : year,
-      pm: month === 1 ? 12 : month - 1,
-      ny: month === 12 ? year + 1 : year,
-      nm: month === 12 ? 1 : month + 1,
+  /** Month calendar for the year/month args. `prefix` is the callback data a day tap and
+   *  a month-nav tap extend, so the range-end picker can carry the range start along. */
+  private async calendar(
+    ctx: any,
+    prefix: string,
+    lead: string,
+    y?: string,
+    m?: string,
+  ): Promise<void> {
+    await ctx.answerCallbackQuery();
+    const { year, month } = this.parseYearMonth(y, m);
+    const nav = (monthIndex: number) => {
+      const d = new Date(year, monthIndex, 1);
+      return `${prefix}:${d.getFullYear()}:${d.getMonth() + 1}`;
     };
-  }
-
-  /** Build a calendar keyboard for year/month. `dayCb`/`navCb` produce the callback data
-   *  for a day tap / month-nav tap, so day-pick and range-end-pick (which must carry the
-   *  range start along) can share this renderer. */
-  private buildCalendar(
-    year: number,
-    month: number,
-    dayCb: (day: number) => string,
-    navCb: (year: number, month: number) => string,
-  ): InlineKeyboard {
     const kb = new InlineKeyboard();
     for (const label of ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"])
       kb.text(label, `${REPROCESS_NS}:noop`);
@@ -182,105 +185,38 @@ export class ReprocessCommand {
     for (const week of monthGrid(year, month)) {
       for (const day of week) {
         if (day === 0) kb.text(" ", `${REPROCESS_NS}:noop`);
-        else kb.text(String(day), dayCb(day));
+        else kb.text(String(day), `${prefix}:${year}:${month}:${day}`);
       }
       kb.row();
     }
-    const { py, pm, ny, nm } = this.monthNav(year, month);
-    kb.text("‹", navCb(py, pm)).text("›", navCb(ny, nm)).row();
-    kb.text("‹ Back", `${REPROCESS_NS}:root`);
-    return kb;
+    kb.text("‹", nav(month - 2))
+      .text("›", nav(month))
+      .row();
+    kb.text("‹ Back", ROOT);
+    const label = new Date(year, month - 1, 1).toLocaleString("en-US", {
+      month: "short",
+      year: "numeric",
+    });
+    await ctx.editMessageText(`${lead} (${label}):`, {
+      reply_markup: withClose(kb, CLOSE),
+    });
   }
 
-  private async renderDayCalendar(
-    ctx: any,
-    y?: string,
-    m?: string,
-  ): Promise<void> {
-    await ctx.answerCallbackQuery();
-    const { year, month } = this.parseYearMonth(y, m);
-    const kb = this.buildCalendar(
-      year,
-      month,
-      (d) => `${REPROCESS_NS}:day:${year}:${month}:${d}`,
-      (yy, mm) => `${REPROCESS_NS}:day:${yy}:${mm}`,
-    );
-    await ctx.editMessageText(
-      `📅 Pick a day to reprocess (${MONTHS[month - 1]} ${year}):`,
-      { reply_markup: withClose(kb, CLOSE) },
-    );
-  }
-
-  private async confirmDay(ctx: any, date: string): Promise<void> {
-    // dayBounds throws on anything that isn't YYYY-MM-DD — guard a stale/crafted
-    // callback rather than let it fall through to the generic error handler.
-    if (!isValidDate(date)) {
-      log.warn({ date }, "reprocess: day tap rejected: bad date");
-      return void ctx.answerCallbackQuery({ text: "bad date" });
-    }
-    await ctx.answerCallbackQuery();
-    const [from, to] = dayBounds(date);
-    const targets = reprocessTargets(await this.repo.jotsInRange(from, to));
-    if (!targets.length) {
-      return void ctx.editMessageText(`No reprocessable jots on ${date}.`, {
-        reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE),
-      });
-    }
-    const kb = new InlineKeyboard()
-      .text(
-        `🔁 Yes, reprocess ${pluralize(targets.length, "jot")}`,
-        `${REPROCESS_NS}:go:d:${date}`,
-      )
-      .row()
-      .text("Cancel", `${REPROCESS_NS}:cancel`);
-    await ctx.editMessageText(
-      `Reprocess ${pluralize(targets.length, "jot")} from ${date}?`,
-      { reply_markup: withClose(kb, CLOSE) },
-    );
-  }
-
-  private async renderRangeStartCalendar(
-    ctx: any,
-    y?: string,
-    m?: string,
-  ): Promise<void> {
-    await ctx.answerCallbackQuery();
-    const { year, month } = this.parseYearMonth(y, m);
-    const kb = this.buildCalendar(
-      year,
-      month,
-      (d) => `${REPROCESS_NS}:range:${year}:${month}:${d}`,
-      (yy, mm) => `${REPROCESS_NS}:range:${yy}:${mm}`,
-    );
-    await ctx.editMessageText(
-      `📆 Pick the range start (${MONTHS[month - 1]} ${year}):`,
-      { reply_markup: withClose(kb, CLOSE) },
-    );
+  private rejectDate(ctx: any, ...dates: string[]): void {
+    log.warn({ dates }, "reprocess: tap rejected: bad date");
+    return void ctx.answerCallbackQuery({ text: "bad date" });
   }
 
   private async pickRangeStart(ctx: any, args: string[]): Promise<void> {
-    const [y, m, d] = args;
-    const start = `${y}-${pad(m!)}-${pad(d!)}`;
-    // A stale/crafted callback with a missing segment would otherwise render a broken
-    // "Start: ..." prompt and only fail later, when picking the end — reject it here
-    // instead, same as the other date-shaped callback args in this flow.
-    if (!isValidDate(start)) {
-      log.warn({ start }, "reprocess: range-start tap rejected: bad date");
-      return void ctx.answerCallbackQuery({ text: "bad date" });
-    }
-    await ctx.answerCallbackQuery();
-    // This next calendar's own year/month — normalize separately (not from `start`,
-    // already validated above) so a stale/crafted callback can't crash monthGrid.
-    const { year, month } = this.parseYearMonth(y, m);
-    const kb = this.buildCalendar(
-      year,
-      month,
-      (day) => `${REPROCESS_NS}:rangeend:${start}:${year}:${month}:${day}`,
-      (yy, mm) => `${REPROCESS_NS}:rangeend:${start}:${yy}:${mm}`,
-    );
-    await ctx.editMessageText(
-      `📆 Start: ${start}. Now pick the range end (${MONTHS[month - 1]} ${year}):`,
-      { reply_markup: withClose(kb, CLOSE) },
+    const [y, m] = args;
+    const start = ymd(y, m, args[2]);
+    if (!isValidDate(start)) return this.rejectDate(ctx, start);
+    await this.calendar(
+      ctx,
+      `${REPROCESS_NS}:rangeend:${start}`,
+      `📆 Start: ${start}. Now pick the range end`,
+      y,
+      m,
     );
   }
 
@@ -288,75 +224,62 @@ export class ReprocessCommand {
     ctx: any,
     args: string[],
   ): Promise<void> {
-    const [start, y, m] = args;
-    // A stale/crafted callback could carry a missing/invalid start — guard here too,
-    // rather than rendering "Start: undefined" and only failing later in pickRangeEnd.
-    if (!isValidDate(start ?? "")) {
-      log.warn(
-        { start },
-        "reprocess: range-end calendar rejected: bad start date",
-      );
-      return void ctx.answerCallbackQuery({ text: "bad date" });
-    }
-    await ctx.answerCallbackQuery();
-    const { year, month } = this.parseYearMonth(y, m);
-    const kb = this.buildCalendar(
-      year,
-      month,
-      (day) => `${REPROCESS_NS}:rangeend:${start}:${year}:${month}:${day}`,
-      (yy, mm) => `${REPROCESS_NS}:rangeend:${start}:${yy}:${mm}`,
-    );
-    await ctx.editMessageText(
-      `📆 Start: ${start}. Pick the range end (${MONTHS[month - 1]} ${year}):`,
-      { reply_markup: withClose(kb, CLOSE) },
+    const [start = "", y, m] = args;
+    if (!isValidDate(start)) return this.rejectDate(ctx, start);
+    await this.calendar(
+      ctx,
+      `${REPROCESS_NS}:rangeend:${start}`,
+      `📆 Start: ${start}. Pick the range end`,
+      y,
+      m,
     );
   }
 
-  private async pickRangeEnd(ctx: any, args: string[]): Promise<void> {
-    const [start, y, m, d] = args;
-    const end = `${y}-${pad(m!)}-${pad(d!)}`;
-    // dayBounds throws on anything that isn't YYYY-MM-DD — guard a stale/crafted
-    // callback (e.g. a range-start carried over from before a code change) rather than
-    // let it fall through to the generic error handler.
-    if (!isValidDate(start ?? "") || !isValidDate(end)) {
-      log.warn({ start, end }, "reprocess: range-end tap rejected: bad date");
-      return void ctx.answerCallbackQuery({ text: "bad date" });
-    }
+  /** Confirm prompt for the inclusive day range a..b; `day` keeps the one-day wording and
+   *  its `go:d` button. */
+  private async confirmRange(
+    ctx: any,
+    a: string,
+    b: string,
+    day: boolean,
+  ): Promise<void> {
+    const range = span(a, b);
+    if (!range) return this.rejectDate(ctx, a, b);
     await ctx.answerCallbackQuery();
-    // Picking the end before the start (backwards range) just swaps rather than erroring.
-    const [lo, hi] = start! <= end ? [start!, end] : [end, start!];
-    const [from] = dayBounds(lo);
-    const [, to] = dayBounds(hi);
+    const { lo, hi, from, to } = range;
     const targets = reprocessTargets(await this.repo.jotsInRange(from, to));
     if (!targets.length) {
       return void ctx.editMessageText(
-        `No reprocessable jots between ${lo} and ${hi}.`,
-        { reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE) },
+        day
+          ? `No reprocessable jots on ${lo}.`
+          : `No reprocessable jots between ${lo} and ${hi}.`,
+        back(),
       );
     }
+    const jots = pluralize(targets.length, "jot");
     const kb = new InlineKeyboard()
       .text(
-        `🔁 Yes, reprocess ${pluralize(targets.length, "jot")}`,
-        `${REPROCESS_NS}:go:r:${lo}:${hi}`,
+        `🔁 Yes, reprocess ${jots}`,
+        day ? `${REPROCESS_NS}:go:d:${lo}` : `${REPROCESS_NS}:go:r:${lo}:${hi}`,
       )
       .row()
       .text("Cancel", `${REPROCESS_NS}:cancel`);
     await ctx.editMessageText(
-      `Reprocess ${pluralize(targets.length, "jot")} from ${lo} to ${hi}?`,
+      `Reprocess ${jots} from ${day ? lo : `${lo} to ${hi}`}?`,
       { reply_markup: withClose(kb, CLOSE) },
     );
   }
 
   private async showJotPage(ctx: any, page: number): Promise<void> {
     await ctx.answerCallbackQuery();
-    // Fetch one extra row to know whether a "Next" page exists, without a count query.
+    // One extra row tells whether a "Next" page exists without a count query.
     const rows = await this.repo.jotsPage(page * JOT_PAGE, JOT_PAGE + 1);
     const hasNext = rows.length > JOT_PAGE;
     const shown = rows.slice(0, JOT_PAGE);
     if (!shown.length) {
       return void ctx.editMessageText(
         page === 0 ? "No reprocessable jots yet." : "No more jots.",
-        { reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE) },
+        back(),
       );
     }
     const screen = pagedScreen({
@@ -377,7 +300,7 @@ export class ReprocessCommand {
           `${REPROCESS_NS}:jotpick:${j.id}`,
         ),
       nav: (p) => `${REPROCESS_NS}:jot:${p}`,
-      back: { text: "‹ Back", data: `${REPROCESS_NS}:root` },
+      back: { text: "‹ Back", data: ROOT },
     });
     await ctx.editMessageText(screen.text, {
       reply_markup: withClose(screen.kb, CLOSE),
@@ -387,9 +310,7 @@ export class ReprocessCommand {
   private async confirmJot(ctx: any, id?: string): Promise<void> {
     const jot = id ? await this.repo.getJot(id) : undefined;
     if (!jot) return void ctx.answerCallbackQuery({ text: "gone" });
-    // A stale button (the jot list was rendered earlier) or a race (retry sweep,
-    // concurrent processing) can leave this jot no longer reprocessable — reject with
-    // a clear toast now rather than showing a confirm prompt that fails later.
+    // A stale button or a race with the retry job can leave the jot mid-processing.
     if (!(TERMINAL_STATUSES as readonly JotStatus[]).includes(jot.status)) {
       log.warn(
         { id, status: jot.status },
@@ -400,7 +321,7 @@ export class ReprocessCommand {
       });
     }
     await ctx.answerCallbackQuery();
-    const leaderId = jot.anchor; // a squashed follower reprocesses via its leader's line
+    const leaderId = jot.anchor;
     const note =
       leaderId === jot.id
         ? ""
@@ -414,83 +335,65 @@ export class ReprocessCommand {
     });
   }
 
-  private async execute(ctx: any, args: string[]): Promise<void> {
-    const [mode, ...rest] = args;
-    let from: number;
-    let to: number;
-    let label: string;
-    // dayBounds throws on anything that isn't YYYY-MM-DD — guard a stale/crafted "go"
-    // callback the same way the calendar taps upstream of it already are. Validation
-    // here is synchronous (no DB work), so it's safe to answer the callback with a
-    // specific toast on rejection.
-    if (mode === "d") {
-      const [date] = rest;
-      if (!isValidDate(date ?? "")) {
-        log.warn({ date }, "reprocess: execute rejected: bad date");
-        return void ctx.answerCallbackQuery({ text: "bad date" });
-      }
-      [from, to] = dayBounds(date!);
-      label = date!;
-    } else if (mode === "r") {
-      const [start, end] = rest;
-      if (!isValidDate(start ?? "") || !isValidDate(end ?? "")) {
-        log.warn({ start, end }, "reprocess: execute rejected: bad date");
-        return void ctx.answerCallbackQuery({ text: "bad date" });
-      }
-      // A crafted/stale callback could carry start > end — swap rather than querying
-      // an inverted (always-empty) window, matching pickRangeEnd's own normalization.
-      const [lo, hi] = start! <= end! ? [start!, end!] : [end!, start!];
-      [from] = dayBounds(lo);
-      [, to] = dayBounds(hi);
-      label = `${lo} → ${hi}`;
-    } else if (mode === "j") {
-      const [id] = rest;
-      if (!id) {
-        log.warn("reprocess: execute rejected: missing jot id");
-        return void ctx.answerCallbackQuery({ text: "bad jot id" });
-      }
-      // Ack now — everything past this point does DB work, and the callback should
-      // be acknowledged promptly rather than leaving Telegram's spinner running
-      // through it. Every remaining outcome below reports through editMessageText.
-      await ctx.answerCallbackQuery();
-      const jot = await this.repo.getJot(id);
-      if (!jot) {
-        log.warn({ id }, "reprocess: execute rejected: jot not found");
-        return void ctx.editMessageText(`Jot ${id} not found.`, {
-          reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE),
-        });
-      }
-      // A crafted/stale callback could name a squashed follower directly — resolve to
-      // its leader (the anchor the combined line actually lives under), matching
-      // confirmJot's own resolution.
-      return this.executeTargets(ctx, [jot.anchor], jot.anchor);
-    } else {
-      await ctx.answerCallbackQuery();
-      return;
+  /** `go:d:<date>` runs as the range (date, date). Every mode acks before its DB work,
+   *  so the spinner stops promptly and later outcomes report through editMessageText. */
+  private async execute(ctx: any, [mode, a, b]: string[]): Promise<void> {
+    switch (mode) {
+      case "d":
+        return this.executeRange(ctx, a ?? "", a ?? "", true);
+      case "r":
+        return this.executeRange(ctx, a ?? "", b ?? "", false);
+      case "j":
+        return this.executeJot(ctx, a);
+      default:
+        await ctx.answerCallbackQuery();
     }
-    // Ack now, before the jotsInRange/resetForReprocess DB work below — see the mode
-    // "j" branch's comment.
-    await ctx.answerCallbackQuery();
-    const targets = reprocessTargets(await this.repo.jotsInRange(from, to));
-    return this.executeTargets(ctx, targets, label);
   }
 
-  /** Shared tail of execute(): reset + enqueue a resolved target list. Assumes the
-   *  callback has already been answered, so every outcome here reports through
-   *  editMessageText only. */
+  private async executeRange(
+    ctx: any,
+    a: string,
+    b: string,
+    day: boolean,
+  ): Promise<void> {
+    const range = span(a, b);
+    if (!range) return this.rejectDate(ctx, a, b);
+    await ctx.answerCallbackQuery();
+    const { lo, hi, from, to } = range;
+    const targets = reprocessTargets(await this.repo.jotsInRange(from, to));
+    return this.executeTargets(ctx, targets, day ? lo : `${lo} → ${hi}`);
+  }
+
+  private async executeJot(ctx: any, id?: string): Promise<void> {
+    if (!id) {
+      log.warn("reprocess: execute rejected: missing jot id");
+      return void ctx.answerCallbackQuery({ text: "bad jot id" });
+    }
+    await ctx.answerCallbackQuery();
+    const jot = await this.repo.getJot(id);
+    if (!jot) {
+      log.warn({ id }, "reprocess: execute rejected: jot not found");
+      return void ctx.editMessageText(`Jot ${id} not found.`, back());
+    }
+    // A crafted callback can name a squashed follower; its line lives under the leader.
+    return this.executeTargets(ctx, [jot.anchor], jot.anchor);
+  }
+
+  /** Reset and enqueue a resolved target list. The callback is already answered, so every
+   *  outcome here reports through editMessageText only. */
   private async executeTargets(
     ctx: any,
     targets: string[],
     label: string,
   ): Promise<void> {
     if (!targets.length) {
-      return void ctx.editMessageText(`No reprocessable jots for ${label}.`, {
-        reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE),
-      });
+      return void ctx.editMessageText(
+        `No reprocessable jots for ${label}.`,
+        back(),
+      );
     }
-    // Guard explicitly rather than optional-chaining the enqueue away: without a queue
-    // to pick them up, resetForReprocess would flip these jots to `pending` and strand
-    // them there until the next retry sweep — a silent, hard-to-notice stuck state.
+    // Without a queue, resetForReprocess would strand these jots in `pending` until the
+    // next retry.
     const queue = this.queue;
     if (!queue) {
       log.error(
@@ -499,21 +402,18 @@ export class ReprocessCommand {
       );
       return void ctx.editMessageText(
         "⚠️ Reprocess isn't ready yet — try again in a moment.",
-        { reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE) },
+        back(),
       );
     }
     log.info({ label, count: targets.length }, "reprocess triggered");
-    // The full id list can get long for a wide date range — keep it out of the info
-    // line and only pay for it at debug.
     log.debug({ ids: targets }, "reprocess targets");
-    // Only enqueue what was actually flipped to pending — a target can lose eligibility
-    // between the query above and this reset (raced to `processing`, or a stale/crafted
-    // callback), and enqueueing it anyway would just be a no-op with a misleading count.
+    // Only enqueue what the reset actually set to pending: a target can race into `processing`
+    // between the query and the reset.
     const reset = await this.repo.resetForReprocess(targets);
     if (!reset.length) {
       return void ctx.editMessageText(
         `No reprocessable jots for ${label} anymore.`,
-        { reply_markup: backTo(`${REPROCESS_NS}:root`, CLOSE) },
+        back(),
       );
     }
     queue.add(reset);
