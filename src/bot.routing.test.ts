@@ -145,7 +145,7 @@ test("/command re-opens and resets the session without an 'already open' check",
 
 test("/command is refused without a vault path", async () => {
   const h = await botHarness();
-  h.bot.command.vault = { enabled: false };
+  h.bot.command.service = { enabled: false };
   assert.equal(
     first((await h.say("/command")).texts("sendMessage")),
     `⚠️ command mode needs SCRIBA_VAULT_HOST_PATH ${EM} the vault isn't mounted.`,

@@ -7,6 +7,7 @@ process.env.TELEGRAM_BOT_TOKEN ??= "t";
 process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
 const { CommandSession } = await import("./command.ts");
+const { AgentService } = await import("../services/agent.ts");
 
 /** Let the session's promise chains (agent stream, serialized Telegram sends) run out. */
 const settle = async (times = 6) => {
@@ -79,14 +80,20 @@ const result = (text?: string, subtype = "success") => ({
 const CHAT = 7;
 
 /** A session wired to stubs that record every Telegram call. */
-async function harness(feedEditMs = 0, turnSilenceMs = 30_000) {
+async function harness(
+  feedEditMs = 0,
+  turnSilenceMs = 30_000,
+  vaultEnabled = true,
+) {
   const sent: { chat: number; text: string; opts: any }[] = [];
   const edits: { chat: number; msg: number; text: string; opts: any }[] = [];
   let nextId = 100;
+  const failSends = { on: false };
   const bot = {
     command: () => {},
     api: {
       sendMessage: async (chat: number, text: string, opts: any = {}) => {
+        if (failSends.on) throw new Error("telegram is down");
         sent.push({ chat, text, opts });
         return { chat: { id: chat }, message_id: nextId++ };
       },
@@ -101,16 +108,20 @@ async function harness(feedEditMs = 0, turnSilenceMs = 30_000) {
       },
     },
   };
-  const vault = { enabled: true };
+  const vault = { enabled: vaultEnabled };
   const web = { fetchPage: async () => "# AI Writing Tropes to Avoid\nnope" };
   const agent = new FakeAgent();
+  const service = new AgentService(
+    vault as any,
+    web as any,
+    { model: "m", thinkingTokens: 4000 },
+    agent.query as any,
+  );
   const session: any = new CommandSession(
     bot as any,
-    vault as any,
-    agent.query as any,
+    service,
     feedEditMs,
     turnSilenceMs,
-    web as any,
   );
 
   /** Every ctx.reply, with the id of the message it produced and the one it answers. */
@@ -141,7 +152,7 @@ async function harness(feedEditMs = 0, turnSilenceMs = 30_000) {
 
   await session.start(ctx);
   replies.length = 0; // drop the "command mode is on" banner
-  return { session, agent, ctx, say, replies, sent, edits };
+  return { session, agent, ctx, say, replies, sent, edits, failSends };
 }
 
 /** The text of every edit made to one message, oldest first. */
@@ -156,17 +167,28 @@ const repliedTo = (call: { opts: any }) =>
 const stopData = (reply: { opts: any }) =>
   reply.opts.reply_markup.inline_keyboard[0][0].callback_data as string;
 
-const tap = () => {
+const tap = (messageText = "") => {
   const answered: string[] = [];
+  const edited: string[] = [];
   return {
     answered,
+    edited,
     ctx: {
       answerCallbackQuery: async (o: any) => void answered.push(o.text),
-      editMessageText: async () => {},
-      callbackQuery: { message: { text: "" } },
+      editMessageText: async (text: string) => void edited.push(text),
+      callbackQuery: { message: { text: messageText } },
     } as any,
   };
 };
+
+const WRITE = "mcp__vault__vault_write";
+const DELETE = "mcp__vault__vault_delete";
+
+/** The ✅/❌ callback data on a confirmation message. */
+const confirmData = (call: { opts: any }) =>
+  call.opts.reply_markup.inline_keyboard[0].map(
+    (b: any) => b.callback_data as string,
+  );
 
 test("a message sent while the agent is working is accepted, not refused", async () => {
   const { agent, say, replies } = await harness();
@@ -559,12 +581,12 @@ test("the agent doing anything at all resets the silence timer", async () => {
 });
 
 test("a turn waiting on a confirmation tap isn't counted as silent", async () => {
-  const { session, say, replies, edits } = await harness(0, SILENCE);
+  const { session, agent, say, replies, edits } = await harness(0, SILENCE);
   await say("write a note");
   await settle();
 
   // canUseTool parks here until the owner taps; the agent is idle on purpose.
-  const decision = session.permit("mcp__vault__vault_write", {
+  const decision = agent.options.canUseTool(WRITE, {
     path: "notes/a.md",
     content: "hi",
   });
@@ -592,4 +614,204 @@ test("the watchdog stops with the turn, and doesn't fire after an answer", async
 
   // The answer is the last word: no late "went quiet" landing on top of it.
   assert.equal(editsTo(edits, replies[0]!.id).at(-1), "all done");
+});
+
+test("command mode refuses to open while task mode is open", async () => {
+  const { session, ctx, replies } = await harness();
+  await session.finish(ctx);
+  replies.length = 0;
+  session.setBusyCheck(() => true);
+
+  await session.start(ctx);
+
+  assert.equal(session.isOpen(), false);
+  assert.deepEqual(
+    replies.map((r) => r.text),
+    ["📝 Task mode is open. Send /done to close it first, then /command."],
+  );
+});
+
+test("command mode refuses to open without a mounted vault", async () => {
+  const { session, ctx, replies } = await harness(0, 30_000, false);
+
+  await session.start(ctx);
+
+  assert.equal(session.isOpen(), false);
+  assert.deepEqual(
+    replies.map((r) => r.text),
+    ["⚠️ command mode needs SCRIBA_VAULT_HOST_PATH — the vault isn't mounted."],
+  );
+});
+
+test("/done with command mode closed says so", async () => {
+  const { session, ctx, replies } = await harness();
+  await session.finish(ctx);
+  replies.length = 0;
+
+  await session.finish(ctx);
+
+  assert.deepEqual(
+    replies.map((r) => r.text),
+    ["Command mode isn't open."],
+  );
+});
+
+test("a result that gave up with no text, and an empty success, say so", async () => {
+  const { agent, say, replies, edits } = await harness();
+  await say("first");
+  await settle();
+  await say("second");
+  await settle();
+
+  agent.emit(result(undefined, "error_max_turns"));
+  await settle();
+  agent.emit(result());
+  await settle();
+
+  assert.equal(
+    editsTo(edits, replies[0]!.id).at(-1),
+    "⚠️ the assistant gave up (error_max_turns)",
+  );
+  assert.equal(editsTo(edits, replies[1]!.id).at(-1), "(no reply)");
+});
+
+test("the agent only gets the vault tools and web search", async () => {
+  const { agent, say } = await harness();
+  await say("go");
+  await settle();
+
+  assert.deepEqual(agent.options.allowedTools, [
+    "mcp__vault__vault_list",
+    "mcp__vault__vault_read",
+    "mcp__vault__vault_search",
+    "mcp__vault__web_fetch",
+    WRITE,
+    DELETE,
+    "WebSearch",
+  ]);
+  assert.deepEqual(agent.options.disallowedTools, [
+    "Bash",
+    "BashOutput",
+    "KillShell",
+    "Read",
+    "Write",
+    "Edit",
+    "MultiEdit",
+    "NotebookEdit",
+    "Glob",
+    "Grep",
+    "WebFetch",
+    "Task",
+    "Agent",
+    "TodoWrite",
+    "ExitPlanMode",
+  ]);
+});
+
+test("read-only tools and web search run without asking, anything else is refused", async () => {
+  const { agent, say, sent } = await harness();
+  await say("go");
+  await settle();
+  const { canUseTool } = agent.options;
+
+  for (const name of [
+    "mcp__vault__vault_list",
+    "mcp__vault__vault_read",
+    "mcp__vault__vault_search",
+    "mcp__vault__web_fetch",
+    "WebSearch",
+  ])
+    assert.deepEqual(await canUseTool(name, { q: 1 }), {
+      behavior: "allow",
+      updatedInput: { q: 1 },
+    });
+  assert.deepEqual(await canUseTool("Bash", { command: "ls" }), {
+    behavior: "deny",
+    message: "Bash is not available. Only the vault tools and web search are.",
+  });
+  assert.deepEqual(sent, [], "nothing was asked in the chat");
+});
+
+test("a write waits for the ✅ tap and then goes through", async () => {
+  const { session, agent, say, sent } = await harness();
+  const source = await say("write it");
+  await settle();
+
+  const input = { path: "notes/a.md", content: "hi" };
+  const decision = agent.options.canUseTool(WRITE, input);
+  await settle();
+
+  const ask = sent.at(-1)!;
+  assert.equal(
+    ask.text,
+    "✏️ Write <code>notes/a.md</code>?\n<blockquote>hi</blockquote>",
+  );
+  assert.equal(ask.opts.parse_mode, "HTML");
+  assert.equal(repliedTo(ask), source);
+  const [yes, no] = confirmData(ask);
+  assert.match(yes!, /^cm:y:/);
+  assert.match(no!, /^cm:n:/);
+
+  const t = tap("asked");
+  await session.handleTap(t.ctx, yes!.split(":").slice(1));
+  assert.deepEqual(t.answered, ["doing it"]);
+  assert.deepEqual(t.edited, ["asked\n✅ approved"]);
+  assert.deepEqual(await decision, { behavior: "allow", updatedInput: input });
+});
+
+test("a declined delete is refused, and a second tap on it has expired", async () => {
+  const { session, agent, say, sent } = await harness();
+  await say("delete it");
+  await settle();
+
+  const decision = agent.options.canUseTool(DELETE, { path: "notes/a.md" });
+  await settle();
+
+  const ask = sent.at(-1)!;
+  assert.equal(ask.text, "🗑 Delete <code>notes/a.md</code>?");
+  const [, no] = confirmData(ask);
+  const rest = no!.split(":").slice(1);
+  const t = tap("asked");
+  await session.handleTap(t.ctx, rest);
+  assert.deepEqual(t.answered, ["skipped"]);
+  assert.deepEqual(t.edited, ["asked\n❌ declined"]);
+  assert.deepEqual(await decision, {
+    behavior: "deny",
+    message: "The owner declined that change.",
+  });
+
+  const again = tap();
+  await session.handleTap(again.ctx, rest);
+  assert.deepEqual(again.answered, ["expired"]);
+});
+
+test("a confirmation Telegram refuses to send is declined rather than left waiting", async () => {
+  const { agent, say, failSends } = await harness();
+  await say("write it");
+  await settle();
+
+  failSends.on = true;
+  const decision = await agent.options.canUseTool(WRITE, {
+    path: "a.md",
+    content: "",
+  });
+
+  assert.equal(decision.behavior, "deny");
+});
+
+test("Stop and /done refuse the confirmations still waiting", async () => {
+  const { session, agent, ctx, say, replies } = await harness();
+  await say("write it");
+  await settle();
+
+  const first = agent.options.canUseTool(WRITE, { path: "a.md", content: "" });
+  await settle();
+  const [, , id] = stopData(replies[0]!).split(":");
+  await session.handleTap(tap().ctx, ["s", id]);
+  assert.equal((await first).behavior, "deny");
+
+  const second = agent.options.canUseTool(DELETE, { path: "a.md" });
+  await settle();
+  await session.finish(ctx);
+  assert.equal((await second).behavior, "deny");
 });

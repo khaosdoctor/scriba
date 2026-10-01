@@ -178,7 +178,7 @@ const outputFormat = (schema: z.ZodType): OutputFormat => {
 const TASK_OUTPUT_FORMAT = outputFormat(TaskOutputStrict);
 const ENRICH_OUTPUT_FORMAT = outputFormat(EnrichOutputStrict);
 
-const userMessage = (content: unknown) => ({
+export const userMessage = (content: unknown) => ({
   type: "user" as const,
   message: { role: "user" as const, content },
   parent_tool_use_id: null,
