@@ -32,6 +32,8 @@ export interface MessageOptions {
   /** Telegram's inline keyboard markup, typed structurally so models stay free of grammy.
    *  An empty keyboard clears the buttons; none leaves them as they are. */
   keyboard?: { inline_keyboard: readonly (readonly object[])[] };
+  /** Point the owner's compose box at this message. */
+  forceReply?: boolean;
 }
 
 /** The owner's chat as a controller sees it: messages it starts on its own, outside any

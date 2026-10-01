@@ -11,6 +11,7 @@ import {
   sampleJot,
 } from "./test/bot-harness.ts";
 import { parseFollowupRef } from "./views/replies/followup.ts";
+import { parseTaskRef } from "./views/replies/task.ts";
 
 const FALLBACK = "scriba handles text, voice, images, and video for now.";
 const COMMAND_ON = "🧭 Command mode is on.";
@@ -547,7 +548,7 @@ test("every marker-bearing prompt is claimed by the flow that sent it and by no 
         ["habit", parseHabitRef(text) !== null],
         ["followup", parseFollowupRef(text) !== null],
         ["wizard", harness.bot.menu.isWizardPrompt(text)],
-        ["task", harness.bot.tasks.isTaskPrompt(text)],
+        ["task", parseTaskRef(text) !== null],
       ] as const
     )
       .filter(([, claimed]) => claimed)

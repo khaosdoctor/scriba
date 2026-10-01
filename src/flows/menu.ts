@@ -2,6 +2,7 @@ import { type Bot, InlineKeyboard } from "grammy";
 import type { AdminController } from "../controllers/admin.ts";
 import type { HabitController } from "../controllers/habits.ts";
 import type { RatingController } from "../controllers/rating.ts";
+import type { TaskController } from "../controllers/tasks.ts";
 import {
   cleanNoteTitle,
   distinctSurfaces,
@@ -26,6 +27,7 @@ import {
   WIZARD_VOICEFIX_MODEL_REF,
 } from "../core.ts";
 import type { Jot, Repository } from "../db.ts";
+import { paginate } from "../lib/page.ts";
 import type { Scheduler } from "../lib/scheduler.ts";
 import { logger } from "../log.ts";
 import type { Config } from "../models/config.ts";
@@ -35,14 +37,9 @@ import type { Enricher } from "../services/enrich.ts";
 import type { VaultService } from "../services/vault.ts";
 import { plainDate } from "../time.ts";
 import { closeMessage } from "../views/chat.ts";
-import {
-  backTo,
-  pagedScreen,
-  paginate,
-  withClose,
-} from "../views/render/keyboard.ts";
+import { openTaskMode } from "../views/commands/task.ts";
+import { backTo, pagedScreen, withClose } from "../views/render/keyboard.ts";
 import type { ReprocessCommand } from "./reprocess.ts";
-import type { TasksFlow } from "./tasks/index.ts";
 
 const log = logger("menu");
 
@@ -115,10 +112,9 @@ export class MenuController {
     private deleteJot: (jot: Jot) => Promise<string>,
   ) {}
 
-  /** Late-wired: TasksFlow needs collaborators that don't exist yet when the menu is
-   *  built (mirrors ScribaBot.setQueue). */
-  private tasks?: TasksFlow;
-  setTasks(tasks: TasksFlow): void {
+  /** Late-wired: the task controller is built after the menu (mirrors ScribaBot.setQueue). */
+  private tasks?: TaskController;
+  setTasks(tasks: TaskController): void {
     this.tasks = tasks;
   }
 
@@ -287,7 +283,7 @@ export class MenuController {
         return this.tasks?.promptRoot();
       case "taskmode":
         await ctx.answerCallbackQuery();
-        return this.tasks?.start(ctx);
+        return this.tasks && openTaskMode(ctx, this.tasks);
       case "reprocess":
         await ctx.answerCallbackQuery({
           text: "Opening reprocess menu below ↓",

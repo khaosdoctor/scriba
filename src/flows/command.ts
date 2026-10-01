@@ -122,7 +122,7 @@ export class CommandSession {
   }
 
   /** Task mode owns the message stream too, so the two never run at once. Late-wired:
-   *  TasksFlow is built after this session (see ScribaBot). */
+   *  TaskController is built after this session (see ScribaBot). */
   setBusyCheck(fn: () => boolean): void {
     this.otherModeOpen = fn;
   }

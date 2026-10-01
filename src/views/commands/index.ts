@@ -16,6 +16,9 @@ import { stats } from "./stats.ts";
 import { status } from "./status.ts";
 import { stopword } from "./stopword.ts";
 import { sweep } from "./sweep.ts";
+import { taskCommand } from "./task.ts";
+import { taskAddCommand } from "./taskadd.ts";
+import { tasksCommand } from "./tasks.ts";
 import { unreject } from "./unreject.ts";
 import { unstick } from "./unstick.ts";
 import { version } from "./version.ts";
@@ -75,27 +78,9 @@ export const COMMANDS: CommandView[] = [
       (ctx) =>
         command.start(ctx),
   ),
-  flow(
-    "task",
-    "Turn every message into a task (/done to close)",
-    ({ tasks }) =>
-      (ctx) =>
-        tasks.start(ctx),
-  ),
-  flow(
-    "taskadd",
-    "Add one task in one message: /taskadd <what and when>",
-    ({ tasks }) =>
-      (ctx) =>
-        tasks.slashTaskAdd(ctx),
-  ),
-  flow(
-    "tasks",
-    "List your tasks — open, today, this week, done",
-    ({ tasks }) =>
-      (ctx) =>
-        tasks.slashTasks(ctx),
-  ),
+  taskCommand,
+  taskAddCommand,
+  tasksCommand,
   done,
   deleteCommand,
   version,

@@ -1,4 +1,5 @@
 import { Composer, type Context } from "grammy";
+import { taskMessage } from "../commands/task.ts";
 import type { ViewDeps } from "../index.ts";
 import { entitiesToMarkdown } from "../input.ts";
 import { promptReplies } from "../replies/index.ts";
@@ -16,7 +17,7 @@ export function textView(deps: ViewDeps): Composer<Context> {
   });
   for (const reply of promptReplies(deps)) view.use(reply);
   view.on("message:text", async (ctx, next) => {
-    if (tasks.isOpen()) return tasks.handle(ctx, ctx.message.text);
+    if (tasks.isOpen()) return taskMessage(ctx, tasks, ctx.message.text);
     await next();
   });
   view.on("message:text", async (ctx, next) => {

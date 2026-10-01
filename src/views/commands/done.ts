@@ -8,9 +8,11 @@ export const done: CommandView = {
   description: "Close the vault assistant or task session",
   view({ tasks, command }) {
     const view = new Composer<Context>();
-    view.command("done", (ctx) =>
-      tasks.isOpen() ? tasks.finish(ctx) : command.finish(ctx),
-    );
+    view.command("done", async (ctx) => {
+      if (!tasks.isOpen()) return command.finish(ctx);
+      tasks.finish();
+      await ctx.reply("📝 Task mode off — back to journaling.");
+    });
     return view;
   },
 };

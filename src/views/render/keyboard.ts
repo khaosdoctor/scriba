@@ -1,12 +1,5 @@
 import { InlineKeyboard } from "grammy";
-
-export type PageView<T> = {
-  items: T[];
-  page: number;
-  pages: number;
-  /** Index of the first item in the whole list, so row callbacks can carry global indices. */
-  offset: number;
-};
+import type { PageView } from "../../lib/page.ts";
 
 /** Empty rows are dropped first: a keyboard built with a trailing .row() would otherwise
  *  render an empty row above the button. */
@@ -20,18 +13,6 @@ export function withClose(
 
 export function backTo(target: string, closeData: string): InlineKeyboard {
   return withClose(new InlineKeyboard().text("‹ Back", target), closeData);
-}
-
-/** Clamps `page` into range, so a stale or crafted button still shows a real page. */
-export function paginate<T>(
-  items: readonly T[],
-  page: number,
-  size: number,
-): PageView<T> {
-  const pages = Math.max(1, Math.ceil(items.length / size));
-  const p = Math.min(Math.max(page, 0), pages - 1);
-  const offset = p * size;
-  return { items: items.slice(offset, offset + size), page: p, pages, offset };
 }
 
 export function navRow(

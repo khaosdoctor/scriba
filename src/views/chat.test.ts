@@ -54,6 +54,16 @@ test("the chat sends plain notices and HTML messages with a keyboard to the owne
   ]);
 });
 
+test("a message can ask for a forced reply, and one without the option does not", async () => {
+  const { chat, rec } = harness();
+  await chat.send("when?", { forceReply: true });
+  await chat.send("when?");
+  assert.deepEqual(rec.calls.map(wire), [
+    { chat_id: OWNER, text: "when?", reply_markup: { force_reply: true } },
+    { chat_id: OWNER, text: "when?" },
+  ]);
+});
+
 test("the chat edits, deletes and reacts to a message by id, and rejects only on edit and delete", async () => {
   const { chat, rec } = harness();
   await chat.edit(7, "later", { keyboard: new InlineKeyboard() });

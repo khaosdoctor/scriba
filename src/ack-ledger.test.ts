@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { journalLine } from "./core.ts";
 import type { Jot, TaskDraftRow } from "./db.ts";
-import { parseTasks } from "./flows/tasks/parse.ts";
+import { parseTasks } from "./lib/tasks.ts";
 import {
   botHarness,
   EM,

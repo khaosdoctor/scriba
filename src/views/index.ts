@@ -3,10 +3,10 @@ import type { AdminController } from "../controllers/admin.ts";
 import type { HabitController } from "../controllers/habits.ts";
 import type { JotController } from "../controllers/jots.ts";
 import type { RatingController } from "../controllers/rating.ts";
+import type { TaskController } from "../controllers/tasks.ts";
 import type { CommandSession } from "../flows/command.ts";
 import type { MenuController } from "../flows/menu.ts";
 import type { ReprocessCommand } from "../flows/reprocess.ts";
-import type { TasksFlow } from "../flows/tasks/index.ts";
 import { logger } from "../log.ts";
 import type { JotKind } from "../models/domain.ts";
 import { callbackViews } from "./callbacks/index.ts";
@@ -57,7 +57,7 @@ export type ViewDeps = {
   menu: MenuController;
   reprocess: ReprocessCommand;
   command: CommandSession;
-  tasks: TasksFlow;
+  tasks: TaskController;
   jotController: JotController;
   jots: JotHandlers;
   /** Read per tap or command: the controller is built after the bot, in index.ts. */
