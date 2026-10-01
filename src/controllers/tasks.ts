@@ -1,4 +1,3 @@
-import type { Repository } from "../db.ts";
 import { makeJotId } from "../lib/jot.ts";
 import { logger } from "../lib/log.ts";
 import { paginate } from "../lib/page.ts";
@@ -21,6 +20,7 @@ import { plainDate } from "../lib/time.ts";
 import type { TaskDraftRow } from "../models/domain.ts";
 import type { Notifier } from "../models/ops.ts";
 import type { SwitchKey } from "../models/settings.ts";
+import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { TaskNotesService } from "../services/task-notes.ts";
 import type { Modes, OpenOutcome } from "./modes.ts";

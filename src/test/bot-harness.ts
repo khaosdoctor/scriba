@@ -6,7 +6,7 @@ process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
 
 import { AdminController } from "../controllers/admin.ts";
-import type { Jot } from "../db.ts";
+import type { Jot } from "../models/domain.ts";
 import { type ApiCall, BOT_INFO, FakeSettings, recordingApi } from "./fakes.ts";
 import { noteOps } from "./note-ops.ts";
 import { sampleJot as baseJot } from "./sqlite.ts";

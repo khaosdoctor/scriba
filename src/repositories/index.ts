@@ -5,15 +5,19 @@ import type {
   LinkRule,
   PendingLink,
   TaskDraftRow,
-} from "./models/domain.ts";
-import type { Stats, StatusCounts } from "./models/ops.ts";
-import type { SettingKey, SettingValue, SwitchKey } from "./models/settings.ts";
-import { openDb } from "./repositories/db.ts";
-import { JotRepository } from "./repositories/jots.ts";
-import { LinkRuleRepository } from "./repositories/link-rules.ts";
-import { RatingRepository } from "./repositories/ratings.ts";
-import { SettingsRepository } from "./repositories/settings.ts";
-import { TaskDraftRepository } from "./repositories/task-drafts.ts";
+} from "../models/domain.ts";
+import type { Stats, StatusCounts } from "../models/ops.ts";
+import type {
+  SettingKey,
+  SettingValue,
+  SwitchKey,
+} from "../models/settings.ts";
+import { openDb } from "./db.ts";
+import { JotRepository } from "./jots.ts";
+import { LinkRuleRepository } from "./link-rules.ts";
+import { RatingRepository } from "./ratings.ts";
+import { SettingsRepository } from "./settings.ts";
+import { TaskDraftRepository } from "./task-drafts.ts";
 
 export type {
   Jot,
@@ -22,8 +26,8 @@ export type {
   JotStatus,
   TaskDraftRow,
   TaskType,
-} from "./models/domain.ts";
-export { MAX_ATTEMPTS, TERMINAL_STATUSES } from "./models/domain.ts";
+} from "../models/domain.ts";
+export { MAX_ATTEMPTS, TERMINAL_STATUSES } from "../models/domain.ts";
 
 /**
  * A facade over the repositories, kept so importers do not change. Each method is a

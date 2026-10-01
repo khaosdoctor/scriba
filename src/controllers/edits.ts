@@ -1,4 +1,3 @@
-import type { Jot, Repository } from "../db.ts";
 import {
   assetEmbed,
   editConfirmation,
@@ -15,8 +14,9 @@ import {
   journalLine,
   stripJournalLine,
 } from "../lib/note.ts";
-import type { EditInput } from "../models/domain.ts";
+import type { EditInput, Jot } from "../models/domain.ts";
 import type { StatusButtons } from "../models/ops.ts";
+import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import type { JotController } from "./jots.ts";
