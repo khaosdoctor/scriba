@@ -64,11 +64,7 @@ function setup(
     },
     ...repoOver,
   };
-  const commands: Record<string, (ctx: any) => Promise<void>> = {};
   const bot = {
-    command: (name: string, fn: (ctx: any) => Promise<void>) => {
-      commands[name] = fn;
-    },
     api: {
       sendMessage: async (chat: number, text: string, options: any) => {
         sent.push({ chat, text, kb: options.reply_markup });
@@ -104,7 +100,6 @@ function setup(
   const tap = (...rest: string[]) => (reprocess as any).handleTap(ctx, rest);
   return {
     reprocess,
-    commands,
     ctx,
     tap,
     events,
@@ -121,8 +116,7 @@ function setup(
 
 test("/reprocess opens the scope picker with a Close button", async () => {
   const fixture = setup();
-  fixture.reprocess.register();
-  await fixture.commands.reprocess!(fixture.ctx);
+  await fixture.reprocess.slashReprocess(fixture.ctx as any);
   assert.equal(fixture.sent[0]!.text, ROOT_TEXT);
   assert.deepEqual(pairs(fixture.sent[0]!.kb), [
     [["📅 One day", "rp:day"]],

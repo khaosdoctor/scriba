@@ -30,7 +30,7 @@ import {
 
 const log = logger("tasks-flow");
 
-/** callback_query namespace this flow owns (see ScribaBot.handleButton). */
+/** callback_query namespace this flow owns (see views/callbacks). */
 export const TASKS_NS = "tk";
 
 /** Task lists don't self-destruct the way /menu's screens do (the morning summary has to
@@ -104,12 +104,6 @@ export class TasksFlow {
     private commandOpen: () => boolean,
   ) {}
 
-  register(): void {
-    this.bot.command("task", (ctx) => this.start(ctx));
-    this.bot.command("tasks", (ctx) => this.slashTasks(ctx));
-    this.bot.command("taskadd", (ctx) => this.slashTaskAdd(ctx));
-  }
-
   /**
    * `/taskadd <anything>` — one task, one message, no mode to open or close. The line goes
    * to the enricher, which is better than the cue-word parser at messy phrasing, at
@@ -117,7 +111,7 @@ export class TasksFlow {
    * comes back is the same confirmation card task mode uses, so nothing is written until
    * you say so. With nothing after the command, it asks for the line instead.
    */
-  private async slashTaskAdd(ctx: any): Promise<void> {
+  async slashTaskAdd(ctx: any): Promise<void> {
     const text = String(ctx.match ?? "").trim();
     if (!text) {
       log.info("/taskadd with no text — asking for it");
@@ -538,7 +532,7 @@ export class TasksFlow {
 
   // --- callbacks ---
 
-  /** Dispatch a `tk:<action>[:<args>]` callback. Routed in from ScribaBot.handleButton. */
+  /** Dispatch a `tk:<action>[:<args>]` callback. Routed in from views/callbacks. */
   async handleTap(ctx: any, rest: string[]): Promise<void> {
     const [action, ...args] = rest;
     switch (action) {
@@ -691,7 +685,7 @@ export class TasksFlow {
   // --- lists ---
 
   /** `/tasks [view]` — the menu, or straight to a view. */
-  private async slashTasks(ctx: any): Promise<void> {
+  async slashTasks(ctx: any): Promise<void> {
     const arg = String(ctx.match ?? "")
       .trim()
       .toLowerCase();

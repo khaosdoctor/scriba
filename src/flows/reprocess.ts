@@ -1,4 +1,4 @@
-import { type Bot, InlineKeyboard } from "grammy";
+import { type Bot, type Context, InlineKeyboard } from "grammy";
 import {
   jotPreview,
   monthGrid,
@@ -17,7 +17,7 @@ import { backTo, pagedScreen, withClose } from "../views/render/keyboard.ts";
 
 const log = logger("reprocess");
 
-/** callback_query namespace this command owns (see ScribaBot.handleButton). */
+/** callback_query namespace this command owns (see views/callbacks). */
 export const REPROCESS_NS = "rp";
 
 const CLOSE = `${REPROCESS_NS}:close`;
@@ -57,12 +57,10 @@ export class ReprocessCommand {
     this.queue = queue;
   }
 
-  register(): void {
-    this.bot.command("reprocess", async (ctx) => {
-      log.info("reprocess menu opened");
-      await ctx.reply(ROOT_TEXT, {
-        reply_markup: withClose(this.rootMenu(), CLOSE),
-      });
+  async slashReprocess(ctx: Context): Promise<void> {
+    log.info("reprocess menu opened");
+    await ctx.reply(ROOT_TEXT, {
+      reply_markup: withClose(this.rootMenu(), CLOSE),
     });
   }
 

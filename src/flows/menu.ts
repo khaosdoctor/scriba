@@ -140,11 +140,6 @@ export class MenuController {
     this.expiry.delete(key);
   }
 
-  /** Wire /menu. Callback taps are routed in from ScribaBot.handleButton. */
-  register(): void {
-    this.bot.command("menu", (ctx) => this.open(ctx));
-  }
-
   /** /menu — send a fresh root menu. Later taps edit that message in place. */
   async open(ctx: any): Promise<void> {
     log.info("menu opened");
@@ -231,7 +226,7 @@ export class MenuController {
     return typeof out === "string" ? fitTelegram(out) : "";
   }
 
-  /** Dispatch a `menu:<action>[:<arg>]` callback. Routed in from ScribaBot.handleButton. */
+  /** Dispatch a `menu:<action>[:<arg>]` callback. Routed in from views/callbacks. */
   async handleCallback(ctx: any, rest: string[]): Promise<void> {
     const [action, arg, arg2] = rest;
     // Taps land on the message being edited in place, so restarting its countdown here

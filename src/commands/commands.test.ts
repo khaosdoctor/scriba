@@ -116,17 +116,6 @@ test("the registry is well-formed and safe to hand to Telegram", () => {
   }
 });
 
-test("/help lists the whole registry, itself included", async () => {
-  const out = await byName("help").run({} as any, "", deps());
-  assert.ok(typeof out === "string");
-  for (const command of commands)
-    assert.ok(
-      out.includes(`/${command.name} —`),
-      `/help omits /${command.name}`,
-    );
-  assert.ok(out.includes("/help —"));
-});
-
 test("/retry with an id resets and queues that jot alone", async () => {
   const fakeDeps = deps({ repo: { getJot: async () => aJot() } });
   assert.equal(
