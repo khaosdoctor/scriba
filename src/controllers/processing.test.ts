@@ -8,7 +8,7 @@ import { ModelsDownError } from "../services/enrich.ts";
 import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { removeDb, sampleJot, tempDbPath } from "../test/sqlite.ts";
-import { HELD as HELD_MARKER, JotProcessor } from "./processor.ts";
+import { HELD as HELD_MARKER, ProcessingController } from "./processing.ts";
 
 /** Status messages the bot was asked to post, with the buttons each one carried. */
 type Posted = { id: string; html: string; opts: any };
@@ -22,7 +22,7 @@ const jot = (over: Partial<Jot> = {}): Jot =>
   });
 
 /** A processor whose collaborators only record what they were asked to do. The note write
- *  throws, which is the give-up path's own escape hatch — it keeps the stubs to the parts
+ *  throws, which is the give-up path's own escape hatch: it keeps the stubs to the parts
  *  under test. */
 function harness(
   over: {
@@ -51,23 +51,20 @@ function harness(
       throw new Error("obsidian is down");
     },
   };
-  const bot = {
+  const jots = {
     status: async (id: string, html: string, opts?: any) => {
       posted.push({ id, html, opts });
     },
     react: async (id: string, state: string) =>
       void reactions.push([id, state]),
     deleteStatus: async () => {},
-    onJotDone: async () => {},
   };
-  const processor: any = new JotProcessor(
-    repo as any,
-    obsidian as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    bot as any,
-  );
+  const processor: any = new ProcessingController({
+    repo,
+    obsidian,
+    jots,
+    edits: { drainQueued: async () => {} },
+  } as any);
   return { processor, posted, reactions, updates };
 }
 
@@ -86,7 +83,7 @@ test("a transient failure says so on the jot's message, with both buttons", asyn
     ["abcd1234", { status: "failed", attempts: 1, error: "fetch failed" }],
   ]);
   assert.deepEqual(reactions, [["abcd1234", "retrying"]]);
-  // …and the message says that instead of sitting on "Weaving it into your journal…".
+  // …and the message says that instead of staying on "Weaving it into your journal…".
   const msg = posted.at(-1);
   assert.equal(msg?.id, "abcd1234");
   assert.match(msg!.html, /didn't go through \(attempt 1 of \d+\)/);
@@ -125,10 +122,10 @@ test("a squashed give-up still names the whole burst", async () => {
 
 test("a failed status message that won't send doesn't take the batch down", async () => {
   const { processor } = harness();
-  (processor as any).bot.status = async () => {
+  (processor as any).deps.jots.status = async () => {
     throw new Error("telegram 502");
   };
-  // fail() runs inside processJot's catch — a throw here would abandon the other jots.
+  // fail() runs inside processJot's catch: a throw here would abandon the other jots.
   await processor.fail(jot(), new Error("fetch failed"));
 });
 
@@ -141,7 +138,7 @@ const detected = [
 
 test("detected tasks become drafts dated from the jot's own day", async () => {
   const { processor } = harness();
-  // The jot's note is 2026-08-16 (a Sunday), so "tomorrow" is the day after the entry —
+  // The jot's note is 2026-08-16 (a Sunday), so "tomorrow" is the day after the entry,
   // not the day it happens to be processed.
   assert.deepEqual(await processor.tasksFrom(detected, jot()), [
     {
@@ -163,7 +160,7 @@ test("detection can be switched off, and never asks about the same jot twice", a
   const off = harness({ detection: "off" });
   assert.deepEqual(await off.processor.tasksFrom(detected, jot()), []);
 
-  // A jot that already produced drafts was asked about once — /reprocess must not ask
+  // A jot that already produced drafts was asked about once: /reprocess must not ask
   // again about tasks that were created, or dismissed, weeks ago.
   const asked = harness({ priorDrafts: 2 });
   assert.deepEqual(await asked.processor.tasksFrom(detected, jot()), []);
@@ -257,29 +254,29 @@ function pipeline(
       };
     },
   };
-  const bot = {
-    typing: async () => {},
+  const jotFakes = {
     status: async (_id: string, _html: string, opts?: { undo?: boolean }) =>
       void calls.push(opts?.undo ? "status:done" : "status"),
     react: async () => {},
     deleteStatus: async () => {},
-    askLink: async () => {},
-    askTask: async (draft: { description: string }) =>
-      void calls.push(`askTask:${draft.description}`),
     askTil: async (id: string, text: string) => {
       tilAsks.push([id, text]);
       calls.push("askTil");
     },
-    onJotDone: async () => void calls.push("onJotDone"),
   };
-  const processor: any = new JotProcessor(
-    repo as any,
-    obsidian as any,
-    {} as any,
-    enricher as any,
-    { list: () => [] } as any,
-    bot as any,
-  );
+  const processor: any = new ProcessingController({
+    repo,
+    obsidian,
+    enricher,
+    links: { list: () => [] },
+    jots: jotFakes,
+    edits: { drainQueued: async () => void calls.push("onJotDone") },
+    tasks: {
+      suggest: async (draft: { description: string }) =>
+        void calls.push(`askTask:${draft.description}`),
+    },
+    notifier: { typing: async () => {} },
+  } as any);
   return {
     processor,
     calls,
@@ -378,14 +375,14 @@ test("every model down: the jot goes back to pending, no attempt charged, one he
   assert.match(posted[0]!.html, /Every enrichment model is down/);
   assert.deepEqual(buttons(posted[0]), { retry: false, discard: true });
 
-  // a sweep that finds it still held says nothing more
+  // a retry pass that finds it still held says nothing more
   await processor.hold(jot({ error: HELD_MARKER }));
   assert.equal(posted.length, 1);
 });
 
-test("a held notice that couldn't be sent isn't marked, so the next sweep tries again", async () => {
+test("a held notice that couldn't be sent isn't marked, so the next retry pass tries again", async () => {
   const { processor, updates } = harness();
-  processor.bot.status = async () => {
+  processor.deps.jots.status = async () => {
     throw new Error("telegram 502");
   };
   await processor.hold(jot());
@@ -413,14 +410,7 @@ function noteHarness(note: string) {
       );
     },
   };
-  const processor: any = new JotProcessor(
-    {} as any,
-    obsidian as any,
-    {} as any,
-    {} as any,
-    {} as any,
-    {} as any,
-  );
+  const processor: any = new ProcessingController({ obsidian } as any);
   return { processor, state };
 }
 
@@ -469,7 +459,7 @@ test("a split piece stays in its parent's section", () => {
   );
 });
 
-// --- processBatch, retrySweep and the media/voice steps, over a real sqlite repository ---
+// --- processBatch, retryPass and the media/voice steps, over a real sqlite repository ---
 
 type Seen = { id: string; html: string; opts: any };
 
@@ -564,8 +554,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
       return "a red door";
     },
   };
-  const bot = {
-    typing: async () => {},
+  const jots = {
     status: async (id: string, html: string, opts?: any) => {
       statuses.push({ id, html, opts });
     },
@@ -573,31 +562,33 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
       reactions.push([id, state]);
     },
     deleteStatus: async () => {},
-    askLink: async () => {},
-    askTask: async () => {},
     askTil: async () => {},
-    onJotDone: async () => {},
-    downloadFile: async (fileId: string) => {
-      calls.push(`download:${fileId}`);
-      if (fileId === "voice-file")
-        return { bytes: new Uint8Array(3), ext: "oga", mime: "audio/ogg" };
-      if (fileId === "video-file")
-        return { bytes: new Uint8Array(3), ext: "mp4", mime: "video/mp4" };
-      return { bytes: new Uint8Array(3), ext: "jpg", mime: "image/jpeg" };
-    },
     awaitVoiceFix: async (_id: string, original: string, proposed: string) => {
       voiceFixAsks.push([original, proposed]);
       return options.voiceChoice ?? "proposed";
     },
   };
-  const processor = new JotProcessor(
+  const processor = new ProcessingController({
     repo,
-    obsidian as any,
-    transcriber as any,
-    enricher as any,
-    { list: () => [] } as any,
-    bot as any,
-  );
+    obsidian,
+    transcriber,
+    enricher,
+    links: { list: () => [] },
+    jots,
+    edits: { drainQueued: async () => {} },
+    tasks: { suggest: async () => {} },
+    notifier: { typing: async () => {} },
+    files: {
+      downloadFile: async (fileId: string) => {
+        calls.push(`download:${fileId}`);
+        if (fileId === "voice-file")
+          return { bytes: new Uint8Array(3), ext: "oga", mime: "audio/ogg" };
+        if (fileId === "video-file")
+          return { bytes: new Uint8Array(3), ext: "mp4", mime: "video/mp4" };
+        return { bytes: new Uint8Array(3), ext: "jpg", mime: "image/jpeg" };
+      },
+    },
+  } as any);
   return {
     repo,
     processor,
@@ -643,7 +634,7 @@ test("a batch naming a jot that no longer exists skips it and carries on", async
   assert.equal((await testWorld.repo.getJot("aaaaaaaa"))?.status, "done");
 });
 
-test("retrySweep picks up pending jots and failed ones under the cap, and nothing else", async (testContext) => {
+test("retryPass picks up pending jots and failed ones under the cap, and nothing else", async (testContext) => {
   const testWorld = await world(testContext);
   if (!testWorld) return;
   const row = (id: string, status: Jot["status"], attempts = 0) =>
@@ -665,7 +656,7 @@ test("retrySweep picks up pending jots and failed ones under the cap, and nothin
   await row("6aaaaaaa", "processing");
   await row("7aaaaaaa", "deleted");
 
-  await testWorld.processor.retrySweep();
+  await testWorld.processor.retryPass();
 
   assert.deepEqual(testWorld.enriched, ["text 1aaaaaaa", "text 2aaaaaaa"]);
   const statusOf = async (id: string) =>
@@ -676,11 +667,11 @@ test("retrySweep picks up pending jots and failed ones under the cap, and nothin
   assert.equal(await statusOf("6aaaaaaa"), "processing");
 });
 
-test("retrySweep with nothing pending does no work", async (testContext) => {
+test("retryPass with nothing pending does no work", async (testContext) => {
   const testWorld = await world(testContext);
   if (!testWorld) return;
   await testWorld.add(stored({ status: "done" }));
-  await testWorld.processor.retrySweep();
+  await testWorld.processor.retryPass();
   assert.deepEqual(testWorld.enriched, []);
   assert.deepEqual(testWorld.statuses, []);
 });

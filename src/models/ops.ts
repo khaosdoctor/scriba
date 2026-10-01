@@ -53,6 +53,8 @@ export interface Notifier {
   /** Set the bot's one reaction on a message, from Telegram's fixed emoji set. Best-effort:
    *  never rejects. */
   react(messageId: number, emoji: string): Promise<void>;
+  /** The "typing…" chat action. Best-effort: never rejects. */
+  typing(): Promise<void>;
 }
 
 /** Which buttons a jot's status message carries. A jot that finishes gets `undo`; one that

@@ -1038,7 +1038,7 @@ ledger("menu: maintenance", [
   {
     tap: "menu:sweep",
     when: "/sweep command",
-    expect: "ack() > processor.retrySweep > tg.editMessageText",
+    expect: "ack() > processor.retryPass > tg.editMessageText",
   },
   {
     tap: "menu:unstick",

@@ -1,11 +1,11 @@
 import { ScribaBot } from "./bot.ts";
 import { AdminController } from "./controllers/admin.ts";
+import { ProcessingController } from "./controllers/processing.ts";
 import { Repository } from "./db.ts";
 import { Scheduler } from "./lib/scheduler.ts";
 import { previousDate } from "./lib/time.ts";
 import { logger } from "./log.ts";
 import type { Config } from "./models/config.ts";
-import { JotProcessor } from "./runtime/processor.ts";
 import { FlushQueue } from "./runtime/queue.ts";
 import {
   Enricher,
@@ -110,14 +110,18 @@ export async function createScriba(
     links,
     scheduler,
   );
-  const processor = new JotProcessor(
+  const processing = new ProcessingController({
     repo,
     obsidian,
     transcriber,
     enricher,
     links,
-    bot,
-  );
+    jots: bot.jotController,
+    edits: bot.edits,
+    tasks: bot.tasks,
+    notifier: bot.chat,
+    files: bot,
+  });
   enricher.setSwitchNotifier((to, model, err) => {
     const reason = err instanceof Error ? err.message : String(err);
     switch (to) {
@@ -139,7 +143,7 @@ export async function createScriba(
     idleMs: config.flush.idleMs,
     maxBatch: config.flush.maxBatch,
     maxWaitMs: config.flush.maxWaitMs,
-    onFlush: (ids) => processor.processBatch(ids),
+    onFlush: (ids) => processing.processBatch(ids),
   });
   bot.setQueue(queue);
 
@@ -158,7 +162,7 @@ export async function createScriba(
   const admin = new AdminController({
     repo,
     queue,
-    processing: processor,
+    processing,
     transcriber,
     links,
     github,
@@ -195,7 +199,7 @@ export async function createScriba(
     () => config.tasksTime,
     () => bot.promptTaskSummary(),
   );
-  scheduler.every("retry", RETRY_EVERY_MS, () => processor.retrySweep());
+  scheduler.every("retry", RETRY_EVERY_MS, () => processing.retryPass());
 
   return {
     bot,
@@ -209,7 +213,7 @@ export async function createScriba(
       });
       links.startIndex();
       await scheduler.start();
-      void processor.retrySweep();
+      void processing.retryPass();
       health.start();
       await bot.start();
       log.info("scriba ready");
