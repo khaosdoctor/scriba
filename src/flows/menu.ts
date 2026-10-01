@@ -1,6 +1,6 @@
 import { type Bot, InlineKeyboard } from "grammy";
-import { commands, type Deps } from "../commands/index.ts";
 import { config } from "../config.ts";
+import type { AdminController } from "../controllers/admin.ts";
 import {
   cleanNoteTitle,
   distinctSurfaces,
@@ -24,10 +24,13 @@ import {
   WIZARD_STOPWORD_REF,
   WIZARD_VOICEFIX_MODEL_REF,
 } from "../core.ts";
-import type { Jot } from "../db.ts";
+import type { Jot, Repository } from "../db.ts";
 import type { Scheduler } from "../lib/scheduler.ts";
 import { logger } from "../log.ts";
 import { SETTINGS, type SwitchKey } from "../models/settings.ts";
+import type { FlushQueue } from "../runtime/queue.ts";
+import type { Enricher } from "../services/enrich.ts";
+import type { VaultService } from "../services/vault.ts";
 import { plainDate } from "../time.ts";
 import { closeMessage } from "../views/chat.ts";
 import {
@@ -45,6 +48,17 @@ const log = logger("menu");
 
 /** Every menu screen carries the same way out, so a half-finished flow never needs scrolling back. */
 const CLOSE = "menu:close";
+
+/** What the menu acts on. Transitional: it goes with the menu's own controller. */
+export interface MenuDeps {
+  repo: Repository;
+  queue: FlushQueue;
+  enricher: Enricher;
+  links: VaultService;
+  admin: AdminController;
+}
+
+type AdminAction = "status" | "stats" | "flush" | "sweep" | "unstick" | "retry";
 
 const MODEL_PRESETS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"];
 
@@ -96,7 +110,7 @@ export class MenuController {
     private rating: RatingCommand,
     private habits: HabitsCommand,
     private reprocess: ReprocessCommand,
-    private getDeps: () => Deps,
+    private getDeps: () => MenuDeps,
     private deleteJot: (jot: Jot) => Promise<string>,
   ) {}
 
@@ -214,15 +228,31 @@ export class MenuController {
       .text("‹ Back", "menu:root");
   }
 
-  /** Run a string-returning admin command from a callback and hand back its text. */
-  private async runCmd(ctx: any, name: string, arg = ""): Promise<string> {
-    const cmd = commands.find((c) => c.name === name);
-    if (!cmd) return `unknown command ${name}`;
-    const out = await cmd.run(ctx, arg, this.getDeps());
+  /** Run an admin action from a callback and hand back its text. */
+  private async runCmd(name: AdminAction, arg = ""): Promise<string> {
+    const { admin } = this.getDeps();
+    const run = async (): Promise<string> => {
+      switch (name) {
+        case "status":
+          return admin.status();
+        case "stats":
+          return admin.stats(arg);
+        case "flush":
+          return admin.flush();
+        case "sweep":
+          return admin.retryPass();
+        case "unstick":
+          return admin.unstick();
+        case "retry":
+          return admin.retry(arg);
+        default:
+          return name satisfies never;
+      }
+    };
     // Backstop for every menu screen that renders a command's text: editMessageText is
     // subject to the same 4096-character cap as a send, and a rejected edit leaves the
     // menu frozen on the previous screen with no explanation.
-    return typeof out === "string" ? fitTelegram(out) : "";
+    return fitTelegram(await run());
   }
 
   /** Dispatch a `menu:<action>[:<arg>]` callback. Routed in from views/callbacks. */
@@ -378,12 +408,12 @@ export class MenuController {
   /** Show a command's text output with a Back button (status, stats result). */
   private async menuInfo(
     ctx: any,
-    name: string,
+    name: AdminAction,
     arg: string,
     back: string,
   ): Promise<void> {
     await ctx.answerCallbackQuery();
-    const text = await this.runCmd(ctx, name, arg);
+    const text = await this.runCmd(name, arg);
     await ctx.editMessageText(text, { reply_markup: backTo(back, CLOSE) });
   }
 
@@ -401,7 +431,7 @@ export class MenuController {
         reply_markup: withClose(kb, CLOSE),
       });
     }
-    const text = await this.runCmd(ctx, "stats", range);
+    const text = await this.runCmd("stats", range);
     await ctx.editMessageText(text, {
       reply_markup: backTo("menu:stats", CLOSE),
     });
@@ -1216,12 +1246,16 @@ export class MenuController {
   }
 
   /** Run a no-arg maintenance command and show its result over the maintenance menu. */
-  private async menuMaint(ctx: any, name: string, arg = ""): Promise<void> {
+  private async menuMaint(
+    ctx: any,
+    name: AdminAction,
+    arg = "",
+  ): Promise<void> {
     log.info({ cmd: name, arg }, "menu: maintenance action");
     // Answer before running the command (flush/sweep can be slow) — the edited message
     // carries the result instead of a toast that might arrive after Telegram gives up.
     await ctx.answerCallbackQuery();
-    const out = await this.runCmd(ctx, name, arg);
+    const out = await this.runCmd(name, arg);
     await ctx.editMessageText(out || "done", {
       reply_markup: withClose(this.maintMenu(), CLOSE),
     });

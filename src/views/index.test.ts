@@ -24,11 +24,6 @@ const HELP = [
 test("every command Telegram lists gets an answer from the bot", async () => {
   for (const { command } of COMMANDS) {
     const h = await botHarness();
-    h.bot.github = {
-      latest: async () => null,
-      recent: async () => [],
-      byVersion: async () => null,
-    };
     const run = await h.say(`/${command}`);
     assert.ok(run.calls.length > 0, `/${command} went unanswered`);
     for (const text of run.texts("sendMessage"))

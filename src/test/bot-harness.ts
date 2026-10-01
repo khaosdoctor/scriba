@@ -5,6 +5,7 @@ process.env.TELEGRAM_BOT_TOKEN ??= "t";
 process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
 
+import { AdminController } from "../controllers/admin.ts";
 import type { Jot } from "../db.ts";
 import { type ApiCall, BOT_INFO, FakeSettings, recordingApi } from "./fakes.ts";
 import { noteOps } from "./note-ops.ts";
@@ -189,6 +190,11 @@ export async function botHarness() {
     stats: () => ({ enabled: true, files: 2, aliases: 3 }),
   };
   const health = { snapshot: () => [] };
+  const github = {
+    latest: async () => null,
+    recent: async () => [],
+    byVersion: async () => null,
+  };
 
   const bot: any = new ScribaBot(
     repo,
@@ -196,14 +202,22 @@ export async function botHarness() {
     enricher,
     transcriber,
     linkIndex as any,
-    {} as any,
-    "0.0.0",
-    "0123456789",
-    NOW,
   );
   bot.setQueue(queue);
-  bot.setProcessor(processor);
-  bot.setHealth(health as any);
+  bot.setAdmin(
+    new AdminController({
+      repo,
+      queue,
+      processing: processor,
+      transcriber,
+      links: linkIndex,
+      github,
+      health,
+      notifier: bot,
+      build: { version: "0.0.0", sha: "0123456789" },
+      startedAt: NOW,
+    } as never),
+  );
   bot.setScheduler(scheduler);
   bot.bot.botInfo = BOT_INFO;
   bot.bot.api.config.use(telegram.transformer as never);

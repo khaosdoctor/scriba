@@ -86,10 +86,6 @@ async function harness(over: Fakes = {}) {
     {} as any,
     {} as any,
     {} as any,
-    {} as any,
-    "0.0.0",
-    "sha",
-    0,
   );
   bot.setQueue({ add: (ids: string[]) => void queued.push(...ids) });
   bot.status = async (_id: string, text: string) => void statuses.push(text);

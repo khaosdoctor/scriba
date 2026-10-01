@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { AdminController } from "./controllers/admin.ts";
 import { journalLine } from "./core.ts";
 import type { Jot } from "./db.ts";
 import { BOT_INFO, recordingApi } from "./test/fakes.ts";
@@ -127,14 +128,11 @@ async function harness(over: Opts = {}) {
     enricher,
     {} as any,
     {} as any,
-    {} as any,
-    "0.0.0",
-    "sha",
-    0,
   );
   bot.setQueue({
     add: (ids: string[]) => void events.push(`queue.add:${ids.join(",")}`),
   });
+  bot.setAdmin(new AdminController({ repo } as any));
   bot.bot.botInfo = BOT_INFO;
   bot.bot.api.config.use(rec.transformer as never);
 

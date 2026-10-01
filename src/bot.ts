@@ -1,13 +1,11 @@
 import { extname } from "node:path";
 import { Bot, InlineKeyboard } from "grammy";
-import type { Deps } from "./commands/index.ts";
-import { UNREJECT_NS } from "./commands/unreject.ts";
 import { config } from "./config.ts";
+import type { AdminController } from "./controllers/admin.ts";
 import {
   anchorLine,
   assetEmbed,
   deleteAnchorLine,
-  distinctSurfaces,
   editConfirmation,
   editedJotText,
   embedOffer,
@@ -27,7 +25,7 @@ import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
 import { CommandSession } from "./flows/command.ts";
 import { FollowupFlow } from "./flows/followup.ts";
 import { HabitsCommand } from "./flows/habits/index.ts";
-import { MenuController } from "./flows/menu.ts";
+import { MenuController, type MenuDeps } from "./flows/menu.ts";
 import { RatingCommand } from "./flows/rating.ts";
 import { ReprocessCommand } from "./flows/reprocess.ts";
 import { TasksFlow } from "./flows/tasks/index.ts";
@@ -37,12 +35,10 @@ import type { Scheduler } from "./lib/scheduler.ts";
 import { logger } from "./log.ts";
 import type { DownloadedFile } from "./models/domain.ts";
 import type { StatusButtons } from "./models/ops.ts";
-import type { BotServices, JotProcessor } from "./runtime/processor.ts";
+import type { BotServices } from "./runtime/processor.ts";
 import type { FlushQueue } from "./runtime/queue.ts";
 import { AgentService } from "./services/agent.ts";
 import type { Enricher } from "./services/enrich.ts";
-import type { GithubReleases } from "./services/github.ts";
-import type { HealthMonitor } from "./services/health.ts";
 import type { LinkIndex } from "./services/links.ts";
 import type { ObsidianClient } from "./services/obsidian.ts";
 import { TaskNotesService } from "./services/task-notes.ts";
@@ -109,8 +105,7 @@ export class ScribaBot implements BotServices {
   private command: CommandSession;
   private tasks: TasksFlow;
   private til: TilFlow;
-  private processor!: JotProcessor;
-  private health!: HealthMonitor;
+  private adminController!: AdminController;
   // jotId -> the live status message we edit in place through the jot's lifecycle.
   // ponytail: in-memory. On restart the map is empty and status() just posts a fresh
   // message; nothing is lost. Persist it only if that ever proves annoying.
@@ -128,10 +123,6 @@ export class ScribaBot implements BotServices {
     private enricher: Enricher,
     private transcriber: FallbackTranscriber,
     private links: LinkIndex,
-    private github: GithubReleases,
-    private version: string,
-    private sha: string,
-    private startedAt: number,
   ) {
     // grammY waits 500s per API call by default; 60s still covers the 30s long poll.
     this.bot = new Bot(config.telegram.token, {
@@ -189,7 +180,7 @@ export class ScribaBot implements BotServices {
       tasks: this.tasks,
       til: this.til,
       jots: this,
-      admin: () => this.deps(),
+      admin: () => this.adminController,
       errors: {
         jotForMessage: (messageId) => this.repo.jotForMessage(messageId),
         failureButtons: (jotId) =>
@@ -203,32 +194,24 @@ export class ScribaBot implements BotServices {
     this.queue = queue;
     this.reprocess.setQueue(queue);
   }
-  setProcessor(processor: JotProcessor): void {
-    this.processor = processor;
-  }
-  /** Same cycle: the monitor notifies through this bot, and /status reads the monitor. */
-  setHealth(health: HealthMonitor): void {
-    this.health = health;
+  /** Same cycle: the controller notifies through this bot and needs the queue, the
+   *  processor and the health monitor, all built after it. */
+  setAdmin(admin: AdminController): void {
+    this.adminController = admin;
   }
   /** The menu changes the rating time, which the scheduler owns. */
   setScheduler(scheduler: Scheduler): void {
     this.menu.setScheduler(scheduler);
   }
 
-  /** Assemble what the admin commands act on. */
-  private deps(): Deps {
+  /** What the menu acts on. */
+  private deps(): MenuDeps {
     return {
       repo: this.repo,
       queue: this.queue,
-      processor: this.processor,
       enricher: this.enricher,
-      transcriber: this.transcriber,
       links: this.links,
-      github: this.github,
-      health: this.health,
-      version: this.version,
-      sha: this.sha,
-      startedAt: this.startedAt,
+      admin: this.adminController,
     };
   }
 
@@ -932,55 +915,6 @@ export class ScribaBot implements BotServices {
       text: choice === "proposed" ? "using fixed version" : "keeping original",
     });
     resolve(choice);
-  }
-
-  /** Interactive /unreject. `ur:s:<si>` shows the notes rejected for surface `si`;
-   *  `ur:p:<si>:<ni>` undoes that surface→note rejection. Indices are positions in the
-   *  deterministically ordered rejection list, re-derived on each tap so no state is
-   *  held between messages. A shifted index (rejection changed meanwhile) answers
-   *  "expired" rather than undoing the wrong pair. */
-  async handleUnreject(ctx: any, rest: string[]): Promise<void> {
-    const [step, ...idx] = rest;
-    const list = await this.repo.rejectionList();
-    const surfaces = distinctSurfaces(list);
-    const surface = surfaces[Number(idx[0])];
-    if (surface === undefined) {
-      log.warn({ step, idx }, "unreject: surface index out of range");
-      return void ctx.answerCallbackQuery({ text: "expired" });
-    }
-    const notes = list.filter((r) => r.surface === surface).map((r) => r.note);
-
-    if (step === "s") {
-      log.info({ surface, notes: notes.length }, "unreject: surface picked");
-      const kb = new InlineKeyboard();
-      notes.forEach((n, ni) => {
-        kb.text(n, `${UNREJECT_NS}:p:${idx[0]}:${ni}`).row();
-      });
-      await ctx.answerCallbackQuery();
-      return void ctx.editMessageText(`Unreject "${surface}" → which note?`, {
-        reply_markup: kb,
-      });
-    }
-
-    if (step === "p") {
-      const note = notes[Number(idx[1])];
-      if (note === undefined) {
-        log.warn({ surface, idx }, "unreject: note index out of range");
-        return void ctx.answerCallbackQuery({ text: "expired" });
-      }
-      const n = await this.repo.unreject(surface, note);
-      log.info({ surface, note, removed: n }, "unreject via menu");
-      await ctx.answerCallbackQuery({
-        text: n ? "unrejected" : "already gone",
-      });
-      return void ctx.editMessageText(
-        n
-          ? `↩️ "${surface}" may link to [[${note}]] again`
-          : `no rejection for "${surface}" → [[${note}]]`,
-      );
-    }
-
-    await ctx.answerCallbackQuery();
   }
 
   async handleLink(ctx: any, verd?: string, pid?: string): Promise<void> {

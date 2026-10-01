@@ -21,7 +21,7 @@ const env = {
 };
 Object.assign(process.env, env);
 
-const { createScriba, dailySummary } = await import("./index.ts");
+const { createScriba } = await import("./index.ts");
 const { Scheduler } = await import("./lib/scheduler.ts");
 const { Enricher } = await import("./services/enrich.ts");
 
@@ -200,37 +200,6 @@ dbTest(
     );
   },
 );
-
-async function summaryFor(stats: Record<string, number>) {
-  const sent: string[] = [];
-  await dailySummary(
-    { windowStats: async () => stats } as never,
-    async (text) => void sent.push(text),
-  );
-  return sent;
-}
-const NO_JOTS = { total: 0, audio: 0, failed: 0, abandoned: 0 };
-
-test("the daily summary stays quiet on a day with no jots", async () => {
-  assert.deepEqual(await summaryFor(NO_JOTS), []);
-});
-
-test("the daily summary counts jots, and names failures only when there are some", async () => {
-  const clean = await summaryFor({ ...NO_JOTS, total: 4, audio: 1 });
-  assert.equal(clean.length, 1);
-  assert.match(clean[0]!, /Jots: 4 \(voice: 1\)/);
-  assert.ok(!clean[0]!.includes("Failed"));
-
-  // failed and abandoned are one number to the reader: both mean "didn't finish cleanly".
-  const bad = await summaryFor({
-    ...NO_JOTS,
-    total: 4,
-    audio: 1,
-    failed: 1,
-    abandoned: 2,
-  });
-  assert.match(bad[0]!, /⚠️ Failed\/abandoned: 3/);
-});
 
 dbTest(
   "start seeds the models, registers the commands and announces the deploy",

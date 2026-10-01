@@ -1,5 +1,4 @@
-import { Composer, type Context, type Filter } from "grammy";
-import { UNREJECT_NS } from "../../commands/unreject.ts";
+import { Composer, type Context } from "grammy";
 import { COMMAND_NS } from "../../flows/command.ts";
 import { FOLLOWUP_NS } from "../../flows/followup.ts";
 import { HABITS_NS } from "../../flows/habits/index.ts";
@@ -8,22 +7,8 @@ import { REPROCESS_NS } from "../../flows/reprocess.ts";
 import { TASKS_NS } from "../../flows/tasks/index.ts";
 import { TIL_NS } from "../../flows/til.ts";
 import type { ViewDeps } from "../index.ts";
-
-type Tap = Filter<Context, "callback_query:data">;
-
-/** The taps of one callback namespace, `ns:...`, handed over with the fields after it. */
-function namespace(
-  ns: string,
-  handle: (ctx: Tap, rest: string[]) => Promise<unknown>,
-): Composer<Context> {
-  const view = new Composer<Context>();
-  view.on("callback_query:data", async (ctx, next) => {
-    const [head, ...rest] = ctx.callbackQuery.data.split(":");
-    if (head !== ns) return next();
-    await handle(ctx, rest);
-  });
-  return view;
-}
+import { namespace } from "./namespace.ts";
+import { unrejectView } from "./unreject.ts";
 
 /** One view per callback namespace, with the empty answer for an unknown namespace last so
  *  a stale button never leaves its spinner running. */
@@ -37,6 +22,7 @@ export function callbackViews({
   habits,
   reprocess,
   jots,
+  admin,
 }: ViewDeps): Composer<Context>[] {
   const unknown = new Composer<Context>();
   unknown.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
@@ -57,7 +43,7 @@ export function callbackViews({
     namespace("lk", (ctx, [verdict, pendingId]) =>
       jots.handleLink(ctx, verdict, pendingId),
     ),
-    namespace(UNREJECT_NS, (ctx, rest) => jots.handleUnreject(ctx, rest)),
+    unrejectView(admin),
     namespace(RATING_NS, (ctx, [date, n]) => rating.handleTap(ctx, date, n)),
     namespace(FOLLOWUP_NS, (ctx, [code, date]) =>
       followup.handleTap(ctx, code, date),
