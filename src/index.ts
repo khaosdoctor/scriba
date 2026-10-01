@@ -98,7 +98,15 @@ export async function createScriba(
   const links = new VaultService(config.vaultPath, obsidian);
   const github = new GithubReleases();
 
-  const bot = new ScribaBot(repo, obsidian, enricher, transcriber, links);
+  const scheduler = new Scheduler();
+  const bot = new ScribaBot(
+    repo,
+    obsidian,
+    enricher,
+    transcriber,
+    links,
+    scheduler,
+  );
   const processor = new JotProcessor(
     repo,
     obsidian,
@@ -160,7 +168,6 @@ export async function createScriba(
   });
   bot.setAdmin(admin);
 
-  const scheduler = new Scheduler();
   scheduler.daily(
     "summary",
     () => config.summaryTime,
@@ -188,7 +195,6 @@ export async function createScriba(
     () => bot.promptTaskSummary(),
   );
   scheduler.every("retry", RETRY_EVERY_MS, () => processor.retrySweep());
-  bot.setScheduler(scheduler);
 
   return {
     bot,

@@ -128,6 +128,7 @@ async function harness(over: Opts = {}) {
     enricher,
     {} as any,
     {} as any,
+    {} as any,
   );
   bot.setQueue({
     add: (ids: string[]) => void events.push(`queue.add:${ids.join(",")}`),

@@ -1,0 +1,323 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { parseWizardRef } from "../../core.ts";
+import {
+  botHarness,
+  EM,
+  type Harness,
+  OWNER,
+  type Run,
+  sampleJot,
+} from "../../test/bot-harness.ts";
+
+type Payload = { text: string; reply_markup?: any };
+
+const call = (run: Run, method: string): Payload | undefined =>
+  run.calls.find((c) => c.method === method)?.payload;
+const edit = (run: Run) => call(run, "editMessageText");
+const buttons = (payload: Payload | undefined): any[] =>
+  (payload?.reply_markup?.inline_keyboard ?? []).flat();
+const button = (payload: Payload | undefined, data: string) =>
+  buttons(payload).find((b) => b.callback_data === data);
+const labels = (payload: Payload | undefined): string[][] =>
+  (payload?.reply_markup?.inline_keyboard ?? []).map((row: any[]) =>
+    row.map((b) => b.text),
+  );
+const callbacks = (payload: Payload | undefined): string[] =>
+  buttons(payload).map((b) => b.callback_data);
+const answers = (run: Run) =>
+  run.calls
+    .filter((c) => c.method === "answerCallbackQuery")
+    .map((c) => c.payload.text);
+
+const withStored = async (stored: Record<string, string> = {}) => {
+  const h = await botHarness();
+  for (const [key, value] of Object.entries(stored)) h.settings.set(key, value);
+  return h;
+};
+
+test("the root menu shows every switch, the sizes and the models as stored, with defaults when nothing is", async () => {
+  const bare = edit(await (await withStored()).tap("menu:root"));
+  assert.equal(bare?.text, "🗂 scriba control menu");
+  assert.equal(button(bare, "menu:esz").text, "✂️ Entry size: 280 chars");
+  assert.equal(button(bare, "menu:vfix").text, "🔧 Voice fix: off");
+  assert.equal(button(bare, "menu:rtsw").text, "🌙 Nightly rating: on");
+  assert.equal(button(bare, "menu:fusw").text, "💬 Follow-up: on");
+  assert.equal(button(bare, "menu:rtt").text, "🕛 Rating time: 00:00");
+  assert.equal(button(bare, "menu:em").text, "🧠 Enrich: ?");
+  const rows = labels(bare);
+  const at = (label: string) =>
+    rows.find((r) => r.some((t) => t.includes(label)));
+  assert.equal(at("Nightly rating")?.length, 2);
+  assert.equal(at("Follow-up"), at("Nightly rating"));
+  assert.equal(at("Rating time")?.length, 1);
+
+  const stored = edit(
+    await (
+      await withStored({
+        entryMaxChars: "0",
+        fixVoiceTranscript: "on",
+        nightlyRating: "off",
+        nightlyFollowup: "off",
+        ratingTime: "23:30",
+        enrichModel: "claude-sonnet-5",
+        voiceFixModel: "claude-haiku-4-5",
+      })
+    ).tap("menu:root"),
+  );
+  assert.equal(button(stored, "menu:esz").text, "✂️ Entry size: off");
+  assert.equal(button(stored, "menu:vfix").text, "🔧 Voice fix: on");
+  assert.equal(button(stored, "menu:rtsw").text, "🌙 Nightly rating: off");
+  assert.equal(button(stored, "menu:fusw").text, "💬 Follow-up: off");
+  assert.equal(button(stored, "menu:rtt").text, "🕛 Rating time: 23:30");
+  assert.equal(button(stored, "menu:em").text, "🧠 Enrich: sonnet 5");
+  assert.equal(button(stored, "menu:vfm").text, "🎤 VF model: haiku 4.5");
+});
+
+test("/menu sends a fresh root menu and retires the chat's previous one", async () => {
+  const h = await botHarness();
+  const first = await h.say("/menu");
+  assert.equal(
+    first.rendered,
+    "repo.getSetting×6 > repo.ratingTime > tg.sendMessage",
+  );
+  const sent = call(first, "sendMessage");
+  assert.equal(sent?.text, "🗂 scriba control menu");
+  assert.ok(button(sent, "menu:close"));
+
+  const second = await h.say("/menu");
+  assert.equal(
+    second.rendered,
+    "tg.deleteMessage > repo.getSetting×6 > repo.ratingTime > tg.sendMessage",
+  );
+  // The recording api numbers sent messages from 900 up, so 900 is the first menu.
+  assert.equal(second.calls[0]?.payload.message_id, 900);
+});
+
+test("the rating and follow-up buttons each switch their own setting and redraw from the value just written", async () => {
+  const h = await botHarness();
+  const first = await h.tap("menu:rtsw");
+  assert.equal(h.settings.get("nightlyRating"), "off");
+  assert.equal(h.settings.has("nightlyFollowup"), false);
+  assert.deepEqual(answers(first), ["Nightly rating off"]);
+  assert.equal(edit(first)?.text, "🗂 scriba control menu");
+  assert.equal(button(edit(first), "menu:rtsw").text, "🌙 Nightly rating: off");
+
+  const second = await h.tap("menu:rtsw");
+  assert.equal(h.settings.get("nightlyRating"), "on");
+  assert.deepEqual(answers(second), ["Nightly rating on"]);
+  assert.equal(button(edit(second), "menu:rtsw").text, "🌙 Nightly rating: on");
+
+  const followup = await (await withStored({ nightlyFollowup: "off" })).tap(
+    "menu:fusw",
+  );
+  assert.deepEqual(answers(followup), ["Follow-up on"]);
+  assert.equal(button(edit(followup), "menu:fusw").text, "💬 Follow-up: on");
+});
+
+test("the voice-fix button toggles the stored value, defaulting to on from unset", async () => {
+  const h = await botHarness();
+  const first = await h.tap("menu:vfix");
+  assert.equal(h.settings.get("fixVoiceTranscript"), "on");
+  assert.deepEqual(answers(first), ["Voice fix on"]);
+  assert.equal(button(edit(first), "menu:vfix").text, "🔧 Voice fix: on");
+  await h.tap("menu:vfix");
+  assert.equal(h.settings.get("fixVoiceTranscript"), "off");
+});
+
+test("a toggle keeps its write when the menu is gone, when the query expired, and when both are refused", async () => {
+  const gone = await botHarness();
+  gone.failApi.add("editMessageText");
+  const g = await gone.tap("menu:fusw");
+  assert.equal(gone.settings.get("nightlyFollowup"), "off");
+  assert.deepEqual(answers(g), ["Follow-up off"]);
+
+  const expired = await botHarness();
+  expired.failApi.add("answerCallbackQuery");
+  const e = await expired.tap("menu:rtsw");
+  assert.equal(expired.settings.get("nightlyRating"), "off");
+  assert.equal(button(edit(e), "menu:rtsw").text, "🌙 Nightly rating: off");
+
+  const both = await botHarness();
+  both.failApi.add("answerCallbackQuery");
+  both.failApi.add("editMessageText");
+  await both.tap("menu:fusw");
+  assert.equal(both.settings.get("nightlyFollowup"), "off");
+});
+
+test("a typed-value button sends a force reply with its marker and leaves the menu as it is", async () => {
+  const h = await botHarness();
+  for (const [data, kind] of [
+    ["menu:rtt", "rt"],
+    ["menu:esc", "es"],
+    ["menu:emc", "em"],
+    ["menu:vfc", "vfm"],
+  ] as const) {
+    const run = await h.tap(data);
+    assert.deepEqual(answers(run), ["Answer the prompt below ↓"], data);
+    assert.equal(edit(run), undefined, data);
+    const sent = run.calls.find((c) => c.method === "sendMessage")?.payload;
+    assert.equal(sent?.chat_id, OWNER);
+    assert.deepEqual(sent?.reply_markup, { force_reply: true });
+    assert.equal(parseWizardRef(sent?.text)?.kind, kind, data);
+  }
+});
+
+test("the model picker marks the current model, and a pick stores it, telling the enricher only for enrichment", async () => {
+  const h = await withStored({ enrichModel: "claude-sonnet-5" });
+  const models: string[] = [];
+  h.enricher.setModel = (m: string) => void models.push(m);
+  const picker = edit(await h.tap("menu:em"));
+  assert.equal(picker?.text, "🧠 Enrichment model\n\nCurrent: claude-sonnet-5");
+  assert.deepEqual(labels(picker), [
+    ["haiku 4.5"],
+    ["✅ sonnet 5"],
+    ["opus 5"],
+    ["✍️ Type a model"],
+    ["‹ Back"],
+    ["✖ Close"],
+  ]);
+  assert.ok(button(picker, "menu:ems:claude-opus-5"));
+
+  const pick = await h.tap("menu:ems:claude-opus-5");
+  assert.equal(h.settings.get("enrichModel"), "claude-opus-5");
+  assert.deepEqual(models, ["claude-opus-5"]);
+  assert.deepEqual(answers(pick), ["enrichment: opus 5"]);
+  assert.deepEqual(labels(edit(pick))[2], ["✅ opus 5"]);
+
+  const vf = await h.tap("menu:vfs:claude-haiku-4-5");
+  assert.equal(h.settings.get("voiceFixModel"), "claude-haiku-4-5");
+  assert.deepEqual(models, ["claude-opus-5"]);
+  assert.deepEqual(answers(vf), ["voice fix: haiku 4.5"]);
+  assert.equal(
+    edit(vf)?.text,
+    "🎤 Voice fix model\n\nCurrent: claude-haiku-4-5",
+  );
+
+  for (const stale of ["menu:ems", "menu:vfs:  "])
+    assert.deepEqual(answers(await h.tap(stale)), ["expired"], stale);
+});
+
+test("the entry-size screen marks the current preset, and the default applies when nothing is stored", async () => {
+  const stored = edit(
+    await (await withStored({ entryMaxChars: "560" })).tap("menu:esz"),
+  );
+  assert.deepEqual(labels(stored), [
+    ["140 chars"],
+    ["280 chars"],
+    ["✅ 560 chars"],
+    ["1000 chars"],
+    ["Don't split"],
+    ["✍️ Type a size"],
+    ["‹ Back"],
+    ["✖ Close"],
+  ]);
+  assert.ok(
+    stored?.text.includes(
+      "Entries longer than 560 characters are split into several journal lines.",
+    ),
+  );
+
+  const off = edit(
+    await (await withStored({ entryMaxChars: "0" })).tap("menu:esz"),
+  );
+  assert.ok(off?.text.includes("Splitting is off"));
+  assert.deepEqual(labels(off)[4], ["✅ Don't split"]);
+
+  const unset = edit(await (await botHarness()).tap("menu:esz"));
+  assert.deepEqual(labels(unset)[1], ["✅ 280 chars"]);
+});
+
+test("an entry-size tap stores the number and redraws; a bad payload expires and writes nothing", async () => {
+  const h = await botHarness();
+  const t = await h.tap("menu:ess:1000");
+  assert.deepEqual(answers(t), ["1000 chars"]);
+  assert.equal(h.settings.get("entryMaxChars"), "1000");
+  assert.deepEqual(labels(edit(t))[3], ["✅ 1000 chars"]);
+
+  assert.deepEqual(answers(await h.tap("menu:ess:0")), ["splitting off"]);
+  assert.equal(h.settings.get("entryMaxChars"), "0");
+  for (const bad of ["menu:ess", "menu:ess:abc", "menu:ess:-5", "menu:ess:2.5"])
+    assert.deepEqual(answers(await h.tap(bad)), ["expired"], bad);
+  assert.equal(h.settings.get("entryMaxChars"), "0");
+});
+
+test("closing clears the menu's buttons when Telegram refuses to delete it", async () => {
+  const h = await botHarness();
+  h.failApi.add("deleteMessage");
+  const stuck = edit(await h.tap("menu:close"));
+  assert.equal(stuck?.text, "🗂 Menu closed.");
+  assert.deepEqual(buttons(stuck), []);
+});
+
+test("the failed list shows each failure with a retry button, and says so when none failed", async () => {
+  const h = await botHarness();
+  h.repo.failedJots = [
+    sampleJot({ id: "f1", status: "failed", attempts: 3, error: "boom" }),
+  ];
+  const t = edit(await h.tap("menu:failed"));
+  assert.equal(t?.text, `⚠️ 1 failed:\nf1 [text] failed ×3 ${EM} boom`);
+  assert.deepEqual(callbacks(t), ["rt:f1", "menu:root", "menu:close"]);
+  assert.equal(
+    edit(await (await botHarness()).tap("menu:failed"))?.text,
+    "✅ nothing failed.",
+  );
+});
+
+test("maintenance actions run their command and show the result over the maintenance menu", async () => {
+  const h = await botHarness();
+  const screen = edit(await h.tap("menu:maint"));
+  assert.equal(screen?.text, "🛠 Maintenance");
+  assert.deepEqual(labels(screen), [
+    ["⚡ Flush", "🧹 Sweep"],
+    ["🔧 Unstick", "🔄 Retry all"],
+    ["‹ Back"],
+    ["✖ Close"],
+  ]);
+
+  const flush = edit(await h.tap("menu:flush"));
+  assert.equal(flush?.text, "⚡ flushed (0 queued)");
+  assert.ok(button(flush, "menu:retryall"));
+  assert.equal(edit(await h.tap("menu:sweep"))?.text, "🧹 sweep done");
+  h.repo.resetProcessing = 2;
+  assert.equal(edit(await h.tap("menu:unstick"))?.text, "🔧 unstuck 2 jots");
+});
+
+test("retry-all asks for confirmation, then requeues failed and abandoned jots", async () => {
+  const h = await botHarness();
+  const ask = edit(await h.tap("menu:retryall"));
+  assert.equal(ask?.text, "Requeue every failed jot?");
+  assert.deepEqual(callbacks(ask).slice(0, 2), [
+    "menu:retryally",
+    "menu:maint",
+  ]);
+
+  h.repo.resetFailed = 2;
+  const done = await h.tap("menu:retryally");
+  assert.equal(edit(done)?.text, "🔄 requeued 2 jots (incl. abandoned)");
+  assert.ok(done.events.includes("repo.resetFailed"));
+});
+
+test("the stats button offers a range picker, a range shows that window, and status shows the snapshot", async () => {
+  const h = await botHarness();
+  const picker = edit(await h.tap("menu:stats"));
+  assert.equal(picker?.text, "📈 Stats range:");
+  assert.deepEqual(callbacks(picker).slice(0, 3), [
+    "menu:stats:today",
+    "menu:stats:week",
+    "menu:stats:all",
+  ]);
+  const week = edit(await h.tap("menu:stats:week"));
+  assert.ok(week?.text.startsWith("📊 last 7 days\n"));
+  assert.deepEqual(callbacks(week), ["menu:stats", "menu:close"]);
+
+  const status = edit(await h.tap("menu:status"));
+  assert.ok(status?.text.startsWith("🩺 scriba 0.0.0 (0123456)"));
+  assert.deepEqual(callbacks(status), ["menu:root", "menu:close"]);
+});
+
+test("the link wizard and the jots browser still answer through the menu namespace", async () => {
+  const h: Harness = await botHarness();
+  assert.equal(edit(await h.tap("menu:jots"))?.text, "No jots yet.");
+  assert.ok(edit(await h.tap("menu:links"))?.text.startsWith("🔗 Link rules"));
+});

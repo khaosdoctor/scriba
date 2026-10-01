@@ -5,6 +5,7 @@ import type { ViewDeps } from "../index.ts";
 import { followupReply, parseFollowupRef } from "./followup.ts";
 import { habitReply } from "./habit.ts";
 import { parseTaskRef, taskReply } from "./task.ts";
+import { parseSettingsRef, wizardReply } from "./wizard.ts";
 
 type Reply = Filter<Context, "message:text">;
 
@@ -28,17 +29,13 @@ const claim = (owns: (prompt: string) => boolean) => (prompt: string) =>
   owns(prompt) ? prompt : null;
 
 /** The prompt replies in the order their owners get to claim one: habit value, follow-up
- *  question, link wizard step, task card prompt. */
-export function promptReplies({
-  habits,
-  rating,
-  jots,
-  menu,
-  tasks,
-}: ViewDeps): Composer<Context>[] {
+ *  question, settings prompt, link wizard step, task card prompt. */
+export function promptReplies(deps: ViewDeps): Composer<Context>[] {
+  const { habits, rating, jots, menu, tasks } = deps;
   return [
     replyTo(parseHabitRef, habitReply(habits)),
     replyTo(parseFollowupRef, followupReply(rating, jots)),
+    replyTo(parseSettingsRef, wizardReply(deps)),
     replyTo(
       claim((prompt) => menu.isWizardPrompt(prompt)),
       (ctx, prompt) => menu.handleWizardReply(ctx, prompt),

@@ -8,6 +8,7 @@ import { flush } from "./flush.ts";
 import { habitsCommand } from "./habits.ts";
 import { help } from "./help.ts";
 import { jot } from "./jot.ts";
+import { menuCommand } from "./menu.ts";
 import { rate } from "./rate.ts";
 import { rejections } from "./rejections.ts";
 import { reprocess } from "./reprocess.ts";
@@ -56,13 +57,7 @@ function flow(
 /** Every slash command, in the order Telegram's `/` menu and /help list them. */
 export const COMMANDS: CommandView[] = [
   start,
-  flow(
-    "menu",
-    "Open the interactive control menu",
-    ({ menu }) =>
-      (ctx) =>
-        menu.open(ctx),
-  ),
+  menuCommand,
   rate,
   habitsCommand,
   reprocess,

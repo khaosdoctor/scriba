@@ -3,6 +3,7 @@ import { COMMAND_NS } from "../../flows/command.ts";
 import type { ViewDeps } from "../index.ts";
 import { followupView } from "./followup.ts";
 import { habitsView } from "./habits.ts";
+import { menuView } from "./menu.ts";
 import { namespace } from "./namespace.ts";
 import { ratingView } from "./rating.ts";
 import { reprocessView } from "./reprocess.ts";
@@ -12,20 +13,12 @@ import { unrejectView } from "./unreject.ts";
 
 /** One view per callback namespace, with the empty answer for an unknown namespace last so
  *  a stale button never leaves its spinner running. */
-export function callbackViews({
-  menu,
-  command,
-  tasks,
-  jotController,
-  rating,
-  habits,
-  jots,
-  admin,
-}: ViewDeps): Composer<Context>[] {
+export function callbackViews(deps: ViewDeps): Composer<Context>[] {
+  const { command, tasks, jotController, rating, habits, jots, admin } = deps;
   const unknown = new Composer<Context>();
   unknown.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
   return [
-    namespace("menu", (ctx, rest) => menu.handleCallback(ctx, rest)),
+    menuView(deps),
     namespace("vf", (ctx, [verdict, jotId]) =>
       jots.handleVoiceFix(ctx, verdict, jotId),
     ),
