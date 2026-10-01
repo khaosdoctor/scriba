@@ -33,10 +33,10 @@ function replyTo<T>(
 /** The prompt replies in the order their owners get to claim one: habit value, follow-up
  *  question, settings prompt, link wizard step, task card prompt. */
 export function promptReplies(deps: ViewDeps): Composer<Context>[] {
-  const { habits, rating, jots, tasks } = deps;
+  const { habits, rating, jotController, tasks } = deps;
   return [
     replyTo(parseHabitRef, habitReply(habits)),
-    replyTo(parseFollowupRef, followupReply(rating, jots)),
+    replyTo(parseFollowupRef, followupReply(rating, jotController)),
     replyTo(parseSettingsRef, wizardReply(deps)),
     replyTo(parseLinkRef, linkReply(deps)),
     replyTo(parseTaskRef, taskReply(tasks)),

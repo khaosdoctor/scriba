@@ -9,7 +9,6 @@ import type { SettingsController } from "../controllers/settings.ts";
 import type { TaskController } from "../controllers/tasks.ts";
 import type { Jot } from "../db.ts";
 import { logger } from "../log.ts";
-import type { JotKind } from "../models/domain.ts";
 import { callbackViews } from "./callbacks/index.ts";
 import { COMMANDS } from "./commands/index.ts";
 import { type ErrorDeps, errorHandler } from "./errors.ts";
@@ -24,21 +23,12 @@ import { voiceView } from "./messages/voice.ts";
 
 const log = logger("bot");
 
-/** The jot handlers the message and callback views call back into. */
+/** The edit handlers the message and callback views still call back into on the bot. */
 export interface JotHandlers {
-  intake(
-    ctx: Context,
-    kind: JotKind,
-    src: { rawText?: string; fileId?: string; day?: string },
-  ): Promise<void>;
-  intakeMedia(ctx: Context, kind: JotKind, fileId: string): Promise<void>;
   spokenTask(ctx: Context, fileId: string): Promise<void>;
   handleEdit(ctx: Context): Promise<void>;
   applyMessageEdit(ctx: Context, edited: string): Promise<void>;
   handleDeleteCommand(ctx: Context): Promise<void>;
-  handleMergeReaction(ctx: Context): Promise<void>;
-  handleVoiceFix(ctx: Context, verdict?: string, jotId?: string): Promise<void>;
-  handleRetry(ctx: Context, jotId?: string): Promise<void>;
   handleRemove(
     ctx: Context,
     jotId: string | undefined,

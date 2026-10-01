@@ -1,8 +1,10 @@
 // Pure jot helpers: deterministic, token-free, unit-tested in isolation.
 import { randomBytes } from "node:crypto";
 import type { Jot, JotKind, JotSection, JotStatus } from "../models/domain.ts";
+import type { StatusButtons } from "../models/ops.ts";
 import { isEmbeddableUrl } from "./links.ts";
 import { stripTilPrefix } from "./note.ts";
+import { escapeHtml } from "./text.ts";
 
 /** Fixed 8-char hex id, also used as the Obsidian block anchor. */
 export function makeJotId(): string {
@@ -140,4 +142,93 @@ export function parseLiteralEdit(
  *  appearance is preserved. */
 export function reprocessTargets(jots: Pick<Jot, "anchor">[]): string[] {
   return [...new Set(jots.map((j) => j.anchor))];
+}
+
+// --- status message texts and buttons ---
+
+/** The buttons under a jot's status message, as Telegram's inline keyboard markup. Empty
+ *  (which clears any existing keyboard) when none is asked for, so a message that's no
+ *  longer actionable stops offering actions. */
+export function statusKeyboard(jotId: string, opts?: StatusButtons) {
+  const row: { text: string; callback_data: string }[] = [];
+  if (opts?.undo) row.push({ text: "↩️ Undo", callback_data: `un:${jotId}` });
+  if (opts?.embed === "embed")
+    row.push({ text: "🖼 Embed", callback_data: `em:${jotId}:1` });
+  if (opts?.embed === "plain")
+    row.push({ text: "🔗 Plain link", callback_data: `em:${jotId}:0` });
+  if (opts?.retry) row.push({ text: "🔄 Retry", callback_data: `rt:${jotId}` });
+  if (opts?.discard)
+    row.push({ text: "🗑 Delete", callback_data: `dl:${jotId}` });
+  return { inline_keyboard: [row] };
+}
+
+/** `total` is the number of jots folded into one line (leader + followers); 0 means no
+ *  squash. The single confirmation notes it so the merge is explained. */
+export function squashLine(total: number): string {
+  return total > 1 ? `\n🧵 ${total} jots squashed into one entry` : "";
+}
+
+/** Final in-chat confirmation once a jot is written: the saved line blockquoted with its
+ *  time so it is easy to spot. HTML parse mode: content is escaped. */
+export function doneMessage(
+  time: string,
+  kind: JotKind,
+  textPart: string,
+  id: string,
+  squashedTotal = 0,
+  part?: { i: number; of: number },
+): string {
+  // `part` is set when the text was too long and got split: each piece is its own jot with
+  // its own message, so say which one this is.
+  const split = part ? `\n✂️ part ${part.i} of ${part.of}` : "";
+  return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squashLine(squashedTotal)}${split}`;
+}
+
+// A failure message is only as useful as what you can do about it, and both messages below
+// are posted with 🔄 Retry / 🗑 Delete under them. An error string can be a whole stack
+// trace, which would push the message past Telegram's limit, so it's cut here.
+const ERROR_PREVIEW_CHARS = 400;
+
+const errorBlock = (error: string) => {
+  const text = error.trim() || "(no error message)";
+  const cut = text.length > ERROR_PREVIEW_CHARS;
+  return `<code>${escapeHtml(cut ? `${text.slice(0, ERROR_PREVIEW_CHARS)}…` : text)}</code>`;
+};
+
+/** Status line for a jot that failed on a transient error and is still in the retry cycle.
+ *  Without this the message stays on "Weaving it into your journal…" until the retry pass
+ *  comes round, which reads as a jot that's stuck rather than one that's waiting. */
+export function retryNotice(
+  kind: JotKind,
+  attempts: number,
+  max: number,
+  error: string,
+): string {
+  const left = Math.max(0, max - attempts);
+  const more = left === 1 ? "one more try" : `${left} more tries`;
+  return `⚠️ That ${kind} jot didn't go through (attempt ${attempts} of ${max}). I'll try again on my own — ${more} left, or decide it now.\n${errorBlock(error)}`;
+}
+
+/** Status line for a jot held back because every enrichment model is down. It keeps its
+ *  place in the note and isn't charged a retry; the retry pass picks it up once one is back. */
+export function heldNotice(kind: JotKind): string {
+  return `⏸ Every enrichment model is down right now, so this ${kind} jot is waiting. It goes into your journal on its own once one is back.`;
+}
+
+/** Status line once a jot is given up on. The text is in the note un-enriched, so what's
+ *  left to decide is whether to run it again or take it out. */
+export function gaveUpMessage(
+  kind: JotKind,
+  reason: string,
+  error: string,
+  squashedTotal = 0,
+): string {
+  return `⚠️ Gave up on a ${kind} jot (${reason}). Posted it un-enriched.\n${errorBlock(error)}${squashLine(squashedTotal)}`;
+}
+
+/** In-chat confirmation after an edit is applied: the corrected line blockquoted so the
+ *  new text is visible immediately rather than a bare "updated". HTML parse mode: content
+ *  is escaped. */
+export function editConfirmation(time: string, text: string): string {
+  return `✏️ Updated\n<blockquote>🕒 ${time} · ${escapeHtml(text.trim() || "…")}</blockquote>`;
 }

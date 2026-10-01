@@ -13,22 +13,16 @@ import {
   anchorLine,
   assetEmbed,
   deleteAnchorLine,
-  editConfirmation,
   editedJotText,
   embedOffer,
-  entitiesToMarkdown,
-  escapeHtml,
   isEditableJot,
   journalLine,
-  makeJotId,
   parseLiteralEdit,
-  placeholderLine,
   setEmbeds,
   stripJournalLine,
-  stripTilPrefix,
-  withinSquashWindow,
 } from "./core.ts";
-import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
+import type { Jot, Repository } from "./db.ts";
+import { editConfirmation } from "./lib/jot.ts";
 import type { Scheduler } from "./lib/scheduler.ts";
 import type { TaskDraft } from "./lib/tasks.ts";
 import { logger } from "./log.ts";
@@ -44,7 +38,6 @@ import { TaskNotesService } from "./services/task-notes.ts";
 import type { FallbackTranscriber } from "./services/transcribe.ts";
 import { VaultTools } from "./services/vault.ts";
 import { WebService } from "./services/web.ts";
-import { dayBounds, plainDate, plainTime } from "./time.ts";
 import { Chat } from "./views/chat.ts";
 import { COMMANDS } from "./views/commands/index.ts";
 import { taskMessage } from "./views/commands/task.ts";
@@ -71,27 +64,6 @@ const MIME: Record<string, string> = {
   webm: "video/webm",
 };
 
-/** Set (in place of ✍) on a squashed follower's message, marking it as slated to merge
- *  into the previous jot's line. Telegram bots can set at most one reaction per message
- *  (non-Premium), so this replaces rather than joins the receipt ack. Reacting with 🤝
- *  yourself — your own reaction alongside the bot's, a distinct reactor — is the opt-out:
- *  it pulls the jot back out into its own line. Too late once the batch has already
- *  flushed and folded it in. */
-const MERGE_EMOJI = "🤝" as const;
-
-/** The buttons under a jot's status message. Empty (which clears any existing keyboard)
- *  when none is asked for, so a message that's no longer actionable stops offering
- *  actions. */
-function jotButtons(jotId: string, opts?: StatusButtons): InlineKeyboard {
-  const kb = new InlineKeyboard();
-  if (opts?.undo) kb.text("↩️ Undo", `un:${jotId}`);
-  if (opts?.embed === "embed") kb.text("🖼 Embed", `em:${jotId}:1`);
-  if (opts?.embed === "plain") kb.text("🔗 Plain link", `em:${jotId}:0`);
-  if (opts?.retry) kb.text("🔄 Retry", `rt:${jotId}`);
-  if (opts?.discard) kb.text("🗑 Delete", `dl:${jotId}`);
-  return kb;
-}
-
 /** All Telegram wiring. Long polling, no webhook. Implements BotServices so the
  *  processor can notify, ask link questions, download files, and apply queued edits. */
 export class ScribaBot implements BotServices {
@@ -104,16 +76,6 @@ export class ScribaBot implements BotServices {
   private tasks: TaskController;
   private jotController: JotController;
   private adminController!: AdminController;
-  // jotId -> the live status message we edit in place through the jot's lifecycle.
-  // ponytail: in-memory. On restart the map is empty and status() just posts a fresh
-  // message; nothing is lost. Persist it only if that ever proves annoying.
-  private statusMsgs = new Map<string, number>();
-  // Voice-fix choice: jotId -> resolve callback. The processor awaits this promise while
-  // the user picks between original and proposed transcript.
-  private voiceFixPending = new Map<
-    string,
-    (choice: "original" | "proposed") => void
-  >();
 
   constructor(
     private repo: Repository,
@@ -178,8 +140,9 @@ export class ScribaBot implements BotServices {
       repo,
       obsidian,
       notifier: this.chat,
-      // The queue is built after this bot (it needs it), so it is read per retry.
+      // The queue is built after this bot (it needs it), so it is read per call.
       queue: { add: (ids) => this.queue.add(ids) },
+      squashWindowMs: config.squash.windowMs,
     });
     registerViews(this.bot, {
       ownerId: config.telegram.allowedUserId,
@@ -195,8 +158,6 @@ export class ScribaBot implements BotServices {
       admin: () => this.adminController,
       errors: {
         jotForMessage: (messageId) => this.repo.jotForMessage(messageId),
-        failureButtons: (jotId) =>
-          jotButtons(jotId, { retry: true, discard: true }),
       },
     });
   }
@@ -282,105 +243,24 @@ export class ScribaBot implements BotServices {
     await this.jotController.askTil(jotId, text);
   }
 
-  /** Show both transcript versions and wait for the user to pick one. Returns
-   *  'original' or 'proposed'. Times out to 'original' after 5 minutes. */
-  async awaitVoiceFix(
+  awaitVoiceFix(
     jotId: string,
     original: string,
     proposed: string,
   ): Promise<"original" | "proposed"> {
-    const kb = new InlineKeyboard()
-      .text("📝 Use original", `vf:o:${jotId}`)
-      .text("✨ Use fixed", `vf:p:${jotId}`);
-    const html = [
-      "<b>Original transcript:</b>",
-      `<i>${escapeHtml(original)}</i>`,
-      "",
-      "<b>Proposed fix:</b>",
-      `<i>${escapeHtml(proposed)}</i>`,
-    ].join("\n");
-    await this.showStatus(jotId, html, kb);
-    return new Promise<"original" | "proposed">((resolve) => {
-      this.voiceFixPending.set(jotId, resolve);
-      // 5-minute timeout: fall back to original so processing never stalls.
-      setTimeout(
-        () => {
-          if (this.voiceFixPending.delete(jotId)) {
-            log.info({ jotId }, "voice fix: timed out, using original");
-            resolve("original");
-          }
-        },
-        5 * 60 * 1000,
-      );
-    });
+    return this.jotController.awaitVoiceFix(jotId, original, proposed);
   }
 
-  /** Create-or-edit the one live status message for a jot. First call sends it and
-   *  remembers the message id; later calls edit that same message in place, so the
-   *  chat reads as a clean audit trail instead of a stream of notifications.
-   *  `undo: true` attaches an undo button, `embed` the embed toggle; `retry`/`discard`
-   *  attach the failure pair; otherwise any button is cleared. */
-  async status(
-    jotId: string,
-    html: string,
-    opts?: StatusButtons,
-  ): Promise<void> {
-    await this.showStatus(jotId, html, jotButtons(jotId, opts));
+  status(jotId: string, html: string, opts?: StatusButtons): Promise<void> {
+    return this.jotController.status(jotId, html, opts);
   }
 
-  private async showStatus(
-    jotId: string,
-    html: string,
-    keyboard: InlineKeyboard,
-  ): Promise<void> {
-    const existing = this.statusMsgs.get(jotId);
-    const opts = { html: true, keyboard };
-    if (existing) {
-      try {
-        await this.chat.edit(existing, html, opts);
-        log.debug({ jotId, messageId: existing }, "status edited");
-        return;
-      } catch (err) {
-        log.warn(
-          { jotId, messageId: existing, err },
-          "status edit failed, sending a fresh one",
-        );
-      }
-    }
-    const messageId = await this.chat.send(html, opts);
-    this.statusMsgs.set(jotId, messageId);
-    // Map the bot's status message to the jot too, so a reply to it edits the jot
-    // just like a reply to the original message (e.g. the transcribed audio note).
-    await this.repo.mapMessage(messageId, jotId);
-    log.debug({ jotId, messageId }, "status message sent");
+  deleteStatus(jotId: string): Promise<void> {
+    return this.jotController.deleteStatus(jotId);
   }
 
-  /** Delete a jot's live status message, if it has one. Best-effort: used on a squash
-   *  to collapse any stray per-follower message into the leader's single confirmation. */
-  async deleteStatus(jotId: string): Promise<void> {
-    const messageId = this.statusMsgs.get(jotId);
-    if (!messageId) return;
-    this.statusMsgs.delete(jotId);
-    await this.repo.unmapMessage(messageId); // no stale reply-map to a gone message
-    try {
-      await this.chat.delete(messageId);
-      log.info({ jotId, messageId }, "deleted stray status message (squash)");
-    } catch (err) {
-      log.warn({ jotId, messageId, err }, "failed to delete status message");
-    }
-  }
-
-  /** Swap the intake reaction on a jot's message to reflect its outcome.
-   *  Telegram only allows a fixed emoji set for reactions, so ⏳/✅/❌ aren't
-   *  available — ✍ (received), 👌 (done), 🤔 (retrying), 😱 (failed) are the closest. */
-  async react(
-    jotId: string,
-    state: "done" | "failed" | "retrying",
-  ): Promise<void> {
-    const messageId = await this.repo.messageForJot(jotId);
-    if (!messageId) return;
-    const emoji = state === "done" ? "👌" : state === "retrying" ? "🤔" : "😱";
-    await this.chat.react(messageId, emoji);
+  react(jotId: string, state: "done" | "failed" | "retrying"): Promise<void> {
+    return this.jotController.react(jotId, state);
   }
 
   async typing(): Promise<void> {
@@ -476,156 +356,6 @@ export class ScribaBot implements BotServices {
     const text = await this.transcriber.transcribe(file.bytes, file.ext);
     log.info({ chars: text.length }, "task mode: voice note transcribed");
     await taskMessage(ctx, this.tasks, text);
-  }
-
-  /** Attachment intake (image/video): save + embed the file, keeping the caption as the
-   *  jot's text (an image's caption is the entry itself; a video's is its embed display).
-   *  Returns the intake promise so a rejection reaches bot.catch. */
-  intakeMedia(ctx: any, kind: JotKind, fileId: string): Promise<void> {
-    const markdown = entitiesToMarkdown(
-      ctx.message.caption ?? "",
-      ctx.message.caption_entities,
-    );
-    return this.intake(ctx, kind, { fileId, rawText: markdown });
-  }
-
-  async intake(
-    ctx: any,
-    kind: JotKind,
-    src: { rawText?: string; fileId?: string; day?: string },
-  ): Promise<void> {
-    // `day` files the jot under another day's note (the follow-up after rating yesterday):
-    // the last second of that day, so it reads as the day's final entry.
-    const sent = ctx.message.date * 1000;
-    const epochMs =
-      src.day && src.day !== plainDate(sent)
-        ? dayBounds(src.day)[1] - 1000
-        : sent;
-    const id = makeJotId();
-    const date = plainDate(epochMs);
-    const time = plainTime(epochMs);
-    // dailyPath is pure (no REST call), so the row can be persisted even when Obsidian is
-    // down. ensureDailyNote + the placeholder write happen after, and writeLine recreates
-    // the note on flush, so a failed placeholder self-heals.
-    const notePath = this.obsidian.dailyPath(date);
-    const tilText = kind === "text" ? stripTilPrefix(src.rawText ?? "") : null;
-    const section: JotSection = tilText === null ? "journal" : "til";
-    const rawText = tilText ?? src.rawText;
-
-    // Squash a rapid burst: a text/voice jot arriving within the squash window of the
-    // previous still-pending text/voice jot in this note folds into that jot's line —
-    // it shares the leader's anchor and skips its own placeholder, so the processor
-    // (which groups by anchor) enriches them into one line. Ordering never changes: the
-    // leader's placeholder is already in place. Attach-only kinds never squash. Decided
-    // before the ack reaction below, so a squashed follower gets the 🤝 marker on the
-    // same react() call instead of a second round-trip.
-    let anchor = id;
-    let squashed = false;
-    // A follow-up answer (`day`) is stamped with the day's last second, so two of them would
-    // always look like one burst: they are deliberate entries and never squash.
-    if (!src.day && (kind === "text" || kind === "audio")) {
-      const prev = await this.repo.lastPendingEnrichableJot(notePath, section);
-      if (
-        prev &&
-        withinSquashWindow(prev.received_at, epochMs, config.squash.windowMs)
-      ) {
-        anchor = prev.anchor;
-        squashed = true;
-        log.info(
-          { id, into: anchor, gapMs: epochMs - prev.received_at },
-          "jot squashed into open run",
-        );
-      }
-    }
-
-    // Ack receipt with a reaction (✍ = received/awaiting) — best-effort, intake
-    // proceeds if it fails. Swapped to 👌/😱 by react() once processing settles. A
-    // squashed follower gets 🤝 instead, marking it for merge; reacting with 🤝
-    // yourself pulls it back out (handleMergeReaction). Telegram bots can set only one
-    // reaction per message (non-Premium) — setting both here would silently no-op.
-    await ctx.react(squashed ? MERGE_EMOJI : "✍").catch(() => {});
-    log.info(
-      { id, kind, date, time, hasFile: !!src.fileId, hasText: !!src.rawText },
-      "jot received",
-    );
-
-    const now = Date.now();
-    const jot: Jot = {
-      id,
-      kind,
-      note_path: notePath,
-      anchor,
-      time,
-      raw_text: rawText ?? null,
-      transcript: null,
-      proposed_text: null,
-      section,
-      asset_path: null,
-      file_id: src.fileId ?? null,
-      status: "pending",
-      attempts: 0,
-      error: null,
-      received_at: epochMs,
-      updated_at: now,
-    };
-    // Insert the DB row (pending) BEFORE writing the placeholder line. A crash between the
-    // two then leaves a row with no line — which self-heals, since writeLine falls back to
-    // appendJournalLine on a missing anchor. The reverse (a line with no row) would orphan
-    // a placeholder no sweep can find.
-    await this.repo.insertJot(jot);
-    // Map the message BEFORE the network write below so the jot is retryable even if the
-    // placeholder write throws (Obsidian down): bot.catch finds this jot by message id and
-    // offers a retry button. Queueing stays last so ordering matches the normal path.
-    await this.repo.mapMessage(ctx.message.message_id, id);
-    // A squashed follower reuses the leader's placeholder — writing its own would add a
-    // second line the processor would then have to reconcile away.
-    if (squashed) {
-      log.debug({ id, anchor }, "squashed — reusing leader placeholder");
-    } else {
-      await this.obsidian.ensureDailyNote(date);
-      await this.obsidian.appendJournalLine(
-        date,
-        placeholderLine(time, id),
-        section,
-      );
-      log.debug({ id, notePath }, "placeholder line written");
-    }
-    this.queue.add([id]);
-    log.debug({ id }, "jot queued for flush");
-  }
-
-  /** The user tapping 🤝 on a squashed follower's own message — opting it out of the
-   *  merge. Only takes effect while the jot is still pending; `unsquash` is the
-   *  compare-and-swap that enforces that atomically, so a tap racing the leader's flush
-   *  loses cleanly rather than double-posting the follower's text. */
-  async handleMergeReaction(ctx: any): Promise<void> {
-    if (!ctx.reactions().emojiAdded.includes(MERGE_EMOJI)) return;
-    const messageId = ctx.messageReaction?.message_id;
-    const jotId = messageId
-      ? await this.repo.jotForMessage(messageId)
-      : undefined;
-    if (!jotId) return;
-    const jot = await this.repo.getJot(jotId);
-    if (!jot || jot.anchor === jot.id) return; // not a squashed follower, nothing to opt out of
-    if (!(await this.repo.unsquash(jotId))) {
-      log.info(
-        { jotId },
-        "merge opt-out too late — already folded into the leader",
-      );
-      await this.notify("🤝 too late — that one's already merged in.");
-      return;
-    }
-    log.info(
-      { jotId, formerLeader: jot.anchor },
-      "merge opt-out — jot pulled back into its own line",
-    );
-    await this.obsidian.ensureDailyNote(plainDate(jot.received_at));
-    await this.obsidian.appendJournalLine(
-      plainDate(jot.received_at),
-      placeholderLine(jot.time, jotId),
-      jot.section,
-    );
-    await ctx.react("✍").catch(() => {});
   }
 
   async handleEdit(ctx: any): Promise<void> {
@@ -867,51 +597,6 @@ export class ScribaBot implements BotServices {
       undo: true,
       embed: embedOffer(text),
     });
-  }
-
-  /** 🔄 Retry on a failed jot's status message: reset its attempts and queue it now,
-   *  rather than waiting for the sweep. */
-  async handleRetry(ctx: any, jotId?: string): Promise<void> {
-    const jot = jotId ? await this.repo.getJot(jotId) : undefined;
-    if (!jot) {
-      log.warn({ jotId }, "retry: jot is gone");
-      return void ctx.answerCallbackQuery({ text: "gone" });
-    }
-    // 🗑 Delete sits right next to this button, so a stray tap must not put back the
-    // line the user just took out.
-    if (jot.status === "deleted") {
-      log.warn({ jotId }, "retry: jot was deleted");
-      return void ctx.answerCallbackQuery({ text: "deleted — not retrying" });
-    }
-    log.info({ jotId, status: jot.status }, "manual retry requested");
-    await this.repo.resetForRetry(jot.id);
-    this.queue.add([jot.id]);
-    await ctx.answerCallbackQuery({ text: "retrying" });
-    await ctx.editMessageText("🔄 retrying…");
-  }
-
-  /** Voice-fix button: `vf:o:<jotId>` picks original, `vf:p:<jotId>` picks proposed. */
-  async handleVoiceFix(
-    ctx: any,
-    verdict?: string,
-    jotId?: string,
-  ): Promise<void> {
-    if (!jotId || !verdict) return void ctx.answerCallbackQuery();
-    const resolve = this.voiceFixPending.get(jotId);
-    if (!resolve) {
-      log.warn(
-        { jotId },
-        "voice fix: no pending choice (timed out or duplicate)",
-      );
-      return void ctx.answerCallbackQuery({ text: "expired" });
-    }
-    this.voiceFixPending.delete(jotId);
-    const choice = verdict === "p" ? "proposed" : "original";
-    log.info({ jotId, choice }, "voice fix: user picked");
-    await ctx.answerCallbackQuery({
-      text: choice === "proposed" ? "using fixed version" : "keeping original",
-    });
-    resolve(choice);
   }
 
   async handleLink(ctx: any, verd?: string, pid?: string): Promise<void> {

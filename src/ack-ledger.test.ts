@@ -160,13 +160,13 @@ ledger("vf", [
   {
     tap: `vf:o:${ID}`,
     when: "keep the original",
-    setup: (h) => h.bot.voiceFixPending.set(ID, () => {}),
+    setup: (h) => h.bot.jotController.voiceFixPending.set(ID, () => {}),
     expect: "ack(keeping original)",
   },
   {
     tap: `vf:p:${ID}`,
     when: "use the fixed version",
-    setup: (h) => h.bot.voiceFixPending.set(ID, () => {}),
+    setup: (h) => h.bot.jotController.voiceFixPending.set(ID, () => {}),
     expect: "ack(using fixed version)",
   },
   { tap: `vf:o:${ID}`, when: "no pending choice", expect: "ack(expired)" },

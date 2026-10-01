@@ -237,7 +237,7 @@ async function openVoiceFix(h: Awaited<ReturnType<typeof harness>>) {
     "a <b> original",
     "the fixed one",
   );
-  while (!h.bot.voiceFixPending.has(ID)) await tick();
+  while (!h.bot.jotController.voiceFixPending.has(ID)) await tick();
   return pending;
 }
 
@@ -276,7 +276,7 @@ test("tapping a voice-fix button resolves the wait with that choice", async (t) 
     await h.tap(data);
     assert.equal(await pending, choice);
     assert.deepEqual(h.answers(), [toast]);
-    assert.equal(h.bot.voiceFixPending.has(ID), false);
+    assert.equal(h.bot.jotController.voiceFixPending.has(ID), false);
   }
 });
 
@@ -287,7 +287,7 @@ test("an unanswered voice-fix prompt falls back to the original after five minut
   await tick();
   t.mock.timers.tick(5 * 60 * 1000);
   assert.equal(await pending, "original");
-  assert.equal(h.bot.voiceFixPending.has(ID), false);
+  assert.equal(h.bot.jotController.voiceFixPending.has(ID), false);
 
   await h.tap(`vf:p:${ID}`);
   assert.deepEqual(h.answers(), ["expired"]);

@@ -1,17 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  doneMessage,
-  editConfirmation,
   formatJotDetail,
-  gaveUpMessage,
   jotPreview,
   parseEntrySize,
   parseWizardRef,
   previewList,
   ratingDay,
-  retryNotice,
-  TELEGRAM_LIMIT,
   WIZARD_ENTRYSIZE_REF,
   WIZARD_NOTE_REF,
   WIZARD_RATING_TIME_REF,
@@ -20,16 +15,6 @@ import {
 } from "./core.ts";
 import type { Jot } from "./models/domain.ts";
 
-test("doneMessage marks which piece a split jot is", () => {
-  const one = doneMessage("10:00:00", "text", "hi", "a1b2c3d4");
-  assert.ok(!one.includes("part"));
-  const piece = doneMessage("10:00:00", "text", "hi", "a1b2c3d4", 0, {
-    i: 2,
-    of: 3,
-  });
-  assert.ok(piece.includes("✂️ part 2 of 3"));
-});
-
 test("parseEntrySize validates a typed entry size", () => {
   assert.equal(parseEntrySize("280"), 280);
   assert.equal(parseEntrySize(" off "), 0);
@@ -37,39 +22,6 @@ test("parseEntrySize validates a typed entry size", () => {
   assert.equal(parseEntrySize("10"), null); // no sentence fits
   assert.equal(parseEntrySize("99999"), null);
   assert.equal(parseEntrySize("lots"), null);
-});
-
-test("doneMessage blockquotes the time and escapes content", () => {
-  assert.equal(
-    doneMessage("14:32:00", "text", "ran <5k> today", "a1b2c3d4"),
-    "✅ Saved to your journal\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>\n🔖 <code>a1b2c3d4</code>",
-  );
-});
-
-test("doneMessage notes a squash only when more than one jot merged", () => {
-  // 0/1 = no merge, no extra line; 2+ appends the squash count.
-  assert.ok(!doneMessage("14:32:00", "text", "x", "a1b2c3d4").includes("🧵"));
-  assert.ok(
-    !doneMessage("14:32:00", "text", "x", "a1b2c3d4", 1).includes("🧵"),
-  );
-  assert.match(
-    doneMessage("14:32:00", "text", "x", "a1b2c3d4", 3),
-    /🧵 3 jots squashed into one entry$/,
-  );
-});
-
-test("editConfirmation blockquotes the time and escapes content", () => {
-  assert.equal(
-    editConfirmation("14:32:00", "ran <5k> today"),
-    "✏️ Updated\n<blockquote>🕒 14:32:00 · ran &lt;5k&gt; today</blockquote>",
-  );
-});
-
-test("editConfirmation falls back to an ellipsis for a blank result (e.g. a delete)", () => {
-  assert.equal(
-    editConfirmation("14:32:00", "   "),
-    "✏️ Updated\n<blockquote>🕒 14:32:00 · …</blockquote>",
-  );
 });
 
 test("formatJotDetail shows full text and includes errors", () => {
@@ -160,39 +112,6 @@ test("jotPreview falls back to (kind) for a captionless attach-only jot", () => 
     jotPreview({ ...base, kind: "audio", transcript: "hello there" }, 5),
     "hello",
   );
-});
-
-test("retryNotice says where in the retry cycle a jot is", () => {
-  const out = retryNotice("audio", 2, 10, "fetch failed");
-  assert.match(out, /That audio jot didn't go through \(attempt 2 of 10\)/);
-  assert.match(out, /8 more tries left/);
-  assert.match(out, /<code>fetch failed<\/code>/);
-  // The last try before giving up reads as one, not "1 more tries".
-  assert.match(retryNotice("text", 9, 10, "boom"), /one more try left/);
-});
-
-test("gaveUpMessage names the reason and the burst it covers", () => {
-  const out = gaveUpMessage("text", "unrecoverable error", "bad json");
-  assert.match(out, /Gave up on a text jot \(unrecoverable error\)/);
-  assert.match(out, /Posted it un-enriched/);
-  assert.ok(!out.includes("squashed"));
-  assert.match(
-    gaveUpMessage("audio", "no luck after 10 tries", "boom", 3),
-    /🧵 3 jots squashed into one entry/,
-  );
-});
-
-test("a failure message escapes and caps the error it quotes", () => {
-  // An error is arbitrary text: it must not be able to inject markup…
-  assert.match(
-    retryNotice("text", 1, 10, "<b>nope</b> & co"),
-    /&lt;b&gt;nope&lt;\/b&gt; &amp; co/,
-  );
-  // …nor push the message past Telegram's limit with a whole stack trace.
-  const huge = gaveUpMessage("text", "unrecoverable error", "x".repeat(5000));
-  assert.ok(huge.length < TELEGRAM_LIMIT);
-  assert.match(huge, /x…<\/code>/);
-  assert.match(retryNotice("text", 1, 10, "   "), /no error message/);
 });
 
 test("previewList counts what it leaves out instead of cutting silently", () => {

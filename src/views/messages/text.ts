@@ -1,14 +1,14 @@
 import { Composer, type Context } from "grammy";
 import { taskMessage } from "../commands/task.ts";
 import type { ViewDeps } from "../index.ts";
-import { entitiesToMarkdown } from "../input.ts";
+import { intakeInput } from "../input.ts";
 import { promptReplies } from "../replies/index.ts";
 
 /** Plain text, in the order its owners claim it: a slash no command answered is dropped,
  *  command mode takes the whole stream, then the prompt replies, then task mode (replies
  *  included), then a reply edits its jot, and whatever is left is a journal intake. */
 export function textView(deps: ViewDeps): Composer<Context> {
-  const { command, modes, tasks, jots } = deps;
+  const { command, modes, tasks, jots, jotController } = deps;
   const view = new Composer<Context>();
   view.on("message:text", async (ctx, next) => {
     if (ctx.message.text.startsWith("/")) return;
@@ -26,9 +26,7 @@ export function textView(deps: ViewDeps): Composer<Context> {
     await next();
   });
   view.on("message:text", (ctx) =>
-    jots.intake(ctx, "text", {
-      rawText: entitiesToMarkdown(ctx.message.text, ctx.message.entities),
-    }),
+    jotController.intake(intakeInput(ctx.message)!),
   );
   return view;
 }

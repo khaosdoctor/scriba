@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { Api, BotError, Context, InlineKeyboard } from "grammy";
+import { Api, BotError, Context } from "grammy";
 import type { Update } from "grammy/types";
 import { BOT_INFO, recordingApi } from "../test/fakes.ts";
 import { errorHandler } from "./errors.ts";
@@ -29,10 +29,6 @@ function harness(jotId?: string, lookupFails = false) {
       if (lookupFails) throw new Error("db is locked");
       return jotId;
     },
-    failureButtons: (id) =>
-      new InlineKeyboard()
-        .text("🔄 Retry", `rt:${id}`)
-        .text("🗑 Delete", `dl:${id}`),
   });
   const fail = (error: unknown, update: object) =>
     handler(
