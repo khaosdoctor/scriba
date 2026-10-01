@@ -13,16 +13,14 @@ import {
   parseTasks,
   renderTaskLine,
   type Task,
-  taskButtonLabel,
-  taskCard,
   uncompleteTaskLine,
   weekBounds,
-} from "./parse.ts";
+} from "./tasks.ts";
 
 const WORK_TAG = "#type/todo/work";
 const TAG = "#type/todo";
 
-// Real lines out of the vault's two task notes — the parser has to survive exactly these.
+// Real lines out of the vault's two task notes: the parser has to survive exactly these.
 const NOTE = [
   "# Todos",
   "",
@@ -276,7 +274,7 @@ test("work is only work when it's said plainly", () => {
 });
 
 test("a date is found whatever language the task was typed in", () => {
-  // The vault is English, but a task is typed in whatever language it came to mind in —
+  // The vault is English, but a task is typed in whatever language it came to mind in,
   // and chrono only reads the locale it is handed.
   assert.deepEqual(parseTaskDraft("Comprar ração amanhã", TODAY), {
     description: "Comprar ração",
@@ -336,7 +334,7 @@ test("a task with no date at all keeps its whole text", () => {
     start: null,
     due: null,
   });
-  // A bare clock time is not a date — it stays in the description.
+  // A bare clock time is not a date, so it stays in the description.
   assert.equal(parseTaskDraft("gym at 7pm", TODAY).due, null);
 });
 
@@ -430,41 +428,6 @@ test("effectiveStart falls back to the deadline", () => {
   assert.equal(
     effectiveStart(task({ start: "2026-08-30", due: "2026-09-02" })),
     "2026-08-30",
-  );
-});
-
-test("the card and the row labels say what's missing", () => {
-  const card = taskCard({
-    description: "Buy cat sand",
-    type: "personal",
-    start: null,
-    due: null,
-  });
-  assert.match(card, /Due: — <i>\(needed\)<\/i>/);
-  assert.match(card, /🏠 Personal/);
-  assert.match(card, /Start: —/); // nothing to start from yet: no deadline either
-  // Given only a deadline, that is when it starts.
-  assert.match(
-    taskCard({
-      description: "x",
-      type: "work",
-      start: null,
-      due: "2026-09-02",
-    }),
-    /Start: 2026-09-02/,
-  );
-  assert.match(
-    taskCard({
-      description: "x",
-      type: "work",
-      start: "2026-09-01",
-      due: "2026-09-02",
-    }),
-    /Start: 2026-09-01/,
-  );
-  assert.equal(
-    taskButtonLabel(task({ text: "a".repeat(50) }), 3, 10),
-    `☐ 3. ${"a".repeat(9)}…`,
   );
 });
 

@@ -6,7 +6,7 @@ import {
   isNumericValue,
   parseHabitRef,
   parseHabits,
-} from "./parse.ts";
+} from "./habits.ts";
 
 const HABITS_NOTE = [
   "## Habits",
