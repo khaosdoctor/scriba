@@ -1,6 +1,6 @@
 import { type Api, type Context, InlineKeyboard } from "grammy";
 import type { InlineKeyboardMarkup, ReactionTypeEmoji } from "grammy/types";
-import { logger } from "../log.ts";
+import { logger } from "../lib/log.ts";
 import type { MessageOptions, Notifier } from "../models/ops.ts";
 
 const log = logger("chat");

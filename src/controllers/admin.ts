@@ -5,6 +5,7 @@ import { reprocessTargets } from "../lib/jot.ts";
 import { distinctSurfaces } from "../lib/links.ts";
 import { logger } from "../lib/log.ts";
 import type { PageView } from "../lib/page.ts";
+import type { FlushQueue } from "../lib/queue.ts";
 import { formatDuration, pluralize } from "../lib/text.ts";
 import { dayBounds, plainDate, startOfToday } from "../lib/time.ts";
 import {
@@ -13,7 +14,6 @@ import {
   TERMINAL_STATUSES,
 } from "../models/domain.ts";
 import type { Notifier, Stats, StatusCounts } from "../models/ops.ts";
-import type { FlushQueue } from "../runtime/queue.ts";
 import type { GithubReleases, ReleaseNote } from "../services/github.ts";
 import type { HealthMonitor, UpstreamStatus } from "../services/health.ts";
 import type { FallbackTranscriber } from "../services/transcribe.ts";

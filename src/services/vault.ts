@@ -10,7 +10,7 @@ import {
   sep,
 } from "node:path";
 import type { AliasEntry } from "../lib/links.ts";
-import { logger } from "../log.ts";
+import { logger } from "../lib/log.ts";
 import type { ObsidianClient } from "./obsidian.ts";
 
 const log = logger("vault");

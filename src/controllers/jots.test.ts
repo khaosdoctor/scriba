@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { moveAnchorLine, placeholderLine } from "../core.ts";
 import { type Jot, Repository } from "../db.ts";
+import { plainDate, plainTime, previousDate } from "../lib/time.ts";
 import type { IntakeInput } from "../models/domain.ts";
 import { removeDb, sampleJot, tempDbPath } from "../test/sqlite.ts";
-import { plainDate, plainTime, previousDate } from "../time.ts";
 import { JotController } from "./jots.ts";
 
 type Moved = "moved" | "no-line" | "no-heading";

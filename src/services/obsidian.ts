@@ -1,4 +1,5 @@
 import { Agent, fetch } from "undici";
+import { logger } from "../lib/log.ts";
 import {
   anchorLine,
   insertJournalLine,
@@ -6,7 +7,6 @@ import {
   replaceAnchorLine,
   setFrontmatterValue,
 } from "../lib/note.ts";
-import { logger } from "../log.ts";
 import type { JotSection } from "../models/domain.ts";
 
 const log = logger("obsidian");

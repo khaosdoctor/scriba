@@ -1,6 +1,6 @@
 // Pure link helpers: deterministic, token-free, unit-tested in isolation.
 import * as chrono from "chrono-node";
-import { dateFromIso, plainDate } from "../time.ts";
+import { dateFromIso, plainDate } from "./time.ts";
 
 /** URLs Obsidian renders inline when written as `![](url)`: YouTube videos, tweets and
  *  external images. Any other page needs an `<iframe>`, so it stays a plain link.

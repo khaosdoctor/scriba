@@ -3,11 +3,11 @@ import { clipUpdate } from "../lib/feed.ts";
 import { makeJotId, statusKeyboard, withinSquashWindow } from "../lib/jot.ts";
 import { logger } from "../lib/log.ts";
 import { placeholderLine, stripTilPrefix } from "../lib/note.ts";
+import type { FlushQueue } from "../lib/queue.ts";
 import { escapeHtml } from "../lib/text.ts";
 import { dayBounds, plainDate, plainTime } from "../lib/time.ts";
 import type { IntakeInput } from "../models/domain.ts";
 import type { Notifier, StatusButtons } from "../models/ops.ts";
-import type { FlushQueue } from "../runtime/queue.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = logger("bot");
