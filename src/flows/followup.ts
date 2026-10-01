@@ -12,8 +12,8 @@ import {
 } from "../core.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
+import { IsoDateSchema } from "../models/settings.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
-import { isValidDate } from "../time.ts";
 
 const log = logger("followup");
 
@@ -107,7 +107,7 @@ export class FollowupFlow {
   /** The Skip button on a prompt: take the question away and move on. */
   async handleTap(ctx: any, code?: string, date?: string): Promise<void> {
     const question = followupFromCode(code);
-    if (!question || !date || !isValidDate(date)) {
+    if (!question || !date || !IsoDateSchema.safeParse(date).success) {
       log.warn({ code, date }, "follow-up tap rejected: bad payload");
       return void ctx.answerCallbackQuery({ text: "bad follow-up" });
     }

@@ -1,5 +1,4 @@
 import { setFrontmatterValue } from "../core.ts";
-import type { TaskType } from "../db.ts";
 import {
   completeTaskLine,
   insertTaskLine,
@@ -12,6 +11,7 @@ import {
   uncompleteTaskLine,
 } from "../flows/tasks/parse.ts";
 import { logger } from "../log.ts";
+import type { TaskType } from "../models/domain.ts";
 import { plainDate } from "../time.ts";
 import type { ObsidianClient } from "./obsidian.ts";
 

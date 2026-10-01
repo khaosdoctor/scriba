@@ -1,87 +1,28 @@
 import knexLib, { type Knex } from "knex";
 import { logger } from "./log.ts";
+import {
+  JOT_STATUSES,
+  type Jot,
+  type JotSection,
+  type JotStatus,
+  MAX_ATTEMPTS,
+  type PendingLink,
+  type TaskDraftRow,
+  TERMINAL_STATUSES,
+} from "./models/domain.ts";
+import type { Stats, StatusCounts } from "./models/ops.ts";
 
 const log = logger("db");
 
-export type JotKind = "text" | "audio" | "image" | "video";
-export type JotSection = "journal" | "til";
-export const JOT_STATUSES = [
-  "pending", // placeholder written, awaiting processing
-  "processing", // claimed by a worker (atomic), in flight
-  "done", // enriched + written
-  "failed", // last attempt failed; retried until attempts hit the cap
-  "abandoned", // gave up (cap or unrecoverable); posted un-enriched
-  "deleted", // user removed the line (blank edit or /delete); terminal, never requeued
-] as const;
-export type JotStatus = (typeof JOT_STATUSES)[number];
-
-/** Finished processing and eligible for reprocess (deleted jots are not). */
-export const TERMINAL_STATUSES = [
-  "done",
-  "failed",
-  "abandoned",
-] as const satisfies readonly JotStatus[];
-
-export const MAX_ATTEMPTS = 10;
-
-/** Which task note a task belongs to. Personal is the default for anything not clearly
- *  work — see flows/tasks/parse.ts, which owns the rest of the task vocabulary. */
-export type TaskType = "work" | "personal";
-/** Where a draft came from: typed in task mode, or spotted in a journal entry. */
-export type TaskDraftSource = "mode" | "jot";
-/** `pending` until you decide: `created` once it's in the note, `cancelled` when you drop
- *  one you typed, `dismissed` when you tell scriba a detected one wasn't a task. */
-export type TaskDraftStatus = "pending" | "created" | "cancelled" | "dismissed";
-
-/** A task waiting on its confirmation card. Created tasks aren't stored — the task notes
- *  are the source of truth for those. */
-export interface TaskDraftRow {
-  id: string;
-  source: TaskDraftSource;
-  jot_id: string | null;
-  type: TaskType;
-  description: string;
-  start: string | null;
-  due: string | null;
-  source_date: string;
-  status: TaskDraftStatus;
-  chat_id: number;
-  message_id: number | null;
-  created_at: number;
-  updated_at: number;
-}
-
-/** Jot counts over a window, broken down by kind and outcome — for the /stats command. */
-export interface StatsRow {
-  total: number;
-  text: number;
-  audio: number;
-  image: number;
-  video: number;
-  done: number;
-  failed: number;
-  abandoned: number;
-  inflight: number;
-}
-
-export interface Jot {
-  id: string;
-  kind: JotKind;
-  note_path: string;
-  anchor: string;
-  time: string;
-  raw_text: string | null;
-  transcript: string | null;
-  proposed_text: string | null;
-  section: JotSection;
-  asset_path: string | null;
-  file_id: string | null;
-  status: JotStatus;
-  attempts: number;
-  error: string | null;
-  received_at: number;
-  updated_at: number;
-}
+export type {
+  Jot,
+  JotKind,
+  JotSection,
+  JotStatus,
+  TaskDraftRow,
+  TaskType,
+} from "./models/domain.ts";
+export { MAX_ATTEMPTS, TERMINAL_STATUSES } from "./models/domain.ts";
 
 /**
  * The single data-access boundary. ALL knex/SQL lives here — nothing else in the
@@ -280,9 +221,7 @@ export class Repository {
     });
   }
   /** Atomic take: only one of two fast button taps gets the row. */
-  async takePendingLink(
-    id: string,
-  ): Promise<{ jot_id: string; surface: string; note: string } | undefined> {
+  async takePendingLink(id: string): Promise<PendingLink | undefined> {
     return this.k.transaction(async (trx) => {
       const row = await trx("pending_links").where({ id }).first();
       if (!row) return undefined;
@@ -332,7 +271,7 @@ export class Repository {
 
   /** Jot counts by kind + outcome over a [from,to) epoch-ms window, for /stats and the
    *  daily summary. */
-  async windowStats(from: number, to: number): Promise<StatsRow> {
+  async windowStats(from: number, to: number): Promise<Stats> {
     const row = await this.k("jots")
       .where("received_at", ">=", from)
       .andWhere("received_at", "<", to)
@@ -359,21 +298,20 @@ export class Repository {
       video: n(row?.video),
       ...(Object.fromEntries(
         TERMINAL_STATUSES.map((s) => [s, n(row?.[s])]),
-      ) as Pick<StatsRow, (typeof TERMINAL_STATUSES)[number]>),
+      ) as Pick<Stats, (typeof TERMINAL_STATUSES)[number]>),
       inflight: n(row?.inflight),
     };
   }
 
   /** Live jot counts per status (whole table), for /status. */
-  async statusCounts(): Promise<Record<JotStatus, number>> {
+  async statusCounts(): Promise<StatusCounts> {
     const rows = await this.k("jots")
       .select("status")
       .count("* as n")
       .groupBy("status");
-    const out = Object.fromEntries(JOT_STATUSES.map((s) => [s, 0])) as Record<
-      JotStatus,
-      number
-    >;
+    const out = Object.fromEntries(
+      JOT_STATUSES.map((s) => [s, 0]),
+    ) as StatusCounts;
     for (const r of rows) out[r.status as JotStatus] = Number(r.n);
     return out;
   }

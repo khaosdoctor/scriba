@@ -41,12 +41,10 @@ import { TASKS_NS, TasksFlow } from "./flows/tasks/index.ts";
 import type { TaskDraft } from "./flows/tasks/parse.ts";
 import { TIL_NS, TilFlow } from "./flows/til.ts";
 import { logger } from "./log.ts";
+import type { DownloadedFile } from "./models/domain.ts";
+import type { StatusButtons } from "./models/ops.ts";
 import type { HealthMonitor } from "./runtime/health.ts";
-import type {
-  BotServices,
-  DownloadedFile,
-  JotProcessor,
-} from "./runtime/processor.ts";
+import type { BotServices, JotProcessor } from "./runtime/processor.ts";
 import type { FlushQueue } from "./runtime/queue.ts";
 import type { Scheduler } from "./runtime/scheduler.ts";
 import type { Enricher } from "./services/enrich.ts";
@@ -85,18 +83,6 @@ const MIME: Record<string, string> = {
  *  it pulls the jot back out into its own line. Too late once the batch has already
  *  flushed and folded it in. */
 const MERGE_EMOJI = "🤝" as const;
-
-/** Which buttons a jot's status message carries. A jot that lands gets `undo`; one that
- *  fails gets `retry` and `discard` — every failure is a decision, and both halves of it
- *  should be one tap away rather than a command you have to remember. */
-export type StatusButtons = {
-  retry?: boolean;
-  undo?: boolean;
-  discard?: boolean;
-  /** Line holds a YouTube/tweet/image URL: offer to embed it, or to turn it back into a
-   *  link (`embedOffer` in core.ts decides which). */
-  embed?: "embed" | "plain";
-};
 
 /** The buttons under a jot's status message. Empty (which clears any existing keyboard)
  *  when none is asked for, so a message that's no longer actionable stops offering

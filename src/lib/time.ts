@@ -2,29 +2,14 @@
  * Time helpers. Date-based; local getters honour process.env.TZ for wall-clock values.
  */
 
+import { IsoDateSchema, parseClockTime } from "../models/settings.ts";
+
+export { parseClockTime };
+
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 /** Matches a bare "YYYY-MM-DD" date string. */
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
-/** True when `date` is DATE_RE-shaped *and* an actual calendar day, safe to pass to
- *  dayBounds/dateFromIso without throwing OR silently rolling over to some other date.
- *  DATE_RE alone accepts years 0000-0099 (colliding with JS Date's 1900-1999 special
- *  case) and out-of-range months/days like "2026-99-99": `new Date(y, m-1, d)` doesn't
- *  reject an overflowing month/day, it normalizes into a different date, so a
- *  shape-only check would let a crafted/stale callback silently reprocess the wrong
- *  day. Round-tripping through the parsed components catches both. */
-export function isValidDate(date: string): boolean {
-  if (!DATE_RE.test(date)) return false;
-  const [y, m, d] = date.split("-").map(Number);
-  if (y! < 100) return false;
-  const parsed = new Date(y!, m! - 1, d!);
-  return (
-    parsed.getFullYear() === y &&
-    parsed.getMonth() === m! - 1 &&
-    parsed.getDate() === d
-  );
-}
 
 /** "HH:MM:SS" for the given instant (default now). */
 export function plainTime(epochMs: number = Date.now()): string {
@@ -69,10 +54,7 @@ export function previousDate(epochMs: number = Date.now()): string {
  *  the next local midnight, not `start + 24h`: a fixed offset comes out short/long on a DST
  *  transition day (23h/25h), which would miss or over-include jots near the boundary. */
 export function dayBounds(date: string): [number, number] {
-  // isValidDate rejects everything dateFromIso would otherwise mishandle: bad shape, a
-  // 0-99 year (JS Date's 1900+ special case), and an out-of-range month/day that Date
-  // would silently roll over into a different date instead of erroring.
-  if (!isValidDate(date))
+  if (!IsoDateSchema.safeParse(date).success)
     throw new Error(`dayBounds: not a valid YYYY-MM-DD calendar date: ${date}`);
   const start = dateFromIso(date);
   const end = new Date(
@@ -91,13 +73,6 @@ export function msUntilNext(hhmm: string): number {
   next.setHours(h ?? 0, m ?? 0, 0, 0);
   if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
   return next.getTime() - now.getTime();
-}
-
-/** A typed 24-hour clock time, normalised to `HH:MM` ("9:30" becomes "09:30"). Null when it
- *  isn't one. */
-export function parseClockTime(text: string): string | null {
-  const m = text.trim().match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
-  return m ? `${m[1]!.padStart(2, "0")}:${m[2]}` : null;
 }
 
 /** The day a nightly rating firing at `time` is about: a time before noon is just after

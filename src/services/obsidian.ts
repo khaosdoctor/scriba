@@ -4,8 +4,8 @@ import {
   moveAnchorLine,
   setFrontmatterValue,
 } from "../core.ts";
-import type { JotSection } from "../db.ts";
 import { logger } from "../log.ts";
+import type { JotSection } from "../models/domain.ts";
 
 const log = logger("obsidian");
 

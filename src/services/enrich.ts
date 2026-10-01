@@ -10,6 +10,7 @@ import {
   unwrapModelPayload,
 } from "../core.ts";
 import { logger } from "../log.ts";
+import type { DetectedTask } from "../models/domain.ts";
 
 export type QueryFn = typeof sdkQuery;
 
@@ -108,16 +109,6 @@ export interface EnrichInput {
   // deterministically in core.ts, this only makes the seams land on a change of subject.
   splitAt?: number;
 }
-/** A task the entry says the author still has to do. The dates are the author's own words
- *  ("next friday", "by the 15th"), resolved against the jot's day by chrono — the model is
- *  never asked what today is, and never asked to do date arithmetic. */
-export interface DetectedTask {
-  description: string;
-  start?: string;
-  due?: string;
-  type?: string;
-}
-
 export interface EnrichResult {
   text: string; // journal text with confident links applied inline
   ambiguous: Candidate[]; // links to confirm via Telegram buttons

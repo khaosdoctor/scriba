@@ -4,7 +4,6 @@
  */
 import { sep } from "node:path";
 import type { MessageEntity } from "grammy/types";
-import type { Jot, JotKind, JotStatus, StatsRow } from "./db.ts";
 import { donePreview } from "./lib/jot.ts";
 import { sectionHasContent } from "./lib/note.ts";
 import {
@@ -13,7 +12,9 @@ import {
   pluralize,
   TELEGRAM_LIMIT,
 } from "./lib/text.ts";
-import { parseClockTime, plainDate } from "./lib/time.ts";
+import { plainDate } from "./lib/time.ts";
+import type { Jot, JotKind, JotStatus } from "./models/domain.ts";
+import type { Stats, StatusCounts } from "./models/ops.ts";
 import type { ReleaseNote } from "./services/github.ts";
 
 export {
@@ -78,6 +79,13 @@ export {
   TELEGRAM_LIMIT,
 } from "./lib/text.ts";
 export { parseClockTime, ratingDay } from "./lib/time.ts";
+export {
+  DEFAULT_ENTRY_MAX_CHARS,
+  entryMaxChars,
+  ratingTime,
+  switchEnabled,
+  voiceFixEnabled,
+} from "./models/settings.ts";
 
 // --- command mode sandbox ---
 // `/command` runs an agent against the vault. Its limits are enforced in code, not asked
@@ -215,9 +223,6 @@ export function editConfirmation(time: string, text: string): string {
 // sentence is never cut in half; one longer than the limit goes out whole, because a
 // mid-sentence break is the worse outcome.
 
-/** Default cap on one journal entry, in characters — a tweet. */
-export const DEFAULT_ENTRY_MAX_CHARS = 280;
-
 /** `settings` key holding the entry-size cap (set from /menu, survives a restart). */
 export const ENTRY_MAX_CHARS_KEY = "entryMaxChars";
 
@@ -229,18 +234,6 @@ export const VOICE_FIX_KEY = "fixVoiceTranscript";
  *  the DB value wins from then on. Changed from /menu. */
 export const ENRICH_MODEL_KEY = "enrichModel";
 export const VOICE_FIX_MODEL_KEY = "voiceFixModel";
-
-export function voiceFixEnabled(raw: string | undefined): boolean {
-  return raw === "on";
-}
-
-/** The `entryMaxChars` setting as a number: 0 disables splitting, anything unusable (unset,
- *  blank, not a whole number) falls back to the default. */
-export function entryMaxChars(raw: string | undefined): number {
-  const s = raw?.trim();
-  const n = Number(s);
-  return s && Number.isInteger(n) && n >= 0 ? n : DEFAULT_ENTRY_MAX_CHARS;
-}
 
 /** A typed entry-size reply: a whole number of characters, or "off" to stop splitting.
  *  Null when it isn't usable — under 40 characters no sentence would ever fit. */
@@ -257,17 +250,6 @@ export function parseEntrySize(text: string): number | null {
 export const RATING_SWITCH_KEY = "nightlyRating";
 export const FOLLOWUP_SWITCH_KEY = "nightlyFollowup";
 export const RATING_TIME_KEY = "ratingTime";
-
-/** Whether an on/off setting is on, from its raw value: only an explicit "off" turns it off. */
-export function switchEnabled(raw: string | undefined): boolean {
-  return raw !== "off";
-}
-
-/** The nightly rating time in force: the stored setting when it is a valid time, else the
- *  configured default. */
-export function ratingTime(raw: string | undefined, fallback: string): string {
-  return parseClockTime(raw ?? "") ?? parseClockTime(fallback) ?? fallback;
-}
 
 /** The follow-up questions after the nightly rating, in the order they are asked. */
 export const FOLLOWUP_QUESTIONS = ["journal", "til"] as const;
@@ -469,7 +451,7 @@ export function formatListPage(
 }
 
 /** /stats body for a labelled window. */
-export function formatStats(label: string, s: StatsRow): string {
+export function formatStats(label: string, s: Stats): string {
   const tail = [
     s.inflight ? `in-flight ${s.inflight}` : "",
     s.failed ? `failed ${s.failed}` : "",
@@ -484,7 +466,7 @@ export function formatStats(label: string, s: StatsRow): string {
 }
 
 export interface StatusView {
-  counts: Record<JotStatus, number>;
+  counts: StatusCounts;
   queueDepth: number;
   transcriber: string;
   links: { enabled: boolean; files: number; aliases: number };
