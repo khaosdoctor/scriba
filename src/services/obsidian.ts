@@ -61,16 +61,27 @@ export class ObsidianClient {
     return `${this.cfg.dailyDir}/${date}.md`;
   }
 
-  private async getFile(vaultPath: string): Promise<string | null> {
+  private async request(
+    method: "GET" | "PUT" | "DELETE",
+    vaultPath: string,
+    init: { headers?: Record<string, string>; body?: string | Uint8Array } = {},
+  ) {
     const res = await fetch(`${this.cfg.url}/vault/${this.encode(vaultPath)}`, {
-      headers: this.headers(),
+      method,
+      headers: this.headers(init.headers),
+      body: init.body as any,
       dispatcher: this.dispatcher,
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
     log.debug(
-      { method: "GET", path: vaultPath, status: res.status },
+      { method, path: vaultPath, status: res.status },
       "obsidian request",
     );
+    return res;
+  }
+
+  private async getFile(vaultPath: string): Promise<string | null> {
+    const res = await this.request("GET", vaultPath);
     if (res.status === 404) return null;
     if (!res.ok) throw new Error(`obsidian GET ${vaultPath}: ${res.status}`);
     return res.text();
@@ -80,17 +91,10 @@ export class ObsidianClient {
     body: string | Uint8Array,
     contentType: string,
   ): Promise<void> {
-    const res = await fetch(`${this.cfg.url}/vault/${this.encode(vaultPath)}`, {
-      method: "PUT",
-      headers: this.headers({ "Content-Type": contentType }),
-      body: body as any,
-      dispatcher: this.dispatcher,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    const res = await this.request("PUT", vaultPath, {
+      headers: { "Content-Type": contentType },
+      body,
     });
-    log.debug(
-      { method: "PUT", path: vaultPath, status: res.status },
-      "obsidian request",
-    );
     if (!res.ok)
       throw new Error(
         `obsidian PUT ${vaultPath}: ${res.status} ${await res.text()}`,
@@ -211,16 +215,7 @@ export class ObsidianClient {
   }
   /** Delete a note. Only `/command` uses this, and only after you confirm the tap. */
   async deleteNote(vaultPath: string): Promise<void> {
-    const res = await fetch(`${this.cfg.url}/vault/${this.encode(vaultPath)}`, {
-      method: "DELETE",
-      headers: this.headers(),
-      dispatcher: this.dispatcher,
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
-    log.debug(
-      { method: "DELETE", path: vaultPath, status: res.status },
-      "obsidian request",
-    );
+    const res = await this.request("DELETE", vaultPath);
     if (!res.ok && res.status !== 404)
       throw new Error(`obsidian DELETE ${vaultPath}: ${res.status}`);
   }
