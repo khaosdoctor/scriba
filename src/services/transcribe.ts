@@ -1,7 +1,10 @@
 import Groq, { toFile } from "groq-sdk";
+import { z } from "zod";
 import { logger } from "../log.ts";
 
 const log = logger("transcribe");
+
+const ParakeetResponse = z.object({ text: z.string().optional() });
 
 /** Voice note bytes → text. Groq first, the Parakeet sidecar when Groq fails. */
 export interface Transcriber {
@@ -60,9 +63,9 @@ export class ParakeetTranscriber implements Transcriber {
     });
     if (!res.ok) throw new Error(`parakeet ${res.status}: ${await res.text()}`);
     const text = res.headers.get("content-type")?.includes("json")
-      ? ((await res.json()) as { text?: string }).text
+      ? ParakeetResponse.parse(await res.json()).text
       : await res.text();
-    const out = String(text ?? "").trim();
+    const out = (text ?? "").trim();
     log.debug(
       { backend: "parakeet", chars: out.length },
       "transcription complete",
