@@ -1,5 +1,6 @@
 import type { Bot, Context } from "grammy";
 import type { AdminController } from "../controllers/admin.ts";
+import type { JotController } from "../controllers/jots.ts";
 import type { CommandSession } from "../flows/command.ts";
 import type { FollowupFlow } from "../flows/followup.ts";
 import type { HabitsCommand } from "../flows/habits/index.ts";
@@ -7,7 +8,6 @@ import type { MenuController } from "../flows/menu.ts";
 import type { RatingCommand } from "../flows/rating.ts";
 import type { ReprocessCommand } from "../flows/reprocess.ts";
 import type { TasksFlow } from "../flows/tasks/index.ts";
-import type { TilFlow } from "../flows/til.ts";
 import { logger } from "../log.ts";
 import type { JotKind } from "../models/domain.ts";
 import { callbackViews } from "./callbacks/index.ts";
@@ -60,7 +60,7 @@ export type ViewDeps = {
   reprocess: ReprocessCommand;
   command: CommandSession;
   tasks: TasksFlow;
-  til: TilFlow;
+  jotController: JotController;
   jots: JotHandlers;
   /** Read per tap or command: the controller is built after the bot, in index.ts. */
   admin: () => AdminController;

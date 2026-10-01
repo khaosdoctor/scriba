@@ -2,6 +2,7 @@ import { extname } from "node:path";
 import { Bot, InlineKeyboard } from "grammy";
 import { config } from "./config.ts";
 import type { AdminController } from "./controllers/admin.ts";
+import { JotController } from "./controllers/jots.ts";
 import {
   anchorLine,
   assetEmbed,
@@ -30,7 +31,6 @@ import { RatingCommand } from "./flows/rating.ts";
 import { ReprocessCommand } from "./flows/reprocess.ts";
 import { TasksFlow } from "./flows/tasks/index.ts";
 import type { TaskDraft } from "./flows/tasks/parse.ts";
-import { TilFlow } from "./flows/til.ts";
 import type { Scheduler } from "./lib/scheduler.ts";
 import { logger } from "./log.ts";
 import type { DownloadedFile } from "./models/domain.ts";
@@ -104,7 +104,7 @@ export class ScribaBot implements BotServices {
   private reprocess: ReprocessCommand;
   private command: CommandSession;
   private tasks: TasksFlow;
-  private til: TilFlow;
+  private jotController: JotController;
   private adminController!: AdminController;
   // jotId -> the live status message we edit in place through the jot's lifecycle.
   // ponytail: in-memory. On restart the map is empty and status() just posts a fresh
@@ -166,7 +166,11 @@ export class ScribaBot implements BotServices {
       enricher,
       () => this.command.isOpen(),
     );
-    this.til = new TilFlow(this.bot, repo, obsidian);
+    this.jotController = new JotController({
+      repo,
+      obsidian,
+      notifier: this.chat,
+    });
     this.command.setBusyCheck(() => this.tasks.isOpen());
     this.menu.setTasks(this.tasks);
     registerViews(this.bot, {
@@ -178,7 +182,7 @@ export class ScribaBot implements BotServices {
       reprocess: this.reprocess,
       command: this.command,
       tasks: this.tasks,
-      til: this.til,
+      jotController: this.jotController,
       jots: this,
       admin: () => this.adminController,
       errors: {
@@ -283,7 +287,7 @@ export class ScribaBot implements BotServices {
 
   /** Offer to move a jot the enricher read as a TIL to the TIL section. */
   async askTil(jotId: string, text: string): Promise<void> {
-    await this.til.ask(jotId, text);
+    await this.jotController.askTil(jotId, text);
   }
 
   /** Show both transcript versions and wait for the user to pick one. Returns

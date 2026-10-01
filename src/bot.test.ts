@@ -423,12 +423,6 @@ test("the merge opt-out ignores what it should and reports a late tap", async ()
   assert.match(late.notices[0]!, /too late/);
 });
 
-test("the bot builds its TIL card flow in the constructor", async () => {
-  const { TilFlow } = await import("./flows/til.ts");
-  const h = await harness();
-  assert.ok(h.bot.til instanceof TilFlow);
-});
-
 /** Push one button tap through the bot's real middleware. Returns how many times the tap
  *  was answered, so a test can tell a routed tap from one the fallthrough swallowed. */
 async function tap(
@@ -458,24 +452,21 @@ async function tap(
 
 test("a ti: button goes to the TIL flow and the fallthrough never answers it", async () => {
   const h = await harness();
-  const taps: [string, string[]][] = [];
-  h.bot.til.handleTap = async (
-    ctx: { callbackQuery: { data: string } },
-    rest: string[],
-  ) => {
-    taps.push([ctx.callbackQuery.data, rest]);
+  const taps: [string | undefined, boolean][] = [];
+  h.bot.jotController.answerTil = async (jotId: string, accept: boolean) => {
+    taps.push([jotId, accept]);
+    return "kept";
   };
   const answered = await tap(h, "ti:y:abcd1234");
-  assert.deepEqual(taps, [["ti:y:abcd1234", ["y", "abcd1234"]]]);
-  assert.equal(answered, 0);
+  assert.deepEqual(taps, [["abcd1234", true]]);
+  assert.equal(answered, 1);
 });
 
 test("askTil hands the jot and its text to the TIL flow", async () => {
   const h = await harness();
   const asks: [string, string][] = [];
-  h.bot.til = {
-    ask: async (id: string, text: string) => void asks.push([id, text]),
-  };
+  h.bot.jotController.askTil = async (id: string, text: string) =>
+    void asks.push([id, text]);
   assert.equal(await h.bot.askTil("abcd1234", "TIL: x"), undefined);
   assert.deepEqual(asks, [["abcd1234", "TIL: x"]]);
 });
