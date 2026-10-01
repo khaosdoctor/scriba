@@ -5,7 +5,7 @@ import type { Command } from "./types.ts";
 
 const log = logger("unreject");
 
-/** Callback_query namespace this command owns (routed from ScribaBot.handleButton).
+/** Callback_query namespace this command owns (routed from views/callbacks).
  *  `ur:s:<si>` opens the note menu for a surface; `ur:p:<si>:<ni>` unrejects the pair.
  *  Indices are positions in `repo.rejectionList()`, re-derived on each tap. */
 export const UNREJECT_NS = "ur";

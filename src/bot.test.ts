@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { placeholderLine, WIZARD_RATING_TIME_REF } from "./core.ts";
 import { type Jot, Repository } from "./db.ts";
-import { BOT_INFO, FakeSettings } from "./test/fakes.ts";
+import { BOT_INFO, FakeSettings, recordingApi } from "./test/fakes.ts";
 import { removeDb, sampleJot, tempDbPath } from "./test/sqlite.ts";
 import { plainDate, plainTime, previousDate } from "./time.ts";
 
@@ -433,21 +433,44 @@ test("the bot builds its TIL card flow in the constructor", async () => {
   assert.ok(h.bot.til instanceof TilFlow);
 });
 
+/** Push one button tap through the bot's real middleware. Returns how many times the tap
+ *  was answered, so a test can tell a routed tap from one the fallthrough swallowed. */
+async function tap(
+  h: Awaited<ReturnType<typeof harness>>,
+  data: string,
+): Promise<number> {
+  const rec = recordingApi();
+  h.bot.bot.botInfo = BOT_INFO;
+  h.bot.bot.api.config.use(rec.transformer as never);
+  await h.bot.bot.handleUpdate({
+    update_id: 1,
+    callback_query: {
+      id: "q",
+      from: { id: 1, is_bot: false, first_name: "me" },
+      chat_instance: "c",
+      data,
+      message: {
+        message_id: 4,
+        date: SEC,
+        chat: { id: 1, type: "private" },
+        text: "card",
+      },
+    },
+  });
+  return rec.answers().length;
+}
+
 test("a ti: button goes to the TIL flow and the fallthrough never answers it", async () => {
   const h = await harness();
-  const taps: [unknown, string[]][] = [];
-  h.bot.til = {
-    handleTap: async (ctx: unknown, rest: string[]) => {
-      taps.push([ctx, rest]);
-    },
+  const taps: [string, string[]][] = [];
+  h.bot.til.handleTap = async (
+    ctx: { callbackQuery: { data: string } },
+    rest: string[],
+  ) => {
+    taps.push([ctx.callbackQuery.data, rest]);
   };
-  let answered = 0;
-  const ctx = {
-    callbackQuery: { data: "ti:y:abcd1234" },
-    answerCallbackQuery: async () => void answered++,
-  };
-  await h.bot.handleButton(ctx);
-  assert.deepEqual(taps, [[ctx, ["y", "abcd1234"]]]);
+  const answered = await tap(h, "ti:y:abcd1234");
+  assert.deepEqual(taps, [["ti:y:abcd1234", ["y", "abcd1234"]]]);
   assert.equal(answered, 0);
 });
 
@@ -683,14 +706,8 @@ test("the Skip button is routed to the follow-up flow with its payload", async (
   const taps: unknown[][] = [];
   h.bot.followup.handleTap = async (...args: unknown[]) =>
     void taps.push(args.slice(1));
-  for (const data of ["fu:j:2026-07-05", "fu:t:2026-07-05"]) {
-    let answered = 0;
-    await h.bot.handleButton({
-      callbackQuery: { data },
-      answerCallbackQuery: async () => void answered++,
-    });
-    assert.equal(answered, 0, data);
-  }
+  for (const data of ["fu:j:2026-07-05", "fu:t:2026-07-05"])
+    assert.equal(await tap(h, data), 0, data);
   assert.deepEqual(taps, [
     ["j", "2026-07-05"],
     ["t", "2026-07-05"],

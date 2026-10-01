@@ -49,14 +49,11 @@ function harness(
   const deletes: [number, number][] = [];
   const writes: { path: string; content: string }[] = [];
   const reads: string[] = [];
-  const commands = new Map<string, (ctx: any) => Promise<void>>();
   const vault = new Map<string, string>();
   for (const [date, content] of Object.entries(notes))
     vault.set(`Daily/${date}.md`, content);
 
   const bot = {
-    command: (name: string, fn: (ctx: any) => Promise<void>) =>
-      void commands.set(name, fn),
     api: {
       sendMessage: async (chat: number, text: string, opts: any) => {
         events.push(`send:${text}`);
@@ -103,7 +100,6 @@ function harness(
     ),
   };
   const habits = new HabitsCommand(bot as any, obsidian as any);
-  habits.register();
 
   const tap = async (
     date: string | undefined,
@@ -138,10 +134,10 @@ function harness(
   };
   const slash = async (match: string) => {
     const replies: string[] = [];
-    await commands.get("habits")!({
+    await habits.slashHabits({
       match,
       reply: async (t: string) => void replies.push(t),
-    });
+    } as any);
     return replies;
   };
   return {

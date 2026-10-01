@@ -116,10 +116,6 @@ export class CommandSession {
     private turnSilenceMs = TURN_SILENCE_MS,
   ) {}
 
-  register(): void {
-    this.bot.command("command", (ctx) => this.start(ctx));
-  }
-
   isOpen(): boolean {
     return this.open;
   }
@@ -130,7 +126,7 @@ export class CommandSession {
     this.otherModeOpen = fn;
   }
 
-  private async start(ctx: any): Promise<void> {
+  async start(ctx: any): Promise<void> {
     if (this.otherModeOpen()) {
       log.warn("command mode refused — task mode is open");
       return void ctx.reply(
@@ -590,7 +586,7 @@ export class CommandSession {
   }
 
   /** `cm:y|n:<id>` for a change confirmation, `cm:s:<turnId>` for a Stop button — routed in
-   *  from ScribaBot.handleButton. */
+   *  from views/callbacks. */
   async handleTap(ctx: any, rest: string[]): Promise<void> {
     const [verdict, id] = rest;
     if (verdict === "s") return this.handleStop(ctx, id);

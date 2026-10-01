@@ -11,7 +11,7 @@ const log = logger("til-flow");
  *  well inside Telegram's 4096 whatever the jot holds. */
 const QUOTE_CHARS = 600;
 
-/** callback_query namespace this flow owns (see ScribaBot.handleButton). */
+/** callback_query namespace this flow owns (see views/callbacks). */
 export const TIL_NS = "ti";
 
 /**

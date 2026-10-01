@@ -103,24 +103,14 @@ test("a bad payload is refused before anything is recorded", async () => {
 
 test("/rate prompts for the day given, and refuses a malformed date with the usage line", async () => {
   const sent: { text: string; opts: any }[] = [];
-  const handlers = new Map<string, (ctx: unknown) => Promise<unknown>>();
   const bot = {
-    command: (name: string, handler: (ctx: unknown) => Promise<unknown>) =>
-      void handlers.set(name, handler),
     api: {
       sendMessage: async (_chat: unknown, text: string, opts: any) =>
         void sent.push({ text, opts }),
     },
   };
-  const rating: any = new RatingCommand(
-    bot as any,
-    {} as any,
-    {} as any,
-    {} as any,
-  );
-  rating.register();
-  const rate = handlers.get("rate");
-  assert.ok(rate);
+  const rating = new RatingCommand(bot as any, {} as any, {} as any, {} as any);
+  const rate = (ctx: unknown) => rating.slashRate(ctx as any);
 
   const replies: string[] = [];
   const ctx = (match: string) => ({

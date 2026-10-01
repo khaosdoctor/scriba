@@ -1,6 +1,6 @@
 import { extname } from "node:path";
 import { Bot, InlineKeyboard } from "grammy";
-import { commands, type Deps } from "./commands/index.ts";
+import type { Deps } from "./commands/index.ts";
 import { UNREJECT_NS } from "./commands/unreject.ts";
 import { config } from "./config.ts";
 import {
@@ -13,11 +13,9 @@ import {
   embedOffer,
   entitiesToMarkdown,
   escapeHtml,
-  fitTelegram,
   isEditableJot,
   journalLine,
   makeJotId,
-  parseFollowupRef,
   parseLiteralEdit,
   placeholderLine,
   setEmbeds,
@@ -26,19 +24,15 @@ import {
   withinSquashWindow,
 } from "./core.ts";
 import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
-import { COMMAND_NS, CommandSession } from "./flows/command.ts";
-import { FOLLOWUP_NS, FollowupFlow } from "./flows/followup.ts";
-import {
-  HABITS_NS,
-  HabitsCommand,
-  parseHabitRef,
-} from "./flows/habits/index.ts";
+import { CommandSession } from "./flows/command.ts";
+import { FollowupFlow } from "./flows/followup.ts";
+import { HabitsCommand } from "./flows/habits/index.ts";
 import { MenuController } from "./flows/menu.ts";
-import { RATING_NS, RatingCommand } from "./flows/rating.ts";
-import { REPROCESS_NS, ReprocessCommand } from "./flows/reprocess.ts";
-import { TASKS_NS, TasksFlow } from "./flows/tasks/index.ts";
+import { RatingCommand } from "./flows/rating.ts";
+import { ReprocessCommand } from "./flows/reprocess.ts";
+import { TasksFlow } from "./flows/tasks/index.ts";
 import type { TaskDraft } from "./flows/tasks/parse.ts";
-import { TIL_NS, TilFlow } from "./flows/til.ts";
+import { TilFlow } from "./flows/til.ts";
 import type { Scheduler } from "./lib/scheduler.ts";
 import { logger } from "./log.ts";
 import type { DownloadedFile } from "./models/domain.ts";
@@ -57,7 +51,8 @@ import { VaultTools } from "./services/vault.ts";
 import { WebService } from "./services/web.ts";
 import { dayBounds, plainDate, plainTime } from "./time.ts";
 import { Chat } from "./views/chat.ts";
-import { errorHandler } from "./views/errors.ts";
+import { COMMANDS } from "./views/commands/index.ts";
+import { registerViews } from "./views/index.ts";
 
 const log = logger("bot");
 
@@ -183,7 +178,24 @@ export class ScribaBot implements BotServices {
     this.til = new TilFlow(this.bot, repo, obsidian);
     this.command.setBusyCheck(() => this.tasks.isOpen());
     this.menu.setTasks(this.tasks);
-    this.registerHandlers();
+    registerViews(this.bot, {
+      ownerId: config.telegram.allowedUserId,
+      rating: this.rating,
+      followup: this.followup,
+      habits: this.habits,
+      menu: this.menu,
+      reprocess: this.reprocess,
+      command: this.command,
+      tasks: this.tasks,
+      til: this.til,
+      jots: this,
+      admin: () => this.deps(),
+      errors: {
+        jotForMessage: (messageId) => this.repo.jotForMessage(messageId),
+        failureButtons: (jotId) =>
+          jotButtons(jotId, { retry: true, discard: true }),
+      },
+    });
   }
 
   /** Break the wiring cycle: queue + processor are created after this bot (which they need). */
@@ -224,50 +236,9 @@ export class ScribaBot implements BotServices {
   async start(): Promise<void> {
     // Populate the `/` command menu Telegram shows in the compose box.
     await this.bot.api
-      .setMyCommands([
-        { command: "start", description: "What scriba does" },
-        { command: "menu", description: "Open the interactive control menu" },
-        {
-          command: "rate",
-          description: "Rate a day 1–10 (today, or /rate YYYY-MM-DD)",
-        },
-        {
-          command: "habits",
-          description: "Review habits (yesterday, or /habits YYYY-MM-DD)",
-        },
-        {
-          command: "reprocess",
-          description: "Reprocess jots — a day, a date range, or one jot",
-        },
-        {
-          command: "command",
-          description: "Open a vault assistant session (/done to close)",
-        },
-        {
-          command: "task",
-          description: "Turn every message into a task (/done to close)",
-        },
-        {
-          command: "taskadd",
-          description: "Add one task in one message: /taskadd <what and when>",
-        },
-        {
-          command: "tasks",
-          description: "List your tasks — open, today, this week, done",
-        },
-        {
-          command: "done",
-          description: "Close the vault assistant or task session",
-        },
-        {
-          command: "delete",
-          description: "Reply to a journal message with /delete to remove it",
-        },
-        ...commands.map((c) => ({
-          command: c.name,
-          description: c.description,
-        })),
-      ])
+      .setMyCommands(
+        COMMANDS.map(({ command, description }) => ({ command, description })),
+      )
       .catch((e) => log.warn({ err: e }, "setMyCommands failed"));
     void this.bot.start({
       allowed_updates: [
@@ -474,155 +445,13 @@ export class ScribaBot implements BotServices {
     );
   }
 
-  // --- handlers ---
-  private registerHandlers(): void {
-    this.bot.catch(
-      errorHandler({
-        jotForMessage: (messageId) => this.repo.jotForMessage(messageId),
-        failureButtons: (jotId) =>
-          jotButtons(jotId, { retry: true, discard: true }),
-      }),
-    );
-
-    // single-user allowlist — everyone else is ignored
-    this.bot.use(async (ctx, next) => {
-      if (ctx.from?.id === config.telegram.allowedUserId) await next();
-    });
-
-    this.bot.command("start", (ctx) =>
-      ctx.reply(
-        "scriba ready. Send text or a voice note to journal. /help for admin commands.",
-      ),
-    );
-    this.rating.register();
-    this.habits.register();
-    this.reprocess.register();
-
-    // Admin commands (single-user, so the allowlist above is the only auth needed).
-    for (const cmd of commands) {
-      this.bot.command(cmd.name, async (ctx) => {
-        const out = await cmd.run(ctx, String(ctx.match ?? ""), this.deps());
-        // Every string-returning command funnels through here, so this is the one
-        // place that has to survive an oversized reply. Commands that can grow
-        // paginate themselves; fitTelegram is the backstop that turns a rejected
-        // send into a labelled cut.
-        if (typeof out === "string") await ctx.reply(fitTelegram(out));
-      });
-    }
-
-    // Reply to a jot's message with /delete to remove its journal line. This is the
-    // explicit counterpart to clearing the message text (an actual Telegram delete is
-    // never delivered to bots, so there's nothing to hook).
-    this.bot.command("delete", (ctx) => this.handleDeleteCommand(ctx));
-
-    // Interactive control menu — an entry point layered over the slash commands, not a
-    // replacement. Every leaf reuses an existing command or flow (see MenuController).
-    this.menu.register();
-    this.command.register();
-    this.tasks.register();
-
-    // One /done for both message-stream modes: it closes whichever is actually open, so
-    // there's a single command to remember rather than one per mode.
-    this.bot.command("done", async (ctx) => {
-      if (this.tasks.isOpen()) return this.tasks.finish(ctx);
-      return this.command.finish(ctx);
-    });
-
-    this.bot.on("message:text", async (ctx) => {
-      if (ctx.message.text.startsWith("/")) return;
-      // Command mode takes the whole message stream while it's open, so a prompt meant for
-      // the vault assistant never lands in the journal as a jot.
-      if (this.command.isOpen())
-        return this.command.handle(ctx, ctx.message.text);
-      if (ctx.message.reply_to_message) {
-        // A reply to a habit value question routes to the habit flow, not a jot edit.
-        const prompt = ctx.message.reply_to_message.text ?? "";
-        if (parseHabitRef(prompt)) return this.habits.handleReply(ctx);
-        // …and a reply to a follow-up question after the rating becomes a jot.
-        const followup = parseFollowupRef(prompt);
-        if (followup) return this.followup.handleReply(ctx, followup);
-        // Likewise a reply to one of the link wizard's add-a-rule prompts.
-        if (this.menu.isWizardPrompt(prompt))
-          return this.menu.handleWizardReply(ctx, prompt);
-        // …and a reply to a task card's change prompt, which can arrive whether or
-        // not task mode is open (a jot suggestion asks for its deadline outright).
-        if (this.tasks.isTaskPrompt(prompt))
-          return this.tasks.handleReply(ctx, prompt);
-        // Anything else replied to while task mode is open is another task, not an
-        // edit to some jot — task mode owns the stream, replies included.
-        if (this.tasks.isOpen())
-          return this.tasks.handle(ctx, ctx.message.text);
-        return this.handleEdit(ctx);
-      }
-      // Task mode takes the rest of the stream: the message becomes a task, not a jot.
-      if (this.tasks.isOpen()) return this.tasks.handle(ctx, ctx.message.text);
-      const markdown = entitiesToMarkdown(
-        ctx.message.text,
-        ctx.message.entities,
-      );
-      await this.intake(ctx, "text", { rawText: markdown });
-    });
-
-    this.bot.on("message:voice", (ctx) =>
-      this.tasks.isOpen()
-        ? this.spokenTask(ctx, ctx.message.voice.file_id)
-        : this.intake(ctx, "audio", { fileId: ctx.message.voice.file_id }),
-    );
-    this.bot.on("message:audio", (ctx) =>
-      this.tasks.isOpen()
-        ? this.spokenTask(ctx, ctx.message.audio.file_id)
-        : this.intake(ctx, "audio", { fileId: ctx.message.audio.file_id }),
-    );
-
-    // Image/video are attachments: saved and embedded, caption kept, not transcribed.
-    // `return` the promise so a rejection reaches bot.catch (a fire-and-forget arrow
-    // would swallow it and leave the ✍ reaction stuck forever).
-    this.bot.on("message:photo", (ctx) =>
-      this.intakeMedia(ctx, "image", ctx.message.photo.at(-1)!.file_id),
-    );
-    this.bot.on("message:video", (ctx) =>
-      this.intakeMedia(ctx, "video", ctx.message.video.file_id),
-    );
-    this.bot.on("message:video_note", (ctx) =>
-      this.intake(ctx, "video", { fileId: ctx.message.video_note.file_id }),
-    );
-
-    // Edited text messages — edit the jot in place if already processed,
-    // otherwise queue the edit for when processing finishes.
-    this.bot.on("edited_message:text", (ctx) => {
-      if (ctx.editedMessage.text.startsWith("/")) return;
-      return this.applyMessageEdit(
-        ctx,
-        entitiesToMarkdown(ctx.editedMessage.text, ctx.editedMessage.entities),
-      );
-    });
-
-    // Edited captions on media — treat same as text edits for the jot text.
-    this.bot.on("edited_message:caption", (ctx) =>
-      this.applyMessageEdit(
-        ctx,
-        entitiesToMarkdown(
-          ctx.editedMessage.caption ?? "",
-          ctx.editedMessage.caption_entities,
-        ),
-      ),
-    );
-
-    this.bot.on("callback_query:data", (ctx) => this.handleButton(ctx));
-
-    // The user tapping 🤝 on a squashed follower's message — the merge opt-out.
-    this.bot.on("message_reaction", (ctx) => this.handleMergeReaction(ctx));
-
-    this.bot.on("message", (ctx) =>
-      ctx.reply("scriba handles text, voice, images, and video for now."),
-    );
-  }
+  // --- handlers the views call back into ---
 
   // Edit an existing jot in place if it's already processed, otherwise queue
   // the edit for when processing finishes. Clearing the message to empty/whitespace
   // is the delete gesture (Telegram never delivers an actual message delete), so a
   // blank edit removes the journal line instead of replacing it.
-  private async applyMessageEdit(ctx: any, edited: string): Promise<void> {
+  async applyMessageEdit(ctx: any, edited: string): Promise<void> {
     const jotId = await this.repo.jotForMessage(ctx.editedMessage.message_id);
     if (!jotId) return;
     const jot = await this.repo.getJot(jotId);
@@ -662,7 +491,7 @@ export class ScribaBot implements BotServices {
   /** A voice note sent while task mode is open. It is transcribed like any other voice
    *  jot and then read as a task — dictating a task is the whole point of task mode being
    *  a mode rather than a command with arguments. */
-  private async spokenTask(ctx: any, fileId: string): Promise<void> {
+  async spokenTask(ctx: any, fileId: string): Promise<void> {
     await ctx.react("✍").catch(() => {});
     const file = await this.downloadFile(fileId);
     const text = await this.transcriber.transcribe(file.bytes, file.ext);
@@ -673,7 +502,7 @@ export class ScribaBot implements BotServices {
   /** Attachment intake (image/video): save + embed the file, keeping the caption as the
    *  jot's text (an image's caption is the entry itself; a video's is its embed display).
    *  Returns the intake promise so a rejection reaches bot.catch. */
-  private intakeMedia(ctx: any, kind: JotKind, fileId: string): Promise<void> {
+  intakeMedia(ctx: any, kind: JotKind, fileId: string): Promise<void> {
     const markdown = entitiesToMarkdown(
       ctx.message.caption ?? "",
       ctx.message.caption_entities,
@@ -681,7 +510,7 @@ export class ScribaBot implements BotServices {
     return this.intake(ctx, kind, { fileId, rawText: markdown });
   }
 
-  private async intake(
+  async intake(
     ctx: any,
     kind: JotKind,
     src: { rawText?: string; fileId?: string; day?: string },
@@ -790,7 +619,7 @@ export class ScribaBot implements BotServices {
    *  merge. Only takes effect while the jot is still pending; `unsquash` is the
    *  compare-and-swap that enforces that atomically, so a tap racing the leader's flush
    *  loses cleanly rather than double-posting the follower's text. */
-  private async handleMergeReaction(ctx: any): Promise<void> {
+  async handleMergeReaction(ctx: any): Promise<void> {
     if (!ctx.reactions().emojiAdded.includes(MERGE_EMOJI)) return;
     const messageId = ctx.messageReaction?.message_id;
     const jotId = messageId
@@ -820,7 +649,7 @@ export class ScribaBot implements BotServices {
     await ctx.react("✍").catch(() => {});
   }
 
-  private async handleEdit(ctx: any): Promise<void> {
+  async handleEdit(ctx: any): Promise<void> {
     const jotId = await this.repo.jotForMessage(
       ctx.message.reply_to_message.message_id,
     );
@@ -960,7 +789,7 @@ export class ScribaBot implements BotServices {
 
   /** /delete: reply to a jot's message to remove its journal line. Mirrors the reply-edit
    *  flow — queues the delete if the jot is still processing. */
-  private async handleDeleteCommand(ctx: any): Promise<void> {
+  async handleDeleteCommand(ctx: any): Promise<void> {
     const reply = ctx.message?.reply_to_message;
     if (!reply) {
       log.warn("delete command without a reply target");
@@ -997,33 +826,10 @@ export class ScribaBot implements BotServices {
     await this.status(jotId, await this.deleteJot(jot));
   }
 
-  private async handleButton(ctx: any): Promise<void> {
-    const [ns, ...rest] = String(ctx.callbackQuery.data).split(":");
-    log.debug({ data: ctx.callbackQuery.data }, "button pressed");
-    if (ns === "menu") return this.menu.handleCallback(ctx, rest);
-    if (ns === "vf") return this.handleVoiceFix(ctx, rest[0], rest[1]);
-    if (ns === "rt") return this.handleRetry(ctx, rest[0]);
-    if (ns === "un") return this.handleRemove(ctx, rest[0], "undo");
-    if (ns === "dl") return this.handleRemove(ctx, rest[0], "discard");
-    if (ns === "em") return this.handleEmbed(ctx, rest[0], rest[1] === "1");
-    if (ns === COMMAND_NS) return this.command.handleTap(ctx, rest);
-    if (ns === TASKS_NS) return this.tasks.handleTap(ctx, rest);
-    if (ns === TIL_NS) return this.til.handleTap(ctx, rest);
-    if (ns === "lk") return this.handleLink(ctx, rest[0], rest[1]);
-    if (ns === UNREJECT_NS) return this.handleUnreject(ctx, rest);
-    if (ns === RATING_NS) return this.rating.handleTap(ctx, rest[0], rest[1]);
-    if (ns === FOLLOWUP_NS)
-      return this.followup.handleTap(ctx, rest[0], rest[1]);
-    if (ns === HABITS_NS)
-      return this.habits.handleTap(ctx, rest[0], rest[1], rest[2]);
-    if (ns === REPROCESS_NS) return this.reprocess.handleTap(ctx, rest);
-    await ctx.answerCallbackQuery();
-  }
-
   /** ↩️ Undo on a finished jot, 🗑 Delete on a failed one — the same teardown either way:
    *  pull the line back out of the journal and put the jot in a state the retry sweep
    *  won't resurrect. Same as `/delete`, one tap away while the entry is on screen. */
-  private async handleRemove(
+  async handleRemove(
     ctx: any,
     jotId: string | undefined,
     source: "undo" | "discard",
@@ -1051,7 +857,7 @@ export class ScribaBot implements BotServices {
   /** 🖼 Embed / 🔗 Plain link on a finished jot whose line has a YouTube, tweet or image
    *  URL: rewrite those URLs as `![](url)` embeds or back to links, token-free. The
    *  button then offers the opposite, so the choice can be undone with the next tap. */
-  private async handleEmbed(
+  async handleEmbed(
     ctx: any,
     jotId: string | undefined,
     embed: boolean,
@@ -1085,7 +891,7 @@ export class ScribaBot implements BotServices {
 
   /** 🔄 Retry on a failed jot's status message: reset its attempts and queue it now,
    *  rather than waiting for the sweep. */
-  private async handleRetry(ctx: any, jotId?: string): Promise<void> {
+  async handleRetry(ctx: any, jotId?: string): Promise<void> {
     const jot = jotId ? await this.repo.getJot(jotId) : undefined;
     if (!jot) {
       log.warn({ jotId }, "retry: jot is gone");
@@ -1105,7 +911,7 @@ export class ScribaBot implements BotServices {
   }
 
   /** Voice-fix button: `vf:o:<jotId>` picks original, `vf:p:<jotId>` picks proposed. */
-  private async handleVoiceFix(
+  async handleVoiceFix(
     ctx: any,
     verdict?: string,
     jotId?: string,
@@ -1133,7 +939,7 @@ export class ScribaBot implements BotServices {
    *  deterministically ordered rejection list, re-derived on each tap so no state is
    *  held between messages. A shifted index (rejection changed meanwhile) answers
    *  "expired" rather than undoing the wrong pair. */
-  private async handleUnreject(ctx: any, rest: string[]): Promise<void> {
+  async handleUnreject(ctx: any, rest: string[]): Promise<void> {
     const [step, ...idx] = rest;
     const list = await this.repo.rejectionList();
     const surfaces = distinctSurfaces(list);
@@ -1177,11 +983,7 @@ export class ScribaBot implements BotServices {
     await ctx.answerCallbackQuery();
   }
 
-  private async handleLink(
-    ctx: any,
-    verd?: string,
-    pid?: string,
-  ): Promise<void> {
+  async handleLink(ctx: any, verd?: string, pid?: string): Promise<void> {
     if (!pid) return void ctx.answerCallbackQuery();
     const rec = await this.repo.takePendingLink(pid);
     if (!rec) return void ctx.answerCallbackQuery({ text: "expired" });

@@ -1,4 +1,9 @@
-import { type Bot, InlineKeyboard } from "grammy";
+import {
+  type Bot,
+  type CommandContext,
+  type Context,
+  InlineKeyboard,
+} from "grammy";
 import { config } from "../../config.ts";
 import { logger } from "../../log.ts";
 import type { ObsidianClient } from "../../services/obsidian.ts";
@@ -15,7 +20,7 @@ export { parseHabitRef } from "./parse.ts"; // bot.ts routes habit replies via t
 
 const log = logger("habits");
 
-/** callback_query namespace this command owns (see ScribaBot.handleButton). */
+/** callback_query namespace this command owns (see views/callbacks). */
 export const HABITS_NS = "hb";
 
 /** The daily habit review: the /habits slash command, the nightly prompt, and the
@@ -36,17 +41,15 @@ export class HabitsCommand {
     private obsidian: ObsidianClient,
   ) {}
 
-  /** Wire /habits. Callback taps and reply routing come in from ScribaBot. */
-  register(): void {
-    this.bot.command("habits", async (ctx) => {
-      const arg = ctx.match.trim();
-      log.info({ arg: arg || "(yesterday)" }, "/habits command");
-      if (arg && !DATE_RE.test(arg)) {
-        log.warn({ arg }, "/habits rejected: bad date");
-        return void ctx.reply("Usage: /habits or /habits YYYY-MM-DD");
-      }
-      await this.prompt(arg || previousDate(), true);
-    });
+  /** Review on demand: `/habits` for yesterday, `/habits 2026-07-05` for that day. */
+  async slashHabits(ctx: CommandContext<Context>): Promise<void> {
+    const arg = ctx.match.trim();
+    log.info({ arg: arg || "(yesterday)" }, "/habits command");
+    if (arg && !DATE_RE.test(arg)) {
+      log.warn({ arg }, "/habits rejected: bad date");
+      return void ctx.reply("Usage: /habits or /habits YYYY-MM-DD");
+    }
+    await this.prompt(arg || previousDate(), true);
   }
 
   /** Start the review for `date`: send a single message with a "Begin" button.

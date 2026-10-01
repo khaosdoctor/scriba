@@ -1,4 +1,9 @@
-import { type Bot, InlineKeyboard } from "grammy";
+import {
+  type Bot,
+  type CommandContext,
+  type Context,
+  InlineKeyboard,
+} from "grammy";
 import { config } from "../config.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
@@ -9,7 +14,7 @@ import type { FollowupFlow } from "./followup.ts";
 
 const log = logger("rating");
 
-/** callback_query namespace this command owns (see ScribaBot.handleButton). */
+/** callback_query namespace this command owns (see views/callbacks). */
 export const RATING_NS = "rate";
 
 /** Build the 1–10 rating keyboard for a given day; the date rides in the callback data
@@ -34,18 +39,15 @@ export class RatingCommand {
     private followup: FollowupFlow,
   ) {}
 
-  /** Wire the /rate command. Callback taps are routed in from ScribaBot.handleButton. */
-  register(): void {
-    // Rate any day on demand: `/rate` → today, `/rate 2026-07-05` → that day.
-    this.bot.command("rate", async (ctx) => {
-      const arg = ctx.match.trim();
-      log.info({ arg: arg || "(today)" }, "/rate command");
-      if (arg && !DATE_RE.test(arg)) {
-        log.warn({ arg }, "/rate rejected: bad date");
-        return void ctx.reply("Usage: /rate or /rate YYYY-MM-DD");
-      }
-      await this.prompt(arg || plainDate());
-    });
+  /** Rate any day on demand: `/rate` for today, `/rate 2026-07-05` for that day. */
+  async slashRate(ctx: CommandContext<Context>): Promise<void> {
+    const arg = ctx.match.trim();
+    log.info({ arg: arg || "(today)" }, "/rate command");
+    if (arg && !DATE_RE.test(arg)) {
+      log.warn({ arg }, "/rate rejected: bad date");
+      return void ctx.reply("Usage: /rate or /rate YYYY-MM-DD");
+    }
+    await this.prompt(arg || plainDate());
   }
 
   /** The scheduled prompt: skipped while its switch is off, else for the day the

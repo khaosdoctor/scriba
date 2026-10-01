@@ -69,11 +69,7 @@ function setup(
     },
     ...repoOver,
   };
-  const commands: Record<string, (ctx: any) => Promise<void>> = {};
   const bot = {
-    command: (name: string, fn: (ctx: any) => Promise<void>) => {
-      commands[name] = fn;
-    },
     api: {
       sendMessage: async (chat: number, text: string, o: any) => {
         sent.push({ chat, text, kb: o.reply_markup });
@@ -109,7 +105,6 @@ function setup(
   const tap = (...rest: string[]) => (reprocess as any).handleTap(ctx, rest);
   return {
     reprocess,
-    commands,
     ctx,
     tap,
     events,
@@ -126,8 +121,7 @@ function setup(
 
 test("/reprocess opens the scope picker with a Close button", async () => {
   const h = setup();
-  h.reprocess.register();
-  await h.commands.reprocess!(h.ctx);
+  await h.reprocess.slashReprocess(h.ctx as any);
   assert.equal(h.sent[0]!.text, ROOT_TEXT);
   assert.deepEqual(pairs(h.sent[0]!.kb), [
     [["📅 One day", "rp:day"]],

@@ -15,7 +15,7 @@ import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = logger("followup");
 
-/** callback_query namespace this flow owns (see ScribaBot.handleButton). */
+/** callback_query namespace this flow owns (see views/callbacks). */
 export const FOLLOWUP_NS = "fu";
 
 const PROMPTS: Record<FollowupQuestion, string> = {
