@@ -78,13 +78,6 @@ export {
   TELEGRAM_LIMIT,
 } from "./lib/text.ts";
 export { parseClockTime, ratingDay } from "./lib/time.ts";
-export {
-  DEFAULT_ENTRY_MAX_CHARS,
-  entryMaxChars,
-  ratingTime,
-  switchEnabled,
-  voiceFixEnabled,
-} from "./models/settings.ts";
 export { OPENCODE_BASE_URL } from "./services/enrich.ts";
 export { modelsUrlFor } from "./services/health.ts";
 export { isInsideRoot } from "./services/vault.ts";
@@ -210,18 +203,6 @@ export function editConfirmation(time: string, text: string): string {
 // sentence is never cut in half; one longer than the limit goes out whole, because a
 // mid-sentence break is the worse outcome.
 
-/** `settings` key holding the entry-size cap (set from /menu, survives a restart). */
-export const ENTRY_MAX_CHARS_KEY = "entryMaxChars";
-
-/** `settings` key for the voice-fix feature (set from /menu, survives a restart).
- *  Unset or anything other than "on" means off: the feature is opt-in. */
-export const VOICE_FIX_KEY = "fixVoiceTranscript";
-
-/** `settings` keys for runtime model overrides. Env vars seed the DB at boot;
- *  the DB value wins from then on. Changed from /menu. */
-export const ENRICH_MODEL_KEY = "enrichModel";
-export const VOICE_FIX_MODEL_KEY = "voiceFixModel";
-
 /** A typed entry-size reply: a whole number of characters, or "off" to stop splitting.
  *  Null when it isn't usable — under 40 characters no sentence would ever fit. */
 export function parseEntrySize(text: string): number | null {
@@ -231,12 +212,6 @@ export function parseEntrySize(text: string): number | null {
   const n = Number(s);
   return n >= 40 && n <= 4000 ? n : null;
 }
-
-/** `settings` keys for the nightly rating and its follow-up (set from /menu, survive a
- *  restart). Unset means on; the rating time falls back to `RATING_TIME`. */
-export const RATING_SWITCH_KEY = "nightlyRating";
-export const FOLLOWUP_SWITCH_KEY = "nightlyFollowup";
-export const RATING_TIME_KEY = "ratingTime";
 
 /** The follow-up questions after the nightly rating, in the order they are asked. */
 export const FOLLOWUP_QUESTIONS = ["journal", "til"] as const;
@@ -283,10 +258,6 @@ export function parseFollowupRef(
   const question = followupFromCode(m?.[1]);
   return m && question ? { question, date: m[2]! } : null;
 }
-
-/** `settings` key for the "Move this to TIL?" cards (set from the task menu, survives a
- *  restart). Unset means on, like task detection. */
-export const TIL_DETECTION_KEY = "tilDetection";
 
 // --- /command live updates -------------------------------------------------------------
 // While the vault assistant works, its reasoning, tool calls and intermediate prose are

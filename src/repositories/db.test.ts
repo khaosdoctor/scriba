@@ -127,6 +127,11 @@ test("a jot's life through the Repository facade reaches the right table at ever
     assert.equal((await repo.recordRating("2026-07-06", 5)).recorded, true);
     await repo.setSetting("enrichModel", "m1");
     assert.equal(await repo.getSetting("enrichModel"), "m1");
+    assert.equal(await repo.toggleSetting("nightlyRating"), false);
+    await repo.seedSettings({ enrichModel: "m2", voiceFixModel: "v1" });
+    assert.equal(await repo.getSetting("enrichModel"), "m1");
+    assert.equal(await repo.getSetting("voiceFixModel"), "v1");
+    assert.equal(await repo.ratingTime("9:30"), "09:30");
   } finally {
     await repo.close();
   }
@@ -209,10 +214,7 @@ test("a database first migrated by the original release reads back through every
       (await new RatingRepository(k).recordRating("2026-07-06", 7)).recorded,
       true,
     );
-    assert.equal(
-      await new SettingsRepository(k).getSetting("enrichModel"),
-      undefined,
-    );
+    assert.equal(await new SettingsRepository(k).get("enrichModel"), undefined);
     assert.equal(
       await new TaskDraftRepository(k).taskDraftsForJot("aaaaaaaa"),
       0,

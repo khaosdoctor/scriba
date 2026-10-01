@@ -448,15 +448,6 @@ export function parseTaskDate(
 // date arithmetic: it reports the author's own words ("next friday") and chrono resolves
 // them here, against the jot's own day.
 
-/** `settings` key for the jot → task suggestions (set from the task menu, survives a
- *  restart). Unset means on: suggesting is the point of having the feature. */
-export const TASK_DETECTION_KEY = "taskDetection";
-
-/** Whether detection is on, from the raw setting value. */
-export function detectionEnabled(raw: string | undefined): boolean {
-  return raw !== "off";
-}
-
 /** One date phrase as the model copied it out of the entry. */
 function phraseDate(phrase: string | undefined, today: string): string | null {
   if (!phrase?.trim()) return null;

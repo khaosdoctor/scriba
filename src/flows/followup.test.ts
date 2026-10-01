@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { SETTINGS, type SettingKey } from "../models/settings.ts";
 import { testConfig } from "../test/config.ts";
 import { FollowupFlow } from "./followup.ts";
 
@@ -30,9 +31,9 @@ function harness(
     },
   };
   const repo = {
-    getSetting: async (key: string) => {
+    getSetting: async (key: SettingKey) => {
       keys.push(key);
-      return settings[key];
+      return SETTINGS[key].parse(settings[key]);
     },
   };
   const obsidian = {

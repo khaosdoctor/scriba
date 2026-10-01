@@ -2,12 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TaskNotesService } from "../../services/task-notes.ts";
 import { testConfig } from "../../test/config.ts";
+import { fakeSettings } from "../../test/fake-settings.ts";
 import { noteOps } from "../../test/note-ops.ts";
-import {
-  parseTaskPromptRef,
-  TasksFlow,
-  taskDetectionEnabled,
-} from "./index.ts";
+import { parseTaskPromptRef, TasksFlow } from "./index.ts";
 
 type Sent = { chat: number; text: string; markup?: any; silent?: unknown };
 type Edited = { chat: number; msg: number; text: string; markup?: any };
@@ -68,8 +65,7 @@ function harness(
       drafts.set(id, { ...d, status: "created" });
       return true;
     },
-    getSetting: async (k: string) => settings.get(k),
-    setSetting: async (k: string, v: string) => void settings.set(k, v),
+    ...fakeSettings(settings),
   };
 
   // A minimal Obsidian stand-in: one note in memory, read and written whole.
@@ -545,10 +541,6 @@ test("the TIL and task switches do not touch each other", async () => {
 
 test("jot detection is on by default and the menu toggles it", async () => {
   const h = harness();
-  assert.equal(
-    await taskDetectionEnabled({ getSetting: async () => undefined } as any),
-    true,
-  );
   await h.flow.handleTap(h.ctx as any, ["det"]);
   assert.equal(h.settings.get("taskDetection"), "off");
   assert.match(h.edited.at(-1)!.text, /🗂 Tasks/);

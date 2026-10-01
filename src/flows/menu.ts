@@ -3,10 +3,6 @@ import { commands, type Deps } from "../commands/index.ts";
 import {
   cleanNoteTitle,
   distinctSurfaces,
-  ENRICH_MODEL_KEY,
-  ENTRY_MAX_CHARS_KEY,
-  entryMaxChars,
-  FOLLOWUP_SWITCH_KEY,
   fitTelegram,
   formatJotDetail,
   jotPreview,
@@ -16,14 +12,7 @@ import {
   parseRuleWords,
   parseWizardRef,
   previewList,
-  RATING_SWITCH_KEY,
-  RATING_TIME_KEY,
-  ratingTime,
   STATUS_ICON,
-  switchEnabled,
-  VOICE_FIX_KEY,
-  VOICE_FIX_MODEL_KEY,
-  voiceFixEnabled,
   WIZARD_ENRICH_MODEL_REF,
   WIZARD_ENTRYSIZE_REF,
   WIZARD_NEWNOTE_REF,
@@ -38,6 +27,7 @@ import type { Jot } from "../db.ts";
 import type { Scheduler } from "../lib/scheduler.ts";
 import { logger } from "../log.ts";
 import type { Config } from "../models/config.ts";
+import { SETTINGS, type SwitchKey } from "../models/settings.ts";
 import { plainDate } from "../time.ts";
 import { closeMessage } from "../views/chat.ts";
 import {
@@ -57,6 +47,8 @@ const log = logger("menu");
 const CLOSE = "menu:close";
 
 const MODEL_PRESETS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"];
+
+const MODEL_KEY = { enrich: "enrichModel", voiceFix: "voiceFixModel" } as const;
 
 function shortModel(m: string): string {
   return m.replace("claude-", "").replace("-4-5", " 4.5").replace("-5", " 5");
@@ -171,25 +163,18 @@ export class MenuController {
 
   /** The entry-size cap in force right now (0 = splitting off). */
   private async entrySize(): Promise<number> {
-    return entryMaxChars(
-      await this.getDeps().repo.getSetting(ENTRY_MAX_CHARS_KEY),
-    );
+    return this.getDeps().repo.getSetting("entryMaxChars");
   }
 
   private async rootMenu(): Promise<InlineKeyboard> {
     const repo = this.getDeps().repo;
     const size = await this.entrySize();
-    const vfOn = voiceFixEnabled(await repo.getSetting(VOICE_FIX_KEY));
-    const enrichModel = (await repo.getSetting(ENRICH_MODEL_KEY)) ?? "?";
-    const vfModel = (await repo.getSetting(VOICE_FIX_MODEL_KEY)) ?? "?";
-    const ratingOn = switchEnabled(await repo.getSetting(RATING_SWITCH_KEY));
-    const followupOn = switchEnabled(
-      await repo.getSetting(FOLLOWUP_SWITCH_KEY),
-    );
-    const at = ratingTime(
-      await repo.getSetting(RATING_TIME_KEY),
-      this.config.ratingTime,
-    );
+    const vfOn = await repo.getSetting("fixVoiceTranscript");
+    const enrichModel = (await repo.getSetting("enrichModel")) ?? "?";
+    const vfModel = (await repo.getSetting("voiceFixModel")) ?? "?";
+    const ratingOn = await repo.getSetting("nightlyRating");
+    const followupOn = await repo.getSetting("nightlyFollowup");
+    const at = await repo.ratingTime(this.config.ratingTime);
     return new InlineKeyboard()
       .text("📊 Rate today", "menu:rate")
       .text("🌱 Review habits", "menu:habits")
@@ -303,11 +288,11 @@ export class MenuController {
         await ctx.answerCallbackQuery();
         return this.entrySizeMenu(ctx);
       case "vfix":
-        return this.menuToggleVoiceFix(ctx);
+        return this.menuToggleSwitch(ctx, "fixVoiceTranscript");
       case "rtsw":
-        return this.menuToggleSwitch(ctx, RATING_SWITCH_KEY, "Nightly rating");
+        return this.menuToggleSwitch(ctx, "nightlyRating");
       case "fusw":
-        return this.menuToggleSwitch(ctx, FOLLOWUP_SWITCH_KEY, "Follow-up");
+        return this.menuToggleSwitch(ctx, "nightlyFollowup");
       case "rtt":
         return this.promptRatingTime(ctx);
       case "em":
@@ -428,32 +413,14 @@ export class MenuController {
     });
   }
 
-  private async menuToggleVoiceFix(ctx: any): Promise<void> {
-    const repo = this.getDeps().repo;
-    const on = voiceFixEnabled(await repo.getSetting(VOICE_FIX_KEY));
-    const next = on ? "off" : "on";
-    await repo.setSetting(VOICE_FIX_KEY, next);
-    log.info({ next }, "menu: voice fix toggled");
-    await ctx.answerCallbackQuery({ text: `Voice fix ${next}` });
-    await ctx.editMessageText("🗂 scriba control menu", {
-      reply_markup: await this.rootMenu(),
-    });
-  }
-
   /** Flip an on/off setting from the root menu and redraw it. */
-  private async menuToggleSwitch(
-    ctx: any,
-    key: string,
-    label: string,
-  ): Promise<void> {
-    const repo = this.getDeps().repo;
-    const next = switchEnabled(await repo.getSetting(key)) ? "off" : "on";
-    await repo.setSetting(key, next);
+  private async menuToggleSwitch(ctx: any, key: SwitchKey): Promise<void> {
+    const next = await this.getDeps().repo.toggleSetting(key);
     log.info({ key, next }, "menu: switch toggled");
     // The setting is already saved, so neither a stale callback query nor a menu that has
     // gone away may undo that or stop the other half.
     await ctx
-      .answerCallbackQuery({ text: `${label} ${next}` })
+      .answerCallbackQuery({ text: SETTINGS[key].label(next) })
       .catch((err: unknown) => log.warn({ err }, "menu: toggle ack failed"));
     await ctx
       .editMessageText("🗂 scriba control menu", {
@@ -479,7 +446,7 @@ export class MenuController {
     ctx: any,
     which: "enrich" | "voiceFix",
   ): Promise<void> {
-    const key = which === "enrich" ? ENRICH_MODEL_KEY : VOICE_FIX_MODEL_KEY;
+    const key = MODEL_KEY[which];
     const cbPrefix = which === "enrich" ? "ems" : "vfs";
     const customCb = which === "enrich" ? "emc" : "vfc";
     const label =
@@ -508,10 +475,9 @@ export class MenuController {
     if (!model?.trim()) {
       return void ctx.answerCallbackQuery({ text: "expired" });
     }
-    const key = which === "enrich" ? ENRICH_MODEL_KEY : VOICE_FIX_MODEL_KEY;
     const label = which === "enrich" ? "enrichment" : "voice fix";
     const { repo, enricher } = this.getDeps();
-    await repo.setSetting(key, model);
+    await repo.setSetting(MODEL_KEY[which], model);
     if (which === "enrich") enricher.setModel(model);
     log.info({ which, model }, "menu: model changed");
     await ctx.answerCallbackQuery({ text: `${label}: ${shortModel(model)}` });
@@ -572,7 +538,7 @@ export class MenuController {
       return void ctx.answerCallbackQuery({ text: "expired" });
     }
     await ctx.answerCallbackQuery({ text: n ? `${n} chars` : "splitting off" });
-    await this.getDeps().repo.setSetting(ENTRY_MAX_CHARS_KEY, String(n));
+    await this.getDeps().repo.setSetting("entryMaxChars", String(n));
     log.info({ size: n }, "menu: entry size changed");
     return this.entrySizeMenu(ctx);
   }
@@ -1189,7 +1155,7 @@ export class MenuController {
             'Give me a whole number between 40 and 4000, or "off".',
           );
         }
-        await repo.setSetting(ENTRY_MAX_CHARS_KEY, String(size));
+        await repo.setSetting("entryMaxChars", String(size));
         log.info({ size }, "menu: entry size changed");
         return this.replyMenu(
           ctx,
@@ -1207,7 +1173,7 @@ export class MenuController {
             "That isn't a time. Use HH:MM in 24-hour time, like 23:30 or 00:00.",
           );
         }
-        await repo.setSetting(RATING_TIME_KEY, time);
+        await repo.setSetting("ratingTime", time);
         this.scheduler?.setRatingTime(time);
         log.info({ time }, "menu: rating time changed");
         return this.replyMenu(
@@ -1224,9 +1190,8 @@ export class MenuController {
           return void ctx.reply("Send a model ID (e.g. claude-sonnet-5).");
         }
         const which = p.kind === "em" ? "enrich" : "voiceFix";
-        const key = which === "enrich" ? ENRICH_MODEL_KEY : VOICE_FIX_MODEL_KEY;
         const label = which === "enrich" ? "enrichment" : "voice fix";
-        await repo.setSetting(key, model);
+        await repo.setSetting(MODEL_KEY[which], model);
         if (which === "enrich") this.getDeps().enricher.setModel(model);
         log.info({ which, model }, "menu: model changed via text");
         return this.replyMenu(

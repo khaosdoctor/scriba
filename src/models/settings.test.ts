@@ -1,13 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  DEFAULT_ENTRY_MAX_CHARS,
-  entryMaxChars,
   IsoDateSchema,
   parseClockTime,
-  ratingTime,
-  switchEnabled,
-  voiceFixEnabled,
+  RatingSchema,
+  SETTINGS,
 } from "./settings.ts";
 
 test("IsoDateSchema rejects malformed shapes, sub-100 years, and out-of-range month/day", () => {
@@ -64,29 +61,56 @@ test("parseClockTime rejects malformed, non-ASCII and multi-line input", () => {
     assert.equal(parseClockTime(bad), null, JSON.stringify(bad));
 });
 
-test("entryMaxChars falls back to the default and treats 0 as off", () => {
-  assert.equal(entryMaxChars(undefined), DEFAULT_ENTRY_MAX_CHARS);
-  assert.equal(entryMaxChars(""), DEFAULT_ENTRY_MAX_CHARS);
-  assert.equal(entryMaxChars("nonsense"), DEFAULT_ENTRY_MAX_CHARS);
-  assert.equal(entryMaxChars("-5"), DEFAULT_ENTRY_MAX_CHARS);
-  assert.equal(entryMaxChars("0"), 0);
-  assert.equal(entryMaxChars("140"), 140);
+test("entryMaxChars falls back to 280 and treats 0 as off", () => {
+  const parse = SETTINGS.entryMaxChars.parse;
+  assert.equal(parse(undefined), 280);
+  assert.equal(parse(""), 280);
+  assert.equal(parse("nonsense"), 280);
+  assert.equal(parse("-5"), 280);
+  assert.equal(parse("0"), 0);
+  assert.equal(parse("140"), 140);
 });
 
-test("voice fix is opt-in and every switch is on unless explicitly off", () => {
-  assert.equal(voiceFixEnabled(undefined), false);
-  assert.equal(voiceFixEnabled("off"), false);
-  assert.equal(voiceFixEnabled("on"), true);
-  assert.equal(switchEnabled(undefined), true);
-  assert.equal(switchEnabled("on"), true);
-  assert.equal(switchEnabled("off"), false);
+test("voice fix is opt-in and every other switch is on unless explicitly off", () => {
+  const voiceFix = SETTINGS.fixVoiceTranscript.parse;
+  assert.equal(voiceFix(undefined), false);
+  assert.equal(voiceFix("off"), false);
+  assert.equal(voiceFix("on"), true);
+  for (const key of [
+    "nightlyRating",
+    "nightlyFollowup",
+    "taskDetection",
+    "tilDetection",
+  ] as const) {
+    assert.equal(SETTINGS[key].parse(undefined), true, key);
+    assert.equal(SETTINGS[key].parse("on"), true, key);
+    assert.equal(SETTINGS[key].parse("off"), false, key);
+  }
 });
 
-test("ratingTime uses the stored time when valid, else the normalised default", () => {
-  assert.equal(ratingTime("22:15", "00:00"), "22:15");
-  assert.equal(ratingTime("8:05", "00:00"), "08:05");
-  assert.equal(ratingTime(undefined, "00:00"), "00:00");
-  assert.equal(ratingTime("garbage", "21:00"), "21:00");
-  assert.equal(ratingTime(undefined, "9:30"), "09:30");
-  assert.equal(ratingTime("garbage", "9:30"), "09:30");
+test("a stored rating time is normalised, and an unusable one reads as unset", () => {
+  const parse = SETTINGS.ratingTime.parse;
+  assert.equal(parse("22:15"), "22:15");
+  assert.equal(parse("8:05"), "08:05");
+  assert.equal(parse(undefined), undefined);
+  assert.equal(parse("garbage"), undefined);
+});
+
+test("a switch toast names the state it was just set to", () => {
+  assert.equal(SETTINGS.fixVoiceTranscript.label(true), "Voice fix on");
+  assert.equal(SETTINGS.nightlyRating.label(false), "Nightly rating off");
+  assert.equal(SETTINGS.nightlyFollowup.label(false), "Follow-up off");
+  assert.equal(
+    SETTINGS.taskDetection.label(false),
+    "I'll stop suggesting tasks",
+  );
+  assert.equal(SETTINGS.tilDetection.label(true), "I'll suggest TILs again");
+});
+
+test("RatingSchema takes button text for a whole number from 1 to 10", () => {
+  for (const ok of ["1", "7", "10"])
+    assert.equal(RatingSchema.safeParse(ok).success, true, ok);
+  for (const bad of ["0", "11", "5.5", "", "x", " ", "-1", "Infinity"])
+    assert.equal(RatingSchema.safeParse(bad).success, false, bad);
+  assert.equal(RatingSchema.safeParse(undefined).success, false);
 });

@@ -4,15 +4,12 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type TestContext, test } from "node:test";
-import {
-  ENTRY_MAX_CHARS_KEY,
-  insertJournalLine,
-  VOICE_FIX_KEY,
-  VOICE_FIX_MODEL_KEY,
-} from "../core.ts";
+import { insertJournalLine } from "../core.ts";
 import type { Jot } from "../db.ts";
 import { MAX_ATTEMPTS, Repository } from "../db.ts";
+import type { SettingKey } from "../models/settings.ts";
 import { ModelsDownError } from "../services/enrich.ts";
+import { fakeSettings } from "../test/fake-settings.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { HELD as HELD_MARKER, JotProcessor } from "./processor.ts";
 
@@ -55,7 +52,16 @@ function harness(
   const repo = {
     updateJot: async (id: string, patch: any) => void updates.push([id, patch]),
     groupFollowers: async () => over.followers ?? [],
-    getSetting: async () => over.detection,
+    ...fakeSettings(
+      new Map(
+        over.detection
+          ? [
+              ["taskDetection", over.detection],
+              ["tilDetection", over.detection],
+            ]
+          : [],
+      ),
+    ),
     taskDraftsForJot: async () => over.priorDrafts ?? 0,
     tilOffered: async () => over.tilAsked ?? false,
   };
@@ -233,7 +239,7 @@ function pipeline(
   const repo = {
     getJot: async (id: string) => jots.get(id),
     claim: async () => true,
-    getSetting: async () => undefined,
+    ...fakeSettings(),
     updateJot: async () => {},
     groupFollowers: async () => over.followers ?? [],
     stopwords: async () => new Set<string>(),
@@ -495,7 +501,7 @@ const stored = (over: Partial<Jot> = {}): Jot =>
   });
 
 interface WorldOptions {
-  settings?: Record<string, string>;
+  settings?: Partial<Record<SettingKey, string>>;
   enrichText?: string;
   fixTranscript?: (original: string, model: string) => Promise<string>;
   voiceChoice?: "original" | "proposed";
@@ -521,8 +527,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
     await rm(`${dbPath}-wal`, { force: true });
     await rm(`${dbPath}-shm`, { force: true });
   });
-  for (const [key, value] of Object.entries(options.settings ?? {}))
-    await repo.setSetting(key, value);
+  await repo.seedSettings(options.settings ?? {});
 
   const statuses: Seen[] = [];
   const reactions: [string, string][] = [];
@@ -765,8 +770,8 @@ test("a follower whose leader was deleted is processed on its own and appended t
 });
 
 const voiceSettings = {
-  [VOICE_FIX_MODEL_KEY]: "haiku-test",
-  [VOICE_FIX_KEY]: "on",
+  voiceFixModel: "haiku-test",
+  fixVoiceTranscript: "on",
 };
 const voiceJot = (transcript: string) =>
   stored({
@@ -856,10 +861,10 @@ test("a voice fix that errors keeps the original transcript and the jot still co
 });
 
 test("the voice fix is skipped when it is off or has no model", async (testContext) => {
-  const variants: Record<string, string>[] = [
-    { [VOICE_FIX_MODEL_KEY]: "haiku-test" },
-    { [VOICE_FIX_KEY]: "on" },
-    { [VOICE_FIX_MODEL_KEY]: "haiku-test", [VOICE_FIX_KEY]: "off" },
+  const variants: WorldOptions["settings"][] = [
+    { voiceFixModel: "haiku-test" },
+    { fixVoiceTranscript: "on" },
+    { voiceFixModel: "haiku-test", fixVoiceTranscript: "off" },
   ];
   for (const settings of variants) {
     const testWorld = await world(testContext, {
@@ -1027,7 +1032,7 @@ test("media already on file is not downloaded again", async (testContext) => {
 
 test("an over-long entry's spillover jots copy the parent row, til_offered included", async (testContext) => {
   const testWorld = await world(testContext, {
-    settings: { [ENTRY_MAX_CHARS_KEY]: "40" },
+    settings: { entryMaxChars: "40" },
     enrichText:
       "The first sentence is a fairly long one. The second sentence is also a long one.",
   });

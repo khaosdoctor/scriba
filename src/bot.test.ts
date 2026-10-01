@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { placeholderLine, WIZARD_RATING_TIME_REF } from "./core.ts";
 import { type Jot, Repository } from "./db.ts";
+import { SETTINGS, type SettingKey } from "./models/settings.ts";
 import { testConfig } from "./test/config.ts";
 import { plainDate, plainTime, previousDate } from "./time.ts";
 
@@ -69,7 +70,8 @@ async function harness(over: Fakes = {}) {
       lookups.push([notePath, section]);
       return over.prev ?? (over.chain ? inserted.at(-1) : undefined);
     },
-    getSetting: async (key: string) => over.settings?.[key],
+    getSetting: async (key: SettingKey) =>
+      SETTINGS[key].parse(over.settings?.[key]),
     setSetting: async (key: string, value: string) =>
       void sets.push([key, value]),
     jotForMessage: async () => over.jotId,

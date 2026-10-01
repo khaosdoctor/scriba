@@ -4,10 +4,8 @@ import {
   candidates,
   combineEnrichSource,
   doneMessage,
-  ENTRY_MAX_CHARS_KEY,
   embedOffer,
   enrichableSource,
-  entryMaxChars,
   escapeHtml,
   forcedCandidates,
   gaveUpMessage,
@@ -18,18 +16,9 @@ import {
   makeJotId,
   retryNotice,
   splitEntry,
-  TIL_DETECTION_KEY,
-  VOICE_FIX_KEY,
-  VOICE_FIX_MODEL_KEY,
-  voiceFixEnabled,
 } from "../core.ts";
 import { type Jot, MAX_ATTEMPTS, type Repository } from "../db.ts";
-import {
-  detectionEnabled,
-  draftFromDetection,
-  TASK_DETECTION_KEY,
-  type TaskDraft,
-} from "../flows/tasks/parse.ts";
+import { draftFromDetection, type TaskDraft } from "../flows/tasks/parse.ts";
 import { logger } from "../log.ts";
 import type { DetectedTask, DownloadedFile } from "../models/domain.ts";
 import type { StatusButtons } from "../models/ops.ts";
@@ -166,12 +155,12 @@ export class JotProcessor {
       }
       // Voice fix: when enabled, ask a stronger model to lightly clean the transcript
       // and let the user pick between original and proposed before enrichment proceeds.
-      const vfModel = await this.repo.getSetting(VOICE_FIX_MODEL_KEY);
+      const vfModel = await this.repo.getSetting("voiceFixModel");
       if (
         jot.kind === "audio" &&
         jot.transcript?.trim() &&
         vfModel &&
-        voiceFixEnabled(await this.repo.getSetting(VOICE_FIX_KEY))
+        (await this.repo.getSetting("fixVoiceTranscript"))
       ) {
         const original = jot.transcript.trim();
         await this.bot.status(
@@ -569,7 +558,7 @@ export class JotProcessor {
     jot: Jot,
   ): Promise<TaskDraft[]> {
     if (!detected?.length) return [];
-    if (!detectionEnabled(await this.repo.getSetting(TASK_DETECTION_KEY))) {
+    if (!(await this.repo.getSetting("taskDetection"))) {
       log.debug({ id: jot.id }, "task detection off — suggestions dropped");
       return [];
     }
@@ -603,7 +592,7 @@ export class JotProcessor {
    */
   private async tilWanted(sounds: boolean, jot: Jot): Promise<boolean> {
     if (!sounds) return false;
-    if (!detectionEnabled(await this.repo.getSetting(TIL_DETECTION_KEY))) {
+    if (!(await this.repo.getSetting("tilDetection"))) {
       log.debug({ id: jot.id }, "til detection off, no card");
       return false;
     }
@@ -654,7 +643,7 @@ export class JotProcessor {
 
   /** Current entry-size limit: the runtime setting, or the default when unset. */
   private async maxChars(): Promise<number> {
-    return entryMaxChars(await this.repo.getSetting(ENTRY_MAX_CHARS_KEY));
+    return this.repo.getSetting("entryMaxChars");
   }
 
   private composeLine(jot: Jot, textPart: string): string {

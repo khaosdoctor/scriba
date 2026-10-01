@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { SETTINGS, type SettingKey } from "../models/settings.ts";
 import { testConfig } from "../test/config.ts";
 import { Scheduler } from "./scheduler.ts";
 import { plainDate } from "./time.ts";
@@ -30,7 +31,7 @@ function harness(
   const summaries: string[] = [];
   let sweeps = 0;
   const repo = {
-    getSetting: async (key: string) => settings[key],
+    getSetting: async (key: SettingKey) => SETTINGS[key].parse(settings[key]),
     windowStats: async (): Promise<Stats> => ({
       total: 0,
       audio: 0,
@@ -202,7 +203,7 @@ test("a prompt that throws still re-arms for tomorrow", async (t) => {
     testConfig,
     {
       windowStats: async () => ({ total: 0 }),
-      getSetting: async () => undefined,
+      getSetting: async () => true,
     } as any,
     { retrySweep: async () => {} } as any,
     async () => {},
@@ -367,7 +368,7 @@ test("a rating prompt that never resolves does not stop the next night's", async
     testConfig,
     {
       windowStats: async () => ({ total: 0 }),
-      getSetting: async () => undefined,
+      getSetting: async () => true,
     } as any,
     { retrySweep: async () => {} } as any,
     async () => {},
@@ -396,7 +397,7 @@ test("a rating that throws does not hold back the habit review in the same tick"
     testConfig,
     {
       windowStats: async () => ({ total: 0 }),
-      getSetting: async () => undefined,
+      getSetting: async () => true,
     } as any,
     { retrySweep: async () => {} } as any,
     async () => {},
