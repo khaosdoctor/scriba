@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SETTINGS, type SettingKey } from "../models/settings.ts";
 import { testConfig } from "../test/config.ts";
+import { FakeSettings } from "../test/fakes.ts";
 import { FollowupFlow } from "./followup.ts";
 
 const DATE = "2026-07-05";
@@ -18,7 +18,7 @@ function harness(
   const sent: { text: string; opts: any }[] = [];
   const deleted: [number, number][] = [];
   const jots: [string, string][] = [];
-  const keys: string[] = [];
+  const repo = new FakeSettings(settings);
   let reads = 0;
   const bot = {
     api: {
@@ -28,12 +28,6 @@ function harness(
         deleted.push([chat, id]);
         if (opts.deleteFails) throw new Error("message to delete not found");
       },
-    },
-  };
-  const repo = {
-    getSetting: async (key: SettingKey) => {
-      keys.push(key);
-      return SETTINGS[key].parse(settings[key]);
     },
   };
   const obsidian = {
@@ -52,7 +46,7 @@ function harness(
       jots.push([date, text]);
     },
   );
-  return { flow, sent, deleted, jots, keys };
+  return { flow, sent, deleted, jots, keys: repo.reads };
 }
 
 const { parseFollowupRef } = await import("../core.ts");

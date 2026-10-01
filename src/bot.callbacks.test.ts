@@ -3,7 +3,9 @@ import { test } from "node:test";
 import { journalLine } from "./core.ts";
 import type { Jot } from "./db.ts";
 import { testConfig } from "./test/config.ts";
+import { BOT_INFO } from "./test/fakes.ts";
 import { noteOps } from "./test/note-ops.ts";
+import { sampleJot } from "./test/sqlite.ts";
 
 const NOW = Date.UTC(2026, 7, 16, 10, 0, 0);
 const SEC = NOW / 1000;
@@ -11,25 +13,15 @@ const NOTE = "notes/daily notes/2026-08-16.md";
 const ID = "aaaaaaaa";
 const YT = "https://youtu.be/dQw4w9WgXcQ";
 
-const jot = (over: Partial<Jot> = {}): Jot => ({
-  id: ID,
-  kind: "text",
-  note_path: NOTE,
-  anchor: ID,
-  time: "10:00:00",
-  raw_text: "bought milk",
-  transcript: null,
-  proposed_text: null,
-  section: "journal",
-  asset_path: null,
-  file_id: null,
-  status: "done",
-  attempts: 0,
-  error: null,
-  received_at: NOW,
-  updated_at: NOW,
-  ...over,
-});
+const jot = (over: Partial<Jot> = {}): Jot =>
+  sampleJot(ID, {
+    note_path: NOTE,
+    raw_text: "bought milk",
+    status: "done",
+    received_at: NOW,
+    updated_at: NOW,
+    ...over,
+  });
 
 const noteWith = (text: string, id = ID) =>
   `# Journal\n${journalLine("10:00:00", text, id)}\n`;
@@ -146,19 +138,7 @@ async function harness(over: Opts = {}) {
   bot.setQueue({
     add: (ids: string[]) => void events.push(`queue.add:${ids.join(",")}`),
   });
-  bot.bot.botInfo = {
-    id: 99,
-    is_bot: true,
-    first_name: "b",
-    username: "b",
-    can_join_groups: false,
-    can_read_all_group_messages: false,
-    supports_inline_queries: false,
-    can_connect_to_business: false,
-    has_main_web_app: false,
-    has_topics_enabled: false,
-    allows_users_to_create_topics: false,
-  };
+  bot.bot.botInfo = BOT_INFO;
   bot.bot.api.config.use(
     async (_prev: unknown, method: string, payload: any) => {
       api.push({ method, payload });

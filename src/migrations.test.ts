@@ -1,12 +1,9 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
-import { rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
 import knexLib, { type Knex } from "knex";
 import { openDb } from "./repositories/db.ts";
 import { JotRepository } from "./repositories/jots.ts";
+import { removeDb, tempDbPath } from "./test/sqlite.ts";
 
 const BEFORE_SECTION = "20260922000000";
 const SECTION = "20260930000000";
@@ -49,18 +46,14 @@ async function withDb(
   testContext: { skip: (why: string) => void },
   fn: (knex: Knex, dbPath: string) => Promise<void>,
 ) {
-  const dbPath = join(
-    tmpdir(),
-    `scriba-mig-${randomBytes(6).toString("hex")}.db`,
-  );
+  const dbPath = tempDbPath();
   const knex = await open(dbPath);
   if (!knex) return testContext.skip("native sqlite unavailable");
   try {
     await fn(knex, dbPath);
   } finally {
     await knex.destroy().catch(() => {});
-    for (const suffix of ["", "-shm", "-wal"])
-      await rm(`${dbPath}${suffix}`, { force: true });
+    await removeDb(dbPath);
   }
 }
 

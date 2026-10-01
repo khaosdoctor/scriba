@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Jot } from "../db.ts";
 import type { ReleaseNote } from "../services/github.ts";
+import { sampleJot } from "../test/sqlite.ts";
 import { startOfToday } from "../time.ts";
 import { commands } from "./index.ts";
 import type { Command, Deps } from "./types.ts";
@@ -20,21 +21,15 @@ const byName = (name: string): Command => {
 };
 
 const aJot = (over: Partial<Jot> = {}): Jot =>
-  ({
-    id: "abcd1234",
-    anchor: "abcd1234",
-    kind: "text",
+  sampleJot("abcd1234", {
     status: "failed",
     attempts: 2,
     raw_text: "a thought",
-    transcript: null,
-    asset_path: null,
     note_path: "notes/daily notes/2026-08-16.md",
-    time: "10:00:00",
     received_at: 0,
     error: "fetch failed",
     ...over,
-  }) as Jot;
+  });
 
 /** Deps with every collaborator recorded. Anything a test doesn't override throws if
  *  touched, so a command reaching for something it shouldn't shows up as a failure. */

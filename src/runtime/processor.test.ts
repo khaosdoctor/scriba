@@ -1,39 +1,25 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
-import { rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { insertJournalLine } from "../core.ts";
 import type { Jot } from "../db.ts";
 import { MAX_ATTEMPTS, Repository } from "../db.ts";
 import type { SettingKey } from "../models/settings.ts";
 import { ModelsDownError } from "../services/enrich.ts";
-import { fakeSettings } from "../test/fake-settings.ts";
+import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";
+import { removeDb, sampleJot, tempDbPath } from "../test/sqlite.ts";
 import { HELD as HELD_MARKER, JotProcessor } from "./processor.ts";
 
 /** Status messages the bot was asked to post, with the buttons each one carried. */
 type Posted = { id: string; html: string; opts: any };
 
 const jot = (over: Partial<Jot> = {}): Jot =>
-  ({
-    id: "abcd1234",
-    anchor: "abcd1234",
-    kind: "text",
+  sampleJot("abcd1234", {
     status: "processing",
-    attempts: 0,
     raw_text: "a thought",
-    transcript: null,
-    proposed_text: null,
-    section: "journal",
-    asset_path: null,
-    file_id: null,
     note_path: "notes/daily notes/2026-08-16.md",
-    time: "10:00:00",
-    error: null,
     ...over,
-  }) as Jot;
+  });
 
 /** A processor whose collaborators only record what they were asked to do. The note write
  *  throws, which is the give-up path's own escape hatch — it keeps the stubs to the parts
@@ -52,15 +38,10 @@ function harness(
   const repo = {
     updateJot: async (id: string, patch: any) => void updates.push([id, patch]),
     groupFollowers: async () => over.followers ?? [],
-    ...fakeSettings(
-      new Map(
-        over.detection
-          ? [
-              ["taskDetection", over.detection],
-              ["tilDetection", over.detection],
-            ]
-          : [],
-      ),
+    ...new FakeSettings(
+      over.detection
+        ? { taskDetection: over.detection, tilDetection: over.detection }
+        : {},
     ),
     taskDraftsForJot: async () => over.priorDrafts ?? 0,
     tilOffered: async () => over.tilAsked ?? false,
@@ -239,7 +220,7 @@ function pipeline(
   const repo = {
     getJot: async (id: string) => jots.get(id),
     claim: async () => true,
-    ...fakeSettings(),
+    ...new FakeSettings(),
     updateJot: async () => {},
     groupFollowers: async () => over.followers ?? [],
     stopwords: async () => new Set<string>(),
@@ -508,10 +489,7 @@ interface WorldOptions {
 }
 
 async function world(testContext: TestContext, options: WorldOptions = {}) {
-  const dbPath = join(
-    tmpdir(),
-    `scriba-processor-${randomBytes(6).toString("hex")}.db`,
-  );
+  const dbPath = tempDbPath();
   let repo: Repository;
   try {
     repo = await Repository.open(dbPath);
@@ -523,9 +501,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
   }
   testContext.after(async () => {
     await repo.close();
-    await rm(dbPath, { force: true });
-    await rm(`${dbPath}-wal`, { force: true });
-    await rm(`${dbPath}-shm`, { force: true });
+    await removeDb(dbPath);
   });
   await repo.seedSettings(options.settings ?? {});
 

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TaskNotesService } from "../../services/task-notes.ts";
 import { testConfig } from "../../test/config.ts";
-import { fakeSettings } from "../../test/fake-settings.ts";
+import { FakeSettings } from "../../test/fakes.ts";
 import { noteOps } from "../../test/note-ops.ts";
 import { parseTaskPromptRef, TasksFlow } from "./index.ts";
 
@@ -65,7 +65,7 @@ function harness(
       drafts.set(id, { ...d, status: "created" });
       return true;
     },
-    ...fakeSettings(settings),
+    ...new FakeSettings(settings),
   };
 
   // A minimal Obsidian stand-in: one note in memory, read and written whole.

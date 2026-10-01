@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SETTINGS, type SettingKey } from "../models/settings.ts";
 import { testConfig } from "../test/config.ts";
+import { FakeSettings } from "../test/fakes.ts";
 import { Scheduler } from "./scheduler.ts";
 import { plainDate } from "./time.ts";
 
@@ -23,7 +23,7 @@ type Stats = {
 function harness(
   stats: Partial<Stats> = {},
   sweep?: () => Promise<void>,
-  settings: Record<string, string> = {},
+  settings: Map<string, string> | Record<string, string> = {},
 ) {
   const notified: string[] = [];
   const rated: string[] = [];
@@ -31,7 +31,7 @@ function harness(
   const summaries: string[] = [];
   let sweeps = 0;
   const repo = {
-    getSetting: async (key: SettingKey) => SETTINGS[key].parse(settings[key]),
+    ...new FakeSettings(settings),
     windowStats: async (): Promise<Stats> => ({
       total: 0,
       audio: 0,
@@ -342,19 +342,19 @@ test("a time changed while running is the one that decides the day", async (t) =
 
 test("the rating switch is read at every firing, not once at start", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
-  const settings: Record<string, string> = { nightlyRating: "off" };
+  const settings = new Map([["nightlyRating", "off"]]);
   const h = harness({}, undefined, settings);
   h.scheduler.start();
   t.mock.timers.tick(DAY);
   await flush();
   assert.equal(h.rated.length, 0);
 
-  settings.nightlyRating = "on";
+  settings.set("nightlyRating", "on");
   t.mock.timers.tick(DAY);
   await flush();
   assert.equal(h.rated.length, 1);
 
-  settings.nightlyRating = "off";
+  settings.set("nightlyRating", "off");
   t.mock.timers.tick(DAY);
   await flush();
   assert.equal(h.rated.length, 1);

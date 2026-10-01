@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
-import { rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { test } from "node:test";
-import { sampleJot, withDb } from "../test/sqlite.ts";
+import { removeDb, sampleJot, tempDbPath, withDb } from "../test/sqlite.ts";
 import { openDb } from "./db.ts";
 import { JotRepository } from "./jots.ts";
 
@@ -345,14 +341,6 @@ test("squash lookups stay inside their section", async (t) => {
     );
   });
 });
-
-const tempDbPath = () =>
-  join(tmpdir(), `scriba-test-${randomBytes(6).toString("hex")}.db`);
-
-async function removeDb(dbPath: string) {
-  for (const suffix of ["", "-shm", "-wal"])
-    await rm(`${dbPath}${suffix}`, { force: true });
-}
 
 test("reopening a migrated database applies nothing and keeps the section", async (t) => {
   const dbPath = tempDbPath();

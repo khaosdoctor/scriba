@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { testConfig } from "../test/config.ts";
-import { fakeSettings } from "../test/fake-settings.ts";
+import { FakeSettings } from "../test/fakes.ts";
 import { MenuController } from "./menu.ts";
 
 /** A controller wired to a bot stub that only records deleteMessage calls. */
@@ -66,7 +66,9 @@ function settingsHarness(initial: Record<string, string> = {}) {
       },
     },
   };
-  const repo = fakeSettings(settings, (key, value) => sets.push([key, value]));
+  const repo = new FakeSettings(settings, (key, value) =>
+    sets.push([key, value]),
+  );
   const menu = new MenuController(
     bot as any,
     testConfig,
@@ -331,7 +333,7 @@ function wizardHarness(
   const without = (list: Pair[], surface: string, note: string) =>
     list.filter((entry) => entry.surface !== surface || entry.note !== note);
   const repo = {
-    ...fakeSettings(state.settings, (key, value) =>
+    ...new FakeSettings(state.settings, (key, value) =>
       events.push(`set ${key}=${value}`),
     ),
     stopwordList: async () => [...state.stopwords],
