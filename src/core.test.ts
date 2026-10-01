@@ -11,7 +11,6 @@ import {
   formatToolCall,
   gaveUpMessage,
   jotPreview,
-  monthGrid,
   parseEntrySize,
   parseWizardRef,
   previewList,
@@ -169,19 +168,6 @@ test("jotPreview falls back to (kind) for a captionless attach-only jot", () => 
     jotPreview({ ...base, kind: "audio", transcript: "hello there" }, 5),
     "hello",
   );
-});
-
-test("monthGrid pads a month to full weeks starting Sunday", () => {
-  // July 2026 starts on a Wednesday and has 31 days.
-  const grid = monthGrid(2026, 7);
-  assert.equal(grid[0]!.filter((d) => d === 0).length, 3); // Sun/Mon/Tue padding
-  assert.equal(grid[0]![3], 1); // Wed 1st
-  const flat = grid.flat().filter((d) => d !== 0);
-  assert.deepEqual(
-    flat,
-    Array.from({ length: 31 }, (_, i) => i + 1),
-  );
-  for (const week of grid) assert.equal(week.length, 7);
 });
 
 test("retryNotice says where in the retry cycle a jot is", () => {

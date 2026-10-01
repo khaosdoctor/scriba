@@ -4,7 +4,7 @@ import type { Jot } from "../db.ts";
 import type { Stats } from "../models/ops.ts";
 import type { ReleaseNote } from "../services/github.ts";
 import { sampleJot } from "../test/sqlite.ts";
-import { startOfToday } from "../time.ts";
+import { dayBounds, startOfToday } from "../time.ts";
 import {
   AdminController,
   formatDeployNotice,
@@ -679,4 +679,175 @@ test("formatListPage clamps the page and footers what is off screen", () => {
 
   // A custom separator keeps the footer on its own line.
   assert.match(formatListPage(items, 0, 2, "/x", ", "), /^item1, item2\n\n/);
+});
+
+const target = (id: string, anchor = id) =>
+  aJot({ id, anchor, status: "done" });
+
+test("reprocessCount counts a squashed follower with its leader and reads the whole days", async () => {
+  const windows: number[][] = [];
+  const { admin } = setup({
+    repo: {
+      jotsInRange: async (from: number, to: number) => {
+        windows.push([from, to]);
+        return [target("a1"), target("a2", "a1"), target("b1")];
+      },
+    },
+  });
+  assert.equal(await admin.reprocessCount("2026-10-05", "2026-10-09"), 2);
+  assert.deepEqual(windows, [
+    [dayBounds("2026-10-05")[0], dayBounds("2026-10-09")[1]],
+  ]);
+});
+
+test("jotsPage asks for one row past the page to know whether Next exists", async () => {
+  const asked: number[][] = [];
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, index) => target(`j${index}`));
+  const { admin } = setup({
+    repo: {
+      jotsPage: async (offset: number, limit: number) => {
+        asked.push([offset, limit]);
+        return rows(offset === 0 ? 9 : 3);
+      },
+    },
+  });
+  const first = await admin.jotsPage(0);
+  assert.equal(first.items.length, 8);
+  assert.deepEqual([first.page, first.pages, first.offset], [0, 2, 0]);
+  const last = await admin.jotsPage(1);
+  assert.equal(last.items.length, 3);
+  assert.deepEqual([last.page, last.pages, last.offset], [1, 2, 8]);
+  assert.deepEqual(asked, [
+    [0, 9],
+    [8, 9],
+  ]);
+});
+
+test("reprocessPick refuses a jot that is gone or still in flight and accepts a finished one", async () => {
+  const withStatus = (status: string) =>
+    setup({ repo: { getJot: async () => aJot({ status: status as never }) } })
+      .admin;
+  assert.equal(await setup().admin.reprocessPick("nope"), "gone");
+  const noId = setup();
+  assert.equal(await noId.admin.reprocessPick(undefined), "gone");
+  assert.deepEqual(noId.calls, []);
+  for (const status of ["pending", "processing", "deleted"])
+    assert.equal(await withStatus(status).reprocessPick("abcd1234"), "busy");
+  for (const status of ["done", "failed", "abandoned"]) {
+    const picked = await withStatus(status).reprocessPick("abcd1234");
+    assert.equal(typeof picked === "string" ? picked : picked.status, status);
+  }
+});
+
+test("reprocessExecute on a day resets the distinct leaders and queues only what was reset", async () => {
+  const { admin, calls } = setup({
+    repo: {
+      jotsInRange: async () => [
+        target("a1"),
+        target("a2", "a1"),
+        target("b1"),
+        target("c1"),
+      ],
+      resetForReprocess: async (ids: string[]) => {
+        calls.push(`reset(${ids.join(",")})`);
+        return ["a1", "c1"];
+      },
+    },
+  });
+  const out = await admin.reprocessExecute({
+    lo: "2026-10-05",
+    hi: "2026-10-05",
+    day: true,
+  });
+  assert.deepEqual(out, {
+    text: "🔁 Reprocessing 2 jots from 2026-10-05…",
+    queued: true,
+  });
+  assert.deepEqual(calls, ["reset(a1,b1,c1)", "queue.add(a1,c1)"]);
+});
+
+test("reprocessExecute on a range labels it with an arrow", async () => {
+  const { admin } = setup({
+    repo: {
+      jotsInRange: async () => [target("a1")],
+      resetForReprocess: async () => ["a1"],
+    },
+  });
+  const out = await admin.reprocessExecute({
+    lo: "2026-10-05",
+    hi: "2026-10-09",
+    day: false,
+  });
+  assert.equal(out.text, "🔁 Reprocessing 1 jot from 2026-10-05 → 2026-10-09…");
+});
+
+test("reprocessExecute on a squashed follower reprocesses its leader", async () => {
+  const { admin, calls } = setup({
+    repo: {
+      getJot: async () => target("f1", "lead"),
+      resetForReprocess: async (ids: string[]) => {
+        calls.push(`reset(${ids.join(",")})`);
+        return ids;
+      },
+    },
+  });
+  const out = await admin.reprocessExecute({ jot: "f1" });
+  assert.equal(out.text, "🔁 Reprocessing 1 jot from lead…");
+  assert.deepEqual(calls, ["reset(lead)", "queue.add(lead)"]);
+});
+
+test("reprocessExecute reports a vanished jot, an empty day and a lost race without queueing", async () => {
+  const gone = setup();
+  assert.deepEqual(await gone.admin.reprocessExecute({ jot: "gone1" }), {
+    text: "Jot gone1 not found.",
+    queued: false,
+  });
+
+  const empty = setup({ repo: { jotsInRange: async () => [] } });
+  assert.deepEqual(
+    await empty.admin.reprocessExecute({
+      lo: "2026-10-05",
+      hi: "2026-10-05",
+      day: true,
+    }),
+    { text: "No reprocessable jots for 2026-10-05.", queued: false },
+  );
+
+  const raced = setup({
+    repo: {
+      jotsInRange: async () => [target("a1")],
+      resetForReprocess: async () => [],
+    },
+  });
+  assert.deepEqual(
+    await raced.admin.reprocessExecute({
+      lo: "2026-10-05",
+      hi: "2026-10-05",
+      day: true,
+    }),
+    { text: "No reprocessable jots for 2026-10-05 anymore.", queued: false },
+  );
+  for (const run of [gone, empty, raced])
+    assert.ok(!run.calls.some((call) => call.startsWith("queue.add")));
+});
+
+test("reprocessExecute without a queue refuses before resetting any jot to pending", async () => {
+  const resets: string[][] = [];
+  const admin = new AdminController({
+    repo: {
+      jotsInRange: async () => [target("a1")],
+      resetForReprocess: async (ids: string[]) => resets.push(ids),
+    },
+  } as never);
+  const out = await admin.reprocessExecute({
+    lo: "2026-10-05",
+    hi: "2026-10-05",
+    day: true,
+  });
+  assert.deepEqual(out, {
+    text: "⚠️ Reprocess isn't ready yet — try again in a moment.",
+    queued: false,
+  });
+  assert.deepEqual(resets, []);
 });

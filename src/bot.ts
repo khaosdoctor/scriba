@@ -28,7 +28,6 @@ import {
 import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
 import { CommandSession } from "./flows/command.ts";
 import { MenuController, type MenuDeps } from "./flows/menu.ts";
-import { ReprocessCommand } from "./flows/reprocess.ts";
 import type { Scheduler } from "./lib/scheduler.ts";
 import type { TaskDraft } from "./lib/tasks.ts";
 import { logger } from "./log.ts";
@@ -101,7 +100,6 @@ export class ScribaBot implements BotServices {
   private rating: RatingController;
   private habits: HabitController;
   private menu: MenuController;
-  private reprocess: ReprocessCommand;
   private command: CommandSession;
   private tasks: TaskController;
   private jotController: JotController;
@@ -145,13 +143,11 @@ export class ScribaBot implements BotServices {
       notifier: this.chat,
       heading: config.obsidian.habitsHeading,
     });
-    this.reprocess = new ReprocessCommand(this.bot, config, repo);
     this.menu = new MenuController(
       this.bot,
       config,
       this.rating,
       this.habits,
-      this.reprocess,
       () => this.deps(),
       (jot) => this.deleteJot(jot),
     );
@@ -188,7 +184,6 @@ export class ScribaBot implements BotServices {
       rating: this.rating,
       habits: this.habits,
       menu: this.menu,
-      reprocess: this.reprocess,
       command: this.command,
       tasks: this.tasks,
       jotController: this.jotController,
@@ -205,7 +200,6 @@ export class ScribaBot implements BotServices {
   /** Break the wiring cycle: queue + processor are created after this bot (which they need). */
   setQueue(queue: FlushQueue): void {
     this.queue = queue;
-    this.reprocess.setQueue(queue);
   }
   /** Same cycle: the controller notifies through this bot and needs the queue, the
    *  processor and the health monitor, all built after it. */

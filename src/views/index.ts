@@ -6,7 +6,6 @@ import type { RatingController } from "../controllers/rating.ts";
 import type { TaskController } from "../controllers/tasks.ts";
 import type { CommandSession } from "../flows/command.ts";
 import type { MenuController } from "../flows/menu.ts";
-import type { ReprocessCommand } from "../flows/reprocess.ts";
 import { logger } from "../log.ts";
 import type { JotKind } from "../models/domain.ts";
 import { callbackViews } from "./callbacks/index.ts";
@@ -55,7 +54,6 @@ export type ViewDeps = {
   rating: RatingController;
   habits: HabitController;
   menu: MenuController;
-  reprocess: ReprocessCommand;
   command: CommandSession;
   tasks: TaskController;
   jotController: JotController;

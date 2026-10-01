@@ -10,6 +10,7 @@ import { help } from "./help.ts";
 import { jot } from "./jot.ts";
 import { rate } from "./rate.ts";
 import { rejections } from "./rejections.ts";
+import { reprocess } from "./reprocess.ts";
 import { retry } from "./retry.ts";
 import { start } from "./start.ts";
 import { stats } from "./stats.ts";
@@ -64,13 +65,7 @@ export const COMMANDS: CommandView[] = [
   ),
   rate,
   habitsCommand,
-  flow(
-    "reprocess",
-    "Reprocess jots — a day, a date range, or one jot",
-    ({ reprocess }) =>
-      (ctx) =>
-        reprocess.slashReprocess(ctx),
-  ),
+  reprocess,
   flow(
     "command",
     "Open a vault assistant session (/done to close)",
