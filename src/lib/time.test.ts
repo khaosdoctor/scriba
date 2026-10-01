@@ -3,9 +3,7 @@ import { test } from "node:test";
 import {
   dateFromIso,
   dayBounds,
-  isValidDate,
   msUntilNext,
-  parseClockTime,
   plainDate,
   plainTime,
   previousDate,
@@ -78,18 +76,6 @@ test("dayBounds rejects an out-of-range month/day instead of silently rolling ov
   assert.throws(() => dayBounds("2026-02-30")); // February never has a 30th
 });
 
-test("isValidDate rejects malformed shapes, sub-100 years, and out-of-range month/day", () => {
-  assert.equal(isValidDate("2026-07-10"), true);
-  assert.equal(isValidDate("2024-02-29"), true); // 2024 is a leap year
-  assert.equal(isValidDate("not-a-date"), false);
-  assert.equal(isValidDate("2026-7-10"), false); // not zero-padded
-  assert.equal(isValidDate("0099-01-01"), false); // Date's 1900+ special case
-  assert.equal(isValidDate("2026-99-99"), false); // out-of-range month/day
-  assert.equal(isValidDate("2026-13-01"), false); // month 13 doesn't exist
-  assert.equal(isValidDate("2026-02-30"), false); // Feb never has a 30th
-  assert.equal(isValidDate("2026-02-29"), false); // 2026 is not a leap year
-});
-
 test("dayBounds spans a short/long day across a DST transition, not a fixed 24h", () => {
   const prevTZ = process.env.TZ;
   process.env.TZ = "America/New_York";
@@ -106,38 +92,6 @@ test("dayBounds spans a short/long day across a DST transition, not a fixed 24h"
     if (prevTZ === undefined) delete process.env.TZ;
     else process.env.TZ = prevTZ;
   }
-});
-
-test("parseClockTime takes valid 24h times and pads the hour", () => {
-  for (const [input, out] of [
-    ["0:00", "00:00"],
-    ["00:59", "00:59"],
-    ["19:05", "19:05"],
-    ["23:00", "23:00"],
-    ["1:00", "01:00"],
-  ])
-    assert.equal(parseClockTime(input!), out, input);
-});
-
-test("parseClockTime rejects malformed, non-ASCII and multi-line input", () => {
-  for (const bad of [
-    "24:00",
-    "2:60",
-    "-1:00",
-    "1:2:3",
-    "12:00:00",
-    "12.30",
-    "１２:３０",
-    "12:30pm",
-    "12:30\n13:00",
-    " ",
-    "\t",
-    ":30",
-    "12:",
-    "abc",
-    "🕛",
-  ])
-    assert.equal(parseClockTime(bad), null, JSON.stringify(bad));
 });
 
 test("ratingDay rolls back across month, year and leap-day boundaries", () => {
@@ -163,26 +117,6 @@ test("ratingDay is a calendar day back on DST change days", () => {
     if (saved === undefined) delete process.env.TZ;
     else process.env.TZ = saved;
   }
-});
-
-test("parseClockTime accepts 24h HH:MM and pads a single-digit hour", () => {
-  assert.equal(parseClockTime("00:00"), "00:00");
-  assert.equal(parseClockTime(" 23:59 "), "23:59");
-  assert.equal(parseClockTime("9:30"), "09:30");
-});
-
-test("parseClockTime rejects anything else", () => {
-  for (const bad of [
-    "24:00",
-    "12:60",
-    "7pm",
-    "12",
-    "12:5",
-    "1230",
-    "",
-    "ab:cd",
-  ])
-    assert.equal(parseClockTime(bad), null, bad);
 });
 
 test("ratingDay rates yesterday for a just-after-midnight time and today for an evening one", () => {

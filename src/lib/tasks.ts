@@ -16,13 +16,13 @@
 
 import { createHash } from "node:crypto";
 import * as chrono from "chrono-node";
-import type { TaskType } from "../db.ts";
+import type { TaskDraft, TaskType } from "../models/domain.ts";
 import { DATE_RE, dateFromIso, plainDate } from "../time.ts";
 import { isDateLike } from "./links.ts";
 import { findSection, stampCompletion } from "./note.ts";
 import { escapeRe } from "./text.ts";
 
-export type { TaskType } from "../db.ts";
+export type { TaskDraft, TaskType } from "../models/domain.ts";
 /** `- [ ]` open, `- [x]` done, `- [-]` cancelled (terminal, never listed or reopened). */
 export type TaskState = "open" | "done" | "cancelled";
 
@@ -41,14 +41,6 @@ export interface Task {
   start: string | null;
   due: string | null;
   completion: string | null;
-}
-
-/** A task being composed, in task mode or proposed from a jot, before it's written. */
-export interface TaskDraft {
-  description: string;
-  type: TaskType;
-  start: string | null;
-  due: string | null;
 }
 
 /** What a task is unless something plainly says otherwise. A bare "work" is a verb as often

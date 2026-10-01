@@ -1,6 +1,6 @@
 // Pure jot helpers: deterministic, token-free, unit-tested in isolation.
 import { randomBytes } from "node:crypto";
-import type { Jot, JotKind, JotSection, JotStatus } from "../db.ts";
+import type { Jot, JotKind, JotSection, JotStatus } from "../models/domain.ts";
 import { isEmbeddableUrl } from "./links.ts";
 import { stripTilPrefix } from "./note.ts";
 

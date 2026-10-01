@@ -3,11 +3,9 @@ import { test } from "node:test";
 import {
   AGENT_UPDATE_CHARS,
   clipUpdate,
-  DEFAULT_ENTRY_MAX_CHARS,
   doneMessage,
   editConfirmation,
   entitiesToMarkdown,
-  entryMaxChars,
   feedMessage,
   fitFeed,
   followupQuestions,
@@ -32,9 +30,7 @@ import {
   previewList,
   queuedNotice,
   ratingDay,
-  ratingTime,
   retryNotice,
-  switchEnabled,
   TELEGRAM_LIMIT,
   thoughtIcon,
   toolIcon,
@@ -44,8 +40,9 @@ import {
   WIZARD_REGISTER_REF,
   WIZARD_STOPWORD_REF,
 } from "./core.ts";
-import type { Jot, StatsRow } from "./db.ts";
 import { parseHabitRef } from "./flows/habits/parse.ts";
+import type { Jot } from "./models/domain.ts";
+import type { Stats } from "./models/ops.ts";
 import type { ReleaseNote } from "./services/github.ts";
 
 const DAILY_TEMPLATE = `---
@@ -124,14 +121,7 @@ test("doneMessage marks which piece a split jot is", () => {
   assert.ok(piece.includes("✂️ part 2 of 3"));
 });
 
-test("entryMaxChars falls back to the default, parseEntrySize validates input", () => {
-  assert.equal(entryMaxChars(undefined), DEFAULT_ENTRY_MAX_CHARS);
-  assert.equal(entryMaxChars(""), DEFAULT_ENTRY_MAX_CHARS);
-  assert.equal(entryMaxChars("nonsense"), DEFAULT_ENTRY_MAX_CHARS);
-  assert.equal(entryMaxChars("-5"), DEFAULT_ENTRY_MAX_CHARS);
-  assert.equal(entryMaxChars("0"), 0);
-  assert.equal(entryMaxChars("140"), 140);
-
+test("parseEntrySize validates a typed entry size", () => {
   assert.equal(parseEntrySize("280"), 280);
   assert.equal(parseEntrySize(" off "), 0);
   assert.equal(parseEntrySize("0"), 0);
@@ -174,7 +164,7 @@ test("editConfirmation falls back to an ellipsis for a blank result (e.g. a dele
 });
 
 test("formatStats hides zero outcome tails", () => {
-  const base: StatsRow = {
+  const base: Stats = {
     total: 4,
     text: 3,
     audio: 1,
@@ -542,10 +532,7 @@ test("parseWizardRef recognises the rating-time prompt", () => {
   });
 });
 
-test("ratingTime normalises the fallback too, and ratingDay reads an unpadded hour", () => {
-  assert.equal(ratingTime(undefined, "9:30"), "09:30");
-  assert.equal(ratingTime("garbage", "9:30"), "09:30");
-  assert.equal(ratingTime("8:05", "00:00"), "08:05");
+test("ratingDay reads an unpadded hour", () => {
   const now = new Date(2026, 6, 6, 12, 0).getTime();
   assert.equal(ratingDay("9:30", now), "2026-07-05");
 });
@@ -576,18 +563,6 @@ test("a follow-up marker is not read by the other flows' parsers, nor theirs by 
     "(tk:d:abcdef12)",
   ])
     assert.equal(parseFollowupRef(other), null, other);
-});
-
-test("switchEnabled is on unless explicitly off", () => {
-  assert.equal(switchEnabled(undefined), true);
-  assert.equal(switchEnabled("on"), true);
-  assert.equal(switchEnabled("off"), false);
-});
-
-test("ratingTime uses the stored time when valid, else the default", () => {
-  assert.equal(ratingTime("22:15", "00:00"), "22:15");
-  assert.equal(ratingTime(undefined, "00:00"), "00:00");
-  assert.equal(ratingTime("garbage", "21:00"), "21:00");
 });
 
 test("jotPreview falls back to (kind) for a captionless attach-only jot", () => {

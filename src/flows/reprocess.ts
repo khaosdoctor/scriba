@@ -9,8 +9,9 @@ import {
 import { type JotStatus, type Repository, TERMINAL_STATUSES } from "../db.ts";
 import { logger } from "../log.ts";
 import type { Config } from "../models/config.ts";
+import { IsoDateSchema } from "../models/settings.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
-import { dayBounds, isValidDate, plainDate } from "../time.ts";
+import { dayBounds, plainDate } from "../time.ts";
 import { closeMessage } from "../views/chat.ts";
 import { backTo, pagedScreen, withClose } from "../views/render/keyboard.ts";
 
@@ -31,7 +32,8 @@ const back = () => ({ reply_markup: backTo(ROOT, CLOSE) });
 
 /** Both ends validated, a backwards pair swapped, as the epoch window covering whole days. */
 function span(a: string, b: string) {
-  if (!isValidDate(a) || !isValidDate(b)) return undefined;
+  if (!IsoDateSchema.safeParse(a).success) return undefined;
+  if (!IsoDateSchema.safeParse(b).success) return undefined;
   const [lo, hi] = a <= b ? [a, b] : [b, a];
   return { lo, hi, from: dayBounds(lo)[0], to: dayBounds(hi)[1] };
 }
@@ -215,7 +217,8 @@ export class ReprocessCommand {
   private async pickRangeStart(ctx: any, args: string[]): Promise<void> {
     const [y, m] = args;
     const start = ymd(y, m, args[2]);
-    if (!isValidDate(start)) return this.rejectDate(ctx, start);
+    if (!IsoDateSchema.safeParse(start).success)
+      return this.rejectDate(ctx, start);
     await this.calendar(
       ctx,
       `${REPROCESS_NS}:rangeend:${start}`,
@@ -230,7 +233,8 @@ export class ReprocessCommand {
     args: string[],
   ): Promise<void> {
     const [start = "", y, m] = args;
-    if (!isValidDate(start)) return this.rejectDate(ctx, start);
+    if (!IsoDateSchema.safeParse(start).success)
+      return this.rejectDate(ctx, start);
     await this.calendar(
       ctx,
       `${REPROCESS_NS}:rangeend:${start}`,

@@ -1,5 +1,4 @@
 import { basename } from "node:path";
-import type { StatusButtons } from "../bot.ts";
 import {
   assetEmbed,
   candidates,
@@ -33,11 +32,9 @@ import {
   type TaskDraft,
 } from "../flows/tasks/parse.ts";
 import { logger } from "../log.ts";
-import {
-  type DetectedTask,
-  type Enricher,
-  ModelsDownError,
-} from "../services/enrich.ts";
+import type { DetectedTask, DownloadedFile } from "../models/domain.ts";
+import type { StatusButtons } from "../models/ops.ts";
+import { type Enricher, ModelsDownError } from "../services/enrich.ts";
 import type { LinkIndex } from "../services/links.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import type { Transcriber } from "../services/transcribe.ts";
@@ -63,12 +60,6 @@ const STARTING: Record<Jot["kind"], string> = {
 /** Status text for a voice note: its transcript in italics, then the current step. */
 const voiceStatus = (transcript: string, step: string): string =>
   `🎤 <i>${escapeHtml(transcript.trim())}</i>\n\n${step}`;
-
-export interface DownloadedFile {
-  bytes: Uint8Array;
-  ext: string;
-  mime: string;
-}
 
 /** What the processor needs from the bot: user-facing I/O it can't do itself. */
 export interface BotServices {
