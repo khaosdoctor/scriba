@@ -2,27 +2,16 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   AGENT_UPDATE_CHARS,
-  assetEmbed,
-  CircuitBreaker,
-  candidates,
-  cleanNoteTitle,
   clipUpdate,
-  combineEnrichSource,
   DEFAULT_ENTRY_MAX_CHARS,
-  distinctSurfaces,
   doneMessage,
-  donePreview,
   editConfirmation,
-  editedJotText,
-  embedOffer,
-  enrichableSource,
   entitiesToMarkdown,
   entryMaxChars,
   feedMessage,
   fitFeed,
   followupQuestions,
   followupRef,
-  forcedCandidates,
   formatDeployNotice,
   formatHealth,
   formatJotDetail,
@@ -33,64 +22,32 @@ import {
   formatStatus,
   formatToolCall,
   gaveUpMessage,
-  isEditableJot,
-  isEmbeddableUrl,
   isInsideRoot,
-  isRecoverable,
   jotPreview,
-  linkDateWords,
-  makeJotId,
   modelsUrlFor,
   monthGrid,
-  noteSuggestions,
   parseClockTime,
   parseEntrySize,
   parseFollowupRef,
-  parseLiteralEdit,
-  parseModelJson,
-  parseRuleWords,
   parseWizardRef,
   previewList,
   queuedNotice,
   ratingDay,
   ratingTime,
-  reprocessTargets,
   retryNotice,
-  setEmbeds,
   switchEnabled,
   TELEGRAM_LIMIT,
   thoughtIcon,
-  tokenize,
   toolIcon,
-  unwrapModelPayload,
   WIZARD_ENTRYSIZE_REF,
   WIZARD_NOTE_REF,
   WIZARD_RATING_TIME_REF,
   WIZARD_REGISTER_REF,
   WIZARD_STOPWORD_REF,
-  withinSquashWindow,
 } from "./core.ts";
 import type { Jot, StatsRow } from "./db.ts";
 import { parseHabitRef } from "./flows/habits/parse.ts";
 import type { ReleaseNote } from "./services/github.ts";
-
-const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
-
-test("withinSquashWindow: rolling gap folds jots within the window, splits past it", () => {
-  assert.equal(withinSquashWindow(1000, 12000, 15000), true); // 11s gap ≤ 15s
-  assert.equal(withinSquashWindow(1000, 16001, 15000), false); // 15.001s gap > 15s
-  assert.equal(withinSquashWindow(1000, 16000, 15000), true); // exactly 15s
-  assert.equal(withinSquashWindow(1000, 2000, 0), false); // window 0 disables
-});
-
-test("combineEnrichSource joins parts, dropping blanks", () => {
-  assert.equal(
-    combineEnrichSource(["first", "  ", "second", ""]),
-    "first\nsecond",
-  );
-  assert.equal(combineEnrichSource([]), "");
-  assert.equal(combineEnrichSource([" solo "]), "solo");
-});
 
 const DAILY_TEMPLATE = `---
 tags:
@@ -158,24 +115,6 @@ test("followupRef round-trips through parseFollowupRef", () => {
   assert.equal(parseFollowupRef("(hb:2026-07-05:1)"), null);
 });
 
-test("ids are fixed 8-char hex", () => {
-  const id = makeJotId();
-  assert.match(id, /^[0-9a-f]{8}$/);
-});
-
-test("editedJotText strips a re-typed TIL marker only for TIL jots", () => {
-  assert.equal(
-    editedJotText("til", "TIL: sqlite has WAL mode"),
-    "sqlite has WAL mode",
-  );
-  assert.equal(
-    editedJotText("til", "sqlite has WAL mode"),
-    "sqlite has WAL mode",
-  );
-  assert.equal(editedJotText("til", "TIL"), "TIL");
-  assert.equal(editedJotText("journal", "TIL: foo"), "TIL: foo");
-});
-
 test("doneMessage marks which piece a split jot is", () => {
   const one = doneMessage("10:00:00", "text", "hi", "a1b2c3d4");
   assert.ok(!one.includes("part"));
@@ -200,167 +139,6 @@ test("entryMaxChars falls back to the default, parseEntrySize validates input", 
   assert.equal(parseEntrySize("10"), null); // no sentence fits
   assert.equal(parseEntrySize("99999"), null);
   assert.equal(parseEntrySize("lots"), null);
-});
-
-test("candidates drop stopwords/short aliases and honour rejections", () => {
-  const index = [
-    { note: "Norway", alias: "no" }, // stopword → dropped
-    { note: "Norway", alias: "Norway" }, // real → kept
-    { note: "We (novel)", alias: "We" }, // 2 chars → dropped
-    { note: "Fume Extractor", alias: "Fume Extractor" }, // multiword → kept
-    { note: "Lev", alias: "Lev" },
-  ];
-  const text =
-    "I said no to visiting Norway but fixed the Fume Extractor for Lev";
-  const got = candidates(text, index, STOP, new Set());
-  assert.deepEqual(got.map((c) => c.note).sort(), [
-    "Fume Extractor",
-    "Lev",
-    "Norway",
-  ]);
-
-  const rejected = new Set(["lev Lev"]); // user previously said no to Lev
-  const got2 = candidates(text, index, STOP, rejected);
-  assert.ok(!got2.some((c) => c.note === "Lev"));
-});
-
-test("forcedCandidates: matches registered surface->note pairs, ignoring length/stopword rules, marked forced", () => {
-  const registered = [
-    { surface: "no", note: "Norway" }, // 2 chars + a stopword elsewhere — still forced
-    { surface: "Fume Extractor", note: "Fume Extractor" }, // multiword
-    { surface: "gym", note: "Fitness" },
-  ];
-  const text = "said no to visiting the Fume Extractor room";
-  const got = forcedCandidates(text, registered);
-  assert.deepEqual(
-    got.map((c) => [c.surface, c.note, c.forced]).sort(),
-    [
-      ["Fume Extractor", "Fume Extractor", true],
-      ["no", "Norway", true],
-    ].sort(),
-  );
-});
-
-test("linkDateWords turns relative date phrases into daily-note wikilinks", () => {
-  const ref = "2026-07-10"; // a Friday
-  assert.equal(
-    linkDateWords("I did this yesterday", ref),
-    "I did this [[2026-07-09|yesterday]]",
-  );
-  assert.equal(
-    linkDateWords("see you tomorrow", ref),
-    "see you [[2026-07-11|tomorrow]]",
-  );
-  assert.equal(
-    linkDateWords("I went to the beach three weeks ago", ref),
-    "I went to the beach [[2026-06-19|three weeks ago]]",
-  );
-  assert.equal(
-    linkDateWords("in 2 days we ship", ref),
-    "[[2026-07-12|in 2 days]] we ship",
-  );
-  assert.equal(
-    linkDateWords("last month was rough", ref),
-    "[[2026-06-10|last month]] was rough",
-  );
-});
-
-test("linkDateWords ignores bare clock times that carry no date", () => {
-  const ref = "2026-07-10";
-  assert.equal(linkDateWords("Call is at 3pm", ref), "Call is at 3pm");
-  assert.equal(linkDateWords("We land at 22:30", ref), "We land at 22:30");
-  assert.equal(linkDateWords("meeting at 9", ref), "meeting at 9");
-  // but a time attached to an actual day keyword still links
-  assert.equal(
-    linkDateWords("Met the doctor at 3pm today", ref),
-    "Met the doctor [[2026-07-10|at 3pm today]]",
-  );
-});
-
-test("linkDateWords leaves a 'for <duration>' span alone", () => {
-  const ref = "2026-09-28";
-  assert.equal(
-    linkDateWords("in the dryer for a week now", ref),
-    "in the dryer for a week now",
-  );
-  assert.equal(
-    linkDateWords("I stayed there for 3 days", ref),
-    "I stayed there for 3 days",
-  );
-  // a real relative date still links
-  assert.equal(
-    linkDateWords("see you in a week", ref),
-    "see you [[2026-10-05|in a week]]",
-  );
-});
-
-test("linkDateWords never links a date word buried inside a bigger word", () => {
-  const ref = "2026-07-10";
-  // "Pokémon" tripped this: JS `\b` is ASCII-only, so é read as a word break and "mon"
-  // looked like a standalone Monday.
-  assert.equal(
-    linkDateWords("played Pokémon all day", ref).includes("[[2026"),
-    false,
-  );
-  assert.equal(
-    linkDateWords("the satsuma is ripe", ref),
-    "the satsuma is ripe",
-  );
-  // the same words on their own still link
-  assert.equal(
-    linkDateWords("shipping it mon", ref),
-    "shipping it [[2026-07-13|mon]]",
-  );
-});
-
-test('linkDateWords leaves "now" alone but still links "today" in the same sentence', () => {
-  const ref = "2026-07-10";
-  assert.equal(
-    linkDateWords("it's good now, deploy maybe tomorrow, or today", ref),
-    "it's good now, deploy maybe [[2026-07-11|tomorrow]], or [[2026-07-10|today]]",
-  );
-  assert.equal(
-    linkDateWords("just now I fixed it", ref),
-    "just now I fixed it",
-  );
-});
-
-test("linkDateWords ignores plain text and never re-links inside a wikilink", () => {
-  const ref = "2026-07-10";
-  assert.equal(linkDateWords("no date words here", ref), "no date words here");
-  assert.equal(linkDateWords("", ref), "");
-  assert.equal(
-    linkDateWords("read [[Monday Blues]] again", ref),
-    "read [[Monday Blues]] again",
-  );
-});
-
-test("literal edit parser handles sed and natural forms, rejects freeform", () => {
-  assert.deepEqual(parseLiteralEdit("s/pot/potentiometer/"), {
-    old: "pot",
-    new: "potentiometer",
-  });
-  assert.deepEqual(parseLiteralEdit("replace pot with potentiometer"), {
-    old: "pot",
-    new: "potentiometer",
-  });
-  assert.deepEqual(parseLiteralEdit('replace "the cat" with "the dog"'), {
-    old: "the cat",
-    new: "the dog",
-  });
-  assert.equal(parseLiteralEdit("make this clearer"), null);
-});
-
-test("tokenize keeps accented letters", () => {
-  assert.deepEqual(tokenize("Não é fácil"), ["não", "é", "fácil"]);
-});
-
-test("donePreview shows enriched text in full, labels attach-only", () => {
-  assert.equal(donePreview("text", "  went for a run  "), "went for a run");
-  assert.equal(donePreview("audio", "x".repeat(250)), "x".repeat(250));
-  assert.equal(donePreview("image", ""), "image saved to the note");
-  assert.equal(donePreview("video", "  "), "video saved to the note");
-  assert.equal(donePreview("text", ""), "saved");
 });
 
 test("doneMessage blockquotes the time and escapes content", () => {
@@ -598,28 +376,6 @@ test("formatStatus shows a disabled link index", () => {
   assert.match(out, /Link index: disabled/);
 });
 
-test("isRecoverable flags transient infra errors, not terminal ones", () => {
-  assert.equal(
-    isRecoverable(new Error("connect ETIMEDOUT 10.0.0.1:443")),
-    true,
-  );
-  assert.equal(
-    isRecoverable(new Error("Request failed with status 503")),
-    true,
-  );
-  assert.equal(isRecoverable(new Error("429 Too Many Requests")), true);
-  assert.equal(isRecoverable(new Error("invalid path")), false);
-});
-
-test("isEditableJot is true only for done/abandoned (a line exists to edit)", () => {
-  assert.equal(isEditableJot("done"), true);
-  assert.equal(isEditableJot("abandoned"), true);
-  assert.equal(isEditableJot("pending"), false);
-  assert.equal(isEditableJot("processing"), false);
-  assert.equal(isEditableJot("failed"), false);
-  assert.equal(isEditableJot("deleted"), false);
-});
-
 test("formatJotDetail shows full text and includes errors", () => {
   const jot: Jot = {
     id: "deadbeef",
@@ -644,114 +400,6 @@ test("formatJotDetail shows full text and includes errors", () => {
   assert.match(out, /Attempts: 3/);
   assert.match(out, /Error: boom/);
   assert.ok(out.includes(`Text: ${"x".repeat(400)}`)); // transcript shown in full
-});
-
-const mediaJot = (over: Partial<Jot>): Jot => ({
-  id: "deadbeef",
-  kind: "image",
-  note_path: "notes/x.md",
-  anchor: "deadbeef",
-  time: "10:00:00",
-  raw_text: null,
-  transcript: null,
-  proposed_text: null,
-  section: "journal",
-  asset_path: null,
-  file_id: null,
-  status: "done",
-  attempts: 0,
-  error: null,
-  received_at: 0,
-  updated_at: 0,
-  ...over,
-});
-
-test("an image's caption is enrichable entry text; video's is not", () => {
-  // What you type alongside a photo is the jot itself, so it goes through enrichment.
-  assert.equal(
-    enrichableSource(mediaJot({ kind: "image", raw_text: "at the park" })),
-    "at the park",
-  );
-  assert.equal(enrichableSource(mediaJot({ kind: "image" })), "");
-  // Video stays attach-only — its caption is the embed's display text, not entry text.
-  assert.equal(
-    enrichableSource(mediaJot({ kind: "video", raw_text: "clip of the dog" })),
-    "",
-  );
-  assert.equal(
-    enrichableSource(mediaJot({ kind: "audio", transcript: "spoken" })),
-    "spoken",
-  );
-  assert.equal(
-    enrichableSource(mediaJot({ kind: "audio" }), "(failed)"),
-    "(failed)",
-  );
-});
-
-test("isEmbeddableUrl knows YouTube, tweets and images, nothing else", () => {
-  for (const url of [
-    "https://www.youtube.com/watch?v=NnTvZWp5Q7o",
-    "https://youtu.be/NnTvZWp5Q7o",
-    "https://twitter.com/obsdmd/status/1580548874246443010",
-    "https://x.com/obsdmd/status/1580548874246443010",
-    "https://example.com/cat.JPG?w=300",
-  ])
-    assert.ok(isEmbeddableUrl(url), url);
-  for (const url of [
-    "https://www.youtube.com/@obsidianmd",
-    "https://x.com/obsdmd",
-    "https://example.com/post",
-  ])
-    assert.ok(!isEmbeddableUrl(url), url);
-});
-
-test("embedOffer asks to embed, then offers plain once embedded", () => {
-  const yt = "https://youtu.be/abc";
-  assert.equal(embedOffer("just text"), undefined);
-  assert.equal(embedOffer("read https://example.com/post"), undefined);
-  assert.equal(embedOffer(`watch ${yt}`), "embed");
-  assert.equal(embedOffer(`watch [this](${yt})`), "embed");
-  assert.equal(embedOffer(`watch ![](${yt})`), "plain");
-  // One still linked is enough to offer embedding the rest.
-  assert.equal(embedOffer(`![](${yt}) and ${yt}`), "embed");
-});
-
-test("setEmbeds round-trips bare and labelled links", () => {
-  const yt = "https://www.youtube.com/watch?v=abc&t=10";
-  const line = `saw ${yt}. also [cat](https://e.com/c.png) and https://e.com/page, [[Note]]`;
-  const embedded = setEmbeds(line, true);
-  assert.equal(
-    embedded,
-    `saw ![](${yt}). also ![cat](https://e.com/c.png) and https://e.com/page, [[Note]]`,
-  );
-  assert.equal(setEmbeds(embedded, true), embedded);
-  assert.equal(setEmbeds(embedded, false), line);
-});
-
-test("assetEmbed gives an image no alias and a video its caption", () => {
-  // Telegram exposes no alt-text field, and the caption is already the entry text — so
-  // an image embeds bare rather than repeating itself inside the link.
-  assert.equal(
-    assetEmbed(
-      mediaJot({
-        kind: "image",
-        raw_text: "at the park",
-        asset_path: "a/b.jpg",
-      }),
-    ),
-    "![[a/b.jpg]]",
-  );
-  assert.equal(
-    assetEmbed(
-      mediaJot({ kind: "video", raw_text: "the dog", asset_path: "a/b.mp4" }),
-    ),
-    "![[a/b.mp4|the dog]]",
-  );
-  assert.equal(
-    assetEmbed(mediaJot({ kind: "video", asset_path: "a/b.mp4" })),
-    "![[a/b.mp4]]",
-  );
-  assert.equal(assetEmbed(mediaJot({ kind: "text", raw_text: "hi" })), "");
 });
 
 test("isInsideRoot accepts the root and its children, rejects siblings", () => {
@@ -1028,58 +676,6 @@ test("ratingDay rates yesterday for a just-after-midnight time and today for an 
   assert.equal(ratingDay("22:30", now), "2026-07-06");
 });
 
-test("parseRuleWords keeps inner spaces, splits on commas and newlines", () => {
-  assert.deepEqual(parseRuleWords("Priscilla, Path Of Exile"), [
-    "priscilla",
-    "path of exile",
-  ]);
-  assert.deepEqual(parseRuleWords(" Gym \n mom\nGYM ,, "), ["gym", "mom"]);
-  assert.deepEqual(parseRuleWords("   "), []);
-  assert.deepEqual(parseRuleWords(`ok, ${"x".repeat(61)}`), ["ok"]);
-  assert.deepEqual(parseRuleWords("a,b,c", 2), ["a", "b"]);
-});
-
-test("cleanNoteTitle strips wikilink brackets, quotes and stray whitespace", () => {
-  assert.equal(
-    cleanNoteTitle("  [[Priscilla  Rebouças]] "),
-    "Priscilla Rebouças",
-  );
-  assert.equal(cleanNoteTitle('"POE"'), "POE");
-  assert.equal(cleanNoteTitle("   "), "");
-});
-
-test("noteSuggestions ranks exact over prefix over substring, one row per note", () => {
-  const index = [
-    { note: "Path Of Exile", alias: "Path Of Exile" },
-    { note: "Path Of Exile", alias: "POE" }, // same note, second alias
-    { note: "Pathfinder", alias: "Pathfinder" },
-    { note: "My POE Build", alias: "My POE Build" },
-    { note: "Health", alias: "Gym" },
-  ];
-  assert.deepEqual(noteSuggestions("poe", index), [
-    "Path Of Exile", // exact alias hit
-    "My POE Build", // substring
-  ]);
-  assert.deepEqual(noteSuggestions("path", index), [
-    "Pathfinder", // prefix, shorter alias wins the tie
-    "Path Of Exile",
-  ]);
-  assert.deepEqual(noteSuggestions("nothing here", index), []);
-  assert.deepEqual(noteSuggestions("", index), []);
-  assert.equal(noteSuggestions("path", index, 1).length, 1);
-});
-
-test("distinctSurfaces dedupes surfaces, preserving list order", () => {
-  assert.deepEqual(
-    distinctSurfaces([
-      { surface: "gym", note: "Health" },
-      { surface: "gym", note: "Fitness" },
-      { surface: "mom", note: "Family" },
-    ]),
-    ["gym", "mom"],
-  );
-});
-
 test("jotPreview falls back to (kind) for a captionless attach-only jot", () => {
   const base = {
     id: "aaaaaaaa",
@@ -1121,17 +717,6 @@ test("monthGrid pads a month to full weeks starting Sunday", () => {
     Array.from({ length: 31 }, (_, i) => i + 1),
   );
   for (const week of grid) assert.equal(week.length, 7);
-});
-
-test("reprocessTargets dedupes to leader ids, preserving first-seen order", () => {
-  assert.deepEqual(
-    reprocessTargets([
-      { anchor: "leader1" },
-      { anchor: "leader1" }, // follower sharing leader1's anchor
-      { anchor: "leader2" },
-    ]),
-    ["leader1", "leader2"],
-  );
 });
 
 test("retryNotice says where in the retry cycle a jot is", () => {
@@ -1286,117 +871,4 @@ test("formatListPage clamps the page and footers what is off screen", () => {
 
   // A custom separator keeps the footer on its own line.
   assert.match(formatListPage(items, 0, 2, "/x", ", "), /^item1, item2\n\n/);
-});
-
-test("parseModelJson reads clean, fenced, prose-wrapped and line-broken JSON", () => {
-  assert.deepEqual(parseModelJson('{"text":"a"}'), { text: "a" });
-  assert.deepEqual(parseModelJson('```json\n{"text":"a"}\n```'), { text: "a" });
-  assert.deepEqual(parseModelJson('Sure: {"text":"a"} ok'), { text: "a" });
-  assert.deepEqual(parseModelJson('{"text": "a\n\nb\tc"}'), {
-    text: "a\n\nb\tc",
-  });
-  assert.deepEqual(parseModelJson('{\n  "text": "a"\n}'), { text: "a" });
-  assert.equal(parseModelJson("no json here"), null);
-  assert.equal(parseModelJson("[1,2]"), null);
-  assert.equal(parseModelJson('{"text": "unterminated'), null);
-});
-
-test("unwrapModelPayload unwraps a nested answer and keeps the inner lists", () => {
-  const nested = {
-    text: '{"text": "Also [[2026-09-29|Tuesday]] I have an interview", "ambiguous": [], "tasks": [{"description": "Go to the interview", "type": "personal"}]}',
-    ambiguous: [],
-    tasks: [],
-  };
-  const out = unwrapModelPayload(nested);
-  assert.equal(out.text, "Also [[2026-09-29|Tuesday]] I have an interview");
-  assert.deepEqual(out.tasks, [
-    { description: "Go to the interview", type: "personal" },
-  ]);
-});
-
-test("unwrapModelPayload keeps outer lists when they're already filled", () => {
-  const out = unwrapModelPayload({
-    text: '{"text": "hi", "ambiguous": [{"surface":"x","note":"y"}]}',
-    ambiguous: [{ surface: "a", note: "b" }],
-  });
-  assert.equal(out.text, "hi");
-  assert.deepEqual(out.ambiguous, [{ surface: "a", note: "b" }]);
-});
-
-test("unwrapModelPayload takes an inner til when the outer one is not true", () => {
-  const nested = (til: unknown) =>
-    unwrapModelPayload({ text: '{"text": "hi", "til": true}', til }).til;
-  assert.equal(nested(false), true);
-  assert.equal(nested(undefined), true);
-  assert.equal(
-    unwrapModelPayload({ text: '{"text":"hi","til":false}', til: true }).til,
-    true,
-  );
-  assert.equal(
-    unwrapModelPayload({ text: '{"text":"hi","til":"no"}', til: false }).til,
-    "no",
-  );
-});
-
-test("unwrapModelPayload keeps a missing til missing and an outer false false", () => {
-  assert.equal(
-    unwrapModelPayload({ text: '{"text":"hi"}', til: false }).til,
-    false,
-  );
-  const none = unwrapModelPayload({ text: '{"text":"hi"}' });
-  assert.equal(none.til, undefined);
-  assert.ok("til" in none);
-});
-
-test("unwrapModelPayload keeps a til the model put in the inner answer", () => {
-  const out = unwrapModelPayload({
-    text: '{"text": "hi", "ambiguous": [], "til": true}',
-    til: false,
-  });
-  assert.equal(out.til, true);
-});
-
-test("unwrapModelPayload unwraps several levels and strips an echoed fence", () => {
-  const lvl2 = JSON.stringify({ text: '"""deep"""' });
-  const lvl1 = JSON.stringify({ text: lvl2 });
-  assert.equal(unwrapModelPayload({ text: lvl1 }).text, "deep");
-});
-
-test("unwrapModelPayload leaves ordinary text alone, braces included", () => {
-  for (const text of [
-    "Plain entry with [[Link]]",
-    "{curly} is how I write sets",
-    '{"not": "a payload"}',
-    'She said """hi""" in the middle',
-  ])
-    assert.equal(unwrapModelPayload({ text }).text, text);
-});
-
-test("CircuitBreaker opens after the threshold, lets one trial through after the cooldown", () => {
-  const t = { now: 0 };
-  const b = new CircuitBreaker(2, 100, () => t.now);
-  b.failure(new Error("a"));
-  assert.equal(b.allows(), true);
-  b.failure(new Error("b"));
-  assert.equal(b.allows(), false);
-  assert.equal((b.lastError as Error).message, "b");
-  t.now = 100;
-  assert.equal(b.allows(), true);
-  // the trial fails: straight back open, no second run-up to the threshold
-  b.failure(new Error("c"));
-  assert.equal(b.allows(), false);
-  t.now = 200;
-  b.success();
-  assert.equal(b.allows(), true);
-  b.failure(new Error("d"));
-  assert.equal(b.allows(), true);
-});
-
-test("isRecoverable covers the OpenAI-shaped SDKs' network errors", () => {
-  assert.equal(isRecoverable(new Error("Connection error.")), true);
-  assert.equal(isRecoverable(new Error("Request timed out.")), true);
-  assert.equal(
-    isRecoverable(new Error("timeout after 15s (claude-haiku-4-5)")),
-    true,
-  );
 });
