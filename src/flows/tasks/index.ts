@@ -9,7 +9,7 @@ import type { Repository, TaskDraftRow, TaskType } from "../../db.ts";
 import { logger } from "../../log.ts";
 import type { Config } from "../../models/config.ts";
 import type { Enricher } from "../../services/enrich.ts";
-import type { TaskStore } from "../../services/tasks.ts";
+import type { TaskNotesService } from "../../services/task-notes.ts";
 import { plainDate } from "../../time.ts";
 import { closeMessage } from "../../views/chat.ts";
 import {
@@ -107,7 +107,7 @@ export class TasksFlow {
     private bot: Bot,
     private config: Config,
     private repo: Repository,
-    private store: TaskStore,
+    private store: TaskNotesService,
     /** Reads a `/taskadd` line into a task. Enrichment is the only thing in this flow
      *  that spends a token — everything else is deterministic. */
     private enricher: Enricher,

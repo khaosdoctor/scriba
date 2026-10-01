@@ -39,19 +39,19 @@ import { REPROCESS_NS, ReprocessCommand } from "./flows/reprocess.ts";
 import { TASKS_NS, TasksFlow } from "./flows/tasks/index.ts";
 import type { TaskDraft } from "./flows/tasks/parse.ts";
 import { TIL_NS, TilFlow } from "./flows/til.ts";
+import type { Scheduler } from "./lib/scheduler.ts";
 import { logger } from "./log.ts";
 import type { Config } from "./models/config.ts";
 import type { DownloadedFile } from "./models/domain.ts";
 import type { StatusButtons } from "./models/ops.ts";
-import type { HealthMonitor } from "./runtime/health.ts";
 import type { BotServices, JotProcessor } from "./runtime/processor.ts";
 import type { FlushQueue } from "./runtime/queue.ts";
-import type { Scheduler } from "./runtime/scheduler.ts";
 import type { Enricher } from "./services/enrich.ts";
 import type { GithubReleases } from "./services/github.ts";
+import type { HealthMonitor } from "./services/health.ts";
 import type { LinkIndex } from "./services/links.ts";
 import type { ObsidianClient } from "./services/obsidian.ts";
-import { TaskStore } from "./services/tasks.ts";
+import { TaskNotesService } from "./services/task-notes.ts";
 import type { FallbackTranscriber } from "./services/transcribe.ts";
 import { VaultTools } from "./services/vault.ts";
 import { dayBounds, plainDate, plainTime } from "./time.ts";
@@ -178,7 +178,7 @@ export class ScribaBot implements BotServices {
       this.bot,
       config,
       repo,
-      new TaskStore(obsidian, config.tasks),
+      new TaskNotesService(obsidian, config.tasks),
       enricher,
       () => this.command.isOpen(),
     );

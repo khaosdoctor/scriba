@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { testConfig } from "../test/config.ts";
-import { plainDate } from "../time.ts";
 import { Scheduler } from "./scheduler.ts";
+import { plainDate } from "./time.ts";
 
 const DAY = 24 * 60 * 60_000;
 
@@ -117,7 +117,7 @@ test("a sweep that throws is logged and the next one still runs", async (t) => {
   t.mock.timers.tick(1000);
   await flush();
   assert.equal(h.sweeps(), 1);
-  // The guard is cleared in a finally — without it one failure stops sweeping forever.
+  // The guard is cleared in a finally: without it one failure stops the retry pass forever.
   boom = false;
   t.mock.timers.tick(1000);
   await flush();

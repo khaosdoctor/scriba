@@ -1,13 +1,23 @@
 import { type Dispatcher, fetch } from "undici";
-import {
-  formatDuration,
-  modelsUrlFor,
-  OPENCODE_BASE_URL,
-  type UpstreamStatus,
-} from "../core.ts";
+import type { UpstreamStatus } from "../core.ts";
+import { formatDuration } from "../lib/text.ts";
 import { logger } from "../log.ts";
+import { OPENCODE_BASE_URL } from "./enrich.ts";
 
 const log = logger("health");
+
+/** The model listing next to an OpenAI-style transcription endpoint:
+ *  `.../v1/audio/transcriptions` → `.../v1/models`. A GET there generates nothing, which
+ *  is why the health probe uses it instead of the endpoint itself. */
+export function modelsUrlFor(transcriptionsUrl: string): string {
+  const u = new URL(transcriptionsUrl);
+  const base = u.pathname
+    .replace(/\/audio\/transcriptions\/?$/, "")
+    .replace(/\/$/, "");
+  u.pathname = `${base}/models`;
+  u.search = "";
+  return u.toString();
+}
 
 /** One thing the bot depends on, probed with a plain GET. There is no method or body
  *  field on purpose: a probe must never be able to generate anything (and so never

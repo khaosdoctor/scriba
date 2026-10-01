@@ -20,9 +20,7 @@ import {
   formatStatus,
   formatToolCall,
   gaveUpMessage,
-  isInsideRoot,
   jotPreview,
-  modelsUrlFor,
   monthGrid,
   parseEntrySize,
   parseFollowupRef,
@@ -333,18 +331,6 @@ test("formatHealth caps a long error", () => {
   assert.ok(out.split("\n")[1]!.startsWith("🟡 obsidian"));
 });
 
-test("modelsUrlFor swaps the transcription path for the model listing", () => {
-  assert.equal(
-    modelsUrlFor("http://parakeet:5092/v1/audio/transcriptions"),
-    "http://parakeet:5092/v1/models",
-  );
-  assert.equal(
-    modelsUrlFor("http://parakeet:5092/v1/audio/transcriptions/?x=1"),
-    "http://parakeet:5092/v1/models",
-  );
-  assert.equal(modelsUrlFor("http://asr:9000"), "http://asr:9000/models");
-});
-
 test("formatStatus shows a disabled link index", () => {
   const out = formatStatus({
     counts: {
@@ -389,15 +375,6 @@ test("formatJotDetail shows full text and includes errors", () => {
   assert.match(out, /Attempts: 3/);
   assert.match(out, /Error: boom/);
   assert.ok(out.includes(`Text: ${"x".repeat(400)}`)); // transcript shown in full
-});
-
-test("isInsideRoot accepts the root and its children, rejects siblings", () => {
-  assert.equal(isInsideRoot("/vault", "/vault"), true);
-  assert.equal(isInsideRoot("/vault", "/vault/notes/a.md"), true);
-  assert.equal(isInsideRoot("/vault/", "/vault/a.md"), true);
-  assert.equal(isInsideRoot("/vault", "/vault-other/a.md"), false); // prefix, not child
-  assert.equal(isInsideRoot("/vault", "/etc/passwd"), false);
-  assert.equal(isInsideRoot("", "/vault/a.md"), false);
 });
 
 test("entitiesToMarkdown returns text unchanged when entities is undefined", () => {

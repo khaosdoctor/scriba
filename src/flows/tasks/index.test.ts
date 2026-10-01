@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TaskStore } from "../../services/tasks.ts";
+import { TaskNotesService } from "../../services/task-notes.ts";
 import { testConfig } from "../../test/config.ts";
 import {
   parseTaskPromptRef,
@@ -84,7 +84,7 @@ function harness(
     },
     withNoteLock: async <T>(_p: string, fn: () => Promise<T>) => fn(),
   };
-  const store = new TaskStore(obsidian as any, {
+  const store = new TaskNotesService(obsidian as any, {
     work: {
       path: "work.md",
       heading: "Other Tasks",

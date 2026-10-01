@@ -3,8 +3,13 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 import { Agent } from "undici";
-import { OPENCODE_BASE_URL } from "../core.ts";
-import { HealthMonitor, type Upstream, upstreams } from "./health.ts";
+import { OPENCODE_BASE_URL } from "./enrich.ts";
+import {
+  HealthMonitor,
+  modelsUrlFor,
+  type Upstream,
+  upstreams,
+} from "./health.ts";
 
 /**
  * The upstreams, played by one loopback server so the monitor's real fetch, timeout and
@@ -211,4 +216,16 @@ test("start probes on a timer and stop ends it", async () => {
   assert.ok(count >= 2, `expected repeated probes, saw ${count}`);
   await new Promise((r) => setTimeout(r, 100));
   assert.equal(seen.length, count, "no probe after stop");
+});
+
+test("modelsUrlFor swaps the transcription path for the model listing", () => {
+  assert.equal(
+    modelsUrlFor("http://parakeet:5092/v1/audio/transcriptions"),
+    "http://parakeet:5092/v1/models",
+  );
+  assert.equal(
+    modelsUrlFor("http://parakeet:5092/v1/audio/transcriptions/?x=1"),
+    "http://parakeet:5092/v1/models",
+  );
+  assert.equal(modelsUrlFor("http://asr:9000"), "http://asr:9000/models");
 });

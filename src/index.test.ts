@@ -7,10 +7,10 @@ import { Bot } from "grammy";
 import { MockAgent, setGlobalDispatcher } from "undici";
 import { Repository } from "./db.ts";
 import { createScriba } from "./index.ts";
+import { Scheduler } from "./lib/scheduler.ts";
 import { loadConfig } from "./models/config.ts";
-import { HealthMonitor } from "./runtime/health.ts";
-import { Scheduler } from "./runtime/scheduler.ts";
 import { Enricher } from "./services/enrich.ts";
+import { HealthMonitor } from "./services/health.ts";
 import { LinkIndex } from "./services/links.ts";
 
 const env = {

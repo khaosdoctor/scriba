@@ -1,10 +1,10 @@
 import type { Context } from "grammy";
 import type { Repository } from "../db.ts";
-import type { HealthMonitor } from "../runtime/health.ts";
 import type { JotProcessor } from "../runtime/processor.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { GithubReleases } from "../services/github.ts";
+import type { HealthMonitor } from "../services/health.ts";
 import type { LinkIndex } from "../services/links.ts";
 import type { FallbackTranscriber } from "../services/transcribe.ts";
 

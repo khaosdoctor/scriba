@@ -35,9 +35,9 @@ import {
   WIZARD_VOICEFIX_MODEL_REF,
 } from "../core.ts";
 import type { Jot } from "../db.ts";
+import type { Scheduler } from "../lib/scheduler.ts";
 import { logger } from "../log.ts";
 import type { Config } from "../models/config.ts";
-import type { Scheduler } from "../runtime/scheduler.ts";
 import { plainDate } from "../time.ts";
 import { closeMessage } from "../views/chat.ts";
 import {

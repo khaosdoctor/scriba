@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ObsidianClient } from "./obsidian.ts";
-import { isPrivateAddress, VaultTools } from "./vault.ts";
+import { isInsideRoot, isPrivateAddress, VaultTools } from "./vault.ts";
 
 /** A vault with one note, plus a secret outside it and a symlink pointing at that secret. */
 async function fixture() {
@@ -120,6 +120,15 @@ test("isPrivateAddress covers loopback, RFC1918, link-local and CGNAT", () => {
     "2606:4700::1111",
   ])
     assert.equal(isPrivateAddress(ip), false, `${ip} should be public`);
+});
+
+test("isInsideRoot accepts the root and its children, rejects siblings", () => {
+  assert.equal(isInsideRoot("/vault", "/vault"), true);
+  assert.equal(isInsideRoot("/vault", "/vault/notes/a.md"), true);
+  assert.equal(isInsideRoot("/vault/", "/vault/a.md"), true);
+  assert.equal(isInsideRoot("/vault", "/vault-other/a.md"), false); // prefix, not child
+  assert.equal(isInsideRoot("/vault", "/etc/passwd"), false);
+  assert.equal(isInsideRoot("", "/vault/a.md"), false);
 });
 
 test("a vault path that isn't configured disables the tools", async () => {
