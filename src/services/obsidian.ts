@@ -1,9 +1,11 @@
 import { Agent, fetch } from "undici";
 import {
+  anchorLine,
   insertJournalLine,
   moveAnchorLine,
+  replaceAnchorLine,
   setFrontmatterValue,
-} from "../core.ts";
+} from "../lib/note.ts";
 import { logger } from "../log.ts";
 import type { JotSection } from "../models/domain.ts";
 
@@ -127,13 +129,14 @@ export class ObsidianClient {
     return path;
   }
 
-  // Serialize read-modify-write on a note so two concurrent stacks (intake, flush, retry
-  // sweep, boot sweep) can't both read v1 and have the later PUT clobber the earlier's
-  // line. Each op on a path chains onto the previous one for that path.
-  // ponytail: the chain map grows one entry per distinct note path (≈1/day). If it ever
-  // matters, prune settled tails — for a single-user bot it never will.
+  // Each op on a path chains onto the previous one for that path.
+  // ponytail: the chain map grows one entry per distinct note path (about one a day), which
+  // a single-user bot never needs to prune.
   private writeChain = new Map<string, Promise<unknown>>();
-  async withNoteLock<T>(vaultPath: string, fn: () => Promise<T>): Promise<T> {
+  private async withNoteLock<T>(
+    vaultPath: string,
+    fn: () => Promise<T>,
+  ): Promise<T> {
     const prev = (this.writeChain.get(vaultPath) ?? Promise.resolve()).catch(
       () => {},
     );
@@ -145,22 +148,63 @@ export class ObsidianClient {
     return run;
   }
 
+  /** Read, change and write a note under its lock, so two concurrent stacks (intake,
+   *  flush, retry pass) can't both read v1 and have the later PUT drop the earlier's
+   *  change. `fn` gets the note as it is now and calls `write` with the new text; nothing
+   *  goes out when it doesn't, or when the text is unchanged. Answers what `fn` returned. */
+  async updateNote<T>(
+    vaultPath: string,
+    fn: (note: string, write: (next: string) => void) => T | Promise<T>,
+  ): Promise<T> {
+    return this.withNoteLock(vaultPath, async () => {
+      const note = await this.readNote(vaultPath);
+      let next = note;
+      const result = await fn(note, (text) => {
+        next = text;
+      });
+      if (next !== note) await this.writeNote(vaultPath, next);
+      return result;
+    });
+  }
+
+  /** `updateNote` for the line carrying `^anchor`: `fn` gets that line and calls `write`
+   *  with its replacement. Answers null, without calling `fn`, when the line isn't there. */
+  async updateLine<T>(
+    vaultPath: string,
+    anchor: string,
+    fn: (line: string, write: (next: string) => void) => T | Promise<T>,
+  ): Promise<T | null> {
+    return this.updateNote(vaultPath, (note, write) => {
+      const line = anchorLine(note, anchor);
+      if (line === null) return null;
+      return fn(line, (next) => write(replaceAnchorLine(note, anchor, next)!));
+    });
+  }
+
+  async setFrontmatter(
+    vaultPath: string,
+    key: string,
+    value: string | number,
+  ): Promise<void> {
+    await this.updateNote(vaultPath, (note, write) =>
+      write(setFrontmatterValue(note, key, value)),
+    );
+  }
+
   /** Insert a bullet under the ## Journal heading (or ## TIL for a TIL jot).
-   *  Read-modify-write (not the REST heading-append) so the line lands right after the
-   *  last bullet — or replaces the empty template bullet — instead of trailing a blank
+   *  Read-modify-write (not the REST heading-append) so the line goes right after the
+   *  last bullet, or replaces the empty template bullet, instead of trailing a blank
    *  line below it. */
   async appendJournalLine(
     date: string,
     line: string,
     section: JotSection = "journal",
   ): Promise<void> {
-    const path = this.dailyPath(date);
     const heading =
       section === "til" ? this.cfg.tilHeading : this.cfg.journalHeading;
-    await this.withNoteLock(path, async () => {
-      const note = await this.readNote(path);
-      await this.writeNote(path, insertJournalLine(note, heading, line));
-    });
+    await this.updateNote(this.dailyPath(date), (note, write) =>
+      write(insertJournalLine(note, heading, line)),
+    );
   }
 
   /** Move a jot's line from wherever it is to the TIL heading of the same note, anchor
@@ -169,28 +213,21 @@ export class ObsidianClient {
     notePath: string,
     anchor: string,
   ): Promise<"moved" | "no-line" | "no-heading"> {
-    return this.withNoteLock(notePath, async () => {
-      const note = await this.readNote(notePath);
+    return this.updateNote(notePath, (note, write) => {
       const out = moveAnchorLine(note, anchor, this.cfg.tilHeading);
       if ("missing" in out)
         return out.missing === "line" ? "no-line" : "no-heading";
-      await this.writeNote(notePath, out.note);
+      write(out.note);
       log.info({ notePath, anchor }, "line moved to TIL");
       return "moved";
     });
   }
 
-  /** Set the `overallRating` frontmatter of a day's note (creating the note if the day
-   *  was never journaled). Read-modify-write so a live edit in Obsidian isn't clobbered. */
+  /** Set the `overallRating` frontmatter of a day's note, creating the note if the day
+   *  was never journaled. */
   async setDailyRating(date: string, rating: number): Promise<void> {
     const path = await this.ensureDailyNote(date);
-    await this.withNoteLock(path, async () => {
-      const note = await this.readNote(path);
-      await this.writeNote(
-        path,
-        setFrontmatterValue(note, "overallRating", rating),
-      );
-    });
+    await this.setFrontmatter(path, "overallRating", rating);
     log.info({ date, rating, path }, "overallRating frontmatter set");
   }
 

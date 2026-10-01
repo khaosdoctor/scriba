@@ -66,7 +66,7 @@ const withJot =
   };
 
 const REMOVED =
-  "obsidian.withNoteLock > obsidian.readNote > obsidian.writeNote > repo.markDeleted > repo.groupFollowers > tg.sendMessage > repo.mapMessage";
+  "obsidian.updateNote > obsidian.readNote > obsidian.writeNote > repo.markDeleted > repo.groupFollowers > tg.sendMessage > repo.mapMessage";
 
 // --- namespaces handled by ScribaBot itself ---
 
@@ -109,14 +109,14 @@ ledger("em", [
     when: "embed, answered after the vault write",
     setup: withJot({}, noteWith(`watch ${YOUTUBE}`)),
     expect:
-      "repo.getJot > obsidian.withNoteLock > obsidian.readNote > obsidian.writeNote > ack(embedded) > repo.groupFollowers > repo.updateJot > tg.sendMessage > repo.mapMessage",
+      "repo.getJot > obsidian.updateLine > obsidian.readNote > obsidian.writeNote > ack(embedded) > repo.groupFollowers > repo.updateJot > tg.sendMessage > repo.mapMessage",
   },
   {
     tap: `em:${ID}:0`,
     when: "back to a plain link, answered after the vault write",
     setup: withJot({}, noteWith(`watch ![](${YOUTUBE})`)),
     expect:
-      "repo.getJot > obsidian.withNoteLock > obsidian.readNote > obsidian.writeNote > ack(plain link) > repo.groupFollowers > repo.updateJot > tg.sendMessage > repo.mapMessage",
+      "repo.getJot > obsidian.updateLine > obsidian.readNote > obsidian.writeNote > ack(plain link) > repo.groupFollowers > repo.updateJot > tg.sendMessage > repo.mapMessage",
   },
   {
     tap: `em:${ID}:1`,
@@ -134,7 +134,7 @@ ledger("em", [
     when: "line missing from the note",
     setup: withJot({}, "## Journal\n"),
     expect:
-      "repo.getJot > obsidian.withNoteLock > obsidian.readNote > ack(line not found)",
+      "repo.getJot > obsidian.updateLine > obsidian.readNote > ack(line not found)",
   },
 ]);
 
@@ -235,7 +235,7 @@ ledger("lk", [
       withJot()(h);
     },
     expect:
-      "repo.takePendingLink > repo.getJot > obsidian.readNote > obsidian.writeNote > ack(linked) > tg.editMessageText",
+      "repo.takePendingLink > repo.getJot > obsidian.updateLine > obsidian.readNote > obsidian.writeNote > ack(linked) > tg.editMessageText",
   },
   {
     tap: "lk:n:p1",
@@ -263,7 +263,7 @@ ledger("lk", [
       withJot()(h);
     },
     expect:
-      "repo.takePendingLink > repo.getJot > obsidian.readNote > ack(no change) > tg.editMessageText",
+      "repo.takePendingLink > repo.getJot > obsidian.updateLine > obsidian.readNote > ack(no change) > tg.editMessageText",
   },
   {
     tap: "lk:y:p1",
@@ -433,6 +433,7 @@ const HABITS_NOTE = [
 ].join("\n");
 const withHabits = (h: Harness) => {
   h.obsidian.readDailyNote = { path: "p.md", content: HABITS_NOTE };
+  h.obsidian.readNote = HABITS_NOTE;
 };
 
 ledger("hb", [
@@ -447,7 +448,7 @@ ledger("hb", [
     when: "yes, answered after the note write",
     setup: withHabits,
     expect:
-      "obsidian.readDailyNote > obsidian.writeNote > ack() > obsidian.readDailyNote",
+      "obsidian.readDailyNote > obsidian.updateNote > obsidian.readNote > obsidian.writeNote > ack() > obsidian.readDailyNote",
   },
   {
     tap: "hb:2026-08-15:0:n",
@@ -728,7 +729,7 @@ ledger("tk", [
       h.repo.claimTaskDraft = true;
     },
     expect:
-      "repo.getTaskDraft > repo.claimTaskDraft > ack(creating…) > obsidian.withNoteLock > obsidian.readNote > obsidian.writeNote > tg.editMessageText",
+      "repo.getTaskDraft > repo.claimTaskDraft > ack(creating…) > obsidian.updateNote > obsidian.readNote > obsidian.writeNote > tg.editMessageText",
   },
   {
     tap: "tk:ok:d1d1d1d1",
@@ -790,7 +791,7 @@ ledger("tk", [
     when: "tick, answered before the note write",
     setup: withTaskNote,
     expect:
-      "ack(ticking…) > obsidian.withNoteLock > obsidian.readNote > obsidian.writeNote > obsidian.readNote×2 > tg.editMessageText",
+      "ack(ticking…) > obsidian.updateNote > obsidian.readNote > obsidian.writeNote > obsidian.readNote×2 > tg.editMessageText",
   },
   {
     tap: `tk:r:personal:0:${TASK_FINGERPRINT}:done:0`,
@@ -799,7 +800,7 @@ ledger("tk", [
       h.obsidian.readNote = "## Things to do\n";
     },
     expect:
-      "ack(reopening…) > obsidian.withNoteLock > obsidian.readNote > tg.sendMessage > obsidian.readNote×2 > tg.editMessageText",
+      "ack(reopening…) > obsidian.updateNote > obsidian.readNote > tg.sendMessage > obsidian.readNote×2 > tg.editMessageText",
   },
   {
     tap: "tk:k:personal:0",
@@ -873,7 +874,7 @@ ledger("menu: jot actions", [
     tap: `menu:jdy:${ID}`,
     when: "delete, answered before the vault write",
     setup: withJot(),
-    expect: `repo.getJot > ack() > obsidian.withNoteLock > obsidian.readNote > obsidian.writeNote > repo.markDeleted > repo.groupFollowers > tg.editMessageText`,
+    expect: `repo.getJot > ack() > obsidian.updateNote > obsidian.readNote > obsidian.writeNote > repo.markDeleted > repo.groupFollowers > tg.editMessageText`,
   },
   {
     tap: `menu:jdy:${ID}`,

@@ -61,11 +61,9 @@ export class TaskNotesService {
   async add(draft: TaskDraft, sourceDate: string): Promise<string> {
     const cfg = this.notes[draft.type];
     const line = renderTaskLine(draft, cfg.tag, sourceDate);
-    await this.obsidian.withNoteLock(cfg.path, async () => {
-      const note = await this.obsidian.readNote(cfg.path);
-      const out = insertTaskLine(note, cfg.heading, line, cfg.insert);
-      await this.obsidian.writeNote(cfg.path, this.touch(out));
-    });
+    await this.obsidian.updateNote(cfg.path, (note, write) =>
+      write(this.touch(insertTaskLine(note, cfg.heading, line, cfg.insert))),
+    );
     log.info(
       { type: draft.type, path: cfg.path, due: draft.due, start: draft.start },
       "task created",
@@ -85,8 +83,7 @@ export class TaskNotesService {
     done: boolean,
   ): Promise<Task | null> {
     const cfg = this.notes[type];
-    return this.obsidian.withNoteLock(cfg.path, async () => {
-      const note = await this.obsidian.readNote(cfg.path);
+    return this.obsidian.updateNote(cfg.path, (note, write) => {
       const task = parseTasks(note, cfg.heading, cfg.tag, type)[index];
       if (!task || task.fingerprint !== fingerprint) {
         log.warn(
@@ -106,7 +103,7 @@ export class TaskNotesService {
         line,
       );
       if (!out) return null;
-      await this.obsidian.writeNote(cfg.path, this.touch(out));
+      write(this.touch(out));
       log.info({ type, index, done, text: task.text }, "task state changed");
       return parseTaskLine(line, index, type, cfg.tag);
     });

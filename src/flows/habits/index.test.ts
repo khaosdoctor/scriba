@@ -9,6 +9,7 @@ process.env.OBSIDIAN_API_KEY ??= "o";
 const { config } = await import("../../config.ts");
 const { previousDate } = await import("../../time.ts");
 const { HabitsCommand } = await import("./index.ts");
+const { noteOps } = await import("../../test/note-ops.ts");
 
 const DATE = "2026-07-05";
 const PATH = `Daily/${DATE}.md`;
@@ -78,7 +79,7 @@ function harness(
       },
     },
   };
-  const obsidian = {
+  const obsidian: any = {
     readDailyNote: async (date: string) => {
       reads.push(date);
       const content = vault.get(`Daily/${date}.md`);
@@ -96,10 +97,10 @@ function harness(
       writes.push({ path, content });
       vault.set(path, content);
     },
-    withNoteLock: async (_path: string, fn: () => Promise<unknown>) => {
-      events.push("lock");
-      return fn();
-    },
+    ...noteOps(
+      () => obsidian,
+      () => events.push("lock"),
+    ),
   };
   const habits = new HabitsCommand(bot as any, obsidian as any);
   habits.register();
@@ -241,7 +242,7 @@ test("Begin edits the message that was tapped, even when the prompt was sent bef
   assert.equal(h.edits[0]!.id, 321);
 });
 
-test("Yes ticks the line and stamps its completion before answering the tap, then asks the next habit", async () => {
+test("Yes ticks the line under the note lock and stamps its completion before answering the tap, then asks the next habit", async () => {
   const h = harness();
   await h.habits.prompt(DATE);
   h.events.length = 0;
@@ -256,6 +257,7 @@ test("Yes ticks the line and stamps its completion before answering the tap, the
     },
   ]);
   assert.deepEqual(h.events, [
+    "lock",
     `write:${PATH}`,
     "answer:",
     `edit:${FLOW_MSG}:🌱 Pages read? Reply to this message with a number.\n(hb:${DATE}:1)`,
@@ -293,13 +295,14 @@ test("answering a value habit fills the number, ticks the line, deletes the repl
   ]);
 });
 
-test("finishing stamps habitsReviewed under the note lock, keeps the other frontmatter, and a second run is refused", async () => {
+test("a value reply and the final habitsReviewed stamp each write under the note lock, keeping the other frontmatter, and a second run is refused", async () => {
   const h = harness();
   await h.habits.prompt(DATE);
   await h.tap(DATE, "0", "y");
   h.events.length = 0;
   await h.reply(h.edits[0]!.text, "12");
   assert.deepEqual(h.events, [
+    "lock",
     `write:${PATH}`,
     "delete:900",
     "lock",

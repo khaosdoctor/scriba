@@ -6,6 +6,7 @@ process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
 process.env.OBSIDIAN_API_KEY ??= "o";
 
 import type { Jot } from "../db.ts";
+import { noteOps } from "./note-ops.ts";
 
 export const OWNER = 1;
 export const CHAT = 1;
@@ -145,13 +146,13 @@ export async function botHarness() {
     resetProcessing: 0,
     resetFailed: 0,
   });
-  const obsidian = recorder(
+  const obsidian: any = recorder(
     "obsidian",
     timeline,
     obsidianImpl,
     {
       dailyPath: (date: string) => `notes/daily notes/${date}.md`,
-      withNoteLock: (_path: string, fn: () => unknown) => fn(),
+      ...noteOps(() => obsidian),
       readNote: "",
     },
     { sync: ["dailyPath"], quiet: ["dailyPath"] },

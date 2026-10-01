@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { journalLine } from "./core.ts";
 import type { Jot } from "./db.ts";
+import { noteOps } from "./test/note-ops.ts";
 
 // config.ts reads process.env at import time, so the bot is imported after these are set.
 process.env.TELEGRAM_BOT_TOKEN ??= "t";
@@ -123,7 +124,7 @@ async function harness(over: Opts = {}) {
       events.push("obsidian.write");
       notes.set(path, content);
     },
-    withNoteLock: async (_path: string, fn: () => Promise<unknown>) => fn(),
+    ...noteOps(() => obsidian),
   };
   const enricher: any = {
     editText: async (text: string, instruction: string) => {
