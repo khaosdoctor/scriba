@@ -6,7 +6,7 @@ import type {
   SettingsController,
   SettingsPrompt,
 } from "../../controllers/settings.ts";
-import { formatJotDetail, jotPreview, STATUS_ICON } from "../../core.ts";
+import { formatJotDetail, jotPreview, STATUS_ICON } from "../../lib/jot.ts";
 import { logger } from "../../lib/log.ts";
 import { paginate } from "../../lib/page.ts";
 import { fitTelegram } from "../../lib/text.ts";

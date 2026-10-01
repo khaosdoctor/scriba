@@ -5,7 +5,9 @@ import {
   fitTelegram,
   formatDuration,
   htmlToText,
+  parseEntrySize,
   pluralize,
+  previewList,
   splitEntry,
   TELEGRAM_LIMIT,
 } from "./text.ts";
@@ -95,4 +97,19 @@ test("fitTelegram leaves short text alone and labels the cut on long text", () =
   assert.match(out, /cut here/);
   // The custom limit is honoured too, so the notice can never itself overflow.
   assert.equal(fitTelegram("y".repeat(300), 200).length, 200);
+});
+
+test("parseEntrySize validates a typed entry size", () => {
+  assert.equal(parseEntrySize("280"), 280);
+  assert.equal(parseEntrySize(" off "), 0);
+  assert.equal(parseEntrySize("0"), 0);
+  assert.equal(parseEntrySize("10"), null); // no sentence fits
+  assert.equal(parseEntrySize("99999"), null);
+  assert.equal(parseEntrySize("lots"), null);
+});
+
+test("previewList counts what it leaves out instead of cutting silently", () => {
+  assert.equal(previewList(["a", "b"], 5), "a, b");
+  assert.equal(previewList([], 5), "");
+  assert.equal(previewList(["a", "b", "c", "d"], 2), "a, b … +2 more");
 });

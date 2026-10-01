@@ -126,3 +126,8 @@ test("ratingDay rates yesterday for a just-after-midnight time and today for an 
   assert.equal(ratingDay("12:00", now), "2026-07-06");
   assert.equal(ratingDay("22:30", now), "2026-07-06");
 });
+
+test("ratingDay reads an unpadded hour", () => {
+  const now = new Date(2026, 6, 6, 12, 0).getTime();
+  assert.equal(ratingDay("9:30", now), "2026-07-05");
+});

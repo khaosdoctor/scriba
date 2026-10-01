@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AdminController } from "./controllers/admin.ts";
-import { journalLine } from "./core.ts";
+import { journalLine } from "./lib/note.ts";
 import type { Jot } from "./models/domain.ts";
 import { testConfig } from "./test/config.ts";
 import { BOT_INFO, recordingApi } from "./test/fakes.ts";

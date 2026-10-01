@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import { insertJournalLine } from "../core.ts";
+import { insertJournalLine } from "../lib/note.ts";
 import type { Jot } from "../models/domain.ts";
 import { MAX_ATTEMPTS } from "../models/domain.ts";
 import type { SettingKey } from "../models/settings.ts";

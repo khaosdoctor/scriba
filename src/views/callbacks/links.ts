@@ -3,11 +3,10 @@ import type {
   LinkPrompt,
   SettingsController,
 } from "../../controllers/settings.ts";
-import { previewList } from "../../core.ts";
 import { distinctSurfaces } from "../../lib/links.ts";
 import { logger } from "../../lib/log.ts";
 import { paginate } from "../../lib/page.ts";
-import { fitTelegram } from "../../lib/text.ts";
+import { fitTelegram, previewList } from "../../lib/text.ts";
 import type { ViewDeps } from "../index.ts";
 import { backTo, pagedScreen, withClose } from "../render/keyboard.ts";
 import type { Tap } from "./namespace.ts";

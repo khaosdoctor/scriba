@@ -1,3 +1,7 @@
+import { noteSuggestions } from "../lib/links.ts";
+import { logger } from "../lib/log.ts";
+import { paginate } from "../lib/page.ts";
+import type { Scheduler } from "../lib/scheduler.ts";
 import {
   WIZARD_ENRICH_MODEL_REF,
   WIZARD_ENTRYSIZE_REF,
@@ -8,11 +12,7 @@ import {
   WIZARD_RENAME_REF,
   WIZARD_STOPWORD_REF,
   WIZARD_VOICEFIX_MODEL_REF,
-} from "../core.ts";
-import { noteSuggestions } from "../lib/links.ts";
-import { logger } from "../lib/log.ts";
-import { paginate } from "../lib/page.ts";
-import type { Scheduler } from "../lib/scheduler.ts";
+} from "../lib/wizard.ts";
 import type { LinkRule } from "../models/domain.ts";
 import type { Notifier } from "../models/ops.ts";
 import type {

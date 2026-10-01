@@ -4,13 +4,10 @@ import type {
   SettingsController,
   SettingsPrompt,
 } from "../../controllers/settings.ts";
-import {
-  parseEntrySize,
-  parseWizardRef,
-  type WizardPrompt,
-} from "../../core.ts";
 import { cleanNoteTitle, parseRuleWords } from "../../lib/links.ts";
 import { logger } from "../../lib/log.ts";
+import { parseEntrySize } from "../../lib/text.ts";
+import { parseWizardRef, type WizardPrompt } from "../../lib/wizard.ts";
 import { parseClockTime } from "../../models/settings.ts";
 import {
   advance,

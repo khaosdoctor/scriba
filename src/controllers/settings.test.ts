@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseWizardRef } from "../core.ts";
+import { parseWizardRef } from "../lib/wizard.ts";
 import { FakeSettings } from "../test/fakes.ts";
 import { SettingsController, type SettingsPrompt } from "./settings.ts";
 

@@ -3,7 +3,7 @@ import type {
   AdminController,
   ReprocessScope,
 } from "../../controllers/admin.ts";
-import { jotPreview, STATUS_ICON } from "../../core.ts";
+import { jotPreview, STATUS_ICON } from "../../lib/jot.ts";
 import { logger } from "../../lib/log.ts";
 import { pluralize } from "../../lib/text.ts";
 import { plainDate } from "../../lib/time.ts";
