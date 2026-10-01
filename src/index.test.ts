@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { Bot } from "grammy";
 import { MockAgent, setGlobalDispatcher } from "undici";
-import { WIZARD_RATING_TIME_REF } from "./core.ts";
+import { WIZARD_RATING_TIME_REF } from "./lib/wizard.ts";
 import { loadConfig } from "./models/config.ts";
 import type { SettingKey } from "./models/settings.ts";
 import { Repository } from "./repositories/index.ts";

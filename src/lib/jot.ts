@@ -5,6 +5,7 @@ import type { StatusButtons } from "../models/ops.ts";
 import { isEmbeddableUrl } from "./links.ts";
 import { stripTilPrefix } from "./note.ts";
 import { escapeHtml } from "./text.ts";
+import { plainDate } from "./time.ts";
 
 /** Fixed 8-char hex id, also used as the Obsidian block anchor. */
 export function makeJotId(): string {
@@ -231,4 +232,37 @@ export function gaveUpMessage(
  *  is escaped. */
 export function editConfirmation(time: string, text: string): string {
   return `✏️ Updated\n<blockquote>🕒 ${time} · ${escapeHtml(text.trim() || "…")}</blockquote>`;
+}
+
+/** /jot body: full record for one jot. */
+export function formatJotDetail(j: Jot): string {
+  const text = j.transcript ?? j.raw_text ?? "(none)";
+  const lines = [
+    `🧾 ${j.id} [${j.kind}] — ${j.status}`,
+    `Received: ${plainDate(j.received_at)} ${j.time}`,
+    `Attempts: ${j.attempts}`,
+    `Note: ${j.note_path} ^${j.anchor}`,
+  ];
+  if (j.asset_path) lines.push(`Asset: ${j.asset_path}`);
+  if (j.error) lines.push(`Error: ${j.error}`);
+  lines.push(`Text: ${text}`);
+  return lines.join("\n");
+}
+
+/** One glyph per jot status — the /menu jots browser and /reprocess pickers. */
+export const STATUS_ICON: Record<JotStatus, string> = {
+  pending: "⏳",
+  processing: "⚙️",
+  done: "✅",
+  failed: "❌",
+  abandoned: "🪦",
+  deleted: "🗑",
+};
+
+/** One-line content preview for list pickers (the /menu jots browser, /reprocess) —
+ *  falls back to "(kind)" for attach-only jots with no caption. */
+export function jotPreview(j: Jot, maxLen = 40): string {
+  return (j.transcript ?? j.raw_text ?? `(${j.kind})`)
+    .replace(/\s+/g, " ")
+    .slice(0, maxLen);
 }

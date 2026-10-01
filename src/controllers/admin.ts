@@ -1,6 +1,5 @@
-import { formatJotDetail } from "../core.ts";
 import { clipUpdate } from "../lib/feed.ts";
-import { reprocessTargets } from "../lib/jot.ts";
+import { formatJotDetail, reprocessTargets } from "../lib/jot.ts";
 import { distinctSurfaces } from "../lib/links.ts";
 import { logger } from "../lib/log.ts";
 import type { PageView } from "../lib/page.ts";

@@ -65,6 +65,6 @@ export type StatusButtons = {
   undo?: boolean;
   discard?: boolean;
   /** Line holds a YouTube/tweet/image URL: offer to embed it, or to turn it back into a
-   *  link (`embedOffer` in core.ts decides which). */
+   *  link (`embedOffer` in lib/jot.ts decides which). */
   embed?: "embed" | "plain";
 };

@@ -10,9 +10,11 @@ import {
   editedJotText,
   embedOffer,
   enrichableSource,
+  formatJotDetail,
   gaveUpMessage,
   isEditableJot,
   isRecoverable,
+  jotPreview,
   makeJotId,
   parseLiteralEdit,
   reprocessTargets,
@@ -305,4 +307,60 @@ test("a failure message escapes and caps the error it quotes", () => {
   assert.ok(huge.length < TELEGRAM_LIMIT);
   assert.match(huge, /x…<\/code>/);
   assert.match(retryNotice("text", 1, 10, "   "), /no error message/);
+});
+
+test("formatJotDetail shows full text and includes errors", () => {
+  const jot: Jot = {
+    id: "deadbeef",
+    kind: "audio",
+    note_path: "notes/x.md",
+    anchor: "deadbeef",
+    time: "10:00:00",
+    raw_text: null,
+    transcript: "x".repeat(400),
+    proposed_text: null,
+    section: "journal",
+    asset_path: null,
+    file_id: null,
+    status: "failed",
+    attempts: 3,
+    error: "boom",
+    received_at: Date.now(),
+    updated_at: Date.now(),
+  };
+  const out = formatJotDetail(jot);
+  assert.match(out, /deadbeef \[audio\] — failed/);
+  assert.match(out, /Attempts: 3/);
+  assert.match(out, /Error: boom/);
+  assert.ok(out.includes(`Text: ${"x".repeat(400)}`)); // transcript shown in full
+});
+
+test("jotPreview falls back to (kind) for a captionless attach-only jot", () => {
+  const base = {
+    id: "aaaaaaaa",
+    kind: "image" as const,
+    note_path: "x.md",
+    anchor: "aaaaaaaa",
+    time: "10:00:00",
+    raw_text: null,
+    transcript: null,
+    proposed_text: null,
+    section: "journal" as const,
+    asset_path: null,
+    file_id: null,
+    status: "done" as const,
+    attempts: 0,
+    error: null,
+    received_at: 0,
+    updated_at: 0,
+  };
+  assert.equal(jotPreview(base), "(image)");
+  assert.equal(
+    jotPreview({ ...base, raw_text: "a  sunset\nphoto" }),
+    "a sunset photo",
+  );
+  assert.equal(
+    jotPreview({ ...base, kind: "audio", transcript: "hello there" }, 5),
+    "hello",
+  );
 });

@@ -108,3 +108,19 @@ export function formatDuration(ms: number): string {
   if (m) return `${m}m ${sec}s`;
   return `${sec}s`;
 }
+
+/** A typed entry-size reply: a whole number of characters, or "off" to stop splitting.
+ *  Null when it isn't usable — under 40 characters no sentence would ever fit. */
+export function parseEntrySize(text: string): number | null {
+  const s = text.trim().toLowerCase();
+  if (s === "off" || s === "none" || s === "0") return 0;
+  if (!/^\d{1,4}$/.test(s)) return null;
+  const n = Number(s);
+  return n >= 40 && n <= 4000 ? n : null;
+}
+
+/** Inline preview of a list: the first `max` entries, then a count of what's left out. */
+export function previewList(items: string[], max: number): string {
+  if (items.length <= max) return items.join(", ");
+  return `${items.slice(0, max).join(", ")} … +${items.length - max} more`;
+}

@@ -1,5 +1,5 @@
-import { setFrontmatterValue } from "../core.ts";
 import { logger } from "../lib/log.ts";
+import { setFrontmatterValue } from "../lib/note.ts";
 import {
   completeTaskLine,
   insertTaskLine,

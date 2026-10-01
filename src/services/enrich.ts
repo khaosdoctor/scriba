@@ -118,7 +118,7 @@ export interface EnrichInput {
   merge?: boolean;
   // Character limit one journal entry gets split at. Passed so the model can mark topic
   // boundaries with blank lines when the text is over it — the split itself is done
-  // deterministically in core.ts, this only makes the seams land on a change of subject.
+  // deterministically in lib/text.ts, this only makes the seams land on a change of subject.
   splitAt?: number;
 }
 export interface EnrichResult {
