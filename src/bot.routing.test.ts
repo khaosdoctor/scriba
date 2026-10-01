@@ -12,6 +12,7 @@ import {
 } from "./test/bot-harness.ts";
 import { parseFollowupRef } from "./views/replies/followup.ts";
 import { parseTaskRef } from "./views/replies/task.ts";
+import { parseLinkRef, parseSettingsRef } from "./views/replies/wizard.ts";
 
 const FALLBACK = "scriba handles text, voice, images, and video for now.";
 const COMMAND_ON = "🧭 Command mode is on.";
@@ -381,7 +382,7 @@ test("an edited text is queued while the jot is still processing", async () => {
 
 // --- prompts that carry a marker ---
 
-type Owner = "habit" | "followup" | "wizard" | "task";
+type Owner = "habit" | "followup" | "settings" | "link" | "task";
 type Producer = {
   name: string;
   owner: Owner;
@@ -392,8 +393,10 @@ type Producer = {
 
 const sent = async (run: Promise<Run>) =>
   first((await run).texts("sendMessage"));
-const withFlow = (h: Harness) => {
-  h.bot.menu.pending = { words: ["milk"], i: 0, query: "milk", page: 0 };
+/** Opens the pair flow for "milk" the way the owner does: by answering the words prompt. */
+const withFlow = async (h: Harness) => {
+  h.links.entries = [{ note: "Milk", alias: "milk" }];
+  await h.say("milk", { message_id: 7, text: "(lw:rg)" });
 };
 const withDraft = (h: Harness) => {
   h.repo.getTaskDraft = { id: "d1d1d1d1", status: "pending", chat_id: 1 };
@@ -431,61 +434,61 @@ const PRODUCERS: Producer[] = [
   },
   {
     name: "never-link words",
-    owner: "wizard",
+    owner: "link",
     text: "➕ Reply to this message with the word(s) that should never be linked. One per line, or comma-separated. (lw:sw)",
     produce: (h) => sent(h.tap("menu:lswa")),
   },
   {
     name: "always-link words",
-    owner: "wizard",
+    owner: "link",
     text: `➕ Reply to this message with the word(s) that should always link. One per line, or comma-separated ${EM} spaces are fine, and I'll ask for each one's note next. (lw:rg)`,
     produce: (h) => sent(h.tap("menu:lrga")),
   },
   {
     name: "note search",
-    owner: "wizard",
+    owner: "link",
     text: '🔎 Search the vault for the note "milk" should link to. Reply to this message with any part of its title. (lw:rgn)',
-    produce: (h) => {
-      withFlow(h);
+    produce: async (h) => {
+      await withFlow(h);
       return sent(h.tap("menu:lrgq"));
     },
   },
   {
     name: "typed note title",
-    owner: "wizard",
+    owner: "link",
     text: `✍️ Reply to this message with the exact title of the note "milk" should link to ${EM} it doesn't have to exist yet. (lw:rgm)`,
-    produce: (h) => {
-      withFlow(h);
+    produce: async (h) => {
+      await withFlow(h);
       return sent(h.tap("menu:lrgm"));
     },
   },
   {
     name: "pair rename",
-    owner: "wizard",
+    owner: "link",
     text: "✏️ Reply to this message with the new word for this pair. (lw:rgw:3)",
     produce: (h) => sent(h.tap("menu:lrgw:3")),
   },
   {
     name: "entry size",
-    owner: "wizard",
+    owner: "settings",
     text: '✂️ Reply to this message with how many characters one journal entry may be: 40–4000, or "off" to stop splitting. (es:n)',
     produce: (h) => sent(h.tap("menu:esc")),
   },
   {
     name: "enrichment model",
-    owner: "wizard",
+    owner: "settings",
     text: "🧠 Reply with the model ID for enrichment (e.g. claude-sonnet-5): (md:em)",
     produce: (h) => sent(h.tap("menu:emc")),
   },
   {
     name: "voice fix model",
-    owner: "wizard",
+    owner: "settings",
     text: "🧠 Reply with the model ID for voice fix (e.g. claude-sonnet-5): (md:vfm)",
     produce: (h) => sent(h.tap("menu:vfc")),
   },
   {
     name: "rating time",
-    owner: "wizard",
+    owner: "settings",
     text: "🕛 Reply to this message with the time for the nightly rating, as HH:MM in 24-hour time, like 23:30. A time before 12:00 rates the day that just ended, a later one rates today. (rt:time)",
     produce: (h) => sent(h.tap("menu:rtt")),
   },
@@ -534,14 +537,14 @@ test("every marker-bearing prompt is worded as before", async () => {
   );
 });
 
-test("every marker-bearing prompt is claimed by the flow that sent it and by no other", async () => {
-  const h = await botHarness();
+test("every marker-bearing prompt is claimed by the flow that sent it and by no other", () => {
   const claimedBy = (text: string): Owner[] =>
     (
       [
         ["habit", parseHabitRef(text) !== null],
         ["followup", parseFollowupRef(text) !== null],
-        ["wizard", h.bot.menu.isWizardPrompt(text)],
+        ["settings", parseSettingsRef(text) !== null],
+        ["link", parseLinkRef(text) !== null],
         ["task", parseTaskRef(text) !== null],
       ] as const
     )

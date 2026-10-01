@@ -152,6 +152,11 @@ test("a typed-value button sends a force reply with its marker and leaves the me
     ["menu:esc", "es"],
     ["menu:emc", "em"],
     ["menu:vfc", "vfm"],
+    ["menu:lswa", "sw"],
+    ["menu:lrga", "rg"],
+    ["menu:lrgw:0", "rgw"],
+    ["menu:lrgq", "rgn"],
+    ["menu:lrgm", "rgm"],
   ] as const) {
     const run = await h.tap(data);
     assert.deepEqual(answers(run), ["Answer the prompt below ↓"], data);
@@ -316,8 +321,86 @@ test("the stats button offers a range picker, a range shows that window, and sta
   assert.deepEqual(callbacks(status), ["menu:root", "menu:close"]);
 });
 
-test("the link wizard and the jots browser still answer through the menu namespace", async () => {
+test("the link wizard answers through the menu namespace", async () => {
   const h: Harness = await botHarness();
-  assert.equal(edit(await h.tap("menu:jots"))?.text, "No jots yet.");
   assert.ok(edit(await h.tap("menu:links"))?.text.startsWith("🔗 Link rules"));
+});
+
+test("the jots browser lists recent jots, shows a detail card and handles a missing id", async () => {
+  const jot = sampleJot({
+    id: "abc12345",
+    status: "failed",
+    time: "10:00",
+    raw_text: "hello  there",
+    anchor: "abc12345",
+    attempts: 3,
+    error: "boom",
+  });
+  const h = await botHarness();
+  h.repo.recentJots = [jot];
+  h.repo.getJot = async (id: string) => (id === jot.id ? jot : undefined);
+  const list = edit(await h.tap("menu:jots"));
+  assert.equal(list?.text, "🗒 Recent jots:");
+  assert.equal(button(list, "menu:jot:abc12345").text, "❌ 10:00 hello there");
+  assert.deepEqual(callbacks(list).slice(1), ["menu:root", "menu:close"]);
+  assert.equal(
+    edit(await (await botHarness()).tap("menu:jots"))?.text,
+    "No jots yet.",
+  );
+
+  const detail = edit(await h.tap("menu:jot:abc12345"));
+  assert.ok(detail?.text.startsWith(`🧾 abc12345 [text] ${EM} failed\n`));
+  assert.ok(detail?.text.includes("Error: boom"));
+  assert.deepEqual(callbacks(detail).slice(0, 4), [
+    "menu:jr:abc12345",
+    "menu:je:abc12345",
+    "menu:jd:abc12345",
+    "menu:jots",
+  ]);
+  const missing = edit(await h.tap("menu:jot:nope"));
+  assert.equal(missing?.text, "No jot nope.");
+  assert.deepEqual(callbacks(missing), ["menu:jots", "menu:close"]);
+});
+
+test("retry resets and queues before it answers, delete answers before the note work, edit maps its prompt", async () => {
+  const h = await botHarness();
+  const jot = sampleJot({ id: "abc12345", status: "failed" });
+  h.repo.getJot = async (id: string) => (id === jot.id ? jot : undefined);
+  const retry = await h.tap("menu:jr:abc12345");
+  assert.equal(
+    retry.rendered,
+    "repo.getJot > repo.resetForRetry > queue.add > ack(retrying) > tg.editMessageText",
+  );
+  assert.equal(edit(retry)?.text, "🔄 retrying abc12345…");
+  assert.deepEqual(callbacks(edit(retry)), ["menu:jots", "menu:close"]);
+
+  const confirm = edit(await h.tap("menu:jd:abc12345"));
+  assert.equal(
+    confirm?.text,
+    "Delete jot abc12345? This removes its line from the journal.",
+  );
+  assert.deepEqual(callbacks(confirm).slice(0, 2), [
+    "menu:jdy:abc12345",
+    "menu:jot:abc12345",
+  ]);
+
+  const del = await h.tap("menu:jdy:abc12345");
+  assert.equal(
+    del.rendered,
+    "repo.getJot > ack() > obsidian.updateNote > obsidian.readNote > repo.markDeleted > repo.groupFollowers > tg.editMessageText",
+  );
+  assert.equal(edit(del)?.text, "🗑️ removed that from your journal.");
+
+  const prompt = await h.tap("menu:je:abc12345");
+  assert.equal(
+    prompt.rendered,
+    "repo.getJot > ack() > tg.sendMessage > repo.mapMessage",
+  );
+  const sent = prompt.calls.find((c) => c.method === "sendMessage")?.payload;
+  assert.equal(sent?.chat_id, OWNER);
+  assert.deepEqual(sent?.reply_markup, { force_reply: true });
+  assert.ok(sent?.text.includes("with your edit for abc12345"));
+
+  for (const data of ["menu:jr:zzz", "menu:jdy:zzz", "menu:je:zzz"])
+    assert.deepEqual(answers(await h.tap(data)), ["gone"], data);
 });

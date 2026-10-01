@@ -12,7 +12,7 @@ import {
   type Harness,
   type Run,
 } from "../../test/bot-harness.ts";
-import { parseSettingsRef } from "./wizard.ts";
+import { parseLinkRef, parseSettingsRef } from "./wizard.ts";
 
 const TIME = `when? ${WIZARD_RATING_TIME_REF}`;
 const SIZE = `how long? ${WIZARD_ENTRYSIZE_REF}`;
@@ -28,13 +28,20 @@ const buttons = (run: Run): string[] =>
     .flat()
     .map((b: { callback_data: string }) => b.callback_data);
 
-test("the settings prompts are claimed by their marker; the link wizard's are not", () => {
+test("the settings prompts and the link wizard's are each claimed by their own marker", () => {
   assert.equal(parseSettingsRef(TIME), "rt");
   assert.equal(parseSettingsRef(SIZE), "es");
   assert.equal(parseSettingsRef(ENRICH), "em");
   assert.equal(parseSettingsRef(VOICE_FIX), "vfm");
   assert.equal(parseSettingsRef("add words (lw:sw)"), null);
   assert.equal(parseSettingsRef("just a message"), null);
+  assert.deepEqual(parseLinkRef("add words (lw:sw)"), { kind: "sw" });
+  assert.deepEqual(parseLinkRef("rename (lw:rgw:3)"), {
+    kind: "rgw",
+    index: 3,
+  });
+  assert.equal(parseLinkRef(TIME), null);
+  assert.equal(parseLinkRef("just a message"), null);
 });
 
 test("a typed time is stored, re-arms the nightly job, and is confirmed with a menu button", async () => {

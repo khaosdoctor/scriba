@@ -1,54 +1,35 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// menu.ts pulls in config.ts, which validates process.env at import time — give it the
-// bare minimum before loading, the same trick config.test.ts uses.
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { MenuController } = await import("./menu.ts");
-const { parseWizardRef } = await import("../core.ts");
+import { SettingsController } from "../../controllers/settings.ts";
+import { parseWizardRef } from "../../core.ts";
+import { linkReply, parseLinkRef } from "../replies/wizard.ts";
+import { type LinkDeps, linkRulesTap } from "./links.ts";
 
 const buttonTexts = (kb: any) =>
   kb.inline_keyboard.map((row: any[]) => row.map((b) => b.text));
 const findButton = (kb: any, data: string) =>
   kb.inline_keyboard.flat().find((b: any) => b.callback_data === data);
-
-function timeReply(body: string) {
-  const replies: string[] = [];
-  const menus: { text: string; opts: any }[] = [];
-  return {
-    replies,
-    menus,
-    ctx: {
-      message: { text: body },
-      reply: async (text: string, opts?: any) => {
-        if (opts) menus.push({ text, opts });
-        else replies.push(text);
-        return { chat: { id: 1 }, message_id: 60 };
-      },
-    },
-  };
-}
-
-// --- link wizard and jots browser ---
+const callbacks = (kb: any) =>
+  kb.inline_keyboard.flat().map((b: any) => b.callback_data);
+const words = (n: number, prefix = "w") =>
+  Array.from({ length: n }, (_, i) => `${prefix}${i}`);
 
 type Pair = { surface: string; note: string };
+const pair = (surface: string, note: string): Pair => ({ surface, note });
 
-/** A menu over stateful fake repository lists. `events` is one ordered log of every
- *  ack, edit and write, so a test can assert whether an ack comes before or after the I/O. */
+/** The wizard over stateful fake rule lists. `events` is one ordered log of every ack,
+ *  edit and write, so a test can assert whether an ack comes before or after the I/O.
+ *  `sent` collects the force-reply prompts and the menus the wizard posts on its own. */
 function wizardHarness(
   init: {
     stopwords?: string[];
     rejections?: Pair[];
     pairs?: Pair[];
     aliases?: { note: string; alias: string }[];
-    jots?: any[];
   } = {},
 ) {
   const events: string[] = [];
   const sent: { text: string; opts: any }[] = [];
-  const jots = init.jots ?? [];
   const state = {
     stopwords: [...(init.stopwords ?? [])],
     rejections: [...(init.rejections ?? [])],
@@ -83,42 +64,41 @@ function wizardHarness(
       state.pairs = without(state.pairs, s, n);
       return 1;
     },
-    getJot: async (id: string) => jots.find((j) => j.id === id),
-    recentJots: async () => jots,
-    resetForRetry: async (id: string) => void events.push(`reset ${id}`),
-    mapMessage: async (m: number, id: string) =>
-      void events.push(`map ${m} ${id}`),
   };
-  const links = {
-    list: () => init.aliases ?? [],
-    stats: () => ({ enabled: true, aliases: 3, files: 2 }),
-  };
-  const queue = {
-    add: (ids: string[]) => events.push(`queue ${ids.join(",")}`),
-  };
-  const bot = {
-    api: {
-      sendMessage: async (_chat: number, text: string, opts: any) => {
+  const settings = new SettingsController({
+    repo,
+    links: {
+      list: () => init.aliases ?? [],
+      stats: () => ({ enabled: true, aliases: 3, files: 2 }),
+    },
+    notifier: {
+      send: async (text: string, opts: unknown) => {
         sent.push({ text, opts });
-        return { chat: { id: 1 }, message_id: 50 };
+        return 50;
       },
     },
+    ratingTime: "00:00",
+  } as never);
+  const deps: LinkDeps = {
+    settings,
+    menus: { touch: () => {} } as never,
+    ownerId: 1,
   };
-  const menu = new MenuController(
-    bot as any,
-    { touch: () => {} } as any,
-    () => ({ repo, links, queue }) as any,
-    async (jot: any) => {
-      events.push(`deleteJot ${jot.id}`);
-      return "🗑 deleted";
+  const taps = linkRulesTap(deps);
+  const replies = linkReply(deps);
+  const api = {
+    sendMessage: async (_chat: number, text: string, opts: any) => {
+      sent.push({ text, opts });
+      return { chat: { id: 1 }, message_id: 50 };
     },
-  ) as any;
+  };
 
   async function tap(data: string) {
     const answers: (string | undefined)[] = [];
     const edits: { text: string; kb: any }[] = [];
-    const replies: string[] = [];
+    const replied: string[] = [];
     const ctx = {
+      api,
       chat: { id: 1 },
       callbackQuery: { message: { chat: { id: 1 }, message_id: 2 } },
       answerCallbackQuery: async (a?: { text: string }) => {
@@ -129,35 +109,32 @@ function wizardHarness(
         edits.push({ text, kb: opts.reply_markup });
         events.push("edit");
       },
-      reply: async (text: string) => void replies.push(text),
+      reply: async (text: string) => void replied.push(text),
     };
-    await menu.handleCallback(ctx, data.split(":"));
+    await taps(ctx as never, data.split(":"));
     const last = edits.at(-1);
-    return { answers, edits, replies, text: last?.text, kb: last?.kb };
+    return { answers, edits, replies: replied, text: last?.text, kb: last?.kb };
   }
 
   async function reply(marker: string, body: string) {
-    const r = timeReply(body);
-    await menu.handleWizardReply(r.ctx, `prompt ${marker}`);
-    return { replies: r.replies, menus: r.menus };
+    const replied: string[] = [];
+    const menus: { text: string; opts: any }[] = [];
+    const ctx = {
+      api,
+      chat: { id: 1 },
+      message: { text: body },
+      reply: async (text: string, opts?: any) => {
+        if (opts) menus.push({ text, opts });
+        else replied.push(text);
+        return { chat: { id: 1 }, message_id: 60 };
+      },
+    };
+    await replies(ctx as never, parseLinkRef(`prompt ${marker}`)!);
+    return { replies: replied, menus };
   }
 
-  return {
-    menu,
-    events,
-    take: () => events.splice(0),
-    sent,
-    state,
-    tap,
-    reply,
-  };
+  return { events, take: () => events.splice(0), sent, state, tap, reply };
 }
-
-const callbacks = (kb: any) =>
-  kb.inline_keyboard.flat().map((b: any) => b.callback_data);
-const words = (n: number, prefix = "w") =>
-  Array.from({ length: n }, (_, i) => `${prefix}${i}`);
-const pair = (surface: string, note: string): Pair => ({ surface, note });
 
 test("the never-link screen summarises the words and offers removal only when there are some", async () => {
   const empty = await wizardHarness().tap("lsw");
@@ -499,98 +476,38 @@ test("renaming a pair's word keeps its note, and a vanished pair is reported", a
   ]);
 });
 
-test("each link-rule button sends a force-reply prompt carrying its marker", async () => {
-  const h = wizardHarness({ pairs: [pair("ts", "TypeScript")] });
+test("each link-rule button asks for a force reply carrying its marker, naming the word a note is for", async () => {
+  const h = wizardHarness({
+    pairs: [pair("ts", "TypeScript")],
+    aliases: [{ note: "TypeScript", alias: "ts" }],
+  });
   for (const [data, kind] of [
     ["lswa", "sw"],
     ["lrga", "rg"],
     ["lrgw:0", "rgw"],
+    ["lrgq", "rgn"],
+    ["lrgm", "rgm"],
   ] as const) {
     const t = await h.tap(data);
     assert.deepEqual(t.answers, ["Answer the prompt below ↓"]);
     assert.equal(parseWizardRef(h.sent.at(-1)!.text)?.kind, kind, data);
-    assert.deepEqual(h.sent.at(-1)!.opts, {
-      reply_markup: { force_reply: true },
-    });
+    assert.deepEqual(h.sent.at(-1)!.opts, { forceReply: true });
   }
-  assert.deepEqual(parseWizardRef(h.sent.at(-1)!.text), {
-    kind: "rgw",
-    index: 0,
-  });
-});
-
-test("the jots browser lists recent jots, shows a detail card and handles a missing id", async () => {
-  const jot = {
-    id: "abc12345",
-    kind: "text",
-    status: "failed",
-    time: "10:00",
-    raw_text: "hello  there",
-    transcript: null,
-    note_path: "Daily/2026-10-01.md",
-    anchor: "abc12345",
-    asset_path: null,
-    attempts: 3,
-    error: "boom",
-    received_at: 0,
-  };
-  const h = wizardHarness({ jots: [jot] });
-  const list = await h.tap("jots");
-  assert.equal(list.text, "🗒 Recent jots:");
-  assert.equal(
-    findButton(list.kb, "menu:jot:abc12345").text,
-    "❌ 10:00 hello there",
+  assert.ok(
+    h.sent
+      .at(-1)!
+      .text.startsWith(
+        "✍️ Reply to this message with the exact title of the note \u{2014} it",
+      ),
   );
-  assert.equal((await wizardHarness().tap("jots")).text, "No jots yet.");
 
-  const detail = await h.tap("jot:abc12345");
-  assert.ok(detail.text?.startsWith("🧾 abc12345 [text] \u{2014} failed\n"));
-  assert.ok(detail.text?.includes("Error: boom"));
-  assert.deepEqual(callbacks(detail.kb).slice(0, 4), [
-    "menu:jr:abc12345",
-    "menu:je:abc12345",
-    "menu:jd:abc12345",
-    "menu:jots",
-  ]);
-  const missing = await h.tap("jot:nope");
-  assert.equal(missing.text, "No jot nope.");
-  assert.deepEqual(callbacks(missing.kb), ["menu:jots", "menu:close"]);
-});
-
-test("retry resets and queues before it answers, delete answers before the note work, edit maps its prompt", async () => {
-  const h = wizardHarness({ jots: [{ id: "abc12345", status: "failed" }] });
-  const retry = await h.tap("jr:abc12345");
-  assert.deepEqual(h.take(), [
-    "reset abc12345",
-    "queue abc12345",
-    "ack retrying",
-    "edit",
-  ]);
-  assert.equal(retry.text, "🔄 retrying abc12345…");
-
-  const confirm = await h.tap("jd:abc12345");
-  assert.equal(
-    confirm.text,
-    "Delete jot abc12345? This removes its line from the journal.",
+  await h.tap("lrgt:0");
+  await h.tap("lrgq");
+  assert.ok(
+    h.sent
+      .at(-1)!
+      .text.startsWith('🔎 Search the vault for the note "ts" should link to.'),
   );
-  assert.deepEqual(callbacks(confirm.kb).slice(0, 2), [
-    "menu:jdy:abc12345",
-    "menu:jot:abc12345",
-  ]);
-
-  h.take();
-  const del = await h.tap("jdy:abc12345");
-  assert.deepEqual(h.take(), ["ack", "deleteJot abc12345", "edit"]);
-  assert.equal(del.text, "🗑 deleted");
-
-  await h.tap("je:abc12345");
-  assert.deepEqual(h.take(), ["ack", "map 50 abc12345"]);
-  assert.ok(h.sent.at(-1)!.text.includes("with your edit for abc12345"));
-
-  for (const data of ["jr:zzz", "jdy:zzz", "je:zzz"]) {
-    assert.deepEqual((await h.tap(data)).answers, ["gone"], data);
-  }
-  assert.deepEqual(h.take(), Array(3).fill("ack gone"));
 });
 
 test("an unknown action is answered silently", async () => {

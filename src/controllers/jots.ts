@@ -1,7 +1,8 @@
 import { clipUpdate, escapeHtml } from "../core.ts";
-import type { Repository } from "../db.ts";
+import type { Jot, Repository } from "../db.ts";
 import { logger } from "../lib/log.ts";
 import type { Notifier } from "../models/ops.ts";
+import type { FlushQueue } from "../runtime/queue.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = logger("til-flow");
@@ -16,10 +17,17 @@ export const TIL_NS = "ti";
 export interface JotDeps {
   repo: Pick<
     Repository,
-    "getJot" | "groupFollowers" | "updateJot" | "markTilOffered"
+    | "getJot"
+    | "groupFollowers"
+    | "updateJot"
+    | "markTilOffered"
+    | "recentJots"
+    | "resetForRetry"
+    | "mapMessage"
   >;
   obsidian: Pick<ObsidianClient, "moveToTil">;
   notifier: Pick<Notifier, "send">;
+  queue: Pick<FlushQueue, "add">;
 }
 
 export type TilOutcome =
@@ -32,6 +40,30 @@ export type TilOutcome =
 
 export class JotController {
   constructor(private deps: JotDeps) {}
+
+  recent(limit: number): Promise<Jot[]> {
+    return this.deps.repo.recentJots(limit);
+  }
+
+  get(id: string): Promise<Jot | undefined> {
+    return this.deps.repo.getJot(id);
+  }
+
+  /** Put a jot back in the queue by hand. */
+  async retry(id: string): Promise<void> {
+    await this.deps.repo.resetForRetry(id);
+    this.deps.queue.add([id]);
+  }
+
+  /** A force-reply prompt mapped to the jot, so the answer takes the normal reply-edit
+   *  path with no new edit logic. */
+  async askEdit(id: string): Promise<void> {
+    const messageId = await this.deps.notifier.send(
+      `✏️ Reply to this message with your edit for ${id} (or "delete" to remove it).`,
+      { forceReply: true },
+    );
+    await this.deps.repo.mapMessage(messageId, id);
+  }
 
   /**
    * "Move this to TIL?": a card for a jot the enricher read as something the owner learned.
