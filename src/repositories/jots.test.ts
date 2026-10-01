@@ -4,9 +4,9 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { openDb } from "../repositories/db.ts";
-import { JotRepository } from "../repositories/jots.ts";
 import { sampleJot, withDb } from "../test/sqlite.ts";
+import { openDb } from "./db.ts";
+import { JotRepository } from "./jots.ts";
 
 test("jots: insert, update, retry cap, claim, message map and queued edits", async (t) => {
   await withDb(t, async (k) => {
@@ -50,6 +50,37 @@ test("jots: insert, update, retry cap, claim, message map and queued edits", asy
     assert.deepEqual(await jots.queuedEdits("aaaaaaaa"), ["s/a/b/", "delete"]); // peek doesn't consume
     await jots.clearQueuedEdits("aaaaaaaa");
     assert.deepEqual(await jots.queuedEdits("aaaaaaaa"), []); // cleared only on demand
+  });
+});
+
+test("a deleted status message stops resolving to its jot", async (t) => {
+  await withDb(t, async (k) => {
+    const jots = new JotRepository(k);
+    await jots.insertJot(sampleJot("aaaaaaaa"));
+    await jots.mapMessage(42, "aaaaaaaa");
+    await jots.mapMessage(43, "aaaaaaaa");
+
+    await jots.unmapMessage(42);
+    assert.equal(await jots.jotForMessage(42), undefined);
+    assert.equal(await jots.jotForMessage(43), "aaaaaaaa");
+  });
+});
+
+test("resetForRetry sends a failed jot back to pending with its attempts and error cleared", async (t) => {
+  await withDb(t, async (k) => {
+    const jots = new JotRepository(k);
+    await jots.insertJot({
+      ...sampleJot("aaaaaaaa"),
+      status: "failed",
+      attempts: 3,
+      error: "Obsidian 503",
+    });
+
+    await jots.resetForRetry("aaaaaaaa");
+    const jot = await jots.getJot("aaaaaaaa");
+    assert.equal(jot?.status, "pending");
+    assert.equal(jot?.attempts, 0);
+    assert.equal(jot?.error, null);
   });
 });
 
@@ -157,7 +188,7 @@ test("squash queries: lastPendingEnrichableJot and groupFollowers", async (t) =>
       ...sampleJot("66666666"),
       note_path: NOTE,
       section: "til",
-      received_at: -2, // outside the /reprocess range test
+      received_at: -2,
     });
     assert.equal(
       (await jots.lastPendingEnrichableJot(NOTE, "journal"))?.id,
@@ -194,7 +225,7 @@ test("unsquash wins only while the follower is still pending", async (t) => {
       note_path: NOTE,
       anchor: "11111111",
       status: "done",
-      received_at: -1, // outside the /reprocess range test
+      received_at: -1,
     }); // already merged by the time the opt-out arrives
     assert.equal(await jots.unsquash("55555555"), false);
     assert.equal((await jots.getJot("55555555"))?.anchor, "11111111"); // left alone
