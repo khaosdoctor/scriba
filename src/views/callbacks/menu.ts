@@ -1,18 +1,22 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
+import type { JotController } from "../../controllers/jots.ts";
 import type {
   ModelKey,
   RootState,
   SettingsController,
   SettingsPrompt,
 } from "../../controllers/settings.ts";
+import { formatJotDetail, jotPreview, STATUS_ICON } from "../../core.ts";
 import { logger } from "../../lib/log.ts";
+import { paginate } from "../../lib/page.ts";
 import { fitTelegram } from "../../lib/text.ts";
 import { plainDate } from "../../lib/time.ts";
 import { SETTINGS, type SwitchKey } from "../../models/settings.ts";
 import { Responder } from "../chat.ts";
 import { openTaskMode } from "../commands/task.ts";
 import type { ViewDeps } from "../index.ts";
-import { backTo, withClose } from "../render/keyboard.ts";
+import { backTo, pagedScreen, withClose } from "../render/keyboard.ts";
+import { linkRulesTap } from "./links.ts";
 import { namespace, type Tap } from "./namespace.ts";
 import {
   ROOT_TEXT as REPROCESS_TEXT,
@@ -150,12 +154,59 @@ async function entrySizeScreen(
   );
 }
 
+/** The jots browser: recent jots as tappable rows, so finding one no longer means
+ *  scrolling chat history. */
+async function jotsList(ctx: Tap, jots: JotController): Promise<unknown> {
+  const recent = await jots.recent(10);
+  if (!recent.length)
+    return ctx.editMessageText("No jots yet.", {
+      reply_markup: backTo("menu:root", CLOSE),
+    });
+  const screen = pagedScreen({
+    view: paginate(recent, 0, recent.length),
+    title: () => "🗒 Recent jots:",
+    row: (kb, j) =>
+      kb.text(
+        `${STATUS_ICON[j.status]} ${j.time} ${jotPreview(j)}`,
+        `menu:jot:${j.id}`,
+      ),
+    back: { text: "‹ Back", data: "menu:root" },
+  });
+  return ctx.editMessageText(screen.text, {
+    reply_markup: withClose(screen.kb, CLOSE),
+  });
+}
+
+async function jotDetail(
+  ctx: Tap,
+  jots: JotController,
+  id?: string,
+): Promise<unknown> {
+  const jot = id ? await jots.get(id) : undefined;
+  if (!jot)
+    return ctx.editMessageText(`No jot ${id ?? ""}.`, {
+      reply_markup: backTo("menu:jots", CLOSE),
+    });
+  const kb = new InlineKeyboard()
+    .text("🔄 Retry", `menu:jr:${jot.id}`)
+    .text("✏️ Edit", `menu:je:${jot.id}`)
+    .row()
+    .text("🗑 Delete", `menu:jd:${jot.id}`)
+    .row()
+    .text("‹ Back", "menu:jots");
+  return ctx.editMessageText(formatJotDetail(jot), {
+    reply_markup: withClose(kb, CLOSE),
+  });
+}
+
 /** `menu:<action>[:<arg>]`: the control panel's screens. Every tap restarts the menu's
  *  idle countdown. Toggles and model picks answer after the write; an entry-size pick and
- *  a tap that only draws a screen answer first. The link wizard and the jots browser still
- *  live on the menu flow and get everything this view does not name. */
+ *  a tap that only draws a screen answer first. The link wizard (`menu:l*`) gets every
+ *  action this view does not name. */
 export function menuView(deps: ViewDeps): Composer<Context> {
-  const { settings, admin, menu, menus, rating, habits, tasks } = deps;
+  const { settings, admin, menus, rating, habits, tasks, jotController, jots } =
+    deps;
+  const links = linkRulesTap(deps);
   return namespace("menu", async (ctx, rest) => {
     const [action, arg] = rest;
     const tapped = ctx.callbackQuery.message;
@@ -313,8 +364,52 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         return responder.closeMessage("🗂 Menu closed.", () => {
           if (tapped) menus.closed(tapped.chat.id, tapped.message_id);
         });
+      case "jots":
+        await responder.ack();
+        return jotsList(ctx, jotController);
+      case "jot":
+        await responder.ack();
+        return jotDetail(ctx, jotController, arg);
+      case "jr": {
+        if (!arg || !(await jotController.get(arg)))
+          return responder.ack("gone");
+        log.info({ jotId: arg }, "menu: manual retry requested");
+        await jotController.retry(arg);
+        await responder.ack("retrying");
+        return ctx.editMessageText(`🔄 retrying ${arg}…`, {
+          reply_markup: backTo("menu:jots", CLOSE),
+        });
+      }
+      case "jd": {
+        await responder.ack();
+        if (!arg) return;
+        const kb = new InlineKeyboard()
+          .text("🗑 Yes, delete", `menu:jdy:${arg}`)
+          .text("Cancel", `menu:jot:${arg}`);
+        return ctx.editMessageText(
+          `Delete jot ${arg}? This removes its line from the journal.`,
+          { reply_markup: withClose(kb, CLOSE) },
+        );
+      }
+      case "jdy": {
+        const jot = arg ? await jotController.get(arg) : undefined;
+        if (!jot) return responder.ack("gone");
+        // Answer before the note-lock read/write below, which can be slow enough to blow
+        // past Telegram's callback-query window: the edited message carries the result.
+        await responder.ack();
+        log.info({ jotId: arg }, "menu: delete jot");
+        return ctx.editMessageText(await jots.deleteJot(jot), {
+          reply_markup: backTo("menu:jots", CLOSE),
+        });
+      }
+      case "je":
+        if (!arg || !(await jotController.get(arg)))
+          return responder.ack("gone");
+        await responder.ack();
+        log.info({ jotId: arg }, "menu: edit jot — prompting for a reply");
+        return jotController.askEdit(arg);
       default:
-        return menu.handleCallback(ctx, rest);
+        return links(ctx, rest);
     }
   });
 }

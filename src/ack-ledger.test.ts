@@ -858,15 +858,10 @@ ledger("tk", [
 
 const STOPWORDS = ["the", "and"];
 const PAIRS = [{ surface: "milk", note: "Milk" }];
-const withFlow = (harness: Harness, over: object = {}) => {
-  harness.bot.menu.pending = {
-    words: ["milk"],
-    i: 0,
-    query: "milk",
-    page: 0,
-    ...over,
-  };
+/** Opens the pair flow the way the owner does: by answering the words prompt. */
+const withFlow = async (harness: Harness, words = ["milk"]) => {
   harness.links.entries = [{ note: "Milk", alias: "milk" }];
+  await harness.say(words.join(", "), { message_id: 7, text: "(lw:rg)" });
 };
 
 ledger("menu: jot actions", [
@@ -1215,7 +1210,7 @@ ledger("menu: link rules", [
   {
     tap: "menu:lrgs",
     when: "skip a word",
-    setup: (harness) => withFlow(harness, { words: ["milk", "bread"] }),
+    setup: (harness) => withFlow(harness, ["milk", "bread"]),
     expect: "ack(skipped) > tg.editMessageText",
   },
   {

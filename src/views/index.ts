@@ -5,8 +5,8 @@ import type { JotController } from "../controllers/jots.ts";
 import type { RatingController } from "../controllers/rating.ts";
 import type { SettingsController } from "../controllers/settings.ts";
 import type { TaskController } from "../controllers/tasks.ts";
+import type { Jot } from "../db.ts";
 import type { CommandSession } from "../flows/command.ts";
-import type { MenuController } from "../flows/menu.ts";
 import { logger } from "../log.ts";
 import type { JotKind } from "../models/domain.ts";
 import { callbackViews } from "./callbacks/index.ts";
@@ -49,6 +49,7 @@ export interface JotHandlers {
     embed: boolean,
   ): Promise<void>;
   handleLink(ctx: Context, verdict?: string, pendingId?: string): Promise<void>;
+  deleteJot(jot: Jot): Promise<string>;
 }
 
 export type ViewDeps = {
@@ -57,7 +58,6 @@ export type ViewDeps = {
   habits: HabitController;
   settings: SettingsController;
   menus: MenuLifetime;
-  menu: MenuController;
   command: CommandSession;
   tasks: TaskController;
   jotController: JotController;

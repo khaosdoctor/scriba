@@ -600,7 +600,6 @@ async function route(
     calls.push("habits");
     return "gone";
   };
-  bot.menu.handleWizardReply = async () => void calls.push("wizard");
   bot.tasks.answer = async () => {
     calls.push("taskPrompt");
     return "ok";

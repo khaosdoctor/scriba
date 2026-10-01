@@ -10,7 +10,11 @@ function setup(stored: Record<string, string> = {}) {
   const settings = new SettingsController({
     repo: new FakeSettings(stored, (key, value) =>
       events.push(`set ${key}=${value}`),
-    ),
+    ) as never,
+    links: {
+      list: () => [],
+      stats: () => ({ enabled: true, aliases: 0, files: 0 }),
+    },
     enricher: { setModel: (model) => void events.push(`enricher ${model}`) },
     scheduler: { rearm: async (name) => void events.push(`rearm ${name}`) },
     notifier: {

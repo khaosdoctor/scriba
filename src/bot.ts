@@ -28,7 +28,6 @@ import {
 } from "./core.ts";
 import type { Jot, JotKind, JotSection, Repository } from "./db.ts";
 import { CommandSession } from "./flows/command.ts";
-import { MenuController, type MenuDeps } from "./flows/menu.ts";
 import type { Scheduler } from "./lib/scheduler.ts";
 import type { TaskDraft } from "./lib/tasks.ts";
 import { logger } from "./log.ts";
@@ -101,7 +100,6 @@ export class ScribaBot implements BotServices {
   private queue!: FlushQueue;
   private rating: RatingController;
   private habits: HabitController;
-  private menu: MenuController;
   private command: CommandSession;
   private tasks: TaskController;
   private jotController: JotController;
@@ -123,7 +121,7 @@ export class ScribaBot implements BotServices {
     private obsidian: ObsidianClient,
     private enricher: Enricher,
     private transcriber: FallbackTranscriber,
-    private links: LinkIndex,
+    links: LinkIndex,
     scheduler: Scheduler,
   ) {
     // grammY waits 500s per API call by default; 60s still covers the 30s long poll.
@@ -149,18 +147,12 @@ export class ScribaBot implements BotServices {
     const menus = new MenuLifetime(this.bot.api);
     const settings = new SettingsController({
       repo,
+      links,
       enricher,
       scheduler,
       notifier: this.chat,
       ratingTime: config.ratingTime,
     });
-    this.menu = new MenuController(
-      this.bot,
-      config,
-      menus,
-      () => this.deps(),
-      (jot) => this.deleteJot(jot),
-    );
     // /command: an agent session scoped to the vault. It gets no built-in tool that could
     // reach the host; services/agent.ts holds the allow list.
     this.command = new CommandSession(
@@ -186,6 +178,8 @@ export class ScribaBot implements BotServices {
       repo,
       obsidian,
       notifier: this.chat,
+      // The queue is built after this bot (it needs it), so it is read per retry.
+      queue: { add: (ids) => this.queue.add(ids) },
     });
     this.command.setBusyCheck(() => this.tasks.isOpen());
     registerViews(this.bot, {
@@ -194,7 +188,6 @@ export class ScribaBot implements BotServices {
       habits: this.habits,
       settings,
       menus,
-      menu: this.menu,
       command: this.command,
       tasks: this.tasks,
       jotController: this.jotController,
@@ -216,11 +209,6 @@ export class ScribaBot implements BotServices {
    *  processor and the health monitor, all built after it. */
   setAdmin(admin: AdminController): void {
     this.adminController = admin;
-  }
-
-  /** What the menu acts on. */
-  private deps(): MenuDeps {
-    return { repo: this.repo, queue: this.queue, links: this.links };
   }
 
   /** Start long polling. Returns immediately; polling runs in the background. */
@@ -758,8 +746,9 @@ export class ScribaBot implements BotServices {
   }
 
   /** Remove a jot's line from its daily note and mark it deleted (a terminal state, so a
-   *  retry sweep never resurrects it). Shared by the blank-edit path and /delete. */
-  private async deleteJot(jot: Jot): Promise<string> {
+   *  retry sweep never resurrects it). Shared by the blank-edit path, /delete and the
+   *  menu's jots browser. */
+  async deleteJot(jot: Jot): Promise<string> {
     const out = await this.obsidian.updateNote(jot.note_path, (note, write) => {
       const removed = deleteAnchorLine(note, jot.anchor);
       if (removed !== null) write(removed);
