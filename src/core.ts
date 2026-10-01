@@ -5,6 +5,7 @@
 import { randomBytes } from "node:crypto";
 import { sep } from "node:path";
 import * as chrono from "chrono-node";
+import type { MessageEntity } from "grammy/types";
 import type { Jot, JotKind, JotSection, JotStatus, StatsRow } from "./db.ts";
 import type { ReleaseNote } from "./services/github.ts";
 import { dateFromIso, plainDate, previousDate } from "./time.ts";
@@ -216,20 +217,28 @@ export function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-export interface TelegramMessageEntity {
-  type: string;
-  offset: number;
-  length: number;
-  url?: string;
-  language?: string;
-  user?: { id: number; first_name: string; is_bot: boolean; username?: string };
-  custom_emoji_id?: string;
+const ENTITY_WRAP: Partial<Record<string, readonly [string, string]>> = {
+  bold: ["**", "**"],
+  italic: ["_", "_"],
+  underline: ["__", "__"],
+  strikethrough: ["~~", "~~"],
+  spoiler: ["||", "||"],
+  code: ["`", "`"],
+};
+
+function wrapEntity(e: MessageEntity, content: string): string {
+  if (e.type === "pre") return `\`\`\`${e.language ?? ""}\n${content}\n\`\`\``;
+  if (e.type === "text_link") return `[${content}](${e.url})`;
+  if (e.type === "text_mention")
+    return `[@${content}](tg://user?id=${e.user?.id})`;
+  const [open, close] = ENTITY_WRAP[e.type] ?? ["", ""];
+  return `${open}${content}${close}`;
 }
 
 /** Convert Telegram message entities to Markdown. Entities are in UTF-16 code units. */
 export function entitiesToMarkdown(
   text: string,
-  entities: TelegramMessageEntity[] | undefined,
+  entities: MessageEntity[] | undefined,
 ): string {
   if (!entities?.length) return text;
   const sorted = [...entities].sort((a, b) => a.offset - b.offset);
@@ -242,46 +251,17 @@ export function entitiesToMarkdown(
     // (bold-link, bold+italic same span). Drops inner formatting but never
     // duplicates text. Full nesting would need a boundary-marker tree.
     if (start < last) continue;
-    out += text.slice(last, start);
-    const content = text.slice(start, end);
-    switch (e.type) {
-      case "bold":
-        out += `**${content}**`;
-        break;
-      case "italic":
-        out += `_${content}_`;
-        break;
-      case "underline":
-        out += `__${content}__`;
-        break;
-      case "strikethrough":
-        out += `~~${content}~~`;
-        break;
-      case "spoiler":
-        out += `||${content}||`;
-        break;
-      case "code":
-        out += `\`${content}\``;
-        break;
-      case "pre":
-        out += `\`\`\`${e.language ?? ""}\n${content}\n\`\`\``;
-        break;
-      case "text_link":
-        out += `[${content}](${e.url})`;
-        break;
-      case "text_mention":
-        out += `[@${content}](tg://user?id=${e.user?.id})`;
-        break;
-      case "custom_emoji":
-        out += content;
-        break;
-      default:
-        out += content;
-    }
+    out += text.slice(last, start) + wrapEntity(e, text.slice(start, end));
     last = end;
   }
   out += text.slice(last);
   return out;
+}
+
+/** `total` is the number of jots folded into one line (leader + followers); 0 means no
+ *  squash. The single confirmation notes it so the merge is explained. */
+export function squashLine(total: number): string {
+  return total > 1 ? `\n🧵 ${total} jots squashed into one entry` : "";
 }
 
 /** Final in-chat confirmation once a jot lands: the saved line blockquoted with its
@@ -294,16 +274,10 @@ export function doneMessage(
   squashedTotal = 0,
   part?: { i: number; of: number },
 ): string {
-  // squashedTotal is the number of jots folded into this one line (leader + followers);
-  // 0 means no squash. When set, note it so the single confirmation explains the merge.
-  const squash =
-    squashedTotal > 1
-      ? `\n🧵 ${squashedTotal} jots squashed into one entry`
-      : "";
   // `part` is set when the text was too long and got split: each piece is its own jot with
   // its own message, so say which one this is.
   const split = part ? `\n✂️ part ${part.i} of ${part.of}` : "";
-  return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squash}${split}`;
+  return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squashLine(squashedTotal)}${split}`;
 }
 
 // A failure message is only as useful as what you can do about it, and both messages below
@@ -345,11 +319,7 @@ export function gaveUpMessage(
   error: string,
   squashedTotal = 0,
 ): string {
-  const squash =
-    squashedTotal > 1
-      ? `\n🧵 ${squashedTotal} jots squashed into one entry`
-      : "";
-  return `⚠️ Gave up on a ${kind} jot (${reason}). Posted it un-enriched.\n${errorBlock(error)}${squash}`;
+  return `⚠️ Gave up on a ${kind} jot (${reason}). Posted it un-enriched.\n${errorBlock(error)}${squashLine(squashedTotal)}`;
 }
 
 /** In-chat confirmation after an edit is applied: the corrected line blockquoted so the
@@ -726,6 +696,16 @@ export function tokenize(text: string): string[] {
   return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
+/** `alias` and `lower` are lowercased; a multi-word alias is a substring match, a single
+ *  word must be a whole token. */
+export function matchAlias(
+  alias: string,
+  lower: string,
+  tokens: Set<string>,
+): boolean {
+  return alias.includes(" ") ? lower.includes(alias) : tokens.has(alias);
+}
+
 /**
  * Propose link candidates from an alias index — no model call. Drops junk (short or
  * stopword aliases) and anything the user rejected; survivors go to the agent.
@@ -745,8 +725,7 @@ export function candidates(
     const a = alias.trim();
     const al = a.toLowerCase();
     if (a.length < 3 || stopwords.has(al)) continue; // 1-2 char aliases are junk; stopwords catch the rest
-    const hit = al.includes(" ") ? lower.includes(al) : tokens.has(al);
-    if (!hit) continue;
+    if (!matchAlias(al, lower, tokens)) continue;
     const key = `${al} ${note}`;
     if (rejected.has(key) || seen.has(key)) continue;
     seen.add(key);
@@ -835,20 +814,10 @@ export function forcedCandidates(
     const trimmed = surface.trim();
     const al = trimmed.toLowerCase();
     if (!al) continue;
-    const hit = al.includes(" ") ? lower.includes(al) : tokens.has(al);
-    if (!hit) continue;
+    if (!matchAlias(al, lower, tokens)) continue;
     out.push({ surface: trimmed, note, forced: true });
   }
   return out;
-}
-
-/**
- * True when an edited message's text/caption is empty or whitespace-only. Telegram
- * delivers no update for an actual message delete, so clearing the text is the user's
- * way of asking to remove the jot's journal line.
- */
-export function isBlank(text: string): boolean {
-  return text.trim().length === 0;
 }
 
 /**
@@ -1330,14 +1299,7 @@ export function noteSuggestions(
 export function distinctSurfaces<T extends { surface: string }>(
   list: T[],
 ): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const r of list) {
-    if (seen.has(r.surface)) continue;
-    seen.add(r.surface);
-    out.push(r.surface);
-  }
-  return out;
+  return [...new Set(list.map((r) => r.surface))];
 }
 
 /** One glyph per jot status — the /menu jots browser and /reprocess pickers. */
@@ -1378,14 +1340,7 @@ export function monthGrid(year: number, month: number): number[][] {
  *  resolves to that leader's id rather than being reprocessed standalone. Order of first
  *  appearance is preserved. */
 export function reprocessTargets(jots: Pick<Jot, "anchor">[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const j of jots) {
-    if (seen.has(j.anchor)) continue;
-    seen.add(j.anchor);
-    out.push(j.anchor);
-  }
-  return out;
+  return [...new Set(jots.map((j) => j.anchor))];
 }
 
 /** Escape raw control characters (a literal newline, tab…) that sit inside JSON string
