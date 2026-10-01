@@ -56,6 +56,8 @@ import type { FallbackTranscriber } from "./services/transcribe.ts";
 import { VaultTools } from "./services/vault.ts";
 import { WebService } from "./services/web.ts";
 import { dayBounds, plainDate, plainTime } from "./time.ts";
+import { Chat } from "./views/chat.ts";
+import { errorHandler } from "./views/errors.ts";
 
 const log = logger("bot");
 
@@ -102,6 +104,7 @@ function jotButtons(jotId: string, opts?: StatusButtons): InlineKeyboard {
  *  processor can notify, ask link questions, download files, and apply queued edits. */
 export class ScribaBot implements BotServices {
   private bot: Bot;
+  private chat: Chat;
   private queue!: FlushQueue;
   private rating: RatingCommand;
   private followup: FollowupFlow;
@@ -140,6 +143,7 @@ export class ScribaBot implements BotServices {
     this.bot = new Bot(config.telegram.token, {
       client: { timeoutSeconds: 60 },
     });
+    this.chat = new Chat(this.bot.api, config.telegram.allowedUserId);
     this.followup = new FollowupFlow(
       this.bot,
       config,
@@ -294,7 +298,7 @@ export class ScribaBot implements BotServices {
   // --- BotServices ---
   async notify(text: string): Promise<void> {
     log.debug({ text }, "notify user");
-    await this.bot.api.sendMessage(this.config.telegram.allowedUserId, text);
+    await this.chat.notify(text);
   }
 
   /** Nightly rating prompt (the scheduler calls this). Delegates to the rating command. */
@@ -321,11 +325,7 @@ export class ScribaBot implements BotServices {
     const kb = new InlineKeyboard()
       .text("Yes", `lk:y:${pendingId}`)
       .text("No", `lk:n:${pendingId}`);
-    await this.bot.api.sendMessage(
-      this.config.telegram.allowedUserId,
-      `Link "${surface}" → [[${note}]]?`,
-      { reply_markup: kb },
-    );
+    await this.chat.send(`Link "${surface}" → [[${note}]]?`, { keyboard: kb });
   }
 
   /** Propose a task the enricher spotted in a jot: the same confirmation card task mode
@@ -360,16 +360,7 @@ export class ScribaBot implements BotServices {
       "<b>Proposed fix:</b>",
       `<i>${escapeHtml(proposed)}</i>`,
     ].join("\n");
-    await this.status(jotId, html, undefined as any);
-    // Replace the keyboard on the status message (status() with no opts clears it,
-    // so we edit again with the choice buttons).
-    const chat = this.config.telegram.allowedUserId;
-    const msgId = this.statusMsgs.get(jotId);
-    if (msgId) {
-      await this.bot.api
-        .editMessageReplyMarkup(chat, msgId, { reply_markup: kb })
-        .catch(() => {});
-    }
+    await this.showStatus(jotId, html, kb);
     return new Promise<"original" | "proposed">((resolve) => {
       this.voiceFixPending.set(jotId, resolve);
       // 5-minute timeout: fall back to original so processing never stalls.
@@ -395,33 +386,34 @@ export class ScribaBot implements BotServices {
     html: string,
     opts?: StatusButtons,
   ): Promise<void> {
-    const reply_markup = jotButtons(jotId, opts);
-    const chat = this.config.telegram.allowedUserId;
+    await this.showStatus(jotId, html, jotButtons(jotId, opts));
+  }
+
+  private async showStatus(
+    jotId: string,
+    html: string,
+    keyboard: InlineKeyboard,
+  ): Promise<void> {
     const existing = this.statusMsgs.get(jotId);
+    const opts = { html: true, keyboard };
     if (existing) {
       try {
-        await this.bot.api.editMessageText(chat, existing, html, {
-          parse_mode: "HTML",
-          reply_markup,
-        });
+        await this.chat.edit(existing, html, opts);
         log.debug({ jotId, messageId: existing }, "status edited");
         return;
       } catch (err) {
         log.warn(
           { jotId, messageId: existing, err },
-          "status edit failed — sending a fresh one",
+          "status edit failed, sending a fresh one",
         );
       }
     }
-    const msg = await this.bot.api.sendMessage(chat, html, {
-      parse_mode: "HTML",
-      reply_markup,
-    });
-    this.statusMsgs.set(jotId, msg.message_id);
+    const messageId = await this.chat.send(html, opts);
+    this.statusMsgs.set(jotId, messageId);
     // Map the bot's status message to the jot too, so a reply to it edits the jot
     // just like a reply to the original message (e.g. the transcribed audio note).
-    await this.repo.mapMessage(msg.message_id, jotId);
-    log.debug({ jotId, messageId: msg.message_id }, "status message sent");
+    await this.repo.mapMessage(messageId, jotId);
+    log.debug({ jotId, messageId }, "status message sent");
   }
 
   /** Delete a jot's live status message, if it has one. Best-effort: used on a squash
@@ -432,10 +424,7 @@ export class ScribaBot implements BotServices {
     this.statusMsgs.delete(jotId);
     await this.repo.unmapMessage(messageId); // no stale reply-map to a gone message
     try {
-      await this.bot.api.deleteMessage(
-        this.config.telegram.allowedUserId,
-        messageId,
-      );
+      await this.chat.delete(messageId);
       log.info({ jotId, messageId }, "deleted stray status message (squash)");
     } catch (err) {
       log.warn({ jotId, messageId, err }, "failed to delete status message");
@@ -452,18 +441,11 @@ export class ScribaBot implements BotServices {
     const messageId = await this.repo.messageForJot(jotId);
     if (!messageId) return;
     const emoji = state === "done" ? "👌" : state === "retrying" ? "🤔" : "😱";
-    await this.bot.api
-      .setMessageReaction(this.config.telegram.allowedUserId, messageId, [
-        { type: "emoji", emoji },
-      ])
-      .catch(() => {});
+    await this.chat.react(messageId, emoji);
   }
 
-  /** Best-effort "typing…" chat action. Telegram clears it after ~5s on its own. */
   async typing(): Promise<void> {
-    await this.bot.api
-      .sendChatAction(this.config.telegram.allowedUserId, "typing")
-      .catch(() => {});
+    await this.chat.typing();
   }
 
   async downloadFile(fileId: string): Promise<DownloadedFile> {
@@ -505,33 +487,13 @@ export class ScribaBot implements BotServices {
 
   // --- handlers ---
   private registerHandlers(): void {
-    // Surface handler errors back to the user instead of dying silently.
-    this.bot.catch(async (err) => {
-      const msg =
-        err.error instanceof Error ? err.error.message : String(err.error);
-      log.error({ err: err.error }, "bot handler error");
-      // A failed menu/button tap: stop the button's spinner with a toast and stop here.
-      // Otherwise it spins forever and bot.catch posts jot-intake copy that doesn't fit.
-      if (err.ctx.callbackQuery) {
-        await err.ctx
-          .answerCallbackQuery({ text: `⚠️ ${msg}`.slice(0, 200) })
-          .catch(() => {});
-        return;
-      }
-      // If the failing message already has a jot row (intake persists it before the
-      // network write that usually throws here), offer the same 🔄 Retry / 🗑 Delete pair
-      // the processor's failures carry. No jot → plain error (e.g. a command failure).
-      const messageId = err.ctx.message?.message_id;
-      const jotId = messageId
-        ? await this.repo.jotForMessage(messageId).catch(() => undefined)
-        : undefined;
-      const reply_markup = jotId
-        ? jotButtons(jotId, { retry: true, discard: true })
-        : undefined;
-      await err.ctx
-        .reply(`⚠️ Couldn't save that: ${msg}`, { reply_markup })
-        .catch(() => {});
-    });
+    this.bot.catch(
+      errorHandler({
+        jotForMessage: (messageId) => this.repo.jotForMessage(messageId),
+        failureButtons: (jotId) =>
+          jotButtons(jotId, { retry: true, discard: true }),
+      }),
+    );
 
     // single-user allowlist — everyone else is ignored
     this.bot.use(async (ctx, next) => {

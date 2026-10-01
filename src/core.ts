@@ -2,7 +2,6 @@
  * Pure, dependency-free helpers. Deterministic, token-free — unit-tested in isolation.
  * Stopwords and rejections are injected (they live in the DB), not hardcoded here.
  */
-import type { MessageEntity } from "grammy/types";
 import { donePreview } from "./lib/jot.ts";
 import { sectionHasContent } from "./lib/note.ts";
 import {
@@ -81,47 +80,7 @@ export { parseClockTime, ratingDay } from "./lib/time.ts";
 export { OPENCODE_BASE_URL } from "./services/enrich.ts";
 export { modelsUrlFor } from "./services/health.ts";
 export { isInsideRoot } from "./services/vault.ts";
-
-const ENTITY_WRAP: Partial<Record<string, readonly [string, string]>> = {
-  bold: ["**", "**"],
-  italic: ["_", "_"],
-  underline: ["__", "__"],
-  strikethrough: ["~~", "~~"],
-  spoiler: ["||", "||"],
-  code: ["`", "`"],
-};
-
-function wrapEntity(e: MessageEntity, content: string): string {
-  if (e.type === "pre") return `\`\`\`${e.language ?? ""}\n${content}\n\`\`\``;
-  if (e.type === "text_link") return `[${content}](${e.url})`;
-  if (e.type === "text_mention")
-    return `[@${content}](tg://user?id=${e.user?.id})`;
-  const [open, close] = ENTITY_WRAP[e.type] ?? ["", ""];
-  return `${open}${content}${close}`;
-}
-
-/** Convert Telegram message entities to Markdown. Entities are in UTF-16 code units. */
-export function entitiesToMarkdown(
-  text: string,
-  entities: MessageEntity[] | undefined,
-): string {
-  if (!entities?.length) return text;
-  const sorted = [...entities].sort((a, b) => a.offset - b.offset);
-  let out = "";
-  let last = 0;
-  for (const e of sorted) {
-    const start = e.offset;
-    const end = e.offset + e.length;
-    // Flat serializer: skip entities nested in an already-emitted one
-    // (bold-link, bold+italic same span). Drops inner formatting but never
-    // duplicates text. Full nesting would need a boundary-marker tree.
-    if (start < last) continue;
-    out += text.slice(last, start) + wrapEntity(e, text.slice(start, end));
-    last = end;
-  }
-  out += text.slice(last);
-  return out;
-}
+export { entitiesToMarkdown } from "./views/input.ts";
 
 /** `total` is the number of jots folded into one line (leader + followers); 0 means no
  *  squash. The single confirmation notes it so the merge is explained. */

@@ -26,6 +26,30 @@ export interface Stats {
 
 export type StatusCounts = Record<JotStatus, number>;
 
+export interface MessageOptions {
+  /** Send with HTML parse mode (the text is already escaped). */
+  html?: boolean;
+  /** Telegram's inline keyboard markup, typed structurally so models stay free of grammy.
+   *  An empty keyboard clears the buttons; none leaves them as they are. */
+  keyboard?: { inline_keyboard: readonly (readonly object[])[] };
+}
+
+/** The owner's chat as a controller sees it: messages it starts on its own, outside any
+ *  reply to an update. `Chat` in views implements it over the Telegram api. */
+export interface Notifier {
+  /** Plain text to the owner. */
+  notify(text: string): Promise<void>;
+  /** A message to the owner; resolves to its id so it can be edited later. */
+  send(text: string, opts?: MessageOptions): Promise<number>;
+  /** Rewrite a message; rejects when Telegram refuses (gone, unchanged, too old). */
+  edit(messageId: number, text: string, opts?: MessageOptions): Promise<void>;
+  /** Delete a message; rejects when Telegram refuses. */
+  delete(messageId: number): Promise<void>;
+  /** Set the bot's one reaction on a message, from Telegram's fixed emoji set. Best-effort:
+   *  never rejects. */
+  react(messageId: number, emoji: string): Promise<void>;
+}
+
 /** Which buttons a jot's status message carries. A jot that finishes gets `undo`; one that
  *  fails gets `retry` and `discard`: every failure is a decision, and both halves of it
  *  should be one tap away rather than a command you have to remember. */

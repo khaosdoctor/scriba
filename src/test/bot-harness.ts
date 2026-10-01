@@ -3,7 +3,7 @@
 // on one ordered timeline, which is what the routing and ack-ledger tests assert against.
 import type { Jot } from "../db.ts";
 import { testConfig } from "./config.ts";
-import { BOT_INFO, FakeSettings } from "./fakes.ts";
+import { type ApiCall, BOT_INFO, FakeSettings, recordingApi } from "./fakes.ts";
 import { noteOps } from "./note-ops.ts";
 import { sampleJot as baseJot } from "./sqlite.ts";
 
@@ -29,7 +29,7 @@ export const sampleJot = (over: Partial<Jot> = {}): Jot =>
  *  is returned as is. */
 export type Behaviors = Record<string, unknown>;
 
-export type Call = { method: string; payload: any };
+export type Call = ApiCall;
 
 export type Run = {
   /** Timeline entries of this update, in order. */
@@ -103,10 +103,8 @@ const chat = { id: CHAT, type: "private" as const };
 export async function botHarness() {
   const { ScribaBot } = await import("../bot.ts");
   const timeline: string[] = [];
-  let calls: Call[] = [];
   const settings = new Map<string, string>();
   let messageId = 100;
-  let sentId = 900;
   let updateId = 1;
 
   const repoImpl: Behaviors = {};
@@ -117,7 +115,14 @@ export async function botHarness() {
   const schedulerImpl: Behaviors = {};
   const transcriberImpl: Behaviors = {};
   const links = { entries: [] as { note: string; alias: string }[] };
-  const failApi = new Set<string>();
+  const telegram = recordingApi({
+    onCall: ({ method, payload }) => {
+      if (method !== "answerCallbackQuery")
+        return void timeline.push(`tg.${method}`);
+      const mark = payload?.show_alert ? "ack!" : "ack";
+      timeline.push(`${mark}(${payload?.text ?? ""})`);
+    },
+  });
 
   const repo = recorder("repo", timeline, repoImpl, {
     ...new FakeSettings(settings),
@@ -199,44 +204,17 @@ export async function botHarness() {
   bot.setHealth(health as any);
   bot.setScheduler(scheduler);
   bot.bot.botInfo = BOT_INFO;
-  bot.bot.api.config.use(
-    async (_prev: unknown, method: string, payload: any) => {
-      calls.push({ method, payload });
-      if (method === "answerCallbackQuery") {
-        const mark = payload?.show_alert ? "ack!" : "ack";
-        timeline.push(`${mark}(${payload?.text ?? ""})`);
-      } else {
-        timeline.push(`tg.${method}`);
-      }
-      if (failApi.has(method))
-        return {
-          ok: false,
-          error_code: 400,
-          description: "Bad Request: failed",
-        };
-      if (method === "sendMessage")
-        return {
-          ok: true,
-          result: {
-            message_id: sentId++,
-            date: 0,
-            chat,
-            text: payload.text,
-          },
-        };
-      return { ok: true, result: true };
-    },
-  );
+  bot.bot.api.config.use(telegram.transformer as never);
 
   /** Run one update to the end and report what it did. */
   async function run(update: object): Promise<Run> {
     timeline.length = 0;
-    calls = [];
+    const first = telegram.calls.length;
     // handleUpdates is what long polling calls: a handler error reaches bot.catch.
     await bot.bot.handleUpdates([{ update_id: updateId++, ...update }]);
     // Chained sends (command mode) finish a tick after the handler returns.
     await new Promise((resolve) => setImmediate(resolve));
-    const done = calls;
+    const done = telegram.calls.slice(first);
     const events = [...timeline];
     return {
       events,
@@ -276,7 +254,7 @@ export async function botHarness() {
     timeline,
     settings,
     links,
-    failApi,
+    failApi: telegram.fail,
     repo: repoImpl,
     obsidian: obsidianImpl,
     queue: queueImpl,
