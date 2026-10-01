@@ -46,10 +46,73 @@ export class FakeSettings {
     fallback;
 }
 
+export type ApiCall = { method: string; payload: any };
+
+export type RecordingApi = {
+  /** Every Telegram call, in order. */
+  calls: ApiCall[];
+  /** Methods Telegram refuses: the call answers `{ ok: false }`, which grammy throws. */
+  fail: Set<string>;
+  /** Results per method in place of the defaults. */
+  results: Record<string, unknown>;
+  /** The transformer to install with `api.config.use(...)`. */
+  transformer: (prev: unknown, method: string, payload: any) => Promise<any>;
+  /** Texts of the calls of one method (sendMessage, editMessageText, ...). */
+  texts(method: string): string[];
+  /** The answerCallbackQuery toasts, in order; a bare ack is `undefined`. */
+  answers(): (string | undefined)[];
+  /** A call's inline keyboard as [label, callback_data] pairs. */
+  buttons(call: ApiCall | undefined): [string, string][];
+};
+
+/** A grammy api transformer that records every call and answers it offline: `sendMessage`
+ *  gets a fresh message id from 900 up, everything else `true`. `onCall` sees each call
+ *  before it is answered, for tests that keep one timeline across layers. */
+export function recordingApi(
+  opts: { onCall?: (call: ApiCall) => void } = {},
+): RecordingApi {
+  const calls: ApiCall[] = [];
+  const fail = new Set<string>();
+  const results: Record<string, unknown> = {};
+  let nextMessageId = 900;
+  const transformer = async (_prev: unknown, method: string, payload: any) => {
+    const call = { method, payload };
+    calls.push(call);
+    opts.onCall?.(call);
+    if (fail.has(method))
+      return { ok: false, error_code: 400, description: "Bad Request: failed" };
+    if (method in results) return { ok: true, result: results[method] };
+    if (method === "sendMessage")
+      return {
+        ok: true,
+        result: {
+          message_id: nextMessageId++,
+          date: 0,
+          chat: { id: payload.chat_id, type: "private" },
+          text: payload.text,
+        },
+      };
+    return { ok: true, result: true };
+  };
+  const of = (method: string) => calls.filter((c) => c.method === method);
+  return {
+    calls,
+    fail,
+    results,
+    transformer,
+    texts: (method) => of(method).map((c) => c.payload.text),
+    answers: () => of("answerCallbackQuery").map((c) => c.payload.text),
+    buttons: (call) =>
+      (call?.payload.reply_markup?.inline_keyboard ?? [])
+        .flat()
+        .map((b: any) => [b.text, b.callback_data]),
+  };
+}
+
 /** What grammy's `getMe` would have filled in, so `bot.handleUpdate` works offline. */
 export const BOT_INFO = {
   id: 99,
-  is_bot: true,
+  is_bot: true as const,
   first_name: "scriba",
   username: "scriba_bot",
   can_join_groups: false,
@@ -59,4 +122,6 @@ export const BOT_INFO = {
   has_main_web_app: false,
   has_topics_enabled: false,
   allows_users_to_create_topics: false,
+  can_manage_bots: false,
+  supports_join_request_queries: false,
 };

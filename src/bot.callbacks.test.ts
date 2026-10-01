@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { journalLine } from "./core.ts";
 import type { Jot } from "./db.ts";
-import { BOT_INFO } from "./test/fakes.ts";
+import { BOT_INFO, recordingApi } from "./test/fakes.ts";
 import { noteOps } from "./test/note-ops.ts";
 import { sampleJot } from "./test/sqlite.ts";
 
@@ -47,9 +47,7 @@ type Opts = {
 async function harness(over: Opts = {}) {
   const { ScribaBot } = await import("./bot.ts");
   const events: string[] = [];
-  const api: { method: string; payload: any }[] = [];
-  const apiResult: Record<string, unknown> = {};
-  const failApi = new Set<string>();
+  const rec = recordingApi({ onCall: (c) => events.push(`api.${c.method}`) });
   const jots = new Map((over.jots ?? [jot()]).map((j) => [j.id, j]));
   const messages = new Map<number, string>(over.mapped ?? [[77, ID]]);
   const notes = new Map(
@@ -61,7 +59,6 @@ async function harness(over: Opts = {}) {
   const unrejectCalls: [string, string][] = [];
   const editCalls: [string, string][] = [];
   const links = new Map(Object.entries(over.links ?? {}));
-  let nextMessageId = 900;
 
   const repo: any = {
     getJot: async (id: string) => jots.get(id),
@@ -139,24 +136,7 @@ async function harness(over: Opts = {}) {
     add: (ids: string[]) => void events.push(`queue.add:${ids.join(",")}`),
   });
   bot.bot.botInfo = BOT_INFO;
-  bot.bot.api.config.use(
-    async (_prev: unknown, method: string, payload: any) => {
-      api.push({ method, payload });
-      events.push(`api.${method}`);
-      if (failApi.has(method)) throw new Error(`telegram rejected ${method}`);
-      if (method in apiResult) return { ok: true, result: apiResult[method] };
-      if (method === "sendMessage")
-        return {
-          ok: true,
-          result: {
-            message_id: nextMessageId++,
-            date: SEC,
-            chat: { id: 1, type: "private" },
-          },
-        };
-      return { ok: true, result: true };
-    },
-  );
+  bot.bot.api.config.use(rec.transformer as never);
 
   const from = { id: 1, is_bot: false, first_name: "me" };
   const chat = { id: 1, type: "private" as const };
@@ -166,28 +146,18 @@ async function harness(over: Opts = {}) {
     bot.bot
       .handleUpdate({ update_id: ++updateId, ...u })
       .catch((err: unknown) => bot.bot.errorHandler(err));
-  const answers = () =>
-    api
-      .filter((c) => c.method === "answerCallbackQuery")
-      .map((c) => c.payload.text);
-  const sends = () =>
-    api.filter((c) => c.method === "sendMessage").map((c) => c.payload.text);
-  const edits = () =>
-    api
-      .filter((c) => c.method === "editMessageText")
-      .map((c) => c.payload.text);
-  const buttons = (call: { payload: any } | undefined) =>
-    (call?.payload.reply_markup?.inline_keyboard ?? [])
-      .flat()
-      .map((b: any) => [b.text, b.callback_data]);
 
   return {
     bot,
     repo,
     events,
-    api,
-    apiResult,
-    failApi,
+    api: rec.calls,
+    apiResult: rec.results,
+    failApi: rec.fail,
+    answers: rec.answers,
+    sends: () => rec.texts("sendMessage"),
+    edits: () => rec.texts("editMessageText"),
+    buttons: rec.buttons,
     jots,
     messages,
     notes,
@@ -196,10 +166,6 @@ async function harness(over: Opts = {}) {
     rejected,
     unrejectCalls,
     editCalls,
-    answers,
-    sends,
-    edits,
-    buttons,
     note: () => notes.get(NOTE),
     tap: (data: string) =>
       update({
@@ -276,7 +242,7 @@ async function openVoiceFix(h: Awaited<ReturnType<typeof harness>>) {
   return pending;
 }
 
-test("the voice-fix prompt shows both transcripts and the two choice buttons", async (t) => {
+test("the voice-fix prompt shows both transcripts and the two choice buttons in one message", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const h = await harness();
   const pending = openVoiceFix(h);
@@ -287,11 +253,14 @@ test("the voice-fix prompt shows both transcripts and the two choice buttons", a
     "<b>Original transcript:</b>\n<i>a &lt;b&gt; original</i>\n\n<b>Proposed fix:</b>\n<i>the fixed one</i>",
   );
   assert.equal(sent?.payload.parse_mode, "HTML");
-  const markup = h.api.find((c) => c.method === "editMessageReplyMarkup");
-  assert.deepEqual(h.buttons(markup), [
+  assert.deepEqual(h.buttons(sent), [
     ["📝 Use original", `vf:o:${ID}`],
     ["✨ Use fixed", `vf:p:${ID}`],
   ]);
+  assert.deepEqual(
+    h.api.map((c) => c.method),
+    ["sendMessage"],
+  );
   await h.tap(`vf:o:${ID}`);
   await pending;
 });
