@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { Bot } from "grammy";
 import { MockAgent, setGlobalDispatcher } from "undici";
+import { WIZARD_RATING_TIME_REF } from "./core.ts";
 import { Repository } from "./db.ts";
 import { createScriba } from "./index.ts";
 import { Scheduler } from "./lib/scheduler.ts";
@@ -194,6 +195,54 @@ dbTest(
     assert.deepEqual(
       every.mock.calls.map((c) => c.arguments.slice(0, 2)),
       [["retry", 5 * 60_000]],
+    );
+  },
+);
+
+dbTest(
+  "a rating time typed in the menu re-arms the nightly job on the scheduler that registered it",
+  async (t) => {
+    const daily = t.mock.method(Scheduler.prototype, "daily");
+    const rearm = t.mock.method(Scheduler.prototype, "rearm", async () => {});
+    const app = await createScriba(
+      configFor(),
+      { version: "9.9.9", sha: "abc" },
+      { obsidian: fakeObsidian, transcriber: fakeTranscriber },
+    );
+    const calls = fakeTelegram(app);
+    const { bot } = app.bot as unknown as { bot: Bot };
+    const chat = { id: 1, type: "private" as const, first_name: "Lucas" };
+
+    await bot.init();
+    await bot.handleUpdate({
+      update_id: 1,
+      message: {
+        message_id: 2,
+        date: 0,
+        chat,
+        from: { id: 1, is_bot: false, first_name: "Lucas" },
+        text: "23:30",
+        reply_to_message: {
+          message_id: 1,
+          date: 0,
+          chat,
+          text: `when? ${WIZARD_RATING_TIME_REF}`,
+          reply_to_message: undefined,
+        },
+      },
+    });
+    await app.stop();
+
+    const owner = daily.mock.calls.find((c) => c.arguments[0] === "rating");
+    assert.ok(owner?.this instanceof Scheduler, "daily('rating') registered");
+    assert.deepEqual(
+      rearm.mock.calls.map((c) => c.arguments),
+      [["rating"]],
+    );
+    assert.equal(rearm.mock.calls[0]?.this, owner.this);
+    assert.equal(
+      calls.find((c) => c.method === "sendMessage")?.payload.text,
+      "🕛 nightly rating at 23:30",
     );
   },
 );

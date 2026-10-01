@@ -200,6 +200,7 @@ export async function botHarness() {
     enricher,
     transcriber,
     linkIndex as any,
+    scheduler,
   );
   bot.setQueue(queue);
   bot.setAdmin(
@@ -216,7 +217,6 @@ export async function botHarness() {
       startedAt: NOW,
     } as never),
   );
-  bot.setScheduler(scheduler);
   bot.bot.botInfo = BOT_INFO;
   bot.bot.api.config.use(telegram.transformer as never);
 

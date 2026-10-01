@@ -5,6 +5,7 @@ import { HabitController } from "./controllers/habits.ts";
 import { JotController } from "./controllers/jots.ts";
 import { Modes } from "./controllers/modes.ts";
 import { RatingController } from "./controllers/rating.ts";
+import { SettingsController } from "./controllers/settings.ts";
 import { TaskController } from "./controllers/tasks.ts";
 import {
   anchorLine,
@@ -49,6 +50,7 @@ import { Chat } from "./views/chat.ts";
 import { COMMANDS } from "./views/commands/index.ts";
 import { taskMessage } from "./views/commands/task.ts";
 import { registerViews } from "./views/index.ts";
+import { MenuLifetime } from "./views/menu-lifetime.ts";
 
 const log = logger("bot");
 
@@ -122,6 +124,7 @@ export class ScribaBot implements BotServices {
     private enricher: Enricher,
     private transcriber: FallbackTranscriber,
     private links: LinkIndex,
+    scheduler: Scheduler,
   ) {
     // grammY waits 500s per API call by default; 60s still covers the 30s long poll.
     this.bot = new Bot(config.telegram.token, {
@@ -143,11 +146,18 @@ export class ScribaBot implements BotServices {
       notifier: this.chat,
       heading: config.obsidian.habitsHeading,
     });
+    const menus = new MenuLifetime(this.bot.api);
+    const settings = new SettingsController({
+      repo,
+      enricher,
+      scheduler,
+      notifier: this.chat,
+      ratingTime: config.ratingTime,
+    });
     this.menu = new MenuController(
       this.bot,
       config,
-      this.rating,
-      this.habits,
+      menus,
       () => this.deps(),
       (jot) => this.deleteJot(jot),
     );
@@ -178,11 +188,12 @@ export class ScribaBot implements BotServices {
       notifier: this.chat,
     });
     this.command.setBusyCheck(() => this.tasks.isOpen());
-    this.menu.setTasks(this.tasks);
     registerViews(this.bot, {
       ownerId: config.telegram.allowedUserId,
       rating: this.rating,
       habits: this.habits,
+      settings,
+      menus,
       menu: this.menu,
       command: this.command,
       tasks: this.tasks,
@@ -206,20 +217,10 @@ export class ScribaBot implements BotServices {
   setAdmin(admin: AdminController): void {
     this.adminController = admin;
   }
-  /** The menu changes the rating time, which the scheduler owns. */
-  setScheduler(scheduler: Scheduler): void {
-    this.menu.setScheduler(scheduler);
-  }
 
   /** What the menu acts on. */
   private deps(): MenuDeps {
-    return {
-      repo: this.repo,
-      queue: this.queue,
-      enricher: this.enricher,
-      links: this.links,
-      admin: this.adminController,
-    };
+    return { repo: this.repo, queue: this.queue, links: this.links };
   }
 
   /** Start long polling. Returns immediately; polling runs in the background. */

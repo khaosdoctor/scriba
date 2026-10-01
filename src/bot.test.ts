@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { placeholderLine, WIZARD_RATING_TIME_REF } from "./core.ts";
+import { placeholderLine } from "./core.ts";
 import { type Jot, Repository } from "./db.ts";
 import { testConfig } from "./test/config.ts";
 import { BOT_INFO, FakeSettings, recordingApi } from "./test/fakes.ts";
@@ -80,6 +80,7 @@ async function harness(over: Fakes = {}) {
     testConfig,
     repo as any,
     obsidian as any,
+    {} as any,
     {} as any,
     {} as any,
     {} as any,
@@ -581,38 +582,6 @@ test("the day override gives 23:59:59 on DST change days", async () => {
     if (saved === undefined) delete process.env.TZ;
     else process.env.TZ = saved;
   }
-});
-
-test("setScheduler hands the scheduler to the menu", async () => {
-  const h = await harness();
-  const seen: unknown[] = [];
-  h.bot.menu = { setScheduler: (s: unknown) => void seen.push(s) };
-  const scheduler = {};
-  h.bot.setScheduler(scheduler);
-  assert.deepEqual(seen, [scheduler]);
-  assert.equal(seen[0], scheduler);
-});
-
-test("a rating time typed in the menu reaches the scheduler, and works without one", async () => {
-  const prompt = `when? ${WIZARD_RATING_TIME_REF}`;
-  const reply = (h: { replies: string[] }) => ({
-    message: { text: "23:30" },
-    reply: async (t: string) => {
-      h.replies.push(t);
-      return { chat: { id: 1 }, message_id: 2 };
-    },
-  });
-
-  const wired = await harness();
-  const rearmed: string[] = [];
-  wired.bot.setScheduler({ rearm: async (n: string) => void rearmed.push(n) });
-  await wired.bot.menu.handleWizardReply(reply(wired), prompt);
-  assert.deepEqual(wired.sets, [["ratingTime", "23:30"]]);
-  assert.deepEqual(rearmed, ["rating"]);
-
-  const bare = await harness();
-  await bare.bot.menu.handleWizardReply(reply(bare), prompt);
-  assert.deepEqual(bare.sets, [["ratingTime", "23:30"]]);
 });
 
 /** Push one text update through the bot's real middleware, with the handlers under test

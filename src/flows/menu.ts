@@ -1,8 +1,4 @@
 import { type Bot, InlineKeyboard } from "grammy";
-import type { AdminController } from "../controllers/admin.ts";
-import type { HabitController } from "../controllers/habits.ts";
-import type { RatingController } from "../controllers/rating.ts";
-import type { TaskController } from "../controllers/tasks.ts";
 import {
   cleanNoteTitle,
   distinctSurfaces,
@@ -10,35 +6,23 @@ import {
   formatJotDetail,
   jotPreview,
   noteSuggestions,
-  parseClockTime,
-  parseEntrySize,
   parseRuleWords,
   parseWizardRef,
   previewList,
   STATUS_ICON,
-  WIZARD_ENRICH_MODEL_REF,
-  WIZARD_ENTRYSIZE_REF,
   WIZARD_NEWNOTE_REF,
   WIZARD_NOTE_REF,
-  WIZARD_RATING_TIME_REF,
   WIZARD_REGISTER_REF,
   WIZARD_RENAME_REF,
   WIZARD_STOPWORD_REF,
-  WIZARD_VOICEFIX_MODEL_REF,
 } from "../core.ts";
 import type { Jot, Repository } from "../db.ts";
 import { paginate } from "../lib/page.ts";
-import type { Scheduler } from "../lib/scheduler.ts";
 import { logger } from "../log.ts";
 import type { Config } from "../models/config.ts";
-import { SETTINGS, type SwitchKey } from "../models/settings.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
-import type { Enricher } from "../services/enrich.ts";
 import type { VaultService } from "../services/vault.ts";
-import { plainDate } from "../time.ts";
-import { ROOT_TEXT, rootKeyboard } from "../views/callbacks/reprocess.ts";
-import { closeMessage } from "../views/chat.ts";
-import { openTaskMode } from "../views/commands/task.ts";
+import type { MenuLifetime } from "../views/menu-lifetime.ts";
 import { backTo, pagedScreen, withClose } from "../views/render/keyboard.ts";
 
 const log = logger("menu");
@@ -50,26 +34,11 @@ const CLOSE = "menu:close";
 export interface MenuDeps {
   repo: Repository;
   queue: FlushQueue;
-  enricher: Enricher;
   links: VaultService;
-  admin: AdminController;
 }
 
-type AdminAction = "status" | "stats" | "flush" | "sweep" | "unstick" | "retry";
-
-const MODEL_PRESETS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"];
-
-const MODEL_KEY = { enrich: "enrichModel", voiceFix: "voiceFixModel" } as const;
-
-function shortModel(m: string): string {
-  return m.replace("claude-", "").replace("-4-5", " 4.5").replace("-5", " 5");
-}
-
-/** The interactive /menu control panel — a callback-driven entry point layered over the
- *  slash commands, not a replacement. Every leaf reuses an existing command (via runCmd)
- *  or flow (rating/habits/reprocess prompts, jot edit/delete), so the menu adds an entry
- *  point but no new business logic. `getDeps` is lazy (mirrors ScribaBot.deps()) since the
- *  queue and processor aren't wired up yet when this class is constructed. */
+/** The link-rules wizard and the jots browser of the /menu control panel. The settings
+ *  screens are a view of their own; `menu:` taps they do not name are routed here. */
 export class MenuController {
   // Rejected-links menu page size (rows per page).
   private static readonly REJECT_PAGE = 8;
@@ -81,8 +50,7 @@ export class MenuController {
   private static readonly PICK_PAGE = 6;
   // The one place the wizard keeps state between messages: picking the note side means
   // searching a vault of thousands, which cannot ride in 64 bytes of callback data.
-  // ponytail: in-memory and single-flow — one user, and a restart just drops a
-  // half-finished add. Persist it only if that ever proves annoying.
+  // In memory and single-flow: one user, and a restart just drops a half-finished add.
   private pending?: {
     words: string[]; // surfaces still waiting for a note
     i: number; // which one we're on
@@ -90,209 +58,21 @@ export class MenuController {
     page: number;
     retarget?: { surface: string; note: string }; // pair being replaced, if editing
   };
-  // A menu is a control panel, not journal content: one minute without a tap and it
-  // deletes itself, so a finished (or abandoned) flow doesn't leave a stale screen and a
-  // still-tappable keyboard sitting in the chat. Every tap restarts the countdown.
-  private static readonly MENU_TTL_MS = 60_000;
-  // chatId -> message id of the last root menu in that chat, so opening a fresh /menu
-  // retires the old one instead of leaving stale, still-tappable keyboards piling up.
-  // Keyed by chat (not a single field) since message ids are only unique per chat — the
-  // allowed user can open /menu from more than one chat (e.g. a group, then a DM).
-  private lastMenuMsgId = new Map<number, number>();
-  // "<chatId>:<messageId>" -> its pending self-destruct timer.
-  private expiry = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private bot: Bot,
     private config: Config,
-    private rating: RatingController,
-    private habits: HabitController,
+    private menus: MenuLifetime,
     private getDeps: () => MenuDeps,
     private deleteJot: (jot: Jot) => Promise<string>,
   ) {}
 
-  /** Late-wired: the task controller is built after the menu (mirrors ScribaBot.setQueue). */
-  private tasks?: TaskController;
-  setTasks(tasks: TaskController): void {
-    this.tasks = tasks;
-  }
-
-  /** Late-wired like `tasks`: the scheduler owns the rating timer, and is built after the bot. */
-  private scheduler?: Scheduler;
-  setScheduler(scheduler: Scheduler): void {
-    this.scheduler = scheduler;
-  }
-
-  /** (Re)start a menu message's idle countdown. Called when one is sent and again on every
-   *  tap, so the minute is measured from the last interaction, not from the send. */
-  private scheduleExpiry(chatId: number, msgId: number): void {
-    const key = `${chatId}:${msgId}`;
-    this.cancelExpiry(chatId, msgId);
-    const timer = setTimeout(() => {
-      this.expiry.delete(key);
-      log.info({ chatId, msgId }, "menu: idle, self-destructing");
-      // Best-effort: the message may already be gone (closed, deleted by hand, >48h).
-      this.bot.api.deleteMessage(chatId, msgId).catch(() => {});
-      if (this.lastMenuMsgId.get(chatId) === msgId)
-        this.lastMenuMsgId.delete(chatId);
-    }, MenuController.MENU_TTL_MS);
-    // Don't hold the process open just for a menu that nobody is going to tap.
-    timer.unref?.();
-    this.expiry.set(key, timer);
-  }
-
-  private cancelExpiry(chatId: number, msgId: number): void {
-    const key = `${chatId}:${msgId}`;
-    const t = this.expiry.get(key);
-    if (!t) return;
-    clearTimeout(t);
-    this.expiry.delete(key);
-  }
-
-  /** /menu — send a fresh root menu. Later taps edit that message in place. */
-  async open(ctx: any): Promise<void> {
-    log.info("menu opened");
-    // Retire the previous menu in this chat so old, stale keyboards don't linger tappable.
-    const prev = this.lastMenuMsgId.get(ctx.chat.id);
-    if (prev) {
-      this.cancelExpiry(ctx.chat.id, prev);
-      await ctx.api.deleteMessage(ctx.chat.id, prev).catch(() => {});
-    }
-    const sent = await ctx.reply("🗂 scriba control menu", {
-      reply_markup: await this.rootMenu(),
-    });
-    this.lastMenuMsgId.set(ctx.chat.id, sent.message_id);
-    this.scheduleExpiry(ctx.chat.id, sent.message_id);
-  }
-
-  /** The entry-size cap in force right now (0 = splitting off). */
-  private async entrySize(): Promise<number> {
-    return this.getDeps().repo.getSetting("entryMaxChars");
-  }
-
-  private async rootMenu(): Promise<InlineKeyboard> {
-    const repo = this.getDeps().repo;
-    const size = await this.entrySize();
-    const vfOn = await repo.getSetting("fixVoiceTranscript");
-    const enrichModel = (await repo.getSetting("enrichModel")) ?? "?";
-    const vfModel = (await repo.getSetting("voiceFixModel")) ?? "?";
-    const ratingOn = await repo.getSetting("nightlyRating");
-    const followupOn = await repo.getSetting("nightlyFollowup");
-    const at = await repo.ratingTime(this.config.ratingTime);
-    return new InlineKeyboard()
-      .text("📊 Rate today", "menu:rate")
-      .text("🌱 Review habits", "menu:habits")
-      .row()
-      .text("🗒 Recent jots", "menu:jots")
-      .row()
-      .text("🗂 Tasks", "menu:tasks")
-      .text("📝 Task mode", "menu:taskmode")
-      .row()
-      .text("🔁 Reprocess", "menu:reprocess")
-      .row()
-      .text("📈 Stats", "menu:stats")
-      .text("🩺 Status", "menu:status")
-      .row()
-      .text("⚠️ Failed queue", "menu:failed")
-      .row()
-      .text(`✂️ Entry size: ${size ? `${size} chars` : "off"}`, "menu:esz")
-      .row()
-      .text(`🔧 Voice fix: ${vfOn ? "on" : "off"}`, "menu:vfix")
-      .row()
-      .text(`🌙 Nightly rating: ${ratingOn ? "on" : "off"}`, "menu:rtsw")
-      .text(`💬 Follow-up: ${followupOn ? "on" : "off"}`, "menu:fusw")
-      .row()
-      .text(`🕛 Rating time: ${at}`, "menu:rtt")
-      .row()
-      .text(`🧠 Enrich: ${shortModel(enrichModel)}`, "menu:em")
-      .text(`🎤 VF model: ${shortModel(vfModel)}`, "menu:vfm")
-      .row()
-      .text("🔗 Link rules", "menu:links")
-      .text("🛠 Maintenance", "menu:maint")
-      .row()
-      .text("✖ Close", "menu:close");
-  }
-
-  private maintMenu(): InlineKeyboard {
-    return new InlineKeyboard()
-      .text("⚡ Flush", "menu:flush")
-      .text("🧹 Sweep", "menu:sweep")
-      .row()
-      .text("🔧 Unstick", "menu:unstick")
-      .text("🔄 Retry all", "menu:retryall")
-      .row()
-      .text("‹ Back", "menu:root");
-  }
-
-  /** Run an admin action from a callback and hand back its text. */
-  private async runCmd(name: AdminAction, arg = ""): Promise<string> {
-    const { admin } = this.getDeps();
-    const run = async (): Promise<string> => {
-      switch (name) {
-        case "status":
-          return admin.status();
-        case "stats":
-          return admin.stats(arg);
-        case "flush":
-          return admin.flush();
-        case "sweep":
-          return admin.retryPass();
-        case "unstick":
-          return admin.unstick();
-        case "retry":
-          return admin.retry(arg);
-        default:
-          return name satisfies never;
-      }
-    };
-    // Backstop for every menu screen that renders a command's text: editMessageText is
-    // subject to the same 4096-character cap as a send, and a rejected edit leaves the
-    // menu frozen on the previous screen with no explanation.
-    return fitTelegram(await run());
-  }
-
-  /** Dispatch a `menu:<action>[:<arg>]` callback. Routed in from views/callbacks. */
+  /** Dispatch a `menu:<action>[:<arg>]` callback the settings view did not take. */
   async handleCallback(ctx: any, rest: string[]): Promise<void> {
     const [action, arg, arg2] = rest;
-    // Taps land on the message being edited in place, so restarting its countdown here
-    // covers every screen the wizard renders without touching each one.
-    const tapped = ctx.callbackQuery?.message;
-    if (tapped) this.scheduleExpiry(tapped.chat.id, tapped.message_id);
     switch (action) {
-      case "root":
-        await ctx.answerCallbackQuery();
-        return ctx.editMessageText("🗂 scriba control menu", {
-          reply_markup: await this.rootMenu(),
-        });
-      case "rate":
-        // New prompt message lands below; toast tells the user the tap registered.
-        await ctx.answerCallbackQuery({
-          text: "Opening rating prompt below ↓",
-        });
-        return this.rating.prompt(plainDate());
-      case "habits":
-        await ctx.answerCallbackQuery({
-          text: "Opening habits review below ↓",
-        });
-        return this.habits.prompt(plainDate(Date.now() - 86_400_000));
       case "jots":
         return this.menuJots(ctx);
-      case "tasks":
-        await ctx.answerCallbackQuery({ text: "Opening tasks below ↓" });
-        return this.tasks?.promptRoot();
-      case "taskmode":
-        await ctx.answerCallbackQuery();
-        return this.tasks && openTaskMode(ctx, this.tasks);
-      case "reprocess":
-        await ctx.answerCallbackQuery({
-          text: "Opening reprocess menu below ↓",
-        });
-        await this.bot.api.sendMessage(
-          this.config.telegram.allowedUserId,
-          ROOT_TEXT,
-          { reply_markup: rootKeyboard() },
-        );
-        return;
       case "jot":
         return this.menuJotDetail(ctx, arg);
       case "jr":
@@ -303,46 +83,6 @@ export class MenuController {
         return this.menuJotDelete(ctx, arg);
       case "je":
         return this.menuJotEdit(ctx, arg);
-      case "stats":
-        return this.menuStats(ctx, arg);
-      case "status":
-        return this.menuInfo(ctx, "status", "", "menu:root");
-      case "failed":
-        return this.menuFailed(ctx);
-      case "esz":
-        await ctx.answerCallbackQuery();
-        return this.entrySizeMenu(ctx);
-      case "vfix":
-        return this.menuToggleSwitch(ctx, "fixVoiceTranscript");
-      case "rtsw":
-        return this.menuToggleSwitch(ctx, "nightlyRating");
-      case "fusw":
-        return this.menuToggleSwitch(ctx, "nightlyFollowup");
-      case "rtt":
-        return this.promptRatingTime(ctx);
-      case "em":
-        await ctx.answerCallbackQuery();
-        return this.modelPickerMenu(ctx, "enrich");
-      case "vfm":
-        await ctx.answerCallbackQuery();
-        return this.modelPickerMenu(ctx, "voiceFix");
-      case "ems":
-        return this.setModel(ctx, "enrich", arg);
-      case "vfs":
-        return this.setModel(ctx, "voiceFix", arg);
-      case "emc":
-        return this.promptModel(ctx, "enrich");
-      case "vfc":
-        return this.promptModel(ctx, "voiceFix");
-      case "ess":
-        return this.setEntrySize(ctx, arg);
-      case "esc":
-        return this.promptEntrySize(ctx);
-      case "maint":
-        await ctx.answerCallbackQuery();
-        return ctx.editMessageText("🛠 Maintenance", {
-          reply_markup: withClose(this.maintMenu(), CLOSE),
-        });
       // --- link-rules wizard (see the `lw` block below) ---
       case "links":
         return this.lwHome(ctx);
@@ -390,210 +130,10 @@ export class MenuController {
         return this.lwSkip(ctx);
       case "lrgc":
         return this.lwCancel(ctx);
-      case "close":
-        return this.menuClose(ctx);
-      case "flush":
-      case "sweep":
-      case "unstick":
-        return this.menuMaint(ctx, action);
-      case "retryall":
-        return this.menuRetryAllConfirm(ctx);
-      case "retryally":
-        return this.menuMaint(ctx, "retry", "all");
       default:
         log.warn({ action }, "unknown menu action");
         await ctx.answerCallbackQuery();
     }
-  }
-
-  /** Show a command's text output with a Back button (status, stats result). */
-  private async menuInfo(
-    ctx: any,
-    name: AdminAction,
-    arg: string,
-    back: string,
-  ): Promise<void> {
-    await ctx.answerCallbackQuery();
-    const text = await this.runCmd(name, arg);
-    await ctx.editMessageText(text, { reply_markup: backTo(back, CLOSE) });
-  }
-
-  /** Stats: first tap shows a range picker; a range tap shows that window. */
-  private async menuStats(ctx: any, range?: string): Promise<void> {
-    await ctx.answerCallbackQuery();
-    if (!range) {
-      const kb = new InlineKeyboard()
-        .text("Today", "menu:stats:today")
-        .text("Week", "menu:stats:week")
-        .text("All", "menu:stats:all")
-        .row()
-        .text("‹ Back", "menu:root");
-      return ctx.editMessageText("📈 Stats range:", {
-        reply_markup: withClose(kb, CLOSE),
-      });
-    }
-    const text = await this.runCmd("stats", range);
-    await ctx.editMessageText(text, {
-      reply_markup: backTo("menu:stats", CLOSE),
-    });
-  }
-
-  /** Flip an on/off setting from the root menu and redraw it. */
-  private async menuToggleSwitch(ctx: any, key: SwitchKey): Promise<void> {
-    const next = await this.getDeps().repo.toggleSetting(key);
-    log.info({ key, next }, "menu: switch toggled");
-    // The setting is already saved, so neither a stale callback query nor a menu that has
-    // gone away may undo that or stop the other half.
-    await ctx
-      .answerCallbackQuery({ text: SETTINGS[key].label(next) })
-      .catch((err: unknown) => log.warn({ err }, "menu: toggle ack failed"));
-    await ctx
-      .editMessageText("🗂 scriba control menu", {
-        reply_markup: await this.rootMenu(),
-      })
-      .catch((err: unknown) => log.warn({ err }, "menu: toggle redraw failed"));
-  }
-
-  /** The rating time is free text (HH:MM): ask, and route the reply back by the marker. */
-  private async promptRatingTime(ctx: any): Promise<void> {
-    await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
-    log.info("menu: prompting for the rating time");
-    await this.bot.api.sendMessage(
-      this.config.telegram.allowedUserId,
-      `🕛 Reply to this message with the time for the nightly rating, as HH:MM in 24-hour time, like 23:30. A time before 12:00 rates the day that just ended, a later one rates today. ${WIZARD_RATING_TIME_REF}`,
-      { reply_markup: { force_reply: true } }, // opened by a tap, see promptEntrySize
-    );
-  }
-
-  // --- model pickers ---
-
-  private async modelPickerMenu(
-    ctx: any,
-    which: "enrich" | "voiceFix",
-  ): Promise<void> {
-    const key = MODEL_KEY[which];
-    const cbPrefix = which === "enrich" ? "ems" : "vfs";
-    const customCb = which === "enrich" ? "emc" : "vfc";
-    const label =
-      which === "enrich" ? "🧠 Enrichment model" : "🎤 Voice fix model";
-    const current = await this.getDeps().repo.getSetting(key);
-    log.info({ which, current }, "menu: model picker");
-    const kb = new InlineKeyboard();
-    for (const m of MODEL_PRESETS) {
-      kb.text(
-        `${m === current ? "✅ " : ""}${shortModel(m)}`,
-        `menu:${cbPrefix}:${m}`,
-      ).row();
-    }
-    kb.text("✍️ Type a model", `menu:${customCb}`).row();
-    kb.text("‹ Back", "menu:root");
-    await ctx.editMessageText(`${label}\n\nCurrent: ${current ?? "not set"}`, {
-      reply_markup: withClose(kb, CLOSE),
-    });
-  }
-
-  private async setModel(
-    ctx: any,
-    which: "enrich" | "voiceFix",
-    model?: string,
-  ): Promise<void> {
-    if (!model?.trim()) {
-      return void ctx.answerCallbackQuery({ text: "expired" });
-    }
-    const label = which === "enrich" ? "enrichment" : "voice fix";
-    const { repo, enricher } = this.getDeps();
-    await repo.setSetting(MODEL_KEY[which], model);
-    if (which === "enrich") enricher.setModel(model);
-    log.info({ which, model }, "menu: model changed");
-    await ctx.answerCallbackQuery({ text: `${label}: ${shortModel(model)}` });
-    return this.modelPickerMenu(ctx, which);
-  }
-
-  private async promptModel(
-    ctx: any,
-    which: "enrich" | "voiceFix",
-  ): Promise<void> {
-    await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
-    const label = which === "enrich" ? "enrichment" : "voice fix";
-    const ref =
-      which === "enrich" ? WIZARD_ENRICH_MODEL_REF : WIZARD_VOICEFIX_MODEL_REF;
-    log.info({ which }, "menu: prompting for a custom model");
-    await this.bot.api.sendMessage(
-      this.config.telegram.allowedUserId,
-      `🧠 Reply with the model ID for ${label} (e.g. claude-sonnet-5): ${ref}`,
-      { reply_markup: { force_reply: true } },
-    );
-  }
-
-  // --- entry size ---
-  // How long one journal entry may get before it's split across several bullets. A tweet
-  // by default; the presets are the sizes worth one tap, anything else is typed.
-
-  /** Character counts offered as one-tap presets. 0 turns splitting off entirely. */
-  private static readonly ENTRY_SIZE_PRESETS = [140, 280, 560, 1000, 0];
-
-  private async entrySizeMenu(ctx: any): Promise<void> {
-    const current = await this.entrySize();
-    log.info({ current }, "menu: entry size");
-    const kb = new InlineKeyboard();
-    for (const n of MenuController.ENTRY_SIZE_PRESETS) {
-      const label = n ? `${n} chars` : "Don't split";
-      kb.text(`${n === current ? "✅ " : ""}${label}`, `menu:ess:${n}`).row();
-    }
-    kb.text("✍️ Type a size", "menu:esc").row();
-    kb.text("‹ Back", "menu:root");
-    await ctx.editMessageText(
-      [
-        "✂️ Entry size",
-        "",
-        current
-          ? `Entries longer than ${current} characters are split into several journal lines.`
-          : "Splitting is off — every jot stays on one line, however long.",
-        "",
-        "Splits land on topic boundaries where there are any, and on sentence ends otherwise. A sentence is never cut in half.",
-      ].join("\n"),
-      { reply_markup: withClose(kb, CLOSE) },
-    );
-  }
-
-  private async setEntrySize(ctx: any, arg?: string): Promise<void> {
-    const n = arg === undefined ? Number.NaN : Number(arg);
-    if (!Number.isInteger(n) || n < 0) {
-      log.warn({ arg }, "menu: bad entry size");
-      return void ctx.answerCallbackQuery({ text: "expired" });
-    }
-    await ctx.answerCallbackQuery({ text: n ? `${n} chars` : "splitting off" });
-    await this.getDeps().repo.setSetting("entryMaxChars", String(n));
-    log.info({ size: n }, "menu: entry size changed");
-    return this.entrySizeMenu(ctx);
-  }
-
-  /** Free-text size: a keyboard can't offer every number, so ask and route the reply back
-   *  by the marker in the prompt (the same trick the link wizard uses). */
-  private async promptEntrySize(ctx: any): Promise<void> {
-    await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
-    log.info("menu: prompting for a custom entry size");
-    // Every prompt in the menu is opened by a button press, so the compose box can be
-    // pointed at it safely: you just tapped, you weren't halfway through a jot. Prompts
-    // that arrive unasked (a task suggested from a jot, a habit review) never do this.
-    await this.bot.api.sendMessage(
-      this.config.telegram.allowedUserId,
-      `✂️ Reply to this message with how many characters one journal entry may be: 40–4000, or "off" to stop splitting. ${WIZARD_ENTRYSIZE_REF}`,
-      { reply_markup: { force_reply: true } },
-    );
-  }
-
-  /** Retry-all re-queues every failed jot (network + enrichment) — confirm first. */
-  private async menuRetryAllConfirm(ctx: any): Promise<void> {
-    log.info("menu: retry-all confirm");
-    await ctx.answerCallbackQuery();
-    const kb = new InlineKeyboard()
-      .text("✅ Yes, retry all", "menu:retryally")
-      .row()
-      .text("‹ Cancel", "menu:maint");
-    await ctx.editMessageText("Requeue every failed jot?", {
-      reply_markup: withClose(kb, CLOSE),
-    });
   }
 
   // --- link-rules wizard ---
@@ -935,15 +475,15 @@ export class MenuController {
       rgw: `✏️ Reply to this message with the new word for this pair. ${`(${WIZARD_RENAME_REF}:${gi})`}`,
     };
     const text = prompts[kind];
+    // Opened by a tap, so the compose box can be pointed at the prompt safely.
     await this.bot.api.sendMessage(this.config.telegram.allowedUserId, text, {
-      reply_markup: { force_reply: true }, // opened by a tap — see promptEntrySize
+      reply_markup: { force_reply: true },
     });
   }
 
-  /** The note picker: search results from the vault index as tappable rows. This is the
-   *  step that used to mean typing an exact title from memory across thousands of notes.
-   *  `mode` is "edit" from a button tap and "send" after a force-reply (which arrives as
-   *  a new message, so there's nothing in place to edit). */
+  /** The note picker: search results from the vault index as tappable rows. `mode` is
+   *  "edit" from a button tap and "send" after a force-reply (which arrives as a new
+   *  message, so there's nothing in place to edit). */
   private async showNotePicker(
     ctx: any,
     mode: "edit" | "send",
@@ -987,14 +527,14 @@ export class MenuController {
   }
 
   /** A confirmation that closes a wizard branch. It is still part of the menu, so it gets
-   *  the same Close button and the same countdown — a flow shouldn't leave receipts. */
+   *  the same Close button and the same countdown. */
   private async replyMenu(
     ctx: any,
     text: string,
     kb: InlineKeyboard,
   ): Promise<void> {
     const sent = await ctx.reply(text, { reply_markup: withClose(kb, CLOSE) });
-    this.scheduleExpiry(sent.chat.id, sent.message_id);
+    this.menus.touch(sent.chat.id, sent.message_id);
   }
 
   /** Send a menu screen of our own (not an edit of a tapped one) and start its countdown. */
@@ -1004,7 +544,7 @@ export class MenuController {
       text,
       { reply_markup: withClose(kb, CLOSE) },
     );
-    this.scheduleExpiry(sent.chat.id, sent.message_id);
+    this.menus.touch(sent.chat.id, sent.message_id);
   }
 
   /** A tapped suggestion: save the pair (replacing the old note when retargeting) and
@@ -1088,13 +628,13 @@ export class MenuController {
     return this.lwPairs(ctx, 0);
   }
 
-  /** True when `text` is one of the wizard's own force-reply prompts (ScribaBot checks
-   *  this before treating a reply as a jot edit). */
+  /** True when `text` is one of the wizard's own force-reply prompts. */
   isWizardPrompt(text: string): boolean {
     return parseWizardRef(text) !== null;
   }
 
-  /** Route a reply to the prompt that asked for it. */
+  /** Route a link-rule reply to the prompt that asked for it. The settings prompts are
+   *  claimed by their own reply view before a reply gets here. */
   async handleWizardReply(ctx: any, prompt: string): Promise<void> {
     const { repo } = this.getDeps();
     const p = parseWizardRef(prompt);
@@ -1172,98 +712,18 @@ export class MenuController {
           new InlineKeyboard().text("🔗 Link rules", "menu:links"),
         );
       }
-      case "es": {
-        const size = parseEntrySize(body);
-        if (size === null) {
-          log.warn({ body }, "menu: unusable entry size reply");
-          return void ctx.reply(
-            'Give me a whole number between 40 and 4000, or "off".',
-          );
-        }
-        await repo.setSetting("entryMaxChars", String(size));
-        log.info({ size }, "menu: entry size changed");
-        return this.replyMenu(
-          ctx,
-          size
-            ? `✂️ entries split above ${size} characters`
-            : "✂️ splitting off — entries stay on one line",
-          new InlineKeyboard().text("✂️ Entry size", "menu:esz"),
-        );
-      }
-      case "rt": {
-        const time = parseClockTime(body);
-        if (!time) {
-          log.warn({ body }, "menu: unusable rating time reply");
-          return void ctx.reply(
-            "That isn't a time. Use HH:MM in 24-hour time, like 23:30 or 00:00.",
-          );
-        }
-        await repo.setSetting("ratingTime", time);
-        await this.scheduler?.rearm("rating");
-        log.info({ time }, "menu: rating time changed");
-        return this.replyMenu(
-          ctx,
-          `🕛 nightly rating at ${time}`,
-          new InlineKeyboard().text("🗂 Menu", "menu:root"),
-        );
-      }
+      case "es":
       case "em":
-      case "vfm": {
-        const model = body.trim();
-        if (!model) {
-          log.warn({ body }, "menu: empty model reply");
-          return void ctx.reply("Send a model ID (e.g. claude-sonnet-5).");
-        }
-        const which = p.kind === "em" ? "enrich" : "voiceFix";
-        const label = which === "enrich" ? "enrichment" : "voice fix";
-        await repo.setSetting(MODEL_KEY[which], model);
-        if (which === "enrich") this.getDeps().enricher.setModel(model);
-        log.info({ which, model }, "menu: model changed via text");
-        return this.replyMenu(
-          ctx,
-          `🧠 ${label} model: ${model}`,
-          new InlineKeyboard().text(
-            which === "enrich" ? "🧠 Enrich model" : "🎤 VF model",
-            which === "enrich" ? "menu:em" : "menu:vfm",
-          ),
-        );
-      }
+      case "vfm":
+      case "rt":
+        return;
       default:
         return void (p satisfies never);
     }
   }
 
-  /** Close the menu — the control panel is transient, not part of the journal. */
-  private async menuClose(ctx: any): Promise<void> {
-    log.info("menu closed");
-    await ctx.answerCallbackQuery();
-    await closeMessage(ctx, "🗂 Menu closed.", () => {
-      this.lastMenuMsgId.delete(ctx.chat.id);
-      this.cancelExpiry(
-        ctx.chat.id,
-        ctx.callbackQuery?.message?.message_id ?? -1,
-      );
-    });
-  }
-
-  /** Run a no-arg maintenance command and show its result over the maintenance menu. */
-  private async menuMaint(
-    ctx: any,
-    name: AdminAction,
-    arg = "",
-  ): Promise<void> {
-    log.info({ cmd: name, arg }, "menu: maintenance action");
-    // Answer before running the command (flush/sweep can be slow) — the edited message
-    // carries the result instead of a toast that might arrive after Telegram gives up.
-    await ctx.answerCallbackQuery();
-    const out = await this.runCmd(name, arg);
-    await ctx.editMessageText(out || "done", {
-      reply_markup: withClose(this.maintMenu(), CLOSE),
-    });
-  }
-
-  /** The jots browser: recent jots as tappable rows — the read/edit surface the
-   *  reply-to-message flow never gave (you no longer scroll chat history to find one). */
+  /** The jots browser: recent jots as tappable rows, so finding one no longer means
+   *  scrolling chat history. */
   private async menuJots(ctx: any): Promise<void> {
     await ctx.answerCallbackQuery();
     const jots = await this.getDeps().repo.recentJots(10);
@@ -1355,28 +815,8 @@ export class MenuController {
     const sent = await this.bot.api.sendMessage(
       this.config.telegram.allowedUserId,
       `✏️ Reply to this message with your edit for ${id} (or "delete" to remove it).`,
-      { reply_markup: { force_reply: true } }, // opened by a tap — see promptEntrySize
+      { reply_markup: { force_reply: true } },
     );
     await deps.repo.mapMessage(sent.message_id, id);
-  }
-
-  /** Failed queue as tappable retry rows. Reuses the existing `rt:` retry handler. */
-  private async menuFailed(ctx: any): Promise<void> {
-    await ctx.answerCallbackQuery();
-    const jots = await this.getDeps().repo.failedJots(10);
-    if (!jots.length)
-      return ctx.editMessageText("✅ nothing failed.", {
-        reply_markup: backTo("menu:root", CLOSE),
-      });
-    const lines = jots.map(
-      (j) =>
-        `${j.id} [${j.kind}] ${j.status} ×${j.attempts} — ${(j.error ?? "").slice(0, 60)}`,
-    );
-    const kb = new InlineKeyboard();
-    for (const j of jots) kb.text(`🔄 ${j.id}`, `rt:${j.id}`).row();
-    kb.text("‹ Back", "menu:root");
-    await ctx.editMessageText(`⚠️ ${jots.length} failed:\n${lines.join("\n")}`, {
-      reply_markup: withClose(kb, CLOSE),
-    });
   }
 }

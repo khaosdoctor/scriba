@@ -1,104 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AdminController } from "../controllers/admin.ts";
+import { parseWizardRef } from "../core.ts";
 import { testConfig } from "../test/config.ts";
-import { FakeSettings } from "../test/fakes.ts";
 import { MenuController } from "./menu.ts";
-
-/** A controller wired to a bot stub that only records deleteMessage calls. */
-function harness() {
-  const deleted: [number, number][] = [];
-  const bot = {
-    api: {
-      deleteMessage: async (chatId: number, msgId: number) => {
-        deleted.push([chatId, msgId]);
-      },
-    },
-  };
-  const menu = new MenuController(
-    bot as any,
-    testConfig,
-    {} as any,
-    {} as any,
-    (() => ({})) as any,
-    (async () => "") as any,
-  ) as any;
-  return { menu, deleted };
-}
-
-test("a menu message self-destructs after a minute of no taps", (testContext) => {
-  testContext.mock.timers.enable({ apis: ["setTimeout"] });
-  const { menu, deleted } = harness();
-  menu.scheduleExpiry(7, 42);
-  testContext.mock.timers.tick(59_000);
-  assert.deepEqual(deleted, []);
-  testContext.mock.timers.tick(2_000);
-  assert.deepEqual(deleted, [[7, 42]]);
-});
-
-test("each tap restarts the countdown, and closing cancels it", (testContext) => {
-  testContext.mock.timers.enable({ apis: ["setTimeout"] });
-  const { menu, deleted } = harness();
-  menu.scheduleExpiry(7, 42);
-  testContext.mock.timers.tick(50_000);
-  menu.scheduleExpiry(7, 42); // a tap
-  testContext.mock.timers.tick(50_000); // 100s since the send, 50s since the tap
-  assert.deepEqual(deleted, []);
-  menu.cancelExpiry(7, 42);
-  testContext.mock.timers.tick(120_000);
-  assert.deepEqual(deleted, []);
-});
-
-// --- nightly rating switches and time ---
-
-const { parseWizardRef, WIZARD_RATING_TIME_REF } = await import("../core.ts");
-
-/** A menu over a real settings map, with recorders for everything it sends. */
-function settingsHarness(initial: Record<string, string> = {}) {
-  const settings = new Map(Object.entries(initial));
-  const sets: [string, string][] = [];
-  const sent: { chat: number; text: string; opts: any }[] = [];
-  const bot = {
-    api: {
-      sendMessage: async (chat: number, text: string, opts: any) => {
-        sent.push({ chat, text, opts });
-        return { chat: { id: chat }, message_id: 50 };
-      },
-    },
-  };
-  const repo = new FakeSettings(settings, (key, value) =>
-    sets.push([key, value]),
-  );
-  const menu = new MenuController(
-    bot as any,
-    testConfig,
-    {} as any,
-    {} as any,
-    (() => ({ repo })) as any,
-    (async () => "") as any,
-  ) as any;
-  return { menu, settings, sets, sent };
-}
-
-/** A callback context that records answers and edits, and can be told to fail. */
-function callbackCtx(
-  over: { answerFails?: boolean; editFails?: boolean } = {},
-) {
-  const answers: (string | undefined)[] = [];
-  const edits: { text: string; opts: any }[] = [];
-  const ctx = {
-    callbackQuery: { message: { chat: { id: 1 }, message_id: 2 } },
-    answerCallbackQuery: async (answer?: { text: string }) => {
-      if (over.answerFails) throw new Error("query is too old");
-      answers.push(answer?.text);
-    },
-    editMessageText: async (text: string, opts: any) => {
-      if (over.editFails) throw new Error("message to edit not found");
-      edits.push({ text, opts });
-    },
-  };
-  return { ctx, answers, edits };
-}
 
 const buttonTexts = (kb: any) =>
   kb.inline_keyboard.map((row: any[]) => row.map((button) => button.text));
@@ -106,114 +10,6 @@ const findButton = (kb: any, data: string) =>
   kb.inline_keyboard
     .flat()
     .find((button: any) => button.callback_data === data);
-
-test("the root menu shows the switches on and the default rating time when nothing is stored", async () => {
-  const { menu } = settingsHarness();
-  const kb = await menu.rootMenu();
-  assert.equal(findButton(kb, "menu:rtsw").text, "🌙 Nightly rating: on");
-  assert.equal(findButton(kb, "menu:fusw").text, "💬 Follow-up: on");
-  assert.equal(findButton(kb, "menu:rtt").text, "🕛 Rating time: 00:00");
-  const rows = buttonTexts(kb);
-  const at = (label: string) =>
-    rows.find((row: string[]) => row.some((text) => text.includes(label)));
-  assert.equal(at("Nightly rating").length, 2);
-  assert.equal(at("Follow-up"), at("Nightly rating"));
-  assert.equal(at("Rating time").length, 1);
-});
-
-test("the root menu shows stored switches and the stored time", async () => {
-  const { menu } = settingsHarness({
-    nightlyRating: "off",
-    nightlyFollowup: "off",
-    ratingTime: "23:30",
-  });
-  const kb = await menu.rootMenu();
-  assert.equal(findButton(kb, "menu:rtsw").text, "🌙 Nightly rating: off");
-  assert.equal(findButton(kb, "menu:fusw").text, "💬 Follow-up: off");
-  assert.equal(findButton(kb, "menu:rtt").text, "🕛 Rating time: 23:30");
-});
-
-test("the rating and follow-up buttons each flip their own setting", async () => {
-  const rating = settingsHarness();
-  const ratingCallback = callbackCtx();
-  await rating.menu.handleCallback(ratingCallback.ctx, ["rtsw"]);
-  assert.deepEqual(rating.sets, [["nightlyRating", "off"]]);
-  assert.deepEqual(ratingCallback.answers, ["Nightly rating off"]);
-
-  const followup = settingsHarness();
-  const followupCallback = callbackCtx();
-  await followup.menu.handleCallback(followupCallback.ctx, ["fusw"]);
-  assert.deepEqual(followup.sets, [["nightlyFollowup", "off"]]);
-  assert.deepEqual(followupCallback.answers, ["Follow-up off"]);
-});
-
-test("a toggle redraws the root menu from the value it just wrote", async () => {
-  const { menu, settings } = settingsHarness();
-  const first = callbackCtx();
-  await menu.handleCallback(first.ctx, ["rtsw"]);
-  assert.equal(first.edits[0]?.text, "🗂 scriba control menu");
-  assert.equal(
-    findButton(first.edits[0]!.opts.reply_markup, "menu:rtsw").text,
-    "🌙 Nightly rating: off",
-  );
-
-  const second = callbackCtx();
-  await menu.handleCallback(second.ctx, ["rtsw"]);
-  assert.equal(settings.get("nightlyRating"), "on");
-  assert.deepEqual(second.answers, ["Nightly rating on"]);
-  assert.equal(
-    findButton(second.edits[0]!.opts.reply_markup, "menu:rtsw").text,
-    "🌙 Nightly rating: on",
-  );
-});
-
-test("a stored off switch flips back on", async () => {
-  const { menu, sets } = settingsHarness({ nightlyFollowup: "off" });
-  const callback = callbackCtx();
-  await menu.handleCallback(callback.ctx, ["fusw"]);
-  assert.deepEqual(sets, [["nightlyFollowup", "on"]]);
-  assert.deepEqual(callback.answers, ["Follow-up on"]);
-});
-
-test("a toggle on a menu that is gone keeps the setting and does not throw", async () => {
-  const { menu, sets } = settingsHarness();
-  const callback = callbackCtx({ editFails: true });
-  await menu.handleCallback(callback.ctx, ["fusw"]);
-  assert.deepEqual(sets, [["nightlyFollowup", "off"]]);
-  assert.deepEqual(callback.answers, ["Follow-up off"]);
-});
-
-test("an expired callback query still gets the menu redrawn after the switch flipped", async () => {
-  const { menu, sets } = settingsHarness();
-  const callback = callbackCtx({ answerFails: true });
-  await menu.handleCallback(callback.ctx, ["rtsw"]);
-  assert.deepEqual(sets, [["nightlyRating", "off"]]);
-  assert.equal(callback.edits.length, 1);
-  assert.equal(
-    findButton(callback.edits[0]!.opts.reply_markup, "menu:rtsw").text,
-    "🌙 Nightly rating: off",
-  );
-});
-
-test("a toggle survives both the ack and the redraw failing", async () => {
-  const { menu, sets } = settingsHarness();
-  const callback = callbackCtx({ answerFails: true, editFails: true });
-  await menu.handleCallback(callback.ctx, ["fusw"]);
-  assert.deepEqual(sets, [["nightlyFollowup", "off"]]);
-});
-
-test("the time button opens the time prompt and nothing else", async () => {
-  const { menu, sent } = settingsHarness();
-  const callback = callbackCtx();
-  await menu.handleCallback(callback.ctx, ["rtt"]);
-  assert.deepEqual(callback.answers, ["Answer the prompt below ↓"]);
-  assert.deepEqual(callback.edits, []);
-  assert.equal(sent.length, 1);
-  assert.equal(sent[0]?.chat, 1);
-  assert.deepEqual(sent[0]?.opts, { reply_markup: { force_reply: true } });
-  assert.ok(sent[0]?.text.includes(WIZARD_RATING_TIME_REF));
-  assert.deepEqual(parseWizardRef(sent[0]!.text), { kind: "rt" });
-});
 
 function timeReply(body: string) {
   const replies: string[] = [];
@@ -231,82 +27,8 @@ function timeReply(body: string) {
     },
   };
 }
-const PROMPT = `when? ${WIZARD_RATING_TIME_REF}`;
 
-test("a valid typed time is stored, handed to the scheduler, and confirmed with a menu button", async () => {
-  const { menu, sets } = settingsHarness();
-  const rearmed: string[] = [];
-  const scheduler = {
-    rearm: async (name: string) => void rearmed.push(name),
-  };
-  menu.setScheduler(scheduler);
-  assert.equal(menu.scheduler, scheduler);
-  const timeCall = timeReply("23:30");
-  await menu.handleWizardReply(timeCall.ctx, PROMPT);
-  assert.deepEqual(sets, [["ratingTime", "23:30"]]);
-  assert.deepEqual(rearmed, ["rating"]);
-  assert.equal(timeCall.menus[0]?.text, "🕛 nightly rating at 23:30");
-  assert.ok(findButton(timeCall.menus[0]!.opts.reply_markup, "menu:root"));
-});
-
-test("typed times are stored as normalised HH:MM", async () => {
-  for (const [body, stored] of [
-    ["9:30", "09:30"],
-    [" 09:30 ", "09:30"],
-    ["0:00", "00:00"],
-    ["00:00", "00:00"],
-    ["23:59", "23:59"],
-    ["12:30\n", "12:30"], // a trailing newline from a paste is trimmed, not rejected
-  ]) {
-    const { menu, sets } = settingsHarness();
-    await menu.handleWizardReply(timeReply(body!).ctx, PROMPT);
-    assert.deepEqual(sets, [["ratingTime", stored]], body);
-  }
-});
-
-test("an unusable typed time gets the format message and changes nothing", async () => {
-  for (const body of [
-    "",
-    "   ",
-    "noon",
-    "24:00",
-    "12:60",
-    "12:5",
-    "1230",
-    "12.30",
-    "12:30pm",
-    "७:३०",
-    "12：30",
-    "x".repeat(5000),
-    "🕛",
-    "12:30 13:30",
-    "-1:30",
-  ]) {
-    const { menu, sets } = settingsHarness();
-    const rearmed: string[] = [];
-    menu.setScheduler({
-      rearm: async (name: string) => void rearmed.push(name),
-    });
-    const timeCall = timeReply(body);
-    await menu.handleWizardReply(timeCall.ctx, PROMPT);
-    assert.deepEqual(
-      timeCall.replies,
-      ["That isn't a time. Use HH:MM in 24-hour time, like 23:30 or 00:00."],
-      JSON.stringify(body.slice(0, 20)),
-    );
-    assert.deepEqual([sets, rearmed, timeCall.menus], [[], [], []]);
-  }
-});
-
-test("a typed time is stored even before a scheduler is wired", async () => {
-  const { menu, sets } = settingsHarness();
-  const timeCall = timeReply("22:00");
-  await menu.handleWizardReply(timeCall.ctx, PROMPT);
-  assert.deepEqual(sets, [["ratingTime", "22:00"]]);
-  assert.equal(timeCall.menus.length, 1);
-});
-
-// --- link wizard, settings screens, jots browser, maintenance ---
+// --- link wizard and jots browser ---
 
 type Pair = { surface: string; note: string };
 
@@ -317,7 +39,6 @@ function wizardHarness(
     stopwords?: string[];
     rejections?: Pair[];
     pairs?: Pair[];
-    settings?: Record<string, string>;
     aliases?: { note: string; alias: string }[];
     jots?: any[];
   } = {},
@@ -329,14 +50,10 @@ function wizardHarness(
     stopwords: [...(init.stopwords ?? [])],
     rejections: [...(init.rejections ?? [])],
     pairs: [...(init.pairs ?? [])],
-    settings: new Map(Object.entries(init.settings ?? {})),
   };
   const without = (list: Pair[], surface: string, note: string) =>
     list.filter((entry) => entry.surface !== surface || entry.note !== note);
   const repo = {
-    ...new FakeSettings(state.settings, (key, value) =>
-      events.push(`set ${key}=${value}`),
-    ),
     stopwordList: async () => [...state.stopwords],
     addStopword: async (word: string) => {
       events.push(`addStopword ${word}`);
@@ -365,33 +82,16 @@ function wizardHarness(
     },
     getJot: async (id: string) => jots.find((storedJot) => storedJot.id === id),
     recentJots: async () => jots,
-    failedJots: async () =>
-      jots.filter((storedJot) => storedJot.status === "failed"),
     resetForRetry: async (id: string) => void events.push(`reset ${id}`),
     mapMessage: async (messageId: number, id: string) =>
       void events.push(`map ${messageId} ${id}`),
-    resetFailed: async (all: boolean) => {
-      events.push(`resetFailed all=${all}`);
-      return 2;
-    },
-    resetProcessing: async () => 2,
   };
   const links = {
     list: () => init.aliases ?? [],
     stats: () => ({ enabled: true, aliases: 3, files: 2 }),
   };
   const queue = {
-    depth: 3,
     add: (ids: string[]) => events.push(`queue ${ids.join(",")}`),
-    flush: async () => void events.push("flush"),
-  };
-  const processing = { retrySweep: async () => void events.push("sweep") };
-  const deps = {
-    repo,
-    links,
-    enricher: { setModel: (model: string) => events.push(`enricher ${model}`) },
-    queue,
-    admin: new AdminController({ repo, queue, processing, links } as never),
   };
   const bot = {
     api: {
@@ -404,16 +104,15 @@ function wizardHarness(
   const menu = new MenuController(
     bot as any,
     testConfig,
-    {} as any,
-    {} as any,
-    (() => deps) as any,
-    (async (jot: any) => {
+    { touch: () => {} } as any,
+    () => ({ repo, links, queue }) as any,
+    async (jot: any) => {
       events.push(`deleteJot ${jot.id}`);
       return "🗑 deleted";
-    }) as any,
+    },
   ) as any;
 
-  async function tap(data: string, over: { deleteFails?: boolean } = {}) {
+  async function tap(data: string) {
     const answers: (string | undefined)[] = [];
     const edits: { text: string; kb: any }[] = [];
     const replies: string[] = [];
@@ -429,10 +128,6 @@ function wizardHarness(
         events.push("edit");
       },
       reply: async (text: string) => void replies.push(text),
-      deleteMessage: async () => {
-        if (over.deleteFails) throw new Error("message can't be deleted");
-        events.push("delete");
-      },
     };
     await menu.handleCallback(ctx, data.split(":"));
     const last = edits.at(-1);
@@ -834,178 +529,6 @@ test("each link-rule button sends a force-reply prompt carrying its marker", asy
   });
 });
 
-test("the model picker marks the current model and a pick stores it, telling the enricher only for enrichment", async () => {
-  const wizard = wizardHarness({
-    settings: { enrichModel: "claude-sonnet-5" },
-  });
-  const picker = await wizard.tap("em");
-  assert.equal(picker.text, "🧠 Enrichment model\n\nCurrent: claude-sonnet-5");
-  assert.deepEqual(buttonTexts(picker.kb), [
-    ["haiku 4.5"],
-    ["✅ sonnet 5"],
-    ["opus 5"],
-    ["✍️ Type a model"],
-    ["‹ Back"],
-    ["✖ Close"],
-  ]);
-  assert.ok(findButton(picker.kb, "menu:ems:claude-opus-5"));
-
-  wizard.take();
-  const pick = await wizard.tap("ems:claude-opus-5");
-  assert.deepEqual(wizard.take(), [
-    "set enrichModel=claude-opus-5",
-    "enricher claude-opus-5",
-    "ack enrichment: opus 5",
-    "edit",
-  ]);
-  assert.equal(pick.kb.inline_keyboard[2][0].text, "✅ opus 5");
-
-  const vf = await wizard.tap("vfs:claude-haiku-4-5");
-  assert.deepEqual(wizard.take(), [
-    "set voiceFixModel=claude-haiku-4-5",
-    "ack voice fix: haiku 4.5",
-    "edit",
-  ]);
-  assert.equal(vf.text, "🎤 Voice fix model\n\nCurrent: claude-haiku-4-5");
-
-  assert.deepEqual((await wizard.tap("ems")).answers, ["expired"]);
-  assert.deepEqual((await wizard.tap("vfs:  ")).answers, ["expired"]);
-  assert.deepEqual(wizard.take(), ["ack expired", "ack expired"]);
-});
-
-test("a typed model id is trimmed and stored, and the custom-model buttons send their prompts", async () => {
-  const wizard = wizardHarness();
-  const em = await wizard.reply("(md:em)", " claude-sonnet-5-20260101 ");
-  assert.deepEqual(wizard.take(), [
-    "set enrichModel=claude-sonnet-5-20260101",
-    "enricher claude-sonnet-5-20260101",
-  ]);
-  assert.equal(
-    em.menus[0]?.text,
-    "🧠 enrichment model: claude-sonnet-5-20260101",
-  );
-  assert.ok(findButton(em.menus[0]!.opts.reply_markup, "menu:em"));
-
-  const vf = await wizard.reply("(md:vfm)", "claude-haiku-4-5");
-  assert.deepEqual(wizard.take(), ["set voiceFixModel=claude-haiku-4-5"]);
-  assert.equal(vf.menus[0]?.text, "🧠 voice fix model: claude-haiku-4-5");
-  assert.ok(findButton(vf.menus[0]!.opts.reply_markup, "menu:vfm"));
-
-  const empty = await wizard.reply("(md:em)", "  ");
-  assert.deepEqual(empty.replies, ["Send a model ID (e.g. claude-sonnet-5)."]);
-
-  await wizard.tap("emc");
-  assert.ok(
-    wizard.sent.at(-1)!.text.includes("model ID for enrichment") &&
-      wizard.sent.at(-1)!.text.includes("(md:em)"),
-  );
-  await wizard.tap("vfc");
-  assert.ok(
-    wizard.sent.at(-1)!.text.includes("model ID for voice fix") &&
-      wizard.sent.at(-1)!.text.includes("(md:vfm)"),
-  );
-});
-
-test("the entry-size screen marks the current preset, and the default applies when nothing is stored", async () => {
-  const stored = await wizardHarness({
-    settings: { entryMaxChars: "560" },
-  }).tap("esz");
-  assert.deepEqual(buttonTexts(stored.kb), [
-    ["140 chars"],
-    ["280 chars"],
-    ["✅ 560 chars"],
-    ["1000 chars"],
-    ["Don't split"],
-    ["✍️ Type a size"],
-    ["‹ Back"],
-    ["✖ Close"],
-  ]);
-  assert.ok(
-    stored.text?.includes(
-      "Entries longer than 560 characters are split into several journal lines.",
-    ),
-  );
-
-  const off = await wizardHarness({ settings: { entryMaxChars: "0" } }).tap(
-    "esz",
-  );
-  assert.ok(off.text?.includes("Splitting is off"));
-  assert.equal(buttonTexts(off.kb)[4]![0], "✅ Don't split");
-
-  const unset = await wizardHarness().tap("esz");
-  assert.equal(buttonTexts(unset.kb)[1]![0], "✅ 280 chars");
-});
-
-test("an entry-size tap answers first, stores the number and redraws; a bad payload expires", async () => {
-  const wizard = wizardHarness();
-  const tapResult = await wizard.tap("ess:1000");
-  assert.deepEqual(wizard.take(), [
-    "ack 1000 chars",
-    "set entryMaxChars=1000",
-    "edit",
-  ]);
-  assert.equal(buttonTexts(tapResult.kb)[3]![0], "✅ 1000 chars");
-
-  assert.deepEqual((await wizard.tap("ess:0")).answers, ["splitting off"]);
-  wizard.take();
-  for (const bad of ["ess", "ess:abc", "ess:-5", "ess:2.5"]) {
-    assert.deepEqual((await wizard.tap(bad)).answers, ["expired"], bad);
-  }
-  assert.deepEqual(wizard.take(), Array(4).fill("ack expired"));
-});
-
-test("a typed entry size is validated, 'off' stops splitting, and the prompt button carries its marker", async () => {
-  const wizard = wizardHarness();
-  const on = await wizard.reply("(es:n)", "500");
-  assert.deepEqual(wizard.take(), ["set entryMaxChars=500"]);
-  assert.equal(on.menus[0]?.text, "✂️ entries split above 500 characters");
-  assert.ok(findButton(on.menus[0]!.opts.reply_markup, "menu:esz"));
-
-  const off = await wizard.reply("(es:n)", "off");
-  assert.deepEqual(wizard.take(), ["set entryMaxChars=0"]);
-  assert.equal(
-    off.menus[0]?.text,
-    "✂️ splitting off \u{2014} entries stay on one line",
-  );
-
-  for (const bad of ["39", "4001", "lots", ""]) {
-    const result = await wizard.reply("(es:n)", bad);
-    assert.deepEqual(
-      result.replies,
-      ['Give me a whole number between 40 and 4000, or "off".'],
-      bad,
-    );
-  }
-  assert.deepEqual(wizard.take(), []);
-
-  await wizard.tap("esc");
-  assert.ok(wizard.sent.at(-1)!.text.includes("(es:n)"));
-});
-
-test("the voice-fix button toggles the stored value, defaulting to on from unset", async () => {
-  const wizard = wizardHarness();
-  const first = await wizard.tap("vfix");
-  assert.deepEqual(wizard.take(), [
-    "set fixVoiceTranscript=on",
-    "ack Voice fix on",
-    "edit",
-  ]);
-  assert.equal(findButton(first.kb, "menu:vfix").text, "🔧 Voice fix: on");
-  await wizard.tap("vfix");
-  assert.equal(wizard.state.settings.get("fixVoiceTranscript"), "off");
-});
-
-test("closing deletes the menu message, or clears its buttons when the delete fails", async () => {
-  const wizard = wizardHarness();
-  const closed = await wizard.tap("close");
-  assert.deepEqual(wizard.take(), ["ack", "delete"]);
-  assert.deepEqual(closed.edits, []);
-
-  const stuck = await wizard.tap("close", { deleteFails: true });
-  assert.equal(stuck.text, "🗂 Menu closed.");
-  assert.deepEqual(stuck.kb.inline_keyboard.flat(), []);
-});
-
 test("the jots browser lists recent jots, shows a detail card and handles a missing id", async () => {
   const jot = {
     id: "abc12345",
@@ -1082,80 +605,8 @@ test("retry resets and queues before it answers, delete answers before the note 
   assert.deepEqual(wizard.take(), Array(3).fill("ack gone"));
 });
 
-test("the failed list shows each failure with a retry button, and says so when none failed", async () => {
-  const failed = {
-    id: "f1",
-    kind: "text",
-    status: "failed",
-    attempts: 3,
-    error: "boom",
-  };
-  const tapResult = await wizardHarness({ jots: [failed] }).tap("failed");
-  assert.equal(
-    tapResult.text,
-    "⚠️ 1 failed:\nf1 [text] failed ×3 \u{2014} boom",
-  );
-  assert.deepEqual(callbacks(tapResult.kb), [
-    "rt:f1",
-    "menu:root",
-    "menu:close",
-  ]);
-  assert.equal(
-    (await wizardHarness().tap("failed")).text,
-    "✅ nothing failed.",
-  );
-});
-
-test("maintenance actions answer first, run their command, and show the result over the maintenance menu", async () => {
+test("an unknown action is answered silently", async () => {
   const wizard = wizardHarness();
-  const screen = await wizard.tap("maint");
-  assert.equal(screen.text, "🛠 Maintenance");
-  assert.deepEqual(buttonTexts(screen.kb), [
-    ["⚡ Flush", "🧹 Sweep"],
-    ["🔧 Unstick", "🔄 Retry all"],
-    ["‹ Back"],
-    ["✖ Close"],
-  ]);
-
-  wizard.take();
-  const flush = await wizard.tap("flush");
-  assert.deepEqual(wizard.take(), ["ack", "flush", "edit"]);
-  assert.equal(flush.text, "⚡ flushed (3 queued)");
-  assert.ok(findButton(flush.kb, "menu:retryall"));
-  assert.equal((await wizard.tap("sweep")).text, "🧹 sweep done");
-  assert.equal((await wizard.tap("unstick")).text, "🔧 unstuck 2 jots");
-});
-
-test("retry-all asks for confirmation, then requeues failed and abandoned jots", async () => {
-  const wizard = wizardHarness();
-  const ask = await wizard.tap("retryall");
-  assert.equal(ask.text, "Requeue every failed jot?");
-  assert.deepEqual(callbacks(ask.kb).slice(0, 2), [
-    "menu:retryally",
-    "menu:maint",
-  ]);
-  assert.deepEqual(wizard.take(), ["ack", "edit"]);
-
-  const done = await wizard.tap("retryally");
-  assert.deepEqual(wizard.take(), [
-    "ack",
-    "resetFailed all=true",
-    "sweep",
-    "edit",
-  ]);
-  assert.equal(done.text, "🔄 requeued 2 jots (incl. abandoned)");
-});
-
-test("the stats button offers a range picker, and an unknown action is answered silently", async () => {
-  const wizard = wizardHarness();
-  const picker = await wizard.tap("stats");
-  assert.equal(picker.text, "📈 Stats range:");
-  assert.deepEqual(callbacks(picker.kb).slice(0, 3), [
-    "menu:stats:today",
-    "menu:stats:week",
-    "menu:stats:all",
-  ]);
-  wizard.take();
   const unknown = await wizard.tap("nope");
   assert.deepEqual(
     [unknown.answers, unknown.edits, wizard.take()],
