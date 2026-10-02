@@ -1,0 +1,46 @@
+import { GroqTranscriber } from "../data/connections/groq.ts";
+import { ParakeetTranscriber } from "../data/connections/parakeet.ts";
+import { logger } from "../libs/log.ts";
+
+const log = logger("transcribe");
+
+export interface Transcriber {
+  transcribe(bytes: Uint8Array, ext: string): Promise<string>;
+}
+
+export class FallbackTranscriber implements Transcriber {
+  constructor(private backends: { name: string; t: Transcriber }[]) {}
+
+  get chain(): string {
+    return this.backends.map((b) => b.name).join(" → ");
+  }
+
+  async transcribe(bytes: Uint8Array, ext: string): Promise<string> {
+    let lastErr: unknown = new Error("no transcriber configured");
+    for (const { name, t } of this.backends) {
+      try {
+        return await t.transcribe(bytes, ext);
+      } catch (err) {
+        lastErr = err;
+        log.warn({ err, backend: name }, "transcriber failed, trying next");
+      }
+    }
+    throw lastErr;
+  }
+}
+
+export function buildTranscriber(cfg: {
+  groqApiKey: string;
+  parakeetUrl: string;
+}): FallbackTranscriber {
+  const backends = [];
+  if (cfg.groqApiKey)
+    backends.push({ name: "groq", t: new GroqTranscriber(cfg.groqApiKey) });
+  backends.push({
+    name: "parakeet",
+    t: new ParakeetTranscriber(cfg.parakeetUrl),
+  });
+  const out = new FallbackTranscriber(backends);
+  log.info({ chain: out.chain }, "transcriber ready");
+  return out;
+}

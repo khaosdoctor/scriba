@@ -1,31 +1,12 @@
 import dns from "node:dns";
 import { readFileSync } from "node:fs";
 import http from "node:http";
-import { ScribaBot } from "./bot.ts";
-import { config } from "./config.ts";
-import {
-  ENRICH_MODEL_KEY,
-  formatDeployNotice,
-  OPENCODE_BASE_URL,
-  RATING_TIME_KEY,
-  ratingTime,
-  VOICE_FIX_MODEL_KEY,
-} from "./core.ts";
-import { Repository } from "./db.ts";
-import { logger } from "./log.ts";
-import { HealthMonitor, upstreams } from "./runtime/health.ts";
-import { JotProcessor } from "./runtime/processor.ts";
-import { FlushQueue } from "./runtime/queue.ts";
-import { Scheduler } from "./runtime/scheduler.ts";
-import { Enricher, type EnrichFallback } from "./services/enrich.ts";
-import { GithubReleases } from "./services/github.ts";
-import { LinkIndex } from "./services/links.ts";
-import { ObsidianClient } from "./services/obsidian.ts";
-import { buildTranscriber } from "./services/transcribe.ts";
+import { createScriba } from "./app.ts";
+import { type Config, loadConfig } from "./config.ts";
+import { logger } from "./libs/log.ts";
 
 const log = logger("main");
 
-// The homelab network has no IPv6 route, so an AAAA answer is a dead end: try A first.
 dns.setDefaultResultOrder("ipv4first");
 
 const { version } = JSON.parse(
@@ -33,8 +14,20 @@ const { version } = JSON.parse(
 );
 const sha = process.env.GIT_SHA ?? "unknown";
 
+function readConfig(): Config {
+  try {
+    return loadConfig(process.env);
+  } catch (err) {
+    logger("config").error(
+      { issues: err instanceof Error ? err.message : String(err) },
+      "invalid config",
+    );
+    process.exit(1);
+  }
+}
+
 async function main(): Promise<void> {
-  const startedAt = Date.now();
+  const config = readConfig();
   log.info({ version, sha }, "scriba boot");
   log.info(
     {
@@ -45,147 +38,8 @@ async function main(): Promise<void> {
     },
     "scriba starting",
   );
-  // 1. config + open DB
-  const repo = await Repository.open(config.dbPath);
-  log.debug("repository open, migrations applied");
+  const app = await createScriba(config, { version, sha });
 
-  // 2. crash recovery
-  const unstuck = await repo.resetProcessing(); // crash recovery: unstick jots claimed by a dead run
-  log.info({ requeued: unstuck }, "crash recovery done");
-
-  // 2b. Seed DB-backed model settings from env vars (first boot only — the DB
-  // value wins from then on, changed at runtime via /menu).
-  if (!(await repo.getSetting(ENRICH_MODEL_KEY)))
-    await repo.setSetting(ENRICH_MODEL_KEY, config.enrich.model);
-  if (!(await repo.getSetting(VOICE_FIX_MODEL_KEY)))
-    await repo.setSetting(VOICE_FIX_MODEL_KEY, config.voiceFix.model);
-
-  // 3. build services
-  const obsidian = new ObsidianClient(config.obsidian);
-  const transcriber = buildTranscriber(config.transcription);
-  const enrichModel = await repo.getSetting(ENRICH_MODEL_KEY);
-  const fallbacks: EnrichFallback[] = [];
-  if (config.enrich.groqApiKey)
-    fallbacks.push({
-      apiKey: config.enrich.groqApiKey,
-      model: config.enrich.fallbackModel,
-      name: "Groq",
-    });
-  if (config.enrich.opencodeApiKey)
-    fallbacks.push({
-      apiKey: config.enrich.opencodeApiKey,
-      model: config.enrich.opencodeModel,
-      baseUrl: OPENCODE_BASE_URL,
-      name: "OpenCode",
-    });
-  const enricher = new Enricher(
-    enrichModel ?? config.enrich.model,
-    undefined,
-    fallbacks,
-    undefined,
-    config.enrich.backupModel,
-    config.enrich.timeoutMs,
-  );
-  log.info(
-    {
-      model: enrichModel ?? config.enrich.model,
-      backup: config.enrich.backupModel,
-      fallbacks: fallbacks.map((f) => f.name ?? f.model),
-    },
-    fallbacks.length
-      ? `enricher ready with ${fallbacks.length} chat fallback(s)`
-      : "enricher ready — no chat fallbacks, jots post un-enriched when both Claude models are unavailable",
-  );
-  const links = new LinkIndex(config.vaultPath);
-  links.start();
-  const github = new GithubReleases();
-
-  // 4. wire bot ⇄ processor ⇄ queue
-  const bot = new ScribaBot(
-    repo,
-    obsidian,
-    enricher,
-    transcriber,
-    links,
-    github,
-    version,
-    sha,
-    startedAt,
-  );
-  const processor = new JotProcessor(
-    repo,
-    obsidian,
-    transcriber,
-    enricher,
-    links,
-    bot,
-  );
-  bot.setProcessor(processor);
-  // Warn in Telegram when enrichment switches models (primary unavailable ⇄
-  // recovered). Fires once per transition, not per jot. Late-wired here because the
-  // bot exists now. The failure reason (usage exhausted, overload, network blip, bad
-  // token, ...) is surfaced inline so the cause is visible without digging through logs.
-  enricher.setSwitchNotifier((to, model, err) => {
-    const reason = err instanceof Error ? err.message : String(err);
-    switch (to) {
-      case "fallback":
-        return bot.notify(
-          `⚠️ Enrichment switched to fallback model ${model}. Quality may drop until the chosen model is back.\nReason: ${reason}`,
-        );
-      case "primary":
-        return bot.notify(`✅ Enrichment is back on ${model}.`);
-      case "down":
-        return bot.notify(
-          `⏸ Every enrichment model is down, so new jots are held in place. They go into your journal on their own once one is back.\nReason: ${reason}`,
-        );
-      default:
-        return to satisfies never;
-    }
-  });
-  const queue = new FlushQueue({
-    idleMs: config.flush.idleMs,
-    maxBatch: config.flush.maxBatch,
-    maxWaitMs: config.flush.maxWaitMs,
-    onFlush: (ids) => processor.processBatch(ids),
-  });
-  bot.setQueue(queue);
-
-  // 5. scheduler + retry sweep
-  const scheduler = new Scheduler(
-    repo,
-    processor,
-    (t) => bot.notify(t),
-    (d) => bot.promptRating(d),
-    (d) => bot.promptHabits(d),
-    () => bot.promptTaskSummary(),
-  );
-  scheduler.setRatingTime(
-    ratingTime(await repo.getSetting(RATING_TIME_KEY), config.ratingTime),
-  );
-  bot.setScheduler(scheduler);
-  scheduler.start();
-
-  void processor.retrySweep(); // pick up anything left over from a previous run
-
-  // 5b. connection health: probe every upstream, tell the owner when one goes down or
-  // comes back. Probes are plain GETs to a host or a /models listing, never a call that
-  // generates anything.
-  const health = new HealthMonitor(
-    upstreams(
-      {
-        groqApiKey: config.enrich.groqApiKey,
-        opencodeApiKey: config.enrich.opencodeApiKey,
-        obsidianUrl: config.obsidian.url,
-        parakeetUrl: config.transcription.parakeetUrl,
-      },
-      obsidian.dispatcher,
-    ),
-    (t) => bot.notify(t),
-  );
-  bot.setHealth(health);
-  health.start();
-
-  // 6. health server
   // Long polling needs no inbound webhook; this server exists only for a health check.
   const server = http.createServer((req, res) => {
     if (req.url === "/health") {
@@ -198,44 +52,12 @@ async function main(): Promise<void> {
     log.info({ port: config.telegram.port }, "health endpoint listening"),
   );
 
-  // 7. start polling
-  await bot.start();
-  log.info("scriba ready");
+  await app.start();
 
-  // Notify only on an actual new deploy (version or sha changed since the last boot we
-  // recorded), so a plain process/container restart on the same image stays quiet.
-  const deployId = `${version}@${sha}`;
-  const lastDeployId = await repo.getSetting("deployId");
-  if (lastDeployId !== deployId) {
-    log.info({ deployId, lastDeployId }, "new deploy detected — notifying");
-    // Best-effort: the deploy notice still sends without "what's new" if the GitHub
-    // lookup fails (network blip, release not published yet, rate limit).
-    const releaseNote = await github.byVersion(version).catch((err) => {
-      log.warn(
-        { err, version },
-        "release note lookup failed for deploy notice",
-      );
-      return null;
-    });
-    // Only record the deploy once the notice actually sends — a transient Telegram
-    // outage should retry on the next boot rather than being silently swallowed.
-    try {
-      await bot.notify(formatDeployNotice(version, sha, releaseNote));
-      await repo.setSetting("deployId", deployId);
-    } catch (err) {
-      log.warn({ err }, "deploy notice failed to send — will retry next boot");
-    }
-  }
-
-  // 8. shutdown
   const shutdown = async (signal: string) => {
     log.info({ signal }, "shutting down");
-    await bot.stop();
+    await app.stop();
     server.close();
-    scheduler.stop();
-    health.stop();
-    links.stop();
-    await repo.close();
     log.info("shutdown complete");
     process.exit(0);
   };

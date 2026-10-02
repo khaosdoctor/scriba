@@ -63,9 +63,9 @@ A jot (a single journal entry) is written to the note **twice**. First as an ins
 ```mermaid
 sequenceDiagram
     actor U as You (Telegram)
-    participant B as ScribaBot
+    participant B as Telegram views<br/>(JotService / EditService)
     participant Q as FlushQueue
-    participant P as JotProcessor
+    participant P as ProcessingService
     participant T as Transcriber<br/>(Groq / Parakeet)
     participant E as Enricher<br/>(Claude Agent)
     participant O as Obsidian<br/>(Local REST API)
@@ -87,10 +87,10 @@ sequenceDiagram
         E-->>P: enriched text + ambiguous links
     end
     P->>O: replace "^id" line with the final entry
-    P->>B: onJotDone → edit status message, react 👌, apply queued edits
+    P->>P: react 👌, edit status message, apply edits queued while processing
 
     opt ambiguous link
-        B->>U: "Link X → [[Note]]?" (Yes / No)
+        P->>U: "Link X → [[Note]]?" (Yes / No)
         U->>B: choice
         B->>O: apply link (Yes), or remember the "no" forever
     end
@@ -112,19 +112,22 @@ flowchart LR
 
 ## Environment
 
-Every variable is in [`.env.example`](./.env.example), with a comment explaining it. Four are required (`TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `CLAUDE_CODE_OAUTH_TOKEN`, `OBSIDIAN_API_KEY`), and the rest have working defaults.
+Most variables are in [`.env.example`](./.env.example), with a comment explaining each. [`src/config.ts`](./src/config.ts) validates the app's own settings and holds their defaults, and a few are read elsewhere: `CLAUDE_CODE_OAUTH_TOKEN` by the Claude Agent SDK, `LOG_LEVEL` and `LOG_JSON` by the logger, and `GIT_SHA` at boot. Four are required (`TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `CLAUDE_CODE_OAUTH_TOKEN`, `OBSIDIAN_API_KEY`), and the rest have working defaults.
 
 ## Develop
 
-You can run it without Docker:
+You can run it without Docker. [mise](https://mise.jdx.dev) pins Node 24 in `mise.toml`. The app reads its settings from the environment and never loads `.env` itself (only Docker Compose does), so the run command passes the file through Node's `--env-file`:
 
 ```sh
-npm install     # Node 24, builds the better-sqlite3 addon
-cp .env.example .env
-npm run migrate # apply schema
-npm run dev     # watch mode
-npm test        # core logic
+npm install            # Node 24, builds the better-sqlite3 addon
+cp .env.example .env   # then fill in the four required values
+node --env-file=.env --watch --import tsx src/index.ts   # watch mode, applies the schema at boot
+npm test               # the whole suite
+npm run test:coverage  # the suite with the coverage floors CI enforces
+npm run typecheck
 ```
+
+How the code is laid out, and the rules for changing it, are in [AGENTS.md](./AGENTS.md).
 
 ## License
 

@@ -56,4 +56,5 @@ jobs:
 
       - run: npm ci
 
-      - run: npm test
+      - name: tests
+        run: npm run test:coverage

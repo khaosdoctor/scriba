@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  Enricher,
-  type GroqChatFn,
-  ModelsDownError,
-  type QueryFn,
-} from "./enrich.ts";
+import type { GroqChatFn } from "../data/connections/groq.ts";
+import { Enricher, ModelsDownError, type QueryFn } from "./enrich.ts";
 
 type Msg =
   | {
@@ -273,6 +269,19 @@ test("run passes the model to the SDK only when one is set", async () => {
   assert.equal("model" in noModel.calls[0]!.options, false);
 });
 
+test("the model is the caller's alone: AGENT_MODEL in the environment is never read here", async () => {
+  const saved = process.env.AGENT_MODEL;
+  process.env.AGENT_MODEL = "claude-from-env";
+  try {
+    const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
+    await new Enricher(undefined, fn).enrich({ text: "x", candidates: [] });
+    assert.equal("model" in calls[0]!.options, false);
+  } finally {
+    delete process.env.AGENT_MODEL;
+    if (saved !== undefined) process.env.AGENT_MODEL = saved;
+  }
+});
+
 test("describeImage returns a trimmed caption", async () => {
   const { fn } = fakeQuery([assistantText("  a cat on a couch  ")]);
   const out = await new Enricher(undefined, fn).describeImage(
@@ -373,16 +382,19 @@ function flakyQuery(failFirst: number, text: string): QueryFn {
 
 test("warns once when switching to the fallback and once when usage recovers", async () => {
   const groq = fakeGroq('{"text":"free","ambiguous":[]}');
+  const switches: { to: string; model: string; err?: unknown }[] = [];
   const enricher = new Enricher(
     "claude-haiku-4-5",
     flakyQuery(2, '{"text":"ok","ambiguous":[]}'),
     [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
     groq.fn,
+    undefined,
+    undefined,
+    undefined,
+    (to, model, err) => {
+      switches.push({ to, model, err });
+    },
   );
-  const switches: { to: string; model: string; err?: unknown }[] = [];
-  enricher.setSwitchNotifier((to, model, err) => {
-    switches.push({ to, model, err });
-  });
   await enricher.enrich({ text: "a", candidates: [] }); // fail → switch to fallback
   await enricher.enrich({ text: "b", candidates: [] }); // fail → already on fallback, no switch
   await enricher.enrich({ text: "c", candidates: [] }); // SDK ok → switch back to primary
@@ -420,17 +432,19 @@ test("chain runs haiku → sonnet → groq, each only when the one before fails"
   const down = new Set(["claude-haiku-4-5"]);
   const q = modelQuery(down, '{"text":"from claude","ambiguous":[]}');
   const groq = fakeGroq('{"text":"from groq","ambiguous":[]}');
+  const switches: string[] = [];
   const enricher = new Enricher(
     "claude-haiku-4-5",
     q.fn,
     [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
     groq.fn,
     "claude-sonnet-5",
+    undefined,
+    undefined,
+    (to, model) => {
+      switches.push(`${to}:${model}`);
+    },
   );
-  const switches: string[] = [];
-  enricher.setSwitchNotifier((to, model) => {
-    switches.push(`${to}:${model}`);
-  });
 
   // haiku down → sonnet answers
   const a = await enricher.enrich({ text: "a", candidates: [] });
@@ -650,6 +664,7 @@ test("chain tries the second chat fallback when the first one fails", async () =
       usage: { input: 3, output: 4 },
     };
   };
+  const switches: string[] = [];
   const enricher = new Enricher(
     "claude-haiku-4-5",
     failQuery(),
@@ -663,11 +678,13 @@ test("chain tries the second chat fallback when the first one fails", async () =
       },
     ],
     chatFn,
+    undefined,
+    undefined,
+    undefined,
+    (to, model) => {
+      switches.push(`${to}:${model}`);
+    },
   );
-  const switches: string[] = [];
-  enricher.setSwitchNotifier((to, model) => {
-    switches.push(`${to}:${model}`);
-  });
   const out = await enricher.enrich({ text: "a", candidates: [] });
   assert.equal(out.text, "from opencode");
   assert.equal(calls.length, 2);
@@ -751,14 +768,6 @@ test("structured output without til, or with til false, is a valid answer that i
     assert.equal(out.til, false);
     assert.equal(out.text, "a");
   }
-});
-
-test("the structured-output schema declares til as a required boolean", async () => {
-  const { calls } = await structuredTil({ text: "a", ambiguous: [] });
-  const schema = calls[0]!.options.outputFormat.schema;
-  assert.deepEqual(schema.properties.til, { type: "boolean" });
-  assert.ok(schema.required.includes("til"));
-  assert.equal(schema.additionalProperties, false);
 });
 
 test("a fenced fallback answer still yields til", async () => {
@@ -920,10 +929,10 @@ test("every step down: the chain throws ModelsDownError once and says so once", 
     undefined,
     15_000,
     () => t.now,
+    (to) => {
+      notices.push(to);
+    },
   );
-  enricher.setSwitchNotifier((to) => {
-    notices.push(to);
-  });
   for (let i = 0; i < 2; i++)
     await assert.rejects(enricher.enrich({ text: "x", candidates: [] }));
   assert.equal(enricher.available(), true);
@@ -956,10 +965,12 @@ test("the switch notice carries the error that moved it down the chain", async (
     [],
     undefined,
     "claude-sonnet-5",
+    undefined,
+    undefined,
+    (_to, _model, err) => {
+      errs.push(err);
+    },
   );
-  enricher.setSwitchNotifier((_to, _model, err) => {
-    errs.push(err);
-  });
   await enricher.enrich({ text: "x", candidates: [] });
   assert.equal((errs[0] as Error).message, "usage limit reached");
 });
@@ -1021,4 +1032,76 @@ test("an API error reported as a success result moves down the chain", async () 
     groq.fn,
   ).enrich({ text: "x", candidates: [] });
   assert.equal(out.text, "rescued");
+});
+
+const taskProperties = {
+  description: { type: "string" },
+  start: { type: "string" },
+  due: { type: "string" },
+  type: { type: "string", enum: ["work", "personal"] },
+};
+
+test("the SDK receives these exact output schemas for enrichment and task extraction", async () => {
+  const enrich = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      structured_output: { text: "a", ambiguous: [], tasks: [], til: false },
+    },
+  ]);
+  await new Enricher(undefined, enrich.fn).enrich({
+    text: "a",
+    candidates: [],
+  });
+  assert.deepEqual(enrich.calls[0]!.options.outputFormat, {
+    type: "json_schema",
+    schema: {
+      type: "object",
+      properties: {
+        text: { type: "string" },
+        ambiguous: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              surface: { type: "string" },
+              note: { type: "string" },
+            },
+            required: ["surface", "note"],
+            additionalProperties: false,
+          },
+        },
+        tasks: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: taskProperties,
+            required: ["description"],
+            additionalProperties: false,
+          },
+        },
+        til: { type: "boolean" },
+      },
+      required: ["text", "ambiguous", "tasks", "til"],
+      additionalProperties: false,
+    },
+  });
+
+  const task = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      structured_output: { description: "d", type: "personal" },
+    },
+  ]);
+  await new Enricher(undefined, task.fn).extractTask("d");
+  assert.deepEqual(task.calls[0]!.options.outputFormat, {
+    type: "json_schema",
+    schema: {
+      type: "object",
+      properties: taskProperties,
+      required: ["description", "type"],
+      additionalProperties: false,
+    },
+  });
 });
