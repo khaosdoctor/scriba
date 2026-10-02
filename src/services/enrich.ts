@@ -104,7 +104,7 @@ const DOWN = -1;
  *  model, or every step being down at once. */
 export type SwitchTarget = "fallback" | "primary" | "down";
 
-type SwitchNotifier = (
+export type SwitchNotifier = (
   to: SwitchTarget,
   model: string,
   err?: unknown,
@@ -194,7 +194,6 @@ export class Enricher {
   // Which step of the chain the last call ran on (0 = the chosen model). The user is
   // warned only when it changes: once on the way down, once on recovery, not per jot.
   private tier = 0;
-  private notifySwitch?: SwitchNotifier;
   // One breaker per step, keyed by model/fallback name, so a step that keeps timing out
   // or erroring is skipped outright instead of costing every jot a wait on the way past.
   private breakers = new Map<string, CircuitBreaker>();
@@ -209,6 +208,8 @@ export class Enricher {
     // Hard cap on one model call. A call that hangs is a failure like any other.
     private timeoutMs = 15_000,
     private now: () => number = Date.now,
+    // Who hears about a model switch; failures there never break enrichment (see announce).
+    private notifySwitch?: SwitchNotifier,
   ) {}
 
   private breaker(name: string): CircuitBreaker {
@@ -245,12 +246,6 @@ export class Enricher {
    *  new model from /menu). The next enrichment call uses the new value. */
   setModel(model: string): void {
     this.model = model;
-  }
-
-  /** Late-wired (bot exists after the enricher): called on each model switch so the
-   *  bot can warn the user in Telegram. Failures here never break enrichment. */
-  setSwitchNotifier(fn: SwitchNotifier): void {
-    this.notifySwitch = fn;
   }
 
   private async announce(

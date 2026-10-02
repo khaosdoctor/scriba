@@ -12,7 +12,7 @@ import { loadConfig } from "./models/config.ts";
 import type { SettingKey } from "./models/settings.ts";
 import { Repository } from "./repositories/index.ts";
 import { SettingsRepository } from "./repositories/settings.ts";
-import { Enricher } from "./services/enrich.ts";
+import type { SwitchNotifier } from "./services/enrich.ts";
 import { HealthMonitor } from "./services/health.ts";
 import { VaultService } from "./services/vault.ts";
 
@@ -24,7 +24,6 @@ const env = {
 };
 
 type Scriba = Awaited<ReturnType<typeof createScriba>>;
-type ExternalServices = NonNullable<Parameters<typeof createScriba>[2]>;
 
 const EM = String.fromCharCode(0x2014);
 const COMMANDS = [
@@ -326,42 +325,34 @@ dbTest("the enricher starts on the model saved in the database", async (t) => {
     GROQ_API_KEY: "g",
     OPENCODE_GO_API_KEY: "oc",
   });
-  const models: string[] = [];
-  const attach = Enricher.prototype.setSwitchNotifier;
-  t.mock.method(
-    Enricher.prototype,
-    "setSwitchNotifier",
-    function (this: { model: string }, fn: never) {
-      models.push(this.model);
-      return attach.call(this as never, fn);
-    },
-  );
   const build = { version: "9.9.9", sha: "abc" };
+  const modelOf = (app: Scriba) =>
+    (app.enricher as unknown as { model: string }).model;
 
-  await (await createScriba(config, build)).stop();
+  const first = await createScriba(config, build);
+  await first.stop();
   const saved = await Repository.open(config.dbPath);
   await saved.setSetting("enrichModel", "saved-model");
   await saved.close();
-  await (await createScriba(config, build)).stop();
+  const second = await createScriba(config, build);
+  await second.stop();
 
-  assert.deepEqual(models, [config.enrich.model, "saved-model"]);
+  assert.deepEqual(
+    [modelOf(first), modelOf(second)],
+    [config.enrich.model, "saved-model"],
+  );
 });
 
 dbTest("a model switch is told to the owner with its reason", async () => {
-  let notify!: Parameters<
-    InstanceType<typeof Enricher>["setSwitchNotifier"]
-  >[0];
-  const enricher = {
-    setSwitchNotifier: (fn: typeof notify) => {
-      notify = fn;
-    },
-  } as unknown as ExternalServices["enricher"];
   const app = await createScriba(
     configFor(),
     { version: "9.9.9", sha: "abc" },
-    { obsidian: fakeObsidian, transcriber: fakeTranscriber, enricher },
+    { obsidian: fakeObsidian, transcriber: fakeTranscriber },
   );
   const calls = fakeTelegram(app);
+  const { notifySwitch: notify } = app.enricher as unknown as {
+    notifySwitch: SwitchNotifier;
+  };
 
   await notify("fallback", "groq-model", new Error("usage exhausted"));
   await notify("primary", "haiku", undefined);

@@ -373,16 +373,19 @@ function flakyQuery(failFirst: number, text: string): QueryFn {
 
 test("warns once when switching to the fallback and once when usage recovers", async () => {
   const groq = fakeGroq('{"text":"free","ambiguous":[]}');
+  const switches: { to: string; model: string; err?: unknown }[] = [];
   const enricher = new Enricher(
     "claude-haiku-4-5",
     flakyQuery(2, '{"text":"ok","ambiguous":[]}'),
     [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
     groq.fn,
+    undefined,
+    undefined,
+    undefined,
+    (to, model, err) => {
+      switches.push({ to, model, err });
+    },
   );
-  const switches: { to: string; model: string; err?: unknown }[] = [];
-  enricher.setSwitchNotifier((to, model, err) => {
-    switches.push({ to, model, err });
-  });
   await enricher.enrich({ text: "a", candidates: [] }); // fail → switch to fallback
   await enricher.enrich({ text: "b", candidates: [] }); // fail → already on fallback, no switch
   await enricher.enrich({ text: "c", candidates: [] }); // SDK ok → switch back to primary
@@ -420,17 +423,19 @@ test("chain runs haiku → sonnet → groq, each only when the one before fails"
   const down = new Set(["claude-haiku-4-5"]);
   const q = modelQuery(down, '{"text":"from claude","ambiguous":[]}');
   const groq = fakeGroq('{"text":"from groq","ambiguous":[]}');
+  const switches: string[] = [];
   const enricher = new Enricher(
     "claude-haiku-4-5",
     q.fn,
     [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
     groq.fn,
     "claude-sonnet-5",
+    undefined,
+    undefined,
+    (to, model) => {
+      switches.push(`${to}:${model}`);
+    },
   );
-  const switches: string[] = [];
-  enricher.setSwitchNotifier((to, model) => {
-    switches.push(`${to}:${model}`);
-  });
 
   // haiku down → sonnet answers
   const a = await enricher.enrich({ text: "a", candidates: [] });
@@ -650,6 +655,7 @@ test("chain tries the second chat fallback when the first one fails", async () =
       usage: { input: 3, output: 4 },
     };
   };
+  const switches: string[] = [];
   const enricher = new Enricher(
     "claude-haiku-4-5",
     failQuery(),
@@ -663,11 +669,13 @@ test("chain tries the second chat fallback when the first one fails", async () =
       },
     ],
     chatFn,
+    undefined,
+    undefined,
+    undefined,
+    (to, model) => {
+      switches.push(`${to}:${model}`);
+    },
   );
-  const switches: string[] = [];
-  enricher.setSwitchNotifier((to, model) => {
-    switches.push(`${to}:${model}`);
-  });
   const out = await enricher.enrich({ text: "a", candidates: [] });
   assert.equal(out.text, "from opencode");
   assert.equal(calls.length, 2);
@@ -920,10 +928,10 @@ test("every step down: the chain throws ModelsDownError once and says so once", 
     undefined,
     15_000,
     () => t.now,
+    (to) => {
+      notices.push(to);
+    },
   );
-  enricher.setSwitchNotifier((to) => {
-    notices.push(to);
-  });
   for (let i = 0; i < 2; i++)
     await assert.rejects(enricher.enrich({ text: "x", candidates: [] }));
   assert.equal(enricher.available(), true);
@@ -956,10 +964,12 @@ test("the switch notice carries the error that moved it down the chain", async (
     [],
     undefined,
     "claude-sonnet-5",
+    undefined,
+    undefined,
+    (_to, _model, err) => {
+      errs.push(err);
+    },
   );
-  enricher.setSwitchNotifier((_to, _model, err) => {
-    errs.push(err);
-  });
   await enricher.enrich({ text: "x", candidates: [] });
   assert.equal((errs[0] as Error).message, "usage limit reached");
 });

@@ -11,6 +11,7 @@ import {
   Enricher,
   type EnrichFallback,
   OPENCODE_BASE_URL,
+  type SwitchNotifier,
 } from "./services/enrich.ts";
 import { GithubReleases } from "./services/github.ts";
 import { HealthMonitor, upstreams } from "./services/health.ts";
@@ -37,11 +38,16 @@ export interface ExternalServices {
 
 export interface Scriba {
   bot: ScribaBot;
+  enricher: Enricher;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
 
-async function buildEnricher(config: Config, repo: Repository) {
+async function buildEnricher(
+  config: Config,
+  repo: Repository,
+  notifySwitch: SwitchNotifier,
+) {
   const enrichModel =
     (await repo.getSetting("enrichModel")) ?? config.enrich.model;
   const fallbacks: EnrichFallback[] = [];
@@ -75,6 +81,8 @@ async function buildEnricher(config: Config, repo: Repository) {
     undefined,
     config.enrich.backupModel,
     config.enrich.timeoutMs,
+    undefined,
+    notifySwitch,
   );
 }
 
@@ -95,8 +103,25 @@ export async function createScriba(
     externalServices.obsidian ?? new ObsidianClient(config.obsidian);
   const transcriber =
     externalServices.transcriber ?? buildTranscriber(config.transcription);
-  const enricher =
-    externalServices.enricher ?? (await buildEnricher(config, repo));
+  const enricher: Enricher =
+    externalServices.enricher ??
+    (await buildEnricher(config, repo, (to, model, err) => {
+      const reason = err instanceof Error ? err.message : String(err);
+      switch (to) {
+        case "fallback":
+          return bot.notify(
+            `⚠️ Enrichment switched to fallback model ${model}. Quality may drop until the chosen model is back.\nReason: ${reason}`,
+          );
+        case "primary":
+          return bot.notify(`✅ Enrichment is back on ${model}.`);
+        case "down":
+          return bot.notify(
+            `⏸ Every enrichment model is down, so new jots are held in place. They go into your journal on their own once one is back.\nReason: ${reason}`,
+          );
+        default:
+          return to satisfies never;
+      }
+    }));
   const links = new VaultService(config.vaultPath, obsidian);
   const github = new GithubReleases();
 
@@ -121,23 +146,6 @@ export async function createScriba(
     tasks: bot.tasks,
     notifier: bot.chat,
     files: bot.media,
-  });
-  enricher.setSwitchNotifier((to, model, err) => {
-    const reason = err instanceof Error ? err.message : String(err);
-    switch (to) {
-      case "fallback":
-        return bot.notify(
-          `⚠️ Enrichment switched to fallback model ${model}. Quality may drop until the chosen model is back.\nReason: ${reason}`,
-        );
-      case "primary":
-        return bot.notify(`✅ Enrichment is back on ${model}.`);
-      case "down":
-        return bot.notify(
-          `⏸ Every enrichment model is down, so new jots are held in place. They go into your journal on their own once one is back.\nReason: ${reason}`,
-        );
-      default:
-        return to satisfies never;
-    }
   });
   const queue = new FlushQueue({
     idleMs: config.flush.idleMs,
@@ -203,6 +211,7 @@ export async function createScriba(
 
   return {
     bot,
+    enricher,
     async start() {
       const unstuck = await repo.resetProcessing();
       log.info({ requeued: unstuck }, "crash recovery done");
