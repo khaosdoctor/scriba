@@ -505,7 +505,10 @@ Layers call downward only: presentation calls services, services call data. `dom
   raw payloads. A new command or feature without logs on its happy path AND its rejection
   paths is incomplete. Secrets are stripped in pino core via `redact` in `src/libs/log.ts`
   (`*.token`/`*.key`/`*.groqApiKey`/`*.opencodeApiKey`); log config objects freely, but
-  add a path there if you introduce a secret with a different field name.
+  add a path there if you introduce a secret with a different field name. A secret inside
+  a string (a failed Telegram request's error carries the `bot<token>` URL) is out of
+  `redact`'s reach, so the `streamWrite` hook there scrubs the Telegram token from every
+  finished line; a new secret that can end up in an error message needs a pattern there.
 - **Slash commands are discoverable.** A new command goes into `COMMANDS`
   (`presentation/telegram/commands.ts`). `publishCommands` sends that list to
   `setMyCommands` at start, so it shows in Telegram's `/` menu, and `/help` lists the ones

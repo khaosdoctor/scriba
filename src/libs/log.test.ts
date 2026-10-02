@@ -56,6 +56,20 @@ test("secrets are censored before they reach the stream", () => {
   assert.ok(!JSON.stringify(rec).includes("SECRET"));
 });
 
+test("a failed Telegram request logs its URL without the bot token", () => {
+  const url =
+    "https://api.telegram.org/bot123456:AAH-fake_token-0123456789abcdef/getUpdates";
+  const rec = logLine(
+    `{ err: new Error("request to ${url} failed, reason: socket hang up") }`,
+    "error",
+  );
+  assert.ok(!JSON.stringify(rec).includes("AAH-fake_token"));
+  assert.match(
+    rec.err.message,
+    /api\.telegram\.org\/bot\*\*\*\/getUpdates failed/,
+  );
+});
+
 test("a child logger is tagged with its scope, and the message survives", () => {
   const rec = logLine(`{ jotId: "abcd1234" }`);
   assert.equal(rec.ns, "test");
