@@ -1,3 +1,10 @@
+## [1.53.1](https://github.com/khaosdoctor/scriba/compare/v1.53.0...v1.53.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* move to the layered layout and guard in-flight jots ([#63](https://github.com/khaosdoctor/scriba/issues/63)) ([85a14c1](https://github.com/khaosdoctor/scriba/commit/85a14c163a342f6374780330bd0b58909550657a))
+
 ## [1.53.0](https://github.com/khaosdoctor/scriba/compare/v1.52.0...v1.53.0) (2026-09-30)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * offer to embed YouTube, tweet and image links as Obsidian embeds ([0366bab](https://github.com/khaosdoctor/scriba/commit/0366babdebe04c1632af0a663152c51728435b2f))
-
-## [1.49.1](https://github.com/khaosdoctor/scriba/compare/v1.49.0...v1.49.1) (2026-09-28)
-
-
-### Bug Fixes
-
-* **enrich:** turn off extended thinking for enrichment calls ([#20](https://github.com/khaosdoctor/scriba/issues/20)) ([3ebc900](https://github.com/khaosdoctor/scriba/commit/3ebc900128f06dda039da072daed00035bf29103))
 
