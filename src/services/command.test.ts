@@ -17,18 +17,23 @@ const settle = async (times = 6) => {
 class FakeAgent {
   prompts: string[] = [];
   interrupts = 0;
+  failInterrupt = false;
   options: any;
   private out: any[] = [];
   private wake: (() => void) | null = null;
   private ended = false;
+  private failure: Error | null = null;
 
   query = (params: any) => {
+    this.ended = false;
+    this.failure = null;
     this.options = params.options;
     void this.drain(params.prompt);
     const self = this;
     const gen = (async function* () {
       for (;;) {
         while (self.out.length) yield self.out.shift();
+        if (self.failure) throw self.failure;
         if (self.ended) return;
         await new Promise<void>((r) => {
           self.wake = r;
@@ -36,6 +41,7 @@ class FakeAgent {
       }
     })();
     (gen as any).interrupt = async () => {
+      if (self.failInterrupt) throw new Error("not running");
       self.interrupts++;
     };
     return gen as any;
@@ -54,6 +60,11 @@ class FakeAgent {
   /** End the query's output stream, as an SDK crash or a torn-down CLI would. */
   end(): void {
     this.ended = true;
+    this.wake?.();
+    this.wake = null;
+  }
+  fail(err: Error): void {
+    this.failure = err;
     this.wake?.();
     this.wake = null;
   }
@@ -84,6 +95,7 @@ async function harness(
   const notices: string[] = [];
   let nextId = 100;
   const failSends = { on: false };
+  const failEdits = { on: false };
   const notifier = {
     notify: async (text: string) => void notices.push(text),
     send: async (text: string, opts: any = {}) => {
@@ -92,8 +104,10 @@ async function harness(
       sent.push({ text, id, opts });
       return id;
     },
-    edit: async (msg: number, text: string, opts: any = {}) =>
-      void edits.push({ msg, text, opts }),
+    edit: async (msg: number, text: string, opts: any = {}) => {
+      if (failEdits.on) throw new Error("telegram is down");
+      edits.push({ msg, text, opts });
+    },
   };
   const vault = { enabled: vaultEnabled };
   const web = { fetchPage: async () => "# AI Writing Tropes to Avoid\nnope" };
@@ -137,6 +151,9 @@ async function harness(
     edits,
     notices,
     failSends,
+    failEdits,
+    notifier,
+    sent,
     opened,
   };
 }
@@ -264,6 +281,7 @@ test("each line carries an emoji for what it is", async () => {
   agent.emit(
     assistant(
       { type: "thinking", thinking: "let me search for the meeting note" },
+      { type: "redacted_thinking" },
       { type: "tool_use", name: "mcp__vault__vault_search", input: {} },
       {
         type: "tool_use",
@@ -279,8 +297,9 @@ test("each line carries an emoji for what it is", async () => {
   const lines = editsTo(edits, replies[0]!.id).at(-1)!.split("\n").slice(2);
   assert.deepEqual(
     lines.map((l) => l.split(" ")[0]),
-    ["🔍", "🔍", "✍️", "🔎", "🔧"],
+    ["🔍", "💭", "🔍", "✍️", "🔎", "🔧"],
   );
+  assert.equal(lines[1], "💭 (thinking)");
 });
 
 test("the feed drops its oldest lines rather than outgrow the message", async () => {
@@ -809,4 +828,204 @@ test("Stop and /done refuse the confirmations still waiting", async () => {
   await settle();
   modes.close();
   assert.equal((await second).behavior, "deny");
+});
+
+test("a turn whose status message failed to send still gets its answer as a new message", async () => {
+  const { command, agent, failSends, extra } = await harness();
+  failSends.on = true;
+  await command.handle("go", 5);
+  failSends.on = false;
+  await settle();
+  assert.deepEqual(agent.prompts, ["go"]);
+  agent.emit(result("done"));
+  await settle();
+  const answer = extra().at(-1)!;
+  assert.equal(answer.text, "done");
+  assert.equal(repliedTo(answer), 5);
+});
+
+test("a Telegram failure while settling a turn does not break the send chain", async () => {
+  const { agent, say, replies, failSends, failEdits } = await harness();
+  await say("first");
+  await settle();
+  failEdits.on = true;
+  failSends.on = true;
+  agent.emit(result("done"));
+  await settle();
+  failEdits.on = false;
+  failSends.on = false;
+  await say("second");
+  await settle();
+  assert.equal(replies.length, 2);
+  assert.match(replies[1]!.text, /Working/);
+  assert.deepEqual(agent.prompts, ["first", "second"]);
+});
+
+test("a prompt promoted while its Queued notice was in flight is shown as working", async () => {
+  const { command, agent, say, notifier, sent, edits } = await harness();
+  await say("first");
+  await settle();
+  const realSend = notifier.send;
+  const gate: { open?: () => void } = {};
+  notifier.send = (text: string, opts: any) =>
+    new Promise<number>((resolve) => {
+      gate.open = () => resolve(realSend(text, opts));
+    });
+  const second = command.handle("second", 7);
+  agent.emit(result("one done"));
+  await settle();
+  notifier.send = realSend;
+  gate.open!();
+  await second;
+  await settle();
+  const status = sent.at(-1)!;
+  assert.match(status.text, /Queued/);
+  assert.ok(editsTo(edits, status.id).includes("🧭 Working…"));
+});
+
+test("a query that fails answers the running turn with the error and what it had written", async () => {
+  const { agent, say, replies, edits } = await harness();
+  await say("go");
+  await settle();
+  agent.emit(assistant({ type: "text", text: "half way there" }));
+  await settle();
+  agent.fail(new Error("boom"));
+  await settle();
+  assert.equal(
+    editsTo(edits, replies[0]!.id).at(-1),
+    "⚠️ boom\n\nhalf way there",
+  );
+});
+
+test("a query that ends between turns is rebuilt for the next prompt, resuming the conversation", async () => {
+  const { agent, say } = await harness();
+  await say("first");
+  await settle();
+  agent.emit(result("done"));
+  await settle();
+  agent.end();
+  await settle();
+  await say("second");
+  await settle();
+  assert.deepEqual(agent.prompts, ["first", "second"]);
+  assert.equal(agent.options.resume, "s1");
+});
+
+test("/done during a turn ends the old query quietly, even when its interrupt fails", async () => {
+  const { command, modes, agent, say, replies, edits } = await harness();
+  await say("first");
+  await settle();
+  agent.failInterrupt = true;
+  modes.close();
+  await settle();
+  const closed = editsTo(edits, replies[0]!.id).length;
+  agent.emit(
+    assistant({
+      type: "tool_use",
+      name: "mcp__vault__vault_read",
+      input: { path: "a.md" },
+    }),
+  );
+  agent.end();
+  await settle();
+  assert.equal(command.isOpen(), false);
+  assert.equal(editsTo(edits, replies[0]!.id).length, closed);
+  assert.match(editsTo(edits, replies[0]!.id).at(-1)!, /Command mode closed/);
+});
+
+test("Stop on a query whose interrupt fails still ends the turn as stopped", async () => {
+  const { command, agent, say, replies, edits } = await harness();
+  await say("go");
+  await settle();
+  agent.failInterrupt = true;
+  assert.deepEqual(await stop(command, turnId(replies[0]!)), ["stopping…"]);
+  agent.end();
+  await settle();
+  assert.equal(editsTo(edits, replies[0]!.id).at(-1), "⏹ Stopped.");
+});
+
+test("a stop the agent never answers is forced after the grace period", async (testContext) => {
+  const { command, agent, say, replies, edits } = await harness();
+  await say("go");
+  await settle();
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  await stop(command, turnId(replies[0]!));
+  await new Promise((resolve) => setImmediate(resolve));
+  testContext.mock.timers.tick(20_000);
+  testContext.mock.timers.reset();
+  await settle();
+  assert.equal(editsTo(edits, replies[0]!.id).at(-1), "⏹ Stopped.");
+  assert.equal(agent.interrupts, 2);
+});
+
+test("stopping a turn that already wrote prose keeps the prose under the Stopped header", async () => {
+  const { command, agent, say, replies, edits } = await harness();
+  await say("go");
+  await settle();
+  agent.emit(assistant({ type: "text", text: "so far so good" }));
+  await settle();
+  await stop(command, turnId(replies[0]!));
+  agent.emit(result(undefined, "error_during_execution"));
+  await settle();
+  assert.equal(
+    editsTo(edits, replies[0]!.id).at(-1),
+    "⏹ Stopped.\n\nso far so good",
+  );
+});
+
+test("a long write preview is cut to 600 characters", async () => {
+  const { command, agent, say, extra } = await harness();
+  await say("write it");
+  await settle();
+  void agent.options.canUseTool(WRITE, {
+    path: "notes/a.md",
+    content: "y".repeat(700),
+  });
+  await settle();
+  const ask = extra().at(-1)!;
+  assert.ok(ask.text.includes(`${"y".repeat(600)}\n…</blockquote>`));
+  assert.ok(!ask.text.includes("y".repeat(601)));
+  command.denyPending();
+});
+
+test("an unanswered confirmation is refused after five minutes", async (testContext) => {
+  const { command, agent, say, extra } = await harness();
+  await say("write it");
+  await settle();
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const decision = agent.options.canUseTool(WRITE, {
+    path: "a.md",
+    content: "",
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  testContext.mock.timers.tick(5 * 60_000);
+  testContext.mock.timers.reset();
+  assert.equal((await decision).behavior, "deny");
+  const [yes] = confirmData(extra().at(-1)!);
+  assert.equal(command.takeConfirmation(yes!.split(":")[2]), undefined);
+});
+
+test("a failed tool result is read whatever shape its content takes", async () => {
+  const { agent, say, replies, edits } = await harness();
+  await say("go");
+  await settle();
+  agent.emit({
+    type: "user",
+    message: {
+      content: [
+        {
+          type: "tool_result",
+          is_error: true,
+          content: [
+            { type: "text", text: "no such" },
+            { type: "text", text: "note" },
+          ],
+        },
+        { type: "tool_result", is_error: true },
+      ],
+    },
+  });
+  await settle();
+  const lines = editsTo(edits, replies[0]!.id).at(-1)!.split("\n").slice(2);
+  assert.deepEqual(lines, ["⚠️ no such note", "⚠️ tool failed"]);
 });
