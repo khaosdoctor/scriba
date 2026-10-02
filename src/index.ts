@@ -287,7 +287,7 @@ export async function createScriba(
     tasks,
     jotController,
     edits,
-    admin: () => admin,
+    admin,
     errors: {
       jotForMessage: (messageId) => repo.jotForMessage(messageId),
     },

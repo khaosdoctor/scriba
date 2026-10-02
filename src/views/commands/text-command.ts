@@ -17,7 +17,7 @@ export function textCommand(
     view({ admin }) {
       const view = new Composer<Context>();
       view.command(command, async (ctx) => {
-        const text = await answer(admin(), String(ctx.match ?? ""));
+        const text = await answer(admin, String(ctx.match ?? ""));
         await ctx.reply(fitTelegram(text));
       });
       return view;

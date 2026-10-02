@@ -421,15 +421,7 @@ export class AdminController {
   private async resetAndQueue(targets: string[], label: string) {
     const refuse = (text: string) => ({ text, queued: false });
     if (!targets.length) return refuse(`No reprocessable jots for ${label}.`);
-    // Without a queue, the reset would strand these jots in `pending` until the next retry.
     const { queue } = this.d;
-    if (!queue) {
-      log.reprocess.error(
-        { label, count: targets.length },
-        "reprocess: queue not wired — refusing to reset jots to pending",
-      );
-      return refuse("⚠️ Reprocess isn't ready yet — try again in a moment.");
-    }
     log.reprocess.info({ label, count: targets.length }, "reprocess triggered");
     log.reprocess.debug({ ids: targets }, "reprocess targets");
     // Only what the reset set to pending is queued: a target can race into `processing`

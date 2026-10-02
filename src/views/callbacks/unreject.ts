@@ -6,9 +6,9 @@ import { namespace } from "./namespace.ts";
  *  pair. A shifted index answers "expired" rather than undoing the wrong pair. */
 export const UNREJECT_NS = "ur";
 
-export function unrejectView(admin: () => AdminController): Composer<Context> {
+export function unrejectView(admin: AdminController): Composer<Context> {
   return namespace(UNREJECT_NS, async (ctx, [step, si, ni]) => {
-    const word = await admin().rejectedWord(Number(si));
+    const word = await admin.rejectedWord(Number(si));
     if (!word) return ctx.answerCallbackQuery({ text: "expired" });
     const { surface } = word;
 
@@ -23,7 +23,7 @@ export function unrejectView(admin: () => AdminController): Composer<Context> {
     }
 
     if (step === "p") {
-      const pair = await admin().unrejectNote(word, Number(ni));
+      const pair = await admin.unrejectNote(word, Number(ni));
       if (!pair) return ctx.answerCallbackQuery({ text: "expired" });
       const { note, removed } = pair;
       await ctx.answerCallbackQuery({

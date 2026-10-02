@@ -10,7 +10,7 @@ export const failed: CommandView = {
   view({ admin }) {
     const view = new Composer<Context>();
     view.command("failed", async (ctx) => {
-      const { text, ids } = await admin().failed();
+      const { text, ids } = await admin.failed();
       if (!ids.length) return void (await ctx.reply(text));
       const kb = new InlineKeyboard();
       for (const id of ids)

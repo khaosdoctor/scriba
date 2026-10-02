@@ -10,7 +10,7 @@ export const unreject: CommandView = {
   view({ admin }) {
     const view = new Composer<Context>();
     view.command("unreject", async (ctx) => {
-      const out = await admin().unreject(String(ctx.match ?? ""));
+      const out = await admin.unreject(String(ctx.match ?? ""));
       if (typeof out === "string")
         return void (await ctx.reply(fitTelegram(out)));
       const kb = new InlineKeyboard();

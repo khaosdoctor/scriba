@@ -238,7 +238,7 @@ async function execute(
   return run({ ...range, day });
 }
 
-export function reprocessView(admin: () => AdminController): Composer<Context> {
+export function reprocessView(admin: AdminController): Composer<Context> {
   return namespace(REPROCESS_NS, async (ctx, [action, ...args]) => {
     switch (action) {
       case "root":
@@ -251,7 +251,7 @@ export function reprocessView(admin: () => AdminController): Composer<Context> {
         if (args.length < 3)
           return calendar(ctx, rp("day"), "📅 Pick a day to reprocess", args);
         const date = ymd(args);
-        return confirmRange(ctx, admin(), date, date, true);
+        return confirmRange(ctx, admin, date, date, true);
       }
       case "range":
         return args.length >= 3
@@ -260,16 +260,16 @@ export function reprocessView(admin: () => AdminController): Composer<Context> {
       case "rangeend": {
         const [start = "", ...ym] = args;
         return args.length >= 4
-          ? confirmRange(ctx, admin(), start, ymd(ym), false)
+          ? confirmRange(ctx, admin, start, ymd(ym), false)
           : rangeEnd(ctx, start, "Pick the range end", ym);
       }
       case "jot":
         // A crafted or stale button can carry a negative page.
-        return showJotPage(ctx, admin(), Math.max(0, Number(args[0]) || 0));
+        return showJotPage(ctx, admin, Math.max(0, Number(args[0]) || 0));
       case "jotpick":
-        return confirmJot(ctx, admin(), args[0]);
+        return confirmJot(ctx, admin, args[0]);
       case "go":
-        return execute(ctx, admin(), args);
+        return execute(ctx, admin, args);
       case "cancel":
       case "close":
         await ack(ctx);

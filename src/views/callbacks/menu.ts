@@ -290,18 +290,18 @@ export function menuView(deps: ViewDeps): Composer<Context> {
             reply_markup: withClose(kb, CLOSE),
           });
         }
-        return ctx.editMessageText(fitTelegram(await admin().stats(arg)), {
+        return ctx.editMessageText(fitTelegram(await admin.stats(arg)), {
           reply_markup: backTo("menu:stats", CLOSE),
         });
       }
       case "status":
         await responder.ack();
-        return ctx.editMessageText(fitTelegram(await admin().status()), {
+        return ctx.editMessageText(fitTelegram(await admin.status()), {
           reply_markup: backTo("menu:root", CLOSE),
         });
       case "failed": {
         await responder.ack();
-        const { text, ids } = await admin().failed();
+        const { text, ids } = await admin.failed();
         const kb = new InlineKeyboard();
         for (const id of ids) kb.text(`🔄 ${id}`, `rt:${id}`).row();
         kb.text("‹ Back", "menu:root");
@@ -360,13 +360,13 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         });
       }
       case "flush":
-        return maintenance(() => admin().flush());
+        return maintenance(() => admin.flush());
       case "sweep":
-        return maintenance(() => admin().retryPass());
+        return maintenance(() => admin.retryPass());
       case "unstick":
-        return maintenance(() => admin().unstick());
+        return maintenance(() => admin.unstick());
       case "retryally":
-        return maintenance(() => admin().retry("all"));
+        return maintenance(() => admin.retry("all"));
       case "close":
         await responder.ack();
         return responder.closeMessage("🗂 Menu closed.", () => {

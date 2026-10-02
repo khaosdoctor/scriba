@@ -34,8 +34,7 @@ export type ViewDeps = {
   tasks: TaskController;
   jotController: JotController;
   edits: EditController;
-  /** Read per tap or command: the controller is built after the bot, in index.ts. */
-  admin: () => AdminController;
+  admin: AdminController;
   errors: ErrorDeps;
 };
 

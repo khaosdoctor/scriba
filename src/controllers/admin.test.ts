@@ -831,23 +831,3 @@ test("reprocessExecute reports a vanished jot, an empty day and a lost race with
   for (const run of [gone, empty, raced])
     assert.ok(!run.calls.some((call) => call.startsWith("queue.add")));
 });
-
-test("reprocessExecute without a queue refuses before resetting any jot to pending", async () => {
-  const resets: string[][] = [];
-  const admin = new AdminController({
-    repo: {
-      jotsInRange: async () => [target("a1")],
-      resetForReprocess: async (ids: string[]) => resets.push(ids),
-    },
-  } as never);
-  const out = await admin.reprocessExecute({
-    lo: "2026-10-05",
-    hi: "2026-10-05",
-    day: true,
-  });
-  assert.deepEqual(out, {
-    text: "⚠️ Reprocess isn't ready yet — try again in a moment.",
-    queued: false,
-  });
-  assert.deepEqual(resets, []);
-});
