@@ -1,4 +1,4 @@
-import type { Bot, Context } from "grammy";
+import type { Api, Bot, Context } from "grammy";
 import type { AdminController } from "../controllers/admin.ts";
 import type { CommandController } from "../controllers/command.ts";
 import type { EditController } from "../controllers/edits.ts";
@@ -64,4 +64,15 @@ export function registerViews(bot: Bot, deps: ViewDeps): void {
   );
   for (const view of callbackViews(deps)) bot.use(view);
   bot.use(reactionView(deps), fallbackView());
+}
+
+/** Populate the `/` command menu Telegram shows in the compose box. */
+export async function publishCommands(
+  api: Pick<Api, "setMyCommands">,
+): Promise<void> {
+  await api
+    .setMyCommands(
+      COMMANDS.map(({ command, description }) => ({ command, description })),
+    )
+    .catch((e) => log.warn({ err: e }, "setMyCommands failed"));
 }

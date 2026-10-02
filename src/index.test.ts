@@ -79,7 +79,7 @@ function fakeTelegram(
   opts: { failSend?: boolean } = {},
 ) {
   const calls: { method: string; payload: Record<string, unknown> }[] = [];
-  const { api } = (app.bot as unknown as { bot: Bot }).bot;
+  const { api } = app.bot;
   api.config.use((async (
     _prev: unknown,
     method: string,
@@ -209,7 +209,7 @@ dbTest(
       { obsidian: fakeObsidian, transcriber: fakeTranscriber },
     );
     const calls = fakeTelegram(app);
-    const { bot } = app.bot as unknown as { bot: Bot };
+    const { bot } = app;
     const chat = { id: 1, type: "private" as const, first_name: "Lucas" };
 
     await bot.init();

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AdminController } from "./controllers/admin.ts";
+import { createScriba } from "./index.ts";
 import { journalLine } from "./lib/note.ts";
 import type { Jot } from "./models/domain.ts";
 import { testConfig } from "./test/config.ts";
@@ -42,7 +42,6 @@ type Opts = {
 };
 
 async function harness(over: Opts = {}) {
-  const { ScribaBot } = await import("./bot.ts");
   const events: string[] = [];
   const rec = recordingApi({
     onCall: (call) => events.push(`api.${call.method}`),
@@ -123,19 +122,24 @@ async function harness(over: Opts = {}) {
       return `${text} (${instruction})`;
     },
   };
-  const bot: any = new ScribaBot(
+  const bot: any = await createScriba(
     testConfig,
-    repo,
-    obsidian,
-    enricher,
-    {} as any,
-    {} as any,
-    {} as any,
+    { version: "0.0.0", sha: "0123456789" },
+    {
+      repo,
+      obsidian,
+      enricher,
+      queue: {
+        add: (ids: string[]) => void events.push(`queue.add:${ids.join(",")}`),
+      } as never,
+      transcriber: {} as never,
+      links: {} as never,
+      scheduler: { daily() {}, every() {} } as never,
+      processing: {} as never,
+      health: {} as never,
+      github: {} as never,
+    },
   );
-  bot.setQueue({
-    add: (ids: string[]) => void events.push(`queue.add:${ids.join(",")}`),
-  });
-  bot.setAdmin(new AdminController({ repo } as any));
   bot.bot.botInfo = BOT_INFO;
   bot.bot.api.config.use(rec.transformer as never);
 

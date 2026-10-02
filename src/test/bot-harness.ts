@@ -1,7 +1,7 @@
-// Drives the real ScribaBot through grammy's handleUpdate with in-memory collaborators.
+// Drives the app createScriba builds through grammy's handleUpdate with in-memory collaborators.
 // Every call a handler makes to the repository, Obsidian, the queue or Telegram is recorded
 // on one ordered timeline, which is what the routing and ack-ledger tests assert against.
-import { AdminController } from "../controllers/admin.ts";
+import { createScriba } from "../index.ts";
 import type { Jot } from "../models/domain.ts";
 import { testConfig } from "./config.ts";
 import { type ApiCall, BOT_INFO, FakeSettings, recordingApi } from "./fakes.ts";
@@ -102,7 +102,6 @@ const user = { id: OWNER, is_bot: false, first_name: "Lucas" };
 const chat = { id: CHAT, type: "private" as const };
 
 export async function botHarness() {
-  const { ScribaBot } = await import("../bot.ts");
   const timeline: string[] = [];
   const settings = new Map<string, string>();
   let messageId = 100;
@@ -185,6 +184,7 @@ export async function botHarness() {
   const linkIndex = {
     list: () => links.entries,
     stats: () => ({ enabled: true, files: 2, aliases: 3 }),
+    enabled: true,
   };
   const health = { snapshot: () => [] };
   const github = {
@@ -193,29 +193,21 @@ export async function botHarness() {
     byVersion: async () => null,
   };
 
-  const bot: any = new ScribaBot(
+  const bot: any = await createScriba(
     testConfig,
-    repo,
-    obsidian,
-    enricher,
-    transcriber,
-    linkIndex as any,
-    scheduler,
-  );
-  bot.setQueue(queue);
-  bot.setAdmin(
-    new AdminController({
+    { version: "0.0.0", sha: "0123456789" },
+    {
       repo,
+      obsidian,
+      enricher,
+      transcriber,
+      links: linkIndex as never,
+      scheduler,
       queue,
       processing: processor,
-      transcriber,
-      links: linkIndex,
-      github,
-      health,
-      notifier: bot,
-      build: { version: "0.0.0", sha: "0123456789" },
-      startedAt: NOW,
-    } as never),
+      health: health as never,
+      github: github as never,
+    },
   );
   bot.bot.botInfo = BOT_INFO;
   bot.bot.api.config.use(telegram.transformer as never);

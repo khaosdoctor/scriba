@@ -68,7 +68,7 @@ const withJot =
 const REMOVED =
   "obsidian.updateNote > obsidian.readNote > obsidian.writeNote > repo.markDeleted > repo.groupFollowers > tg.sendMessage > repo.mapMessage";
 
-// --- namespaces handled by ScribaBot itself ---
+// --- un, dl, em, rt, vf, ur, lk ---
 
 ledger("un and dl", [
   {
