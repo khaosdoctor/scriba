@@ -1,8 +1,12 @@
 import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { RatingRepository } from "../data/repositories/ratings.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
+import {
+  FOLLOWUP_QUESTIONS,
+  type FollowupQuestion,
+  followupQuestions,
+} from "../domain/rating/entity.ts";
 import { logger } from "../libs/log.ts";
-import { sectionHasContent } from "../libs/note.ts";
 import { ratingDay } from "../libs/time.ts";
 import type { Notifier } from "./notifier.ts";
 
@@ -25,9 +29,6 @@ export type RateOutcome =
   | { kind: "saved"; rating: number }
   | { kind: "already"; current: number };
 
-export const FOLLOWUP_QUESTIONS = ["journal", "til"] as const;
-export type FollowupQuestion = (typeof FOLLOWUP_QUESTIONS)[number];
-
 export interface FollowupRef {
   question: FollowupQuestion;
   date: string;
@@ -42,19 +43,6 @@ const FOLLOWUP_CODES: Record<FollowupQuestion, string> = {
   journal: "j",
   til: "t",
 };
-
-export function followupQuestions(
-  note: string | null,
-  headings: { journal: string; til: string },
-  after?: FollowupQuestion,
-): FollowupQuestion[] {
-  const empty: Record<FollowupQuestion, boolean> = {
-    journal: !note || !sectionHasContent(note, headings.journal),
-    til: !note || !sectionHasContent(note, headings.til),
-  };
-  const from = after ? FOLLOWUP_QUESTIONS.indexOf(after) + 1 : 0;
-  return FOLLOWUP_QUESTIONS.slice(from).filter((q) => empty[q]);
-}
 
 export function followupRef(question: FollowupQuestion, date: string): string {
   return `(fu:${FOLLOWUP_CODES[question]}:${date})`;

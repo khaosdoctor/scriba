@@ -435,7 +435,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   `RatingService` (`services/rating.ts`, with its views in `presentation/telegram/rating/`)
   asks "One line for the day?" when the `JOURNAL_HEADING`
   section has no content, then "Learned anything today?" when the `TIL_HEADING` section
-  has none. `followupQuestions` (`services/rating.ts`) and `sectionHasContent`
+  has none. `followupQuestions` (`domain/rating/entity.ts`) and `sectionHasContent`
   (`libs/note.ts`) decide, token-free, by
   reading the note: blank lines, empty bullets (`-`, `- [ ]`), rules and HTML comments are
   template scaffolding, and the frontmatter rating is never looked at. A day with no note

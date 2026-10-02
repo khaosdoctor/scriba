@@ -2,7 +2,7 @@ import { type Composer, type Context, InlineKeyboard } from "grammy";
 import { jotPreview, STATUS_ICON } from "../../../libs/jot.ts";
 import { logger } from "../../../libs/log.ts";
 import { pluralize } from "../../../libs/text.ts";
-import { IsoDateSchema, plainDate } from "../../../libs/time.ts";
+import { IsoDateSchema, monthGrid, plainDate } from "../../../libs/time.ts";
 import type { AdminService, ReprocessScope } from "../../../services/admin.ts";
 import { Responder } from "../chat.ts";
 import { backTo, pagedScreen, withClose } from "../keyboard.ts";
@@ -46,19 +46,6 @@ const isDate = (s: string) => IsoDateSchema.safeParse(s).success;
 function span(a: string, b: string) {
   if (!isDate(a) || !isDate(b)) return undefined;
   return a <= b ? { lo: a, hi: b } : { lo: b, hi: a };
-}
-
-export function monthGrid(year: number, month: number): number[][] {
-  const daysInMonth = new Date(year, month, 0).getDate();
-  const startDow = new Date(year, month - 1, 1).getDay();
-  const cells = [
-    ...Array(startDow).fill(0),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
-  ];
-  while (cells.length % 7 !== 0) cells.push(0);
-  const weeks: number[][] = [];
-  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
-  return weeks;
 }
 
 const within = (n: number, lo: number, hi: number, fallback: number) =>

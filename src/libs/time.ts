@@ -81,3 +81,17 @@ export function ratingDay(time: string, now: number = Date.now()): string {
   const hour = Number(parseClockTime(time)!.slice(0, 2));
   return hour < 12 ? previousDate(now) : plainDate(now);
 }
+
+export function monthGrid(year: number, month: number): number[][] {
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const startDow = new Date(year, month - 1, 1).getDay();
+  const cells = [
+    ...Array(startDow).fill(0),
+    ...Array.from({ length: daysInMonth }, (_, day) => day + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(0);
+  const weeks: number[][] = [];
+  for (let start = 0; start < cells.length; start += 7)
+    weeks.push(cells.slice(start, start + 7));
+  return weeks;
+}

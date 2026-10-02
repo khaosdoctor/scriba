@@ -4,6 +4,7 @@ import {
   dateFromIso,
   dayBounds,
   IsoDateSchema,
+  monthGrid,
   msUntilNext,
   parseClockTime,
   plainDate,
@@ -146,6 +147,18 @@ test("IsoDateSchema rejects malformed shapes, sub-100 years, and out-of-range mo
   assert.equal(ok("2026-13-01"), false); // month 13 doesn't exist
   assert.equal(ok("2026-02-30"), false); // Feb never has a 30th
   assert.equal(ok("2026-02-29"), false); // 2026 is not a leap year
+});
+
+test("monthGrid pads a month to full weeks starting Sunday", () => {
+  // July 2026 starts on a Wednesday and has 31 days.
+  const grid = monthGrid(2026, 7);
+  assert.equal(grid[0]?.filter((day) => day === 0).length, 3);
+  assert.equal(grid[0]?.[3], 1);
+  assert.deepEqual(
+    grid.flat().filter((day) => day !== 0),
+    Array.from({ length: 31 }, (_, index) => index + 1),
+  );
+  for (const week of grid) assert.equal(week.length, 7);
 });
 
 test("parseClockTime takes valid 24h times, trims, and pads the hour", () => {

@@ -8,7 +8,7 @@ import {
   type Run,
   sampleJot,
 } from "../../../test/bot-harness.ts";
-import { monthGrid, ROOT_TEXT } from "./tap.ts";
+import { ROOT_TEXT } from "./tap.ts";
 
 const CLOSE_ROW = [["✖ Close", "rp:close"]];
 const RECEIVED = new Date(2026, 9, 5, 10, 15).getTime();
@@ -54,18 +54,6 @@ async function withRepo(rows: unknown[], reset?: (ids: string[]) => string[]) {
   harness.queue.add = (ids: string[]) => void queued.push(ids);
   return { harness, ranges, resets, queued };
 }
-
-test("monthGrid pads a month to full weeks starting Sunday", () => {
-  // July 2026 starts on a Wednesday and has 31 days.
-  const grid = monthGrid(2026, 7);
-  assert.equal(grid[0]?.filter((day) => day === 0).length, 3);
-  assert.equal(grid[0]?.[3], 1);
-  assert.deepEqual(
-    grid.flat().filter((day) => day !== 0),
-    Array.from({ length: 31 }, (_, index) => index + 1),
-  );
-  for (const week of grid) assert.equal(week.length, 7);
-});
 
 test("the Reprocess entry of /menu posts a fresh picker to the owner", async () => {
   const harness = await botHarness();
