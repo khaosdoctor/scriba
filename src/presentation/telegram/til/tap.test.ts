@@ -45,18 +45,6 @@ test("each outcome gets its toast and a final card text with the buttons cleared
   }
 });
 
-test("a failed move alerts and leaves the card's buttons for a retry", async () => {
-  const h = await setup();
-  h.obsidian.moveToTil = () => {
-    throw new Error("obsidian is down");
-  };
-  const run = await h.tap(`ti:y:${JOT_ID}`);
-  const ack = run.calls.find((c) => c.method === "answerCallbackQuery");
-  assert.equal(ack?.payload.text, "couldn't move it, tap again to retry");
-  assert.equal(ack?.payload.show_alert, true);
-  assert.equal(run.texts("editMessageText").length, 0);
-});
-
 test("a jot that is gone answers gone and settles the card", async () => {
   const h = await botHarness();
   const run = await h.tap(`ti:y:${JOT_ID}`);

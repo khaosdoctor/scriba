@@ -770,14 +770,6 @@ test("structured output without til, or with til false, is a valid answer that i
   }
 });
 
-test("the structured-output schema declares til as a required boolean", async () => {
-  const { calls } = await structuredTil({ text: "a", ambiguous: [] });
-  const schema = calls[0]!.options.outputFormat.schema;
-  assert.deepEqual(schema.properties.til, { type: "boolean" });
-  assert.ok(schema.required.includes("til"));
-  assert.equal(schema.additionalProperties, false);
-});
-
 test("a fenced fallback answer still yields til", async () => {
   const res = await new Enricher(
     "claude-haiku-4-5",

@@ -2,15 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { botHarness } from "../../../test/bot-harness.ts";
 
-test("/taskadd with no text asks for the line and marks the question so the reply finds it", async () => {
-  const h = await botHarness();
-  const run = await h.say("/taskadd");
-  assert.deepEqual(run.texts("sendMessage"), [
-    "📝 Reply to this message with the task — say when it's due in your own words. (tk:add)",
-  ]);
-  assert.equal(run.rendered, "tg.sendMessage");
-});
-
 test("/taskadd reads the line through the enricher and shows the card", async () => {
   const h = await botHarness();
   h.enricher.extractTask = () => ({

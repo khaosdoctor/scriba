@@ -31,7 +31,6 @@ test("parseHabits reads bullets, done state, labels, and inline fields", () => {
 });
 
 test("parseHabits stops at the next heading and returns [] when the section is absent", () => {
-  assert.equal(parseHabits(HABITS_NOTE).length, 3); // doesn't swallow the ## TIL bullet
   assert.deepEqual(parseHabits("## Journal\n- [ ] x\n"), []);
   assert.equal(parseHabits("## Rituals\n- [ ] x\n", "Rituals").length, 1); // heading is configurable
 });

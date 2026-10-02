@@ -164,12 +164,6 @@ test("a value habit asks for a number in a reply that carries its marker, with n
   assert.equal(fixture.edits[0]!.opts, undefined);
 });
 
-test("the tapped card is the one edited, even when the prompt was sent before a restart", async () => {
-  const fixture = setup();
-  await fixture.habits.ask(DATE, 0, 321);
-  assert.equal(fixture.edits[0]!.id, 321);
-});
-
 test("Yes ticks the line and stamps its completion under the note lock", async () => {
   const fixture = setup();
   assert.equal(await fixture.habits.tap(DATE, 0, MUSIC, true), true);

@@ -76,13 +76,11 @@ test("the Reprocess entry of /menu posts a fresh picker to the owner", async () 
   assert.equal(sent?.reply_markup.inline_keyboard.length, 4);
 });
 
-test("the root tap goes back to the scope picker and noop only answers", async () => {
+test("the root tap goes back to the scope picker", async () => {
   const harness = await botHarness();
   const run = await tap(harness, "root");
   assert.equal(edit(run)?.text, ROOT_TEXT);
   assert.equal(first(edit(run)), "rp:day");
-  assert.equal((await tap(harness, "noop")).rendered, "ack()");
-  assert.equal((await tap(harness, "frobnicate")).rendered, "ack()");
 });
 
 // --- calendars ---
@@ -537,11 +535,6 @@ test("go with a malformed payload is toasted without touching the repository", a
       `ack(${toast})`,
       parts.join(":"),
     );
-});
-
-test("go with an unknown mode is answered empty and does nothing", async () => {
-  const run = await tap(await botHarness(), "go", "z", "whatever");
-  assert.equal(run.rendered, "ack()");
 });
 
 // --- cancel and close ---

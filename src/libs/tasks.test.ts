@@ -339,7 +339,7 @@ test("anything not plainly work is personal", () => {
     ).type,
     "work",
   );
-  for (const type of ["Work", "WORK", "professional", "", undefined])
+  for (const type of ["Work", "WORK", "professional", "other", "", undefined])
     assert.equal(
       draftFromDetection({ description: "Renew the passport", type }, TODAY)
         .type,
@@ -587,14 +587,6 @@ test("a detected task with no timing at all keeps none — the card asks", () =>
       TODAY,
     ).due,
     null,
-  );
-  // An unknown type falls back to what the text says (personal by default).
-  assert.equal(
-    draftFromDetection(
-      { description: "Renew the passport", type: "other" },
-      TODAY,
-    ).type,
-    "personal",
   );
 });
 

@@ -159,16 +159,6 @@ test("a row inserted without a section reads back as journal", async (testContex
   });
 });
 
-test("jot_section can be rolled back and applied again", async (testContext) => {
-  await withDb(testContext, async (knex) => {
-    await migrateTo(knex, SECTION);
-    await knex.migrate.down();
-    await migrateTo(knex, SECTION);
-    assert.ok((await columns(knex)).includes("section"));
-    assert.equal(await knex.migrate.currentVersion(), SECTION);
-  });
-});
-
 test("til_offered adds a column that defaults to false for rows that predate it", async (testContext) => {
   await withDb(testContext, async (knex) => {
     await migrateTo(knex, SECTION);

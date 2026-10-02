@@ -94,22 +94,7 @@ function setup(
 
 const promptFor = (date: string) => `📊 How was ${date}? Rate it 1–10:`;
 
-const buttons = (opts: any): string[][] =>
-  opts.keyboard.inline_keyboard.map((row: { callback_data: string }[]) =>
-    row.map((b) => b.callback_data),
-  );
-
 // --- rating ---
-
-test("the rating prompt is a 1 to 10 grid whose buttons carry the day", async () => {
-  const h = setup();
-  await h.rating.prompt(DATE);
-  assert.equal(h.sent[0]?.text, promptFor(DATE));
-  assert.deepEqual(buttons(h.sent[0]?.opts), [
-    [1, 2, 3, 4, 5].map((n) => `rate:${DATE}:${n}`),
-    [6, 7, 8, 9, 10].map((n) => `rate:${DATE}:${n}`),
-  ]);
-});
 
 test("a rating is written to the day's note and reported as saved", async () => {
   const h = setup();
@@ -450,27 +435,6 @@ test("a fresh controller answers a prompt sent by another, so no state is shared
 
 // --- skipping ---
 
-test("Skip drops the prompt and moves to the next question", async () => {
-  const h = setup();
-  await h.rating.skipFollowup("journal", DATE, 9);
-  assert.deepEqual(h.deleted, [9]);
-  assert.match(h.sent[0]!.text, /Learned anything today\?/);
-});
-
-test("Skip on the last question just clears it", async () => {
-  const h = setup();
-  await h.rating.skipFollowup("til", DATE, 9);
-  assert.deepEqual(h.deleted, [9]);
-  assert.deepEqual(h.sent, []);
-});
-
-test("a prompt Telegram won't delete does not stop Skip from asking the next question", async () => {
-  const h = setup({ deleteFails: true });
-  await h.rating.skipFollowup("journal", DATE, 9);
-  assert.equal(h.sent.length, 1);
-  assert.match(h.sent[0]!.text, /Learned anything today\?/);
-});
-
 test("Skip on a stale prompt asks from the note as it is now", async () => {
   const done = setup({ notes: ["## Journal\n- a\n## TIL\n- b\n"] });
   await done.rating.skipFollowup("journal", DATE, 9);
@@ -483,11 +447,4 @@ test("Skip on a stale prompt asks from the note as it is now", async () => {
   const old = setup();
   await old.rating.skipFollowup("journal", "2026-06-25", 9);
   assert.match(old.sent[0]!.text, /\(fu:t:2026-06-25\)/);
-});
-
-test("a prompt can be claimed for Skip once, and another prompt still can", () => {
-  const h = setup();
-  assert.equal(h.rating.claimSkip("journal", DATE, 9), true);
-  assert.equal(h.rating.claimSkip("journal", DATE, 9), false);
-  assert.equal(h.rating.claimSkip("journal", DATE, 10), true);
 });

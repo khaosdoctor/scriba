@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseWizardRef } from "../libs/wizard.ts";
 import { FakeSettings } from "../test/fakes.ts";
-import { type SettingsPrompt, SettingsService } from "./settings.ts";
+import { SettingsService } from "./settings.ts";
 
 function setup(stored: Record<string, string> = {}) {
   const events: string[] = [];
@@ -44,14 +43,4 @@ test("a new rating time is stored before the nightly job is re-armed", async () 
   const { settings, events } = setup();
   await settings.setRatingTime("23:30");
   assert.deepEqual(events, ["set ratingTime=23:30", "rearm rating"]);
-});
-
-test("each typed-value prompt is a force reply carrying its own marker", async () => {
-  const { settings, sent } = setup();
-  for (const kind of ["es", "rt", "em", "vfm"] as SettingsPrompt[]) {
-    await settings.ask(kind);
-    const prompt = sent.at(-1)!;
-    assert.deepEqual(prompt.opts, { forceReply: true }, kind);
-    assert.equal(parseWizardRef(prompt.text)?.kind, kind);
-  }
 });

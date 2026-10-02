@@ -468,6 +468,7 @@ test("writeLine appends a TIL jot with the til section when its anchor is gone",
   await processor.writeLine(jot({ section: "til" }), LINE);
   assert.deepEqual(state.appended, [["2026-08-16", LINE, "til"]]);
   assert.equal(state.writes, 0);
+  assert.equal(state.note, `## Journal\n- a ^aaaaaaaa\n${LINE}\n`);
 });
 
 test("writeLine appends a journal jot with the journal section when its anchor is gone", async () => {
@@ -486,12 +487,6 @@ test("writeLine replaces a TIL line in place and never appends", async () => {
     `## Journal\n- a ^aaaaaaaa\n## TIL\n${LINE}\n## Log\n`,
   );
   assert.deepEqual(state.appended, []);
-});
-
-test("writeLine with no TIL heading appends at the end and leaves the journal alone", async () => {
-  const { processor, state } = noteHarness("## Journal\n- a ^aaaaaaaa\n");
-  await processor.writeLine(jot({ section: "til" }), LINE);
-  assert.equal(state.note, `## Journal\n- a ^aaaaaaaa\n${LINE}\n`);
 });
 
 test("a split piece stays in its parent's section", () => {

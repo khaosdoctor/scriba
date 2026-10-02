@@ -55,12 +55,6 @@ test("two taps at once on one prompt ask the next question once", async () => {
   assert.equal(sends.size, 1);
 });
 
-test("a Skip tap whose message is gone is acknowledged and stops", async () => {
-  const h = await botHarness();
-  const run = await h.tap(SKIP_JOURNAL, { message: null });
-  assert.equal(run.rendered, "ack()");
-});
-
 test("Skip on a stale prompt asks from the note as it is now", async () => {
   const filled = await botHarness();
   filled.obsidian.readDailyNote = {

@@ -295,17 +295,6 @@ test("reprocess queries: jotsInRange, jotsPage and resetForReprocess", async (t)
   });
 });
 
-test("the TIL card is asked once per jot", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
-    await jots.insertJot(sampleJot("aaaaaaaa"));
-    assert.equal(await jots.tilOffered("aaaaaaaa"), false);
-    await jots.markTilOffered("aaaaaaaa");
-    assert.equal(await jots.tilOffered("aaaaaaaa"), true);
-    assert.equal(await jots.tilOffered("ffffffff"), false);
-  });
-});
-
 test("the offered flag is per jot, strictly boolean, and survives edits and a reprocess reset", async (t) => {
   await withDb(t, async (k) => {
     const jots = new JotRepository(k);

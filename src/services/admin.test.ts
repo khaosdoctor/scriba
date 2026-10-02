@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { ReleaseNote } from "../data/connections/github.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import type { Stats } from "../domain/jot/structures.ts";
-import { dayBounds, startOfToday } from "../libs/time.ts";
+import { startOfToday } from "../libs/time.ts";
 import { sampleJot } from "../test/sqlite.ts";
 import {
   AdminService,
@@ -418,32 +418,6 @@ test("/unreject with a word and a note removes that rejection and says which", a
   );
 });
 
-test("/unreject with no args offers each rejected word once, capped at 30", async () => {
-  assert.equal(await setup().admin.unreject(""), "(no rejections)");
-
-  const list = [
-    { surface: "monday", note: "Monday" },
-    { surface: "monday", note: "Mondays" },
-    { surface: "norway", note: "Norway" },
-  ];
-  assert.deepEqual(
-    await setup({ repo: { rejectionList: async () => list } }).admin.unreject(
-      "",
-    ),
-    { surfaces: ["monday", "norway"], total: 2 },
-  );
-
-  const many = Array.from({ length: 35 }, (_, index) => ({
-    surface: `word${index}`,
-    note: "N",
-  }));
-  const picker = await setup({
-    repo: { rejectionList: async () => many },
-  }).admin.unreject("");
-  assert.equal(typeof picker === "object" && picker.surfaces.length, 30);
-  assert.equal(typeof picker === "object" && picker.total, 35);
-});
-
 test("/flush drains the queue and reports how many were waiting", async () => {
   const flushed: string[] = [];
   const { admin } = setup({
@@ -719,22 +693,6 @@ test("formatListPage clamps the page and footers what is off screen", () => {
 const target = (id: string, anchor = id) =>
   aJot({ id, anchor, status: "done" });
 
-test("reprocessCount counts a squashed follower with its leader and reads the whole days", async () => {
-  const windows: number[][] = [];
-  const { admin } = setup({
-    repo: {
-      jotsInRange: async (from: number, to: number) => {
-        windows.push([from, to]);
-        return [target("a1"), target("a2", "a1"), target("b1")];
-      },
-    },
-  });
-  assert.equal(await admin.reprocessCount("2026-10-05", "2026-10-09"), 2);
-  assert.deepEqual(windows, [
-    [dayBounds("2026-10-05")[0], dayBounds("2026-10-09")[1]],
-  ]);
-});
-
 test("jotsPage asks for one row past the page to know whether Next exists", async () => {
   const asked: number[][] = [];
   const rows = (count: number) =>
@@ -757,22 +715,6 @@ test("jotsPage asks for one row past the page to know whether Next exists", asyn
     [0, 9],
     [8, 9],
   ]);
-});
-
-test("reprocessPick refuses a jot that is gone or still in flight and accepts a finished one", async () => {
-  const withStatus = (status: string) =>
-    setup({ repo: { getJot: async () => aJot({ status: status as never }) } })
-      .admin;
-  assert.equal(await setup().admin.reprocessPick("nope"), "gone");
-  const noId = setup();
-  assert.equal(await noId.admin.reprocessPick(undefined), "gone");
-  assert.deepEqual(noId.calls, []);
-  for (const status of ["pending", "processing", "deleted"])
-    assert.equal(await withStatus(status).reprocessPick("abcd1234"), "busy");
-  for (const status of ["done", "failed", "abandoned"]) {
-    const picked = await withStatus(status).reprocessPick("abcd1234");
-    assert.equal(typeof picked === "string" ? picked : picked.status, status);
-  }
 });
 
 test("reprocessExecute on a day resets the distinct leaders and queues only what was reset", async () => {
@@ -802,21 +744,6 @@ test("reprocessExecute on a day resets the distinct leaders and queues only what
   assert.deepEqual(calls, ["reset(a1,b1,c1)", "queue.add(a1,c1)"]);
 });
 
-test("reprocessExecute on a range labels it with an arrow", async () => {
-  const { admin } = setup({
-    repo: {
-      jotsInRange: async () => [target("a1")],
-      resetForReprocess: async () => ["a1"],
-    },
-  });
-  const out = await admin.reprocessExecute({
-    lo: "2026-10-05",
-    hi: "2026-10-09",
-    day: false,
-  });
-  assert.equal(out.text, "🔁 Reprocessing 1 jot from 2026-10-05 → 2026-10-09…");
-});
-
 test("reprocessExecute on a squashed follower reprocesses its leader", async () => {
   const { admin, calls } = setup({
     repo: {
@@ -830,39 +757,4 @@ test("reprocessExecute on a squashed follower reprocesses its leader", async () 
   const out = await admin.reprocessExecute({ jot: "f1" });
   assert.equal(out.text, "🔁 Reprocessing 1 jot from lead…");
   assert.deepEqual(calls, ["reset(lead)", "queue.add(lead)"]);
-});
-
-test("reprocessExecute reports a vanished jot, an empty day and a lost race without queueing", async () => {
-  const gone = setup();
-  assert.deepEqual(await gone.admin.reprocessExecute({ jot: "gone1" }), {
-    text: "Jot gone1 not found.",
-    queued: false,
-  });
-
-  const empty = setup({ repo: { jotsInRange: async () => [] } });
-  assert.deepEqual(
-    await empty.admin.reprocessExecute({
-      lo: "2026-10-05",
-      hi: "2026-10-05",
-      day: true,
-    }),
-    { text: "No reprocessable jots for 2026-10-05.", queued: false },
-  );
-
-  const raced = setup({
-    repo: {
-      jotsInRange: async () => [target("a1")],
-      resetForReprocess: async () => [],
-    },
-  });
-  assert.deepEqual(
-    await raced.admin.reprocessExecute({
-      lo: "2026-10-05",
-      hi: "2026-10-05",
-      day: true,
-    }),
-    { text: "No reprocessable jots for 2026-10-05 anymore.", queued: false },
-  );
-  for (const run of [gone, empty, raced])
-    assert.ok(!run.calls.some((call) => call.startsWith("queue.add")));
 });

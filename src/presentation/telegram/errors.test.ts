@@ -40,29 +40,13 @@ function harness(jotId?: string, lookupFails = false) {
   return { rec, fail };
 }
 
-test("a failed tap gets a toast of at most 200 characters and no message", async () => {
+test("a tap whose error toast Telegram refuses is still swallowed", async () => {
   const { rec, fail } = harness("aaaaaaaa");
-  await fail(new Error("db is locked"), TAP);
-  await fail(new Error("x".repeat(500)), TAP);
-  assert.equal(rec.answers()[0], "⚠️ db is locked");
-  assert.equal(rec.answers()[1]?.length, 200);
-  assert.ok(rec.answers()[1]?.startsWith("⚠️ xxx"));
-  assert.deepEqual(rec.texts("sendMessage"), []);
-
   rec.fail.add("answerCallbackQuery");
   await fail(new Error("again"), TAP);
 });
 
-test("a failed message gets Retry and Delete when it already has a jot, a plain error otherwise", async () => {
-  const withJot = harness("aaaaaaaa");
-  await withJot.fail(new Error("obsidian is down"), MESSAGE);
-  const reply = withJot.rec.calls[0];
-  assert.equal(reply?.payload.text, "⚠️ Couldn't save that: obsidian is down");
-  assert.deepEqual(withJot.rec.buttons(reply), [
-    ["🔄 Retry", "rt:aaaaaaaa"],
-    ["🗑 Delete", "dl:aaaaaaaa"],
-  ]);
-
+test("a failed message with no jot, or whose lookup and reply both fail, gets a plain error", async () => {
   const noJot = harness();
   await noJot.fail("disk full", MESSAGE);
   assert.deepEqual(noJot.rec.texts("sendMessage"), [

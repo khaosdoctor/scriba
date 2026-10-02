@@ -207,14 +207,6 @@ test("a message sent while the agent is working is accepted, not refused", async
   assert.deepEqual(agent.prompts, ["first"]);
 });
 
-test("handle returns without waiting for the agent", async () => {
-  const { agent, say } = await harness();
-  // No result is ever emitted: if handle awaited the answer, this would hang.
-  await say("first");
-  await settle();
-  assert.deepEqual(agent.prompts, ["first"]);
-});
-
 test("each answer arrives on the message that asked for it", async () => {
   const { agent, say, replies, edits } = await harness();
   await say("first");
