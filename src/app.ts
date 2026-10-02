@@ -2,6 +2,7 @@ import { Bot } from "grammy";
 import type { Config } from "./config.ts";
 import { sdkQuery } from "./data/connections/anthropic.ts";
 import { GithubReleases } from "./data/connections/github.ts";
+import { TelegramFiles } from "./data/connections/telegram-files.ts";
 import { WebService } from "./data/connections/web.ts";
 import { Repository } from "./data/repositories/index.ts";
 import { ObsidianClient } from "./data/repositories/notes.ts";
@@ -158,8 +159,7 @@ export async function createScriba(
       }
     }));
   const media = new MediaService({
-    api: bot.api,
-    token: config.telegram.token,
+    files: new TelegramFiles(bot.api, config.telegram.token),
   });
   const voice = new VoiceService({ media, transcriber });
   const links =
