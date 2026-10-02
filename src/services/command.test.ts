@@ -612,7 +612,7 @@ test("the watchdog stops with the turn, and doesn't fire after an answer", async
   assert.equal(editsTo(edits, replies[0]!.id).at(-1), "all done");
 });
 
-test("command mode refuses to open while task mode is open, and re-opens over itself", async () => {
+test("command mode refuses to open while task mode is open, and a second /command leaves the open session alone", async () => {
   const { command, modes } = await harness();
   modes.close();
   modes.open("task");
@@ -624,8 +624,31 @@ test("command mode refuses to open while task mode is open, and re-opens over it
   modes.close();
   assert.equal(command.open(), "opened");
   command.sessionId = "previous-session";
-  assert.equal(command.open(), "opened");
-  assert.equal(command.sessionId, undefined, "a second /command starts over");
+  assert.equal(command.open(), "already");
+  assert.equal(
+    command.sessionId,
+    "previous-session",
+    "a second /command keeps the conversation",
+  );
+});
+
+test("a second /command while a turn is running leaves the turn, the queue and the conversation alone", async () => {
+  const { command, agent, say, edits } = await harness();
+  await say("first");
+  await settle();
+  await say("second");
+  await settle();
+
+  assert.equal(command.open(), "already");
+  await settle();
+  assert.equal(agent.interrupts, 0);
+  assert.deepEqual(agent.prompts, ["first"]);
+  assert.ok(!edits.some((edit) => /Command mode closed/.test(edit.text)));
+
+  agent.emit(result("one done"));
+  await settle();
+  assert.deepEqual(agent.prompts, ["first", "second"]);
+  assert.equal(command.sessionId, "s1");
 });
 
 test("command mode refuses to open without a mounted vault", async () => {

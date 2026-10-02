@@ -12,7 +12,7 @@ const INTRO = [
   "Send /done when you're finished.",
 ].join("\n");
 
-const REFUSALS: Record<Exclude<CommandOpen, "opened">, string> = {
+const REFUSALS: Record<Exclude<CommandOpen, "opened" | "already">, string> = {
   busy: "📝 Task mode is open. Send /done to close it first, then /command.",
   noVault:
     "⚠️ command mode needs SCRIBA_VAULT_HOST_PATH — the vault isn't mounted.",
@@ -25,6 +25,7 @@ export const commandMode: CommandView = {
     const view = new Composer<Context>();
     view.command("command", async (ctx) => {
       const outcome = command.open();
+      if (outcome === "already") return;
       await ctx.reply(outcome === "opened" ? INTRO : REFUSALS[outcome]);
     });
     return view;

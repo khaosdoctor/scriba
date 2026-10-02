@@ -18,7 +18,6 @@ import {
 } from "./test/bot-harness.ts";
 
 const FALLBACK = "scriba handles text, voice, images, and video for now.";
-const COMMAND_ON = "🧭 Command mode is on.";
 
 const first = (texts: string[]) => texts[0] ?? "";
 const sticker = {
@@ -138,16 +137,13 @@ test("a message stream mode refuses to open over the other one", async () => {
   );
 });
 
-test("/command re-opens and resets the session without an 'already open' check", async () => {
+test("a second /command while it is open sends nothing and keeps the session", async () => {
   const harness = await botHarness();
   await harness.say("/command");
   harness.bot.command.sessionId = "previous-session";
   const run = await harness.say("/command");
-  assert.equal(
-    first(run.texts("sendMessage")).slice(0, COMMAND_ON.length),
-    COMMAND_ON,
-  );
-  assert.equal(harness.bot.command.sessionId, undefined);
+  assert.deepEqual(run.calls, []);
+  assert.equal(harness.bot.command.sessionId, "previous-session");
 });
 
 test("/command is refused without a vault path", async () => {

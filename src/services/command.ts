@@ -37,7 +37,7 @@ const TURN_SILENCE_MS = 5 * 60_000;
 const WORKING = "🧭 Working…";
 const NO_BUTTONS: MessageOptions["keyboard"] = { inline_keyboard: [] };
 
-export type CommandOpen = "opened" | "busy" | "noVault";
+export type CommandOpen = "opened" | "already" | "busy" | "noVault";
 /** Settles a claimed confirmation: `true` lets the change through. */
 export type Decision = (allow: boolean) => void;
 
@@ -117,8 +117,8 @@ export class CommandService {
     return this.deps.modes.isOpen("command");
   }
 
-  /** Open the session, or re-open it: a second /command resets the conversation without an
-   *  "already open" check. */
+  /** Open the session. A second /command while it is open changes nothing: the running
+   *  conversation keeps going and /done is the way to start over. */
   open(): CommandOpen {
     const { modes, service } = this.deps;
     if (modes.isOpen("task")) {
@@ -129,9 +129,8 @@ export class CommandService {
       log.warn("command mode unavailable — no vault path configured");
       return "noVault";
     }
-    modes.open("command", () => this.close());
-    this.sessionId = undefined; // a fresh session each time /command is opened
-    modes.touch();
+    if (modes.open("command", () => this.close()) === "already")
+      return "already";
     return "opened";
   }
 
