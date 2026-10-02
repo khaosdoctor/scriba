@@ -112,17 +112,16 @@ flowchart LR
 
 ## Environment
 
-Most variables are in [`.env.example`](./.env.example), with a comment explaining each, and [`src/config.ts`](./src/config.ts) has every one with its default. Four are required (`TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `CLAUDE_CODE_OAUTH_TOKEN`, `OBSIDIAN_API_KEY`), and the rest have working defaults.
+Most variables are in [`.env.example`](./.env.example), with a comment explaining each. [`src/config.ts`](./src/config.ts) validates the app's own settings and holds their defaults, and a few are read elsewhere: `CLAUDE_CODE_OAUTH_TOKEN` by the Claude Agent SDK, `LOG_LEVEL` and `LOG_JSON` by the logger, and `GIT_SHA` at boot. Four are required (`TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `CLAUDE_CODE_OAUTH_TOKEN`, `OBSIDIAN_API_KEY`), and the rest have working defaults.
 
 ## Develop
 
-You can run it without Docker. [mise](https://mise.jdx.dev) pins Node 24 in `mise.toml`, and the app reads its settings from the environment, so export the variables from `.env` first (only Docker Compose loads that file for you):
+You can run it without Docker. [mise](https://mise.jdx.dev) pins Node 24 in `mise.toml`. The app reads its settings from the environment and never loads `.env` itself (only Docker Compose does), so the run command passes the file through Node's `--env-file`:
 
 ```sh
 npm install            # Node 24, builds the better-sqlite3 addon
-cp .env.example .env
-npm run migrate        # apply schema
-npm run dev            # watch mode
+cp .env.example .env   # then fill in the four required values
+node --env-file=.env --watch --import tsx src/index.ts   # watch mode, applies the schema at boot
 npm test               # the whole suite
 npm run test:coverage  # the suite with the coverage floors CI enforces
 npm run typecheck

@@ -440,7 +440,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   reading the note: blank lines, empty bullets (`-`, `- [ ]`), rules and HTML comments are
   template scaffolding, and the frontmatter rating is never looked at. A day with no note
   asks both. No state is held: the prompt's text carries `(fu:j|t:<date>)` and a reply is
-  routed by it (`parseFollowupRef` in the prompt replies, `presentation/telegram/replies.ts`),
+  routed by it (`parseFollowupRef` in `presentation/telegram/rating/followup-reply.ts`),
   while the note says what is still empty, so an
   answer works after a restart and an unanswered question costs nothing. Each question has
   a ⏭ Skip button (`fu:<j|t>:<date>`) and, since an inline keyboard and `force_reply` can't
