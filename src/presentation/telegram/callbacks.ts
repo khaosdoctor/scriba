@@ -1,0 +1,42 @@
+import { Composer, type Context } from "grammy";
+import { unrejectView } from "./admin/unreject-tap.ts";
+import { commandView } from "./command/tap.ts";
+import { habitsView } from "./habits/tap.ts";
+import type { ViewDeps } from "./index.ts";
+import { embedView } from "./journal/embed.ts";
+import { linkView } from "./journal/link.ts";
+import { removeView } from "./journal/remove.ts";
+import { retryView } from "./journal/retry.ts";
+import { voiceFixView } from "./journal/voicefix.ts";
+import { followupView } from "./rating/followup-tap.ts";
+import { ratingView } from "./rating/tap.ts";
+import { reprocessView } from "./reprocess/tap.ts";
+import { menuView } from "./settings/menu.ts";
+import { tasksView } from "./tasks/tap.ts";
+import { tilView } from "./til/tap.ts";
+
+/** One view per callback namespace, with the empty answer for an unknown namespace last so
+ *  a stale button never leaves its spinner running. */
+export function callbackViews(deps: ViewDeps): Composer<Context>[] {
+  const { command, tasks, jotController, edits, rating, habits, admin } = deps;
+  const unknown = new Composer<Context>();
+  unknown.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
+  return [
+    menuView(deps),
+    voiceFixView(jotController),
+    retryView(jotController),
+    removeView("un", deps),
+    removeView("dl", deps),
+    embedView(edits),
+    commandView(command),
+    tasksView(tasks),
+    tilView(jotController),
+    linkView(edits),
+    unrejectView(admin),
+    ratingView(rating),
+    followupView(rating),
+    habitsView(habits),
+    reprocessView(admin),
+    unknown,
+  ];
+}

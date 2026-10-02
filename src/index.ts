@@ -10,6 +10,12 @@ import { logger } from "./libs/log.ts";
 import { FlushQueue } from "./libs/queue.ts";
 import { Scheduler } from "./libs/scheduler.ts";
 import { previousDate } from "./libs/time.ts";
+import { Chat } from "./presentation/telegram/chat.ts";
+import {
+  publishCommands,
+  registerViews,
+} from "./presentation/telegram/index.ts";
+import { MenuLifetime } from "./presentation/telegram/settings/menu-lifetime.ts";
 import { AdminController } from "./services/admin.ts";
 import { AgentService } from "./services/agent.ts";
 import { CommandController } from "./services/command.ts";
@@ -34,9 +40,6 @@ import {
   type FallbackTranscriber,
 } from "./services/transcriber.ts";
 import { VoiceService } from "./services/voice.ts";
-import { Chat } from "./views/chat.ts";
-import { publishCommands, registerViews } from "./views/index.ts";
-import { MenuLifetime } from "./views/menu-lifetime.ts";
 
 const log = logger("main");
 const botLog = logger("bot");

@@ -2,6 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Jot } from "./domain/jot/entity.ts";
 import { parseHabitRef } from "./libs/habits.ts";
+import { parseFollowupRef } from "./presentation/telegram/rating/followup-reply.ts";
+import {
+  parseLinkRef,
+  parseSettingsRef,
+} from "./presentation/telegram/settings/wizard.ts";
+import { parseTaskRef } from "./presentation/telegram/tasks/reply.ts";
 import {
   botHarness,
   EM,
@@ -10,9 +16,6 @@ import {
   type Run,
   sampleJot,
 } from "./test/bot-harness.ts";
-import { parseFollowupRef } from "./views/replies/followup.ts";
-import { parseTaskRef } from "./views/replies/task.ts";
-import { parseLinkRef, parseSettingsRef } from "./views/replies/wizard.ts";
 
 const FALLBACK = "scriba handles text, voice, images, and video for now.";
 const COMMAND_ON = "🧭 Command mode is on.";
