@@ -23,12 +23,6 @@ import { voiceView } from "./messages/voice.ts";
 
 const log = logger("bot");
 
-/** The one handler the voice view still calls back into on the bot: a spoken task needs the
- *  file download and the transcriber, which live on the bot. */
-export interface JotHandlers {
-  spokenTask(ctx: Context, fileId: string): Promise<void>;
-}
-
 export type ViewDeps = {
   ownerId: number;
   rating: RatingController;
@@ -40,7 +34,6 @@ export type ViewDeps = {
   tasks: TaskController;
   jotController: JotController;
   edits: EditController;
-  jots: JotHandlers;
   /** Read per tap or command: the controller is built after the bot, in index.ts. */
   admin: () => AdminController;
   errors: ErrorDeps;

@@ -120,7 +120,7 @@ export async function createScriba(
     edits: bot.edits,
     tasks: bot.tasks,
     notifier: bot.chat,
-    files: bot,
+    files: bot.media,
   });
   enricher.setSwitchNotifier((to, model, err) => {
     const reason = err instanceof Error ? err.message : String(err);

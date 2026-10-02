@@ -266,7 +266,7 @@ test("task mode takes the text that is not a reply, instead of an intake", async
 test("a voice note or audio file while task mode is open becomes a spoken task", async () => {
   const harness = await botHarness();
   const rows = rowsOf(harness);
-  harness.bot.downloadFile = async () => ({
+  harness.bot.media.downloadFile = async () => ({
     bytes: new Uint8Array(),
     ext: "oga",
     mime: "audio/ogg",

@@ -1,4 +1,3 @@
-import { extname } from "node:path";
 import { Bot } from "grammy";
 import type { AdminController } from "./controllers/admin.ts";
 import { CommandController } from "./controllers/command.ts";
@@ -13,11 +12,11 @@ import { logger } from "./lib/log.ts";
 import type { FlushQueue } from "./lib/queue.ts";
 import type { Scheduler } from "./lib/scheduler.ts";
 import type { Config } from "./models/config.ts";
-import type { DownloadedFile } from "./models/domain.ts";
 import type { Repository } from "./repositories/index.ts";
 import { AgentService } from "./services/agent.ts";
 import type { Enricher } from "./services/enrich.ts";
 import type { LinkIndex } from "./services/links.ts";
+import { MediaService } from "./services/media.ts";
 import type { ObsidianClient } from "./services/obsidian.ts";
 import { TaskNotesService } from "./services/task-notes.ts";
 import type { FallbackTranscriber } from "./services/transcribe.ts";
@@ -25,34 +24,16 @@ import { VaultService } from "./services/vault.ts";
 import { WebService } from "./services/web.ts";
 import { Chat } from "./views/chat.ts";
 import { COMMANDS } from "./views/commands/index.ts";
-import { taskMessage } from "./views/commands/task.ts";
 import { registerViews } from "./views/index.ts";
 import { MenuLifetime } from "./views/menu-lifetime.ts";
 
 const log = logger("bot");
 
-const MIME: Record<string, string> = {
-  oga: "audio/ogg",
-  ogg: "audio/ogg",
-  opus: "audio/ogg",
-  mp3: "audio/mpeg",
-  m4a: "audio/mp4",
-  wav: "audio/wav",
-  flac: "audio/flac",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  png: "image/png",
-  webp: "image/webp",
-  gif: "image/gif",
-  mp4: "video/mp4",
-  mov: "video/quicktime",
-  webm: "video/webm",
-};
-
 /** All Telegram wiring. Long polling, no webhook. */
 export class ScribaBot {
   private bot: Bot;
   readonly chat: Chat;
+  readonly media: MediaService;
   private queue!: FlushQueue;
   private rating: RatingController;
   private habits: HabitController;
@@ -63,11 +44,11 @@ export class ScribaBot {
   private adminController!: AdminController;
 
   constructor(
-    private config: Config,
+    config: Config,
     repo: Repository,
     obsidian: ObsidianClient,
     enricher: Enricher,
-    private transcriber: FallbackTranscriber,
+    transcriber: FallbackTranscriber,
     links: LinkIndex,
     scheduler: Scheduler,
   ) {
@@ -76,6 +57,11 @@ export class ScribaBot {
       client: { timeoutSeconds: 60 },
     });
     this.chat = new Chat(this.bot.api, config.telegram.allowedUserId);
+    this.media = new MediaService({
+      api: this.bot.api,
+      token: config.telegram.token,
+      transcriber,
+    });
     this.rating = new RatingController({
       repo,
       obsidian,
@@ -121,6 +107,7 @@ export class ScribaBot {
       notifier: this.chat,
       modes,
       ownerId: config.telegram.allowedUserId,
+      media: this.media,
     });
     this.jotController = new JotController({
       repo,
@@ -147,7 +134,6 @@ export class ScribaBot {
       tasks: this.tasks,
       jotController: this.jotController,
       edits: this.edits,
-      jots: this,
       admin: () => this.adminController,
       errors: {
         jotForMessage: (messageId) => repo.jotForMessage(messageId),
@@ -206,31 +192,5 @@ export class ScribaBot {
   /** Morning task summary (the scheduler calls this). Delegates to the task flow. */
   async promptTaskSummary(): Promise<void> {
     await this.tasks.dailySummary();
-  }
-
-  async downloadFile(fileId: string): Promise<DownloadedFile> {
-    const file = await this.bot.api.getFile(fileId);
-    if (!file.file_path) throw new Error(`no file_path for ${fileId}`);
-    // Bot API files go up to 20 MB, so longer than a model call, but never unbounded.
-    const res = await fetch(
-      `https://api.telegram.org/file/bot${this.config.telegram.token}/${file.file_path}`,
-      { signal: AbortSignal.timeout(60_000) },
-    );
-    if (!res.ok) throw new Error(`telegram file download: ${res.status}`);
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const ext = (extname(file.file_path).slice(1) || "bin").toLowerCase();
-    log.debug({ fileId, ext, bytes: bytes.length }, "downloaded telegram file");
-    return { bytes, ext, mime: MIME[ext] ?? "application/octet-stream" };
-  }
-
-  /** A voice note sent while task mode is open. It is transcribed like any other voice
-   *  jot and then read as a task — dictating a task is the whole point of task mode being
-   *  a mode rather than a command with arguments. */
-  async spokenTask(ctx: any, fileId: string): Promise<void> {
-    await ctx.react("✍").catch(() => {});
-    const file = await this.downloadFile(fileId);
-    const text = await this.transcriber.transcribe(file.bytes, file.ext);
-    log.info({ chars: text.length }, "task mode: voice note transcribed");
-    await taskMessage(ctx, this.tasks, text);
   }
 }

@@ -154,7 +154,6 @@ async function harness(over: Opts = {}) {
     obsidian,
     events,
     api: rec.calls,
-    apiResult: rec.results,
     failApi: rec.fail,
     answers: rec.answers,
     sends: () => rec.texts("sendMessage"),
@@ -881,50 +880,6 @@ test("the outcome reaction follows the jot's message and never throws", async ()
   const unmapped = await harness({ mapped: [] });
   await unmapped.bot.jotController.react(ID, "done");
   assert.deepEqual(unmapped.api, []);
-});
-
-// --- downloadFile ---
-
-test("a Telegram file is downloaded with its extension and mime type", async (testContext) => {
-  const fixture = await harness();
-  fixture.apiResult.getFile = { file_id: "f1", file_path: "voice/file_1.OGA" };
-  const urls: string[] = [];
-  testContext.mock.method(globalThis, "fetch", async (url: string) => {
-    urls.push(url);
-    return new Response(new Uint8Array([1, 2, 3]));
-  });
-  const file = await fixture.bot.downloadFile("f1");
-  assert.deepEqual(urls, [
-    "https://api.telegram.org/file/bott/voice/file_1.OGA",
-  ]);
-  assert.deepEqual([...file.bytes], [1, 2, 3]);
-  assert.equal(file.ext, "oga");
-  assert.equal(file.mime, "audio/ogg");
-
-  fixture.apiResult.getFile = { file_id: "f2", file_path: "documents/file_2" };
-  const other = await fixture.bot.downloadFile("f2");
-  assert.equal(other.ext, "bin");
-  assert.equal(other.mime, "application/octet-stream");
-});
-
-test("a file Telegram will not serve fails the download with its reason", async (testContext) => {
-  const fixture = await harness();
-  fixture.apiResult.getFile = { file_id: "f1" };
-  await assert.rejects(
-    () => fixture.bot.downloadFile("f1"),
-    /no file_path for f1/,
-  );
-
-  fixture.apiResult.getFile = { file_id: "f1", file_path: "voice/a.oga" };
-  testContext.mock.method(
-    globalThis,
-    "fetch",
-    async () => new Response("no", { status: 404 }),
-  );
-  await assert.rejects(
-    () => fixture.bot.downloadFile("f1"),
-    /telegram file download: 404/,
-  );
 });
 
 // --- error handler ---
