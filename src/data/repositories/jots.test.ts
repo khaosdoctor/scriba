@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { removeDb, sampleJot, tempDbPath, withDb } from "../test/sqlite.ts";
-import { openDb } from "./db.ts";
+import { removeDb, sampleJot, tempDbPath, withDb } from "../../test/sqlite.ts";
+import { openDb } from "../connections/sqlite.ts";
 import { JotRepository } from "./jots.ts";
 
 test("jots: insert, update, retry cap, claim, message map and queued edits", async (t) => {

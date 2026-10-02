@@ -1,6 +1,6 @@
-import type { Task, TaskDraft, TaskType } from "../domain/task/entity.ts";
-import { logger } from "../libs/log.ts";
-import { setFrontmatterValue } from "../libs/note.ts";
+import type { Task, TaskDraft, TaskType } from "../../domain/task/entity.ts";
+import { logger } from "../../libs/log.ts";
+import { setFrontmatterValue } from "../../libs/note.ts";
 import {
   completeTaskLine,
   insertTaskLine,
@@ -9,9 +9,9 @@ import {
   renderTaskLine,
   replaceTaskLineAt,
   uncompleteTaskLine,
-} from "../libs/tasks.ts";
-import { plainDate } from "../libs/time.ts";
-import type { ObsidianClient } from "./obsidian.ts";
+} from "../../libs/tasks.ts";
+import { plainDate } from "../../libs/time.ts";
+import type { ObsidianClient } from "./notes.ts";
 
 const log = logger("tasks");
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sampleJot, withDb } from "../test/sqlite.ts";
+import { sampleJot, withDb } from "../../test/sqlite.ts";
 import { Repository } from "./index.ts";
 import { JotRepository } from "./jots.ts";
 import { LinkRuleRepository } from "./link-rules.ts";

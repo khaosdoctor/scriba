@@ -1,3 +1,5 @@
+import type { Repository } from "../data/repositories/index.ts";
+import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { Jot, JotSection } from "../domain/jot/entity.ts";
 import type { IntakeInput } from "../domain/jot/structures.ts";
 import { clipUpdate } from "../libs/feed.ts";
@@ -12,9 +14,7 @@ import { placeholderLine, stripTilPrefix } from "../libs/note.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { escapeHtml } from "../libs/text.ts";
 import { dayBounds, plainDate, plainTime } from "../libs/time.ts";
-import type { Repository } from "../repositories/index.ts";
 import type { Notifier } from "../services/notifier.ts";
-import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = logger("bot");
 const tilLog = logger("til-flow");

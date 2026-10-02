@@ -1,5 +1,5 @@
 import type { Knex } from "knex";
-import type { LinkRule, PendingLink } from "../domain/link-rule/entity.ts";
+import type { LinkRule, PendingLink } from "../../domain/link-rule/entity.ts";
 
 export class LinkRuleRepository {
   constructor(private k: Knex) {}

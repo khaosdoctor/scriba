@@ -1,3 +1,4 @@
+import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { Habit } from "../domain/habit/entity.ts";
 import {
   completeHabitLine,
@@ -7,7 +8,6 @@ import {
 } from "../libs/habits.ts";
 import { logger } from "../libs/log.ts";
 import type { Notifier } from "../services/notifier.ts";
-import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = logger("habits");
 

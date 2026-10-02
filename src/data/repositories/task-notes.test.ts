@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
-import { ObsidianClient } from "./obsidian.ts";
+import { ObsidianClient } from "./notes.ts";
 import { TaskNotesService } from "./task-notes.ts";
 
 /**

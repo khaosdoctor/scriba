@@ -6,15 +6,15 @@ import { type TestContext, test } from "node:test";
 import { Bot } from "grammy";
 import { MockAgent, setGlobalDispatcher } from "undici";
 import { loadConfig } from "./config.ts";
+import { Repository } from "./data/repositories/index.ts";
+import { SettingsRepository } from "./data/repositories/settings.ts";
+import { VaultService } from "./data/repositories/vault.ts";
 import type { SettingKey } from "./domain/setting/entity.ts";
 import { createScriba } from "./index.ts";
 import { Scheduler } from "./libs/scheduler.ts";
 import { WIZARD_RATING_TIME_REF } from "./libs/wizard.ts";
-import { Repository } from "./repositories/index.ts";
-import { SettingsRepository } from "./repositories/settings.ts";
 import type { SwitchNotifier } from "./services/enrich.ts";
 import { HealthMonitor } from "./services/health.ts";
-import { VaultService } from "./services/vault.ts";
 
 const env = {
   TELEGRAM_BOT_TOKEN: "t",

@@ -6,9 +6,9 @@ import {
   type JotStatus,
   MAX_ATTEMPTS,
   TERMINAL_STATUSES,
-} from "../domain/jot/entity.ts";
-import type { Stats, StatusCounts } from "../domain/jot/structures.ts";
-import { logger } from "../libs/log.ts";
+} from "../../domain/jot/entity.ts";
+import type { Stats, StatusCounts } from "../../domain/jot/structures.ts";
+import { logger } from "../../libs/log.ts";
 
 const log = logger("db");
 

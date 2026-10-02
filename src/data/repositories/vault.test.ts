@@ -4,7 +4,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import type { ObsidianClient } from "./obsidian.ts";
+import type { ObsidianClient } from "./notes.ts";
 import { isInsideRoot, VaultService } from "./vault.ts";
 
 /** A vault with one note, plus a secret outside it and a symlink pointing at that secret. */

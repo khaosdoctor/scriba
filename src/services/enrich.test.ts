@@ -1,11 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  Enricher,
-  type GroqChatFn,
-  ModelsDownError,
-  type QueryFn,
-} from "./enrich.ts";
+import type { GroqChatFn } from "../data/connections/groq.ts";
+import { Enricher, ModelsDownError, type QueryFn } from "./enrich.ts";
 
 type Msg =
   | {

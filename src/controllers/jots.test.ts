@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Repository } from "../data/repositories/index.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import type { IntakeInput } from "../domain/jot/structures.ts";
 import { moveAnchorLine, placeholderLine } from "../libs/note.ts";
 import { plainDate, plainTime, previousDate } from "../libs/time.ts";
-import { Repository } from "../repositories/index.ts";
 import { removeDb, sampleJot, tempDbPath } from "../test/sqlite.ts";
 import { JotController } from "./jots.ts";
 

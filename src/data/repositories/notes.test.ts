@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
-import { ObsidianClient, type ObsidianConfig } from "./obsidian.ts";
+import { ObsidianClient, type ObsidianConfig } from "./notes.ts";
 
 /**
  * A stand-in for Obsidian's Local REST API, served on loopback so the client's real fetch,

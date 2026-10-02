@@ -1,3 +1,5 @@
+import type { Repository } from "../data/repositories/index.ts";
+import type { TaskNotesService } from "../data/repositories/task-notes.ts";
 import type { SwitchKey } from "../domain/setting/entity.ts";
 import type {
   TaskDraft,
@@ -21,10 +23,8 @@ import {
 } from "../libs/tasks.ts";
 import { escapeHtml, fitTelegram } from "../libs/text.ts";
 import { plainDate } from "../libs/time.ts";
-import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { Notifier } from "../services/notifier.ts";
-import type { TaskNotesService } from "../services/task-notes.ts";
 import type { VoiceService } from "../services/voice.ts";
 import type { Modes, OpenOutcome } from "./modes.ts";
 

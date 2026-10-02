@@ -1,3 +1,5 @@
+import type { Repository } from "../data/repositories/index.ts";
+import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import type { EditInput } from "../domain/jot/structures.ts";
 import {
@@ -17,9 +19,7 @@ import {
   journalLine,
   stripJournalLine,
 } from "../libs/note.ts";
-import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
-import type { ObsidianClient } from "../services/obsidian.ts";
 import type { JotController } from "./jots.ts";
 
 const log = logger("bot");

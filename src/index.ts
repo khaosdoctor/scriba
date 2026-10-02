@@ -10,11 +10,16 @@ import { ProcessingController } from "./controllers/processing.ts";
 import { RatingController } from "./controllers/rating.ts";
 import { SettingsController } from "./controllers/settings.ts";
 import { TaskController } from "./controllers/tasks.ts";
+import { GithubReleases } from "./data/connections/github.ts";
+import { WebService } from "./data/connections/web.ts";
+import { Repository } from "./data/repositories/index.ts";
+import { ObsidianClient } from "./data/repositories/notes.ts";
+import { TaskNotesService } from "./data/repositories/task-notes.ts";
+import { VaultService } from "./data/repositories/vault.ts";
 import { logger } from "./libs/log.ts";
 import { FlushQueue } from "./libs/queue.ts";
 import { Scheduler } from "./libs/scheduler.ts";
 import { previousDate } from "./libs/time.ts";
-import { Repository } from "./repositories/index.ts";
 import { AgentService } from "./services/agent.ts";
 import {
   Enricher,
@@ -22,18 +27,13 @@ import {
   OPENCODE_BASE_URL,
   type SwitchNotifier,
 } from "./services/enrich.ts";
-import { GithubReleases } from "./services/github.ts";
 import { HealthMonitor, upstreams } from "./services/health.ts";
 import { MediaService } from "./services/media.ts";
-import { ObsidianClient } from "./services/obsidian.ts";
-import { TaskNotesService } from "./services/task-notes.ts";
 import {
   buildTranscriber,
   type FallbackTranscriber,
-} from "./services/transcribe.ts";
-import { VaultService } from "./services/vault.ts";
+} from "./services/transcriber.ts";
 import { VoiceService } from "./services/voice.ts";
-import { WebService } from "./services/web.ts";
 import { Chat } from "./views/chat.ts";
 import { publishCommands, registerViews } from "./views/index.ts";
 import { MenuLifetime } from "./views/menu-lifetime.ts";

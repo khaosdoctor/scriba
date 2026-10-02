@@ -1,9 +1,9 @@
+import type { Repository } from "../data/repositories/index.ts";
+import type { ObsidianClient } from "../data/repositories/notes.ts";
 import { logger } from "../libs/log.ts";
 import { sectionHasContent } from "../libs/note.ts";
 import { ratingDay } from "../libs/time.ts";
-import type { Repository } from "../repositories/index.ts";
 import type { Notifier } from "../services/notifier.ts";
-import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = { rating: logger("rating"), followup: logger("followup") };
 

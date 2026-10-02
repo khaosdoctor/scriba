@@ -1,6 +1,6 @@
 import type { Knex } from "knex";
-import type { TaskDraftRow } from "../domain/task/entity.ts";
-import { logger } from "../libs/log.ts";
+import type { TaskDraftRow } from "../../domain/task/entity.ts";
+import { logger } from "../../libs/log.ts";
 
 const log = logger("db");
 

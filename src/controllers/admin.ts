@@ -1,3 +1,9 @@
+import type {
+  GithubReleases,
+  ReleaseNote,
+} from "../data/connections/github.ts";
+import type { Repository } from "../data/repositories/index.ts";
+import type { VaultService } from "../data/repositories/vault.ts";
 import {
   type Jot,
   type JotStatus,
@@ -12,12 +18,9 @@ import type { PageView } from "../libs/page.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { formatDuration, pluralize } from "../libs/text.ts";
 import { dayBounds, plainDate, startOfToday } from "../libs/time.ts";
-import type { Repository } from "../repositories/index.ts";
-import type { GithubReleases, ReleaseNote } from "../services/github.ts";
 import type { HealthMonitor, UpstreamStatus } from "../services/health.ts";
 import type { Notifier } from "../services/notifier.ts";
-import type { FallbackTranscriber } from "../services/transcribe.ts";
-import type { VaultService } from "../services/vault.ts";
+import type { FallbackTranscriber } from "../services/transcriber.ts";
 import type { ProcessingController } from "./processing.ts";
 
 // One logger per command keeps today's logger names in the log stream.

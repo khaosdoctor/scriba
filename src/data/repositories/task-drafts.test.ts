@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { withDb } from "../test/sqlite.ts";
+import { withDb } from "../../test/sqlite.ts";
 import { TaskDraftRepository } from "./task-drafts.ts";
 
 test("task drafts: insert, update, claim once, and count per jot", async (t) => {

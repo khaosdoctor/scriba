@@ -1,13 +1,13 @@
 import { Agent, fetch } from "undici";
-import type { JotSection } from "../domain/jot/entity.ts";
-import { logger } from "../libs/log.ts";
+import type { JotSection } from "../../domain/jot/entity.ts";
+import { logger } from "../../libs/log.ts";
 import {
   anchorLine,
   insertJournalLine,
   moveAnchorLine,
   replaceAnchorLine,
   setFrontmatterValue,
-} from "../libs/note.ts";
+} from "../../libs/note.ts";
 
 const log = logger("obsidian");
 

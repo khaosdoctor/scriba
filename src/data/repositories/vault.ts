@@ -9,9 +9,9 @@ import {
   resolve,
   sep,
 } from "node:path";
-import type { AliasEntry } from "../libs/links.ts";
-import { logger } from "../libs/log.ts";
-import type { ObsidianClient } from "./obsidian.ts";
+import type { AliasEntry } from "../../libs/links.ts";
+import { logger } from "../../libs/log.ts";
+import type { ObsidianClient } from "./notes.ts";
 
 const log = logger("vault");
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { withDb } from "../test/sqlite.ts";
+import { withDb } from "../../test/sqlite.ts";
 import { SettingsRepository } from "./settings.ts";
 
 test("settings: a write replaces the stored value and reads back typed", async (t) => {

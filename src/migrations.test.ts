@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import knexLib, { type Knex } from "knex";
-import { openDb } from "./repositories/db.ts";
-import { JotRepository } from "./repositories/jots.ts";
+import { openDb } from "./data/connections/sqlite.ts";
+import { JotRepository } from "./data/repositories/jots.ts";
 import { removeDb, tempDbPath } from "./test/sqlite.ts";
 
 const BEFORE_SECTION = "20260922000000";

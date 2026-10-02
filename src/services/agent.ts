@@ -6,10 +6,10 @@ import {
   tool,
 } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import type { WebService } from "../data/connections/web.ts";
+import type { VaultService } from "../data/repositories/vault.ts";
 import { logger } from "../libs/log.ts";
 import { userMessage } from "./enrich.ts";
-import type { VaultService } from "./vault.ts";
-import type { WebService } from "./web.ts";
 
 const log = logger("agent");
 

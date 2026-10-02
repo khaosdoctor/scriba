@@ -1,5 +1,5 @@
 import knexLib, { type Knex } from "knex";
-import { logger } from "../libs/log.ts";
+import { logger } from "../../libs/log.ts";
 
 const log = logger("db");
 

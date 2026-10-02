@@ -1,7 +1,11 @@
 import type { OutputFormat } from "@anthropic-ai/claude-agent-sdk";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
-import Groq from "groq-sdk";
 import { z } from "zod";
+import {
+  type GroqChatFn,
+  type GroqMessage,
+  groqChat,
+} from "../data/connections/groq.ts";
 import type { DetectedTask } from "../domain/task/structures.ts";
 import { isRecoverable } from "../libs/jot.ts";
 import type { Candidate } from "../libs/links.ts";
@@ -34,53 +38,11 @@ export interface EnrichFallback {
   name?: string;
 }
 
-/** OpenAI-shaped chat message (what the Groq SDK takes). Content is a string for
- *  text turns, or a content-part array for the vision (image) turn. */
-type GroqMessage = { role: "system" | "user"; content: unknown };
-
 /** One model call's raw answer, before the caller reads it. */
 type SdkOut = {
   text: string;
   usage: { input: number; output: number };
   structuredOutput?: unknown;
-};
-
-/** OpenAI-compatible chat call, injectable for tests (mirrors the SDK `query` seam). */
-export type GroqChatFn = (
-  apiKey: string,
-  model: string,
-  messages: GroqMessage[],
-  baseUrl?: string,
-  timeoutMs?: number,
-) => Promise<{ text: string; usage: { input: number; output: number } }>;
-
-const groqChat: GroqChatFn = async (
-  apiKey,
-  model,
-  messages,
-  baseUrl,
-  timeoutMs,
-) => {
-  // No SDK retries: the next tier is the retry, and three timed-out attempts would hold
-  // the jot three times as long before it got there.
-  const groq = new Groq({
-    apiKey,
-    maxRetries: 0,
-    ...(timeoutMs ? { timeout: timeoutMs } : {}),
-    ...(baseUrl ? { baseURL: baseUrl } : {}),
-  });
-  const res = await groq.chat.completions.create({
-    model,
-    temperature: 0,
-    messages: messages as any,
-  });
-  return {
-    text: res.choices[0]?.message?.content ?? "",
-    usage: {
-      input: res.usage?.prompt_tokens ?? 0,
-      output: res.usage?.completion_tokens ?? 0,
-    },
-  };
 };
 
 const log = logger("enrich");

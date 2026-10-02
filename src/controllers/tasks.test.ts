@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { TaskNotesService } from "../data/repositories/task-notes.ts";
 import type { TaskDraftRow, TaskType } from "../domain/task/entity.ts";
-import { TaskNotesService } from "../services/task-notes.ts";
 import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { Modes } from "./modes.ts";

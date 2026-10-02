@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { ReleaseNote } from "../data/connections/github.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import type { Stats } from "../domain/jot/structures.ts";
 import { dayBounds, startOfToday } from "../libs/time.ts";
-import type { ReleaseNote } from "../services/github.ts";
 import { sampleJot } from "../test/sqlite.ts";
 import {
   AdminController,

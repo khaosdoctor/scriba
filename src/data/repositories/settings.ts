@@ -4,8 +4,8 @@ import {
   type SettingKey,
   type SettingValue,
   type SwitchKey,
-} from "../domain/setting/entity.ts";
-import { parseClockTime } from "../libs/time.ts";
+} from "../../domain/setting/entity.ts";
+import { parseClockTime } from "../../libs/time.ts";
 
 export class SettingsRepository {
   constructor(private k: Knex) {}

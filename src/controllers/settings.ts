@@ -1,3 +1,5 @@
+import type { Repository } from "../data/repositories/index.ts";
+import type { VaultService } from "../data/repositories/vault.ts";
 import type { LinkRule } from "../domain/link-rule/entity.ts";
 import type {
   SettingKey,
@@ -19,10 +21,8 @@ import {
   WIZARD_STOPWORD_REF,
   WIZARD_VOICEFIX_MODEL_REF,
 } from "../libs/wizard.ts";
-import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { Notifier } from "../services/notifier.ts";
-import type { VaultService } from "../services/vault.ts";
 
 const log = logger("menu");
 
