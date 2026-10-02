@@ -51,7 +51,6 @@ function setup(over: Record<string, any> = {}) {
     // the rest of the tracked stubs with it.
     repo: {
       getJot: track("getJot", null),
-      resetForRetry: track("resetForRetry", true),
       resetFailed: track("resetFailed", 0),
       resetProcessing: track("resetProcessing", 0),
       failedJots: track("failedJots", []),
@@ -69,15 +68,31 @@ function setup(over: Record<string, any> = {}) {
     },
     processing: { retryPass: track("retryPass"), ...over.processing },
     transcriber: { chain: "groq → parakeet", ...over.transcriber },
+    jots: {
+      retry: async (jot: Jot) => {
+        calls.push(`jots.retry(${jot.id})`);
+        return "queued";
+      },
+      ...over.jots,
+    },
   };
   return { admin: new AdminService(deps as never), calls };
 }
 
-test("/retry with an id resets and queues that jot alone", async () => {
+test("/retry with an id takes the button's retry, so a squashed follower retries its leader's line", async () => {
+  const follower = aJot({ id: "f0110000", anchor: "abcd1234" });
+  const { admin, calls } = setup({ repo: { getJot: async () => follower } });
+  assert.equal(await admin.retry("f0110000"), "🔄 retrying f0110000");
+  assert.deepEqual(
+    calls.filter((call) => !call.startsWith("getJot")),
+    ["jots.retry(f0110000)"],
+  );
+});
+
+test("/retry with an id retries that jot alone", async () => {
   const { admin, calls } = setup({ repo: { getJot: async () => aJot() } });
   assert.equal(await admin.retry(" ABCD1234 "), "🔄 retrying abcd1234");
-  assert.ok(calls.includes("resetForRetry(abcd1234)"));
-  assert.ok(calls.includes("queue.add(abcd1234)"));
+  assert.ok(calls.includes("jots.retry(abcd1234)"));
   // One jot, so the pass isn't kicked for the whole backlog.
   assert.ok(!calls.some((call) => call.startsWith("retryPass")));
 });
@@ -85,24 +100,24 @@ test("/retry with an id resets and queues that jot alone", async () => {
 test("/retry with an unknown id says so instead of queueing nothing", async () => {
   const { admin, calls } = setup();
   assert.equal(await admin.retry("nope"), "no jot nope");
-  assert.ok(!calls.some((call) => call.startsWith("resetForRetry")));
+  assert.ok(!calls.some((call) => call.startsWith("jots.retry")));
 });
 
 test("/retry with an id refuses a jot being processed, and a deleted id is no jot", async () => {
   const busy = setup({
-    repo: { getJot: async () => aJot(), resetForRetry: async () => false },
+    repo: { getJot: async () => aJot() },
+    jots: { retry: async () => "in-flight" },
   });
   assert.equal(
     await busy.admin.retry("abcd1234"),
     "⏳ abcd1234 is still processing",
   );
-  assert.ok(!busy.calls.some((call) => call.startsWith("queue.add")));
 
   const gone = setup({
     repo: { getJot: async () => aJot({ status: "deleted" }) },
   });
   assert.equal(await gone.admin.retry("abcd1234"), "no jot abcd1234");
-  assert.ok(!gone.calls.some((call) => call.startsWith("resetForRetry")));
+  assert.ok(!gone.calls.some((call) => call.startsWith("jots.retry")));
 });
 
 test("/retry with no args takes the failed ones; `all` includes the abandoned", async () => {

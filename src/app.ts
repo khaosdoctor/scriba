@@ -277,6 +277,7 @@ export async function createScriba(
     github,
     health,
     notifier: { notify },
+    jots: jotController,
     build: { version, sha },
     startedAt,
   });

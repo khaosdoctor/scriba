@@ -19,6 +19,7 @@ import type { FlushQueue } from "../libs/queue.ts";
 import { formatDuration, pluralize } from "../libs/text.ts";
 import { dayBounds, plainDate, startOfToday } from "../libs/time.ts";
 import type { HealthMonitor, UpstreamStatus } from "./health.ts";
+import type { JotService } from "./jots.ts";
 import type { Notifier } from "./notifier.ts";
 import type { ProcessingService } from "./processing.ts";
 import type { FallbackTranscriber } from "./transcriber.ts";
@@ -67,6 +68,7 @@ export interface AdminDeps {
   github: GithubReleases;
   health: HealthMonitor;
   notifier: Pick<Notifier, "notify">;
+  jots: Pick<JotService, "retry">;
   build: { version: string; sha: string };
   startedAt: number;
 }
@@ -217,7 +219,7 @@ export class AdminService {
   }
 
   async retry(args: string): Promise<string> {
-    const { repo, queue, processing } = this.d;
+    const { repo, processing, jots } = this.d;
     const arg = args.trim().toLowerCase();
     if (arg && arg !== "all") {
       const jot = await repo.getJot(arg);
@@ -225,11 +227,10 @@ export class AdminService {
         log.retry.warn({ id: arg, status: jot?.status }, "/retry: no such jot");
         return `no jot ${arg}`;
       }
-      if (!(await repo.resetForRetry(arg))) {
+      if ((await jots.retry(jot)) === "in-flight") {
         log.retry.warn({ id: arg }, "/retry: jot is being processed");
         return `⏳ ${arg} is still processing`;
       }
-      queue.add([arg]);
       log.retry.info({ id: arg }, "/retry: single jot requeued");
       return `🔄 retrying ${arg}`;
     }
