@@ -6,7 +6,7 @@ import type { Stats } from "../domain/jot/structures.ts";
 import { dayBounds, startOfToday } from "../libs/time.ts";
 import { sampleJot } from "../test/sqlite.ts";
 import {
-  AdminController,
+  AdminService,
   formatDeployNotice,
   formatHealth,
   formatListPage,
@@ -70,7 +70,7 @@ function setup(over: Record<string, any> = {}) {
     processing: { retryPass: track("retryPass"), ...over.processing },
     transcriber: { chain: "groq → parakeet", ...over.transcriber },
   };
-  return { admin: new AdminController(deps as never), calls };
+  return { admin: new AdminService(deps as never), calls };
 }
 
 test("/retry with an id resets and queues that jot alone", async () => {
@@ -433,7 +433,7 @@ test("/version names the running release and the first seven characters of the s
 
 async function summaryFor(stats: Record<string, number>) {
   const sent: string[] = [];
-  const admin = new AdminController({
+  const admin = new AdminService({
     repo: { windowStats: async () => stats },
     notifier: { notify: async (text: string) => void sent.push(text) },
   } as never);

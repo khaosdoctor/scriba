@@ -16,25 +16,25 @@ import {
   registerViews,
 } from "./presentation/telegram/index.ts";
 import { MenuLifetime } from "./presentation/telegram/settings/menu-lifetime.ts";
-import { AdminController } from "./services/admin.ts";
+import { AdminService } from "./services/admin.ts";
 import { AgentService } from "./services/agent.ts";
-import { CommandController } from "./services/command.ts";
-import { EditController } from "./services/edits.ts";
+import { CommandService } from "./services/command.ts";
+import { EditService } from "./services/edits.ts";
 import {
   Enricher,
   type EnrichFallback,
   OPENCODE_BASE_URL,
   type SwitchNotifier,
 } from "./services/enrich.ts";
-import { HabitController } from "./services/habits.ts";
+import { HabitService } from "./services/habits.ts";
 import { HealthMonitor, upstreams } from "./services/health.ts";
-import { JotController } from "./services/jots.ts";
+import { JotService } from "./services/jots.ts";
 import { MediaService } from "./services/media.ts";
 import { Modes } from "./services/modes.ts";
-import { ProcessingController } from "./services/processing.ts";
-import { RatingController } from "./services/rating.ts";
-import { SettingsController } from "./services/settings.ts";
-import { TaskController } from "./services/tasks.ts";
+import { ProcessingService } from "./services/processing.ts";
+import { RatingService } from "./services/rating.ts";
+import { SettingsService } from "./services/settings.ts";
+import { TaskService } from "./services/tasks.ts";
 import {
   buildTranscriber,
   type FallbackTranscriber,
@@ -58,7 +58,7 @@ export interface ExternalServices {
   links?: VaultService;
   scheduler?: Scheduler;
   queue?: FlushQueue;
-  processing?: ProcessingController;
+  processing?: ProcessingService;
   health?: HealthMonitor;
   github?: GithubReleases;
 }
@@ -68,10 +68,10 @@ export interface Scriba {
   bot: Bot;
   enricher: Enricher;
   media: MediaService;
-  jotController: JotController;
-  edits: EditController;
-  tasks: TaskController;
-  command: CommandController;
+  jotController: JotService;
+  edits: EditService;
+  tasks: TaskService;
+  command: CommandService;
   start(): Promise<void>;
   stop(): Promise<void>;
 }
@@ -186,21 +186,21 @@ export async function createScriba(
       onFlush: (ids) => processing.processBatch(ids),
     });
 
-  const jotController = new JotController({
+  const jotController = new JotService({
     repo,
     obsidian,
     notifier: chat,
     queue,
     squashWindowMs: config.squash.windowMs,
   });
-  const edits = new EditController({
+  const edits = new EditService({
     repo,
     obsidian,
     enricher,
     jots: jotController,
   });
   // /task: every message becomes a task in one of the two task notes instead of a jot.
-  const tasks = new TaskController({
+  const tasks = new TaskService({
     repo,
     notes: new TaskNotesService(obsidian, config.tasks),
     enricher,
@@ -209,7 +209,7 @@ export async function createScriba(
     ownerId: config.telegram.allowedUserId,
     voice,
   });
-  const rating = new RatingController({
+  const rating = new RatingService({
     repo,
     obsidian,
     notifier: chat,
@@ -219,19 +219,19 @@ export async function createScriba(
       til: config.obsidian.tilHeading,
     },
   });
-  const habits = new HabitController({
+  const habits = new HabitService({
     obsidian,
     notifier: chat,
     heading: config.obsidian.habitsHeading,
   });
   // /command: an agent session scoped to the vault. It gets no built-in tool that could
   // reach the host; services/agent.ts holds the allow list.
-  const command = new CommandController({
+  const command = new CommandService({
     service: new AgentService(links, new WebService(), config.command),
     notifier: chat,
     modes,
   });
-  const settings = new SettingsController({
+  const settings = new SettingsService({
     repo,
     links,
     enricher,
@@ -239,9 +239,9 @@ export async function createScriba(
     notifier: chat,
     ratingTime: config.ratingTime,
   });
-  const processing: ProcessingController =
+  const processing: ProcessingService =
     externalServices.processing ??
-    new ProcessingController({
+    new ProcessingService({
       repo,
       obsidian,
       transcriber,
@@ -268,7 +268,7 @@ export async function createScriba(
       ),
       notify,
     );
-  const admin = new AdminController({
+  const admin = new AdminService({
     repo,
     queue,
     processing,

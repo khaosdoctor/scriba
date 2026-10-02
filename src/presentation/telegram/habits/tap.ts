@@ -1,7 +1,7 @@
 import type { Composer, Context } from "grammy";
 import { logger } from "../../../libs/log.ts";
 import { DATE_RE } from "../../../libs/time.ts";
-import { HABITS_NS, type HabitController } from "../../../services/habits.ts";
+import { HABITS_NS, type HabitService } from "../../../services/habits.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
@@ -9,7 +9,7 @@ const log = logger("habits");
 
 /** `hb:<date>:begin` starts the review. `hb:<date>:<index>:<y|n>` answers one habit, and the
  *  tap is answered once the note is written, before the next question replaces the card. */
-export function habitsView(habits: HabitController): Composer<Context> {
+export function habitsView(habits: HabitService): Composer<Context> {
   return namespace(HABITS_NS, async (ctx, [date, action, verd]) => {
     const responder = new Responder(ctx);
     if (!date || !DATE_RE.test(date)) {

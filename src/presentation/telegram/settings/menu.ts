@@ -5,12 +5,12 @@ import { logger } from "../../../libs/log.ts";
 import { paginate } from "../../../libs/page.ts";
 import { fitTelegram } from "../../../libs/text.ts";
 import { plainDate } from "../../../libs/time.ts";
-import type { JotController } from "../../../services/jots.ts";
+import type { JotService } from "../../../services/jots.ts";
 import type {
   ModelKey,
   RootState,
-  SettingsController,
   SettingsPrompt,
+  SettingsService,
 } from "../../../services/settings.ts";
 import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
@@ -109,7 +109,7 @@ function picker(
 
 async function modelPicker(
   ctx: Tap,
-  settings: SettingsController,
+  settings: SettingsService,
   which: "em" | "vfm",
 ): Promise<void> {
   const [key, title, , pick, custom] = MODELS[which];
@@ -128,7 +128,7 @@ async function modelPicker(
 
 async function entrySizeScreen(
   ctx: Tap,
-  settings: SettingsController,
+  settings: SettingsService,
 ): Promise<void> {
   const current = await settings.get("entryMaxChars");
   await ctx.editMessageText(
@@ -156,7 +156,7 @@ async function entrySizeScreen(
 
 /** The jots browser: recent jots as tappable rows, so finding one no longer means
  *  scrolling chat history. */
-async function jotsList(ctx: Tap, jots: JotController): Promise<unknown> {
+async function jotsList(ctx: Tap, jots: JotService): Promise<unknown> {
   const recent = await jots.recent(10);
   if (!recent.length)
     return ctx.editMessageText("No jots yet.", {
@@ -179,7 +179,7 @@ async function jotsList(ctx: Tap, jots: JotController): Promise<unknown> {
 
 async function jotDetail(
   ctx: Tap,
-  jots: JotController,
+  jots: JotService,
   id?: string,
 ): Promise<unknown> {
   const jot = id ? await jots.get(id) : undefined;

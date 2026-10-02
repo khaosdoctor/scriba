@@ -6,7 +6,7 @@ import type { IntakeInput } from "../domain/jot/structures.ts";
 import { moveAnchorLine, placeholderLine } from "../libs/note.ts";
 import { plainDate, plainTime, previousDate } from "../libs/time.ts";
 import { removeDb, sampleJot, tempDbPath } from "../test/sqlite.ts";
-import { JotController } from "./jots.ts";
+import { JotService } from "./jots.ts";
 
 type Moved = "moved" | "no-line" | "no-heading";
 
@@ -58,7 +58,7 @@ function setup(
   };
   const deps = { repo, obsidian, notifier } as never;
   return {
-    jots: new JotController(deps),
+    jots: new JotService(deps),
     deps,
     updates,
     marked,
@@ -152,7 +152,7 @@ test("tapping accept twice against a real note keeps one copy of the line in the
 test("a fresh controller can answer a card another instance sent, since the card carries only the jot id", async () => {
   const first = setup();
   await first.jots.askTil("abcd1234", "sqlite has WAL");
-  const second = new JotController(first.deps);
+  const second = new JotService(first.deps);
   assert.equal(await second.answerTil("abcd1234", true), "moved");
   assert.deepEqual(first.moves, [
     ["notes/daily notes/2026-08-16.md", "abcd1234"],
@@ -281,7 +281,7 @@ function intakeSetup(over: IntakeFakes = {}) {
       void reacts.push([messageId, emoji]),
     notify: async (text: string) => void notices.push(text),
   };
-  const jots = new JotController({
+  const jots = new JotService({
     repo,
     obsidian,
     notifier,

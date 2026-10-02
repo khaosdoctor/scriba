@@ -1,10 +1,10 @@
 import type { Context, Filter } from "grammy";
 import type { Message } from "grammy/types";
-import type { JotController } from "../../../services/jots.ts";
+import type { JotService } from "../../../services/jots.ts";
 import {
   type FollowupRef,
   followupFromCode,
-  type RatingController,
+  type RatingService,
 } from "../../../services/rating.ts";
 import { entitiesToMarkdown } from "../input.ts";
 
@@ -17,7 +17,7 @@ export function parseFollowupRef(text: string): FollowupRef | null {
 
 /** A reply to a follow-up prompt: its text, formatting kept, is filed as a jot for the
  *  prompt's day. */
-export function followupReply(rating: RatingController, jots: JotController) {
+export function followupReply(rating: RatingService, jots: JotService) {
   return (
     ctx: Filter<Context, "message:text">,
     ref: FollowupRef,

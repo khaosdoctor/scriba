@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { noteOps } from "../test/note-ops.ts";
-import { HabitController } from "./habits.ts";
+import { HabitService } from "./habits.ts";
 
 const DATE = "2026-07-05";
 const PATH = `Daily/${DATE}.md`;
@@ -78,7 +78,7 @@ function setup(
       () => events.push("lock"),
     ),
   };
-  const habits = new HabitController({
+  const habits = new HabitService({
     obsidian,
     notifier,
     heading: "Habits",

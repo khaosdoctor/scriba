@@ -1,5 +1,5 @@
 import type { Composer, Context } from "grammy";
-import type { JotController, VoiceFixChoice } from "../../../services/jots.ts";
+import type { JotService, VoiceFixChoice } from "../../../services/jots.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
@@ -10,7 +10,7 @@ const TOASTS: Record<VoiceFixChoice, string> = {
 
 /** `vf:o:<jotId>` keeps the original transcript, `vf:p:<jotId>` takes the proposed fix.
  *  The tap is answered before the pick reaches the waiting processor. */
-export function voiceFixView(jots: JotController): Composer<Context> {
+export function voiceFixView(jots: JotService): Composer<Context> {
   return namespace("vf", async (ctx, [verdict, jotId]) => {
     const responder = new Responder(ctx);
     if (!jotId || !verdict) return responder.ack();

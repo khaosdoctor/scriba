@@ -5,7 +5,7 @@ import type { TaskDraftRow, TaskType } from "../domain/task/entity.ts";
 import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { Modes } from "./modes.ts";
-import { TaskController } from "./tasks.ts";
+import { TaskService } from "./tasks.ts";
 
 const OWNER = 7;
 
@@ -98,7 +98,7 @@ function setup(
     type: "personal",
   });
   const modes = new Modes(notifier);
-  const tasks = new TaskController({
+  const tasks = new TaskService({
     repo: repo as any,
     notes,
     enricher: { extractTask: (text: string) => extract(text) } as any,
@@ -138,7 +138,7 @@ const draftId = (drafts: Map<string, any>) => [...drafts.keys()][0]!;
 
 /** Press a list row the way its view does: the callback data names the task and the digest
  *  of the line it was drawn from. */
-function press(h: { tasks: TaskController }, data: string) {
+function press(h: { tasks: TaskService }, data: string) {
   const [, action, type, index, fingerprint] = data.split(":");
   return h.tasks.tick(
     type as TaskType,

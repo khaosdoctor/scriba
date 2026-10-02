@@ -78,7 +78,7 @@ export type TilOutcome =
   | "no-heading"
   | "moved";
 
-export class JotController {
+export class JotService {
   // jotId -> the live status message edited in place through the jot's lifecycle. In
   // memory: after a restart status() posts a fresh message, nothing is lost.
   private statusMsgs = new Map<string, number>();

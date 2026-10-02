@@ -8,7 +8,7 @@ import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { removeDb, sampleJot, tempDbPath } from "../test/sqlite.ts";
 import { ModelsDownError } from "./enrich.ts";
-import { HELD as HELD_MARKER, ProcessingController } from "./processing.ts";
+import { HELD as HELD_MARKER, ProcessingService } from "./processing.ts";
 
 /** Status messages the bot was asked to post, with the buttons each one carried. */
 type Posted = { id: string; html: string; opts: any };
@@ -59,7 +59,7 @@ function harness(
       void reactions.push([id, state]),
     deleteStatus: async () => {},
   };
-  const processor: any = new ProcessingController({
+  const processor: any = new ProcessingService({
     repo,
     obsidian,
     jots,
@@ -275,7 +275,7 @@ function pipeline(
       calls.push("askTil");
     },
   };
-  const processor: any = new ProcessingController({
+  const processor: any = new ProcessingService({
     repo,
     obsidian,
     enricher,
@@ -399,7 +399,7 @@ test("a TIL jot is never offered the card", async () => {
 test("a reprocess after the card was sent does not ask again", async () => {
   const scenario = pipeline({ til: true });
   await scenario.processor.processJot(scenario.leaderId);
-  scenario.offered.add(scenario.leaderId); // what JotController.askTil does once the card is out
+  scenario.offered.add(scenario.leaderId); // what JotService.askTil does once the card is out
   await scenario.processor.processJot(scenario.leaderId);
   assert.equal(scenario.tilAsks.length, 1);
 });
@@ -451,7 +451,7 @@ function noteHarness(note: string) {
       );
     },
   };
-  const processor: any = new ProcessingController({ obsidian } as any);
+  const processor: any = new ProcessingService({ obsidian } as any);
   return { processor, state };
 }
 
@@ -609,7 +609,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
       return options.voiceChoice ?? "proposed";
     },
   };
-  const processor = new ProcessingController({
+  const processor = new ProcessingService({
     repo,
     obsidian,
     transcriber,

@@ -1,12 +1,12 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
-import type { AdminController } from "../../../services/admin.ts";
+import type { AdminService } from "../../../services/admin.ts";
 import { namespace } from "../namespace.ts";
 
 /** `ur:s:<si>` opens the note menu for a rejected word; `ur:p:<si>:<ni>` unrejects the
  *  pair. A shifted index answers "expired" rather than undoing the wrong pair. */
 export const UNREJECT_NS = "ur";
 
-export function unrejectView(admin: AdminController): Composer<Context> {
+export function unrejectView(admin: AdminService): Composer<Context> {
   return namespace(UNREJECT_NS, async (ctx, [step, si, ni]) => {
     const word = await admin.rejectedWord(Number(si));
     if (!word) return ctx.answerCallbackQuery({ text: "expired" });

@@ -28,7 +28,7 @@ export type FillOutcome = "saved" | "notNumber" | "gone";
 /** The daily habit review: one Telegram message, edited in place through the whole flow
  *  and deleted at the end, when `habitsReviewed: true` is stamped in the note's frontmatter
  *  so a second run can't overwrite answers. */
-export class HabitController {
+export class HabitService {
   /** The flow message of each date being reviewed. Forgotten on restart. */
   private activeMsg = new Map<string, number>();
 

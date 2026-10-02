@@ -3,7 +3,7 @@ import { z } from "zod";
 import { RatingSchema } from "../../../domain/rating/entity.ts";
 import { logger } from "../../../libs/log.ts";
 import { DATE_RE } from "../../../libs/time.ts";
-import { RATING_NS, type RatingController } from "../../../services/rating.ts";
+import { RATING_NS, type RatingService } from "../../../services/rating.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
@@ -14,7 +14,7 @@ const Payload = z.tuple([z.string().regex(DATE_RE), RatingSchema]);
 /** `rate:<date>:<n>` records the day's rating. The tap is answered after the database claim
  *  and the frontmatter write, and the buttons are replaced by the result so the day can't be
  *  rated twice. */
-export function ratingView(rating: RatingController): Composer<Context> {
+export function ratingView(rating: RatingService): Composer<Context> {
   return namespace(RATING_NS, async (ctx, [date, n]) => {
     const responder = new Responder(ctx);
     const payload = Payload.safeParse([date, n]);

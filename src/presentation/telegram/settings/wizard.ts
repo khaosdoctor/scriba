@@ -6,8 +6,8 @@ import { parseClockTime } from "../../../libs/time.ts";
 import { parseWizardRef, type WizardPrompt } from "../../../libs/wizard.ts";
 import type {
   ModelKey,
-  SettingsController,
   SettingsPrompt,
+  SettingsService,
 } from "../../../services/settings.ts";
 import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
@@ -23,7 +23,7 @@ interface Reply {
   warn: string;
   invalid: string;
   button: [label: string, data: string];
-  apply(settings: SettingsController, body: string): Promise<string | null>;
+  apply(settings: SettingsService, body: string): Promise<string | null>;
 }
 
 const model = (

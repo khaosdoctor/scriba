@@ -4,7 +4,7 @@ import { IsoDateSchema } from "../../../libs/time.ts";
 import {
   FOLLOWUP_NS,
   followupFromCode,
-  type RatingController,
+  type RatingService,
 } from "../../../services/rating.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
@@ -13,7 +13,7 @@ const log = logger("followup");
 
 /** `fu:<j|t>:<date>` is the Skip button of a follow-up prompt. The tap is answered once it
  *  is claimed and before the prompt is dropped, so a double tap asks the next question once. */
-export function followupView(rating: RatingController): Composer<Context> {
+export function followupView(rating: RatingService): Composer<Context> {
   return namespace(FOLLOWUP_NS, async (ctx, [code, date]) => {
     const responder = new Responder(ctx);
     const question = followupFromCode(code);

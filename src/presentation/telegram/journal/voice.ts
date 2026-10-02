@@ -1,6 +1,6 @@
 import { Composer, type Context } from "grammy";
 import { logger } from "../../../libs/log.ts";
-import type { TaskController } from "../../../services/tasks.ts";
+import type { TaskService } from "../../../services/tasks.ts";
 import type { ViewDeps } from "../index.ts";
 import { intakeInput } from "../input.ts";
 import { taskMessage } from "../tasks/mode.ts";
@@ -12,7 +12,7 @@ const log = logger("bot");
  *  a command with arguments. */
 async function spokenTask(
   ctx: Context,
-  tasks: TaskController,
+  tasks: TaskService,
   fileId: string,
 ): Promise<void> {
   await ctx.react("✍").catch(() => {});

@@ -1,14 +1,14 @@
 import type { Api, Bot, Context } from "grammy";
 import { logger } from "../../libs/log.ts";
-import type { AdminController } from "../../services/admin.ts";
-import type { CommandController } from "../../services/command.ts";
-import type { EditController } from "../../services/edits.ts";
-import type { HabitController } from "../../services/habits.ts";
-import type { JotController } from "../../services/jots.ts";
+import type { AdminService } from "../../services/admin.ts";
+import type { CommandService } from "../../services/command.ts";
+import type { EditService } from "../../services/edits.ts";
+import type { HabitService } from "../../services/habits.ts";
+import type { JotService } from "../../services/jots.ts";
 import type { Modes } from "../../services/modes.ts";
-import type { RatingController } from "../../services/rating.ts";
-import type { SettingsController } from "../../services/settings.ts";
-import type { TaskController } from "../../services/tasks.ts";
+import type { RatingService } from "../../services/rating.ts";
+import type { SettingsService } from "../../services/settings.ts";
+import type { TaskService } from "../../services/tasks.ts";
 import { callbackViews } from "./callbacks.ts";
 import { COMMANDS } from "./commands.ts";
 import { type ErrorDeps, errorHandler } from "./errors.ts";
@@ -25,16 +25,16 @@ const log = logger("bot");
 
 export type ViewDeps = {
   ownerId: number;
-  rating: RatingController;
-  habits: HabitController;
-  settings: SettingsController;
+  rating: RatingService;
+  habits: HabitService;
+  settings: SettingsService;
   menus: MenuLifetime;
   modes: Modes;
-  command: CommandController;
-  tasks: TaskController;
-  jotController: JotController;
-  edits: EditController;
-  admin: AdminController;
+  command: CommandService;
+  tasks: TaskService;
+  jotController: JotService;
+  edits: EditService;
+  admin: AdminService;
   errors: ErrorDeps;
 };
 

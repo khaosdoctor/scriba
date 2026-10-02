@@ -1,5 +1,5 @@
 import { Composer, type Context } from "grammy";
-import type { TaskController } from "../../../services/tasks.ts";
+import type { TaskService } from "../../../services/tasks.ts";
 import type { CommandView } from "../commands.ts";
 
 const INTRO = [
@@ -19,7 +19,7 @@ const REFUSALS = {
 
 export async function openTaskMode(
   ctx: Context,
-  tasks: TaskController,
+  tasks: TaskService,
 ): Promise<void> {
   const outcome = tasks.start();
   await ctx.reply(outcome === "opened" ? INTRO : REFUSALS[outcome]);
@@ -29,7 +29,7 @@ export async function openTaskMode(
  *  task. */
 export async function taskMessage(
   ctx: Context,
-  tasks: TaskController,
+  tasks: TaskService,
   text: string,
 ): Promise<void> {
   if (await tasks.handle(text)) return;

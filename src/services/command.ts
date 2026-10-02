@@ -78,7 +78,7 @@ type Turn = {
  * as it happens. Each answer is edited into the status message of the prompt that asked for
  * it, so several in-flight messages stay legible.
  */
-export class CommandController {
+export class CommandService {
   private sessionId?: string;
   private pending = new Map<
     string,

@@ -20,7 +20,7 @@ import {
   stripJournalLine,
 } from "../libs/note.ts";
 import type { Enricher } from "./enrich.ts";
-import type { JotController } from "./jots.ts";
+import type { JotService } from "./jots.ts";
 
 const log = logger("bot");
 
@@ -41,7 +41,7 @@ export interface EditDeps {
   obsidian: Pick<ObsidianClient, "readNote" | "updateLine" | "updateNote">;
   enricher: Pick<Enricher, "editText">;
   /** Every applied edit is reported on the jot's own status message. */
-  jots: Pick<JotController, "status">;
+  jots: Pick<JotService, "status">;
 }
 
 /** Where an edit went: `unmapped` when the message belongs to no jot, `missing` when the
@@ -72,7 +72,7 @@ type QueuedEdit = {
   fields?: Record<string, unknown>;
 };
 
-export class EditController {
+export class EditService {
   constructor(private deps: EditDeps) {}
 
   /** A reply to a jot's message carries an instruction for its line: a literal swap or a

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseWizardRef } from "../../../libs/wizard.ts";
-import { SettingsController } from "../../../services/settings.ts";
+import { SettingsService } from "../../../services/settings.ts";
 import { type LinkDeps, linkRulesTap } from "./links.ts";
 import { linkReply, parseLinkRef } from "./wizard.ts";
 
@@ -67,7 +67,7 @@ function wizardHarness(
       return 1;
     },
   };
-  const settings = new SettingsController({
+  const settings = new SettingsService({
     repo,
     links: {
       list: () => init.aliases ?? [],

@@ -71,7 +71,7 @@ const PICK_PAGE = 6;
 
 /** The runtime settings the /menu control panel shows and changes, and the link rules
  *  that steer the enricher's wikilinks. */
-export class SettingsController {
+export class SettingsService {
   // The one place the wizard keeps state between messages: picking the note side means
   // searching a vault of thousands, which cannot ride in 64 bytes of callback data.
   // In memory and single-flow: one user, and a restart just drops a half-finished add.
@@ -333,4 +333,4 @@ export class SettingsController {
   }
 }
 
-export type RootState = Awaited<ReturnType<SettingsController["root"]>>;
+export type RootState = Awaited<ReturnType<SettingsService["root"]>>;

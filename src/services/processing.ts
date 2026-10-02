@@ -22,12 +22,12 @@ import { logger } from "../libs/log.ts";
 import { journalLine } from "../libs/note.ts";
 import { draftFromDetection } from "../libs/tasks.ts";
 import { escapeHtml, splitEntry } from "../libs/text.ts";
-import type { EditController } from "./edits.ts";
+import type { EditService } from "./edits.ts";
 import { type Enricher, ModelsDownError } from "./enrich.ts";
-import type { JotController } from "./jots.ts";
+import type { JotService } from "./jots.ts";
 import type { DownloadedFile } from "./media.ts";
 import type { Notifier } from "./notifier.ts";
-import type { TaskController } from "./tasks.ts";
+import type { TaskService } from "./tasks.ts";
 import type { Transcriber } from "./transcriber.ts";
 
 const log = logger("processor");
@@ -60,18 +60,18 @@ export interface ProcessingDeps {
   enricher: Enricher;
   links: VaultService;
   jots: Pick<
-    JotController,
+    JotService,
     "status" | "deleteStatus" | "react" | "awaitVoiceFix" | "askTil"
   >;
-  edits: Pick<EditController, "drainQueued">;
-  tasks: Pick<TaskController, "suggest">;
+  edits: Pick<EditService, "drainQueued">;
+  tasks: Pick<TaskService, "suggest">;
   notifier: Pick<Notifier, "send" | "typing">;
   files: { downloadFile(fileId: string): Promise<DownloadedFile> };
 }
 
 /** Turns a queued jot into an enriched, written journal line. Text, voice and image
  *  captions carry enrichable text; video is attach-only. */
-export class ProcessingController {
+export class ProcessingService {
   constructor(private deps: ProcessingDeps) {}
 
   async processBatch(ids: string[]): Promise<void> {
@@ -312,7 +312,7 @@ export class ProcessingController {
       // This jot now owns only its first piece: fold that back into its source so a
       // later /reprocess re-enriches that piece alone instead of splitting all over
       // again. Skipped for a squashed leader: its source is several jots' text combined,
-      // so there's no single field to fold into (same rule as EditController.syncEditedSource).
+      // so there's no single field to fold into (same rule as EditService.syncEditedSource).
       // `linked` is the piece's text only: the embed is added by composeLine, so an
       // image's raw_text stays pure caption and its embed isn't folded in twice.
       if (spillover.length && !merged)

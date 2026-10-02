@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AgentService } from "./agent.ts";
-import { CommandController } from "./command.ts";
+import { CommandService } from "./command.ts";
 import { Modes } from "./modes.ts";
 
 /** Let the controller's promise chains (agent stream, serialized Telegram sends) run out. */
@@ -105,7 +105,7 @@ async function harness(
     agent.query as any,
   );
   const modes = new Modes(notifier, idleMs);
-  const command: any = new CommandController(
+  const command: any = new CommandService(
     { service, notifier, modes },
     feedEditMs,
     turnSilenceMs,

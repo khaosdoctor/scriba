@@ -1,11 +1,11 @@
 import type { Composer, Context } from "grammy";
-import type { EditController } from "../../../services/edits.ts";
+import type { EditService } from "../../../services/edits.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
 /** `lk:y:<id>` and `lk:n:<id>`: the answer to a "Link X → [[Note]]?" card. The tap is
  *  answered after the pair is learned or the line rewritten, so the toast can say which. */
-export function linkView(edits: EditController): Composer<Context> {
+export function linkView(edits: EditService): Composer<Context> {
   return namespace("lk", async (ctx, [verdict, pendingId]) => {
     const responder = new Responder(ctx);
     if (!pendingId) return responder.ack();

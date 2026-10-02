@@ -1,7 +1,7 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
 import { logger } from "../../../libs/log.ts";
 import {
-  type JotController,
+  type JotService,
   TIL_NS,
   type TilOutcome,
 } from "../../../services/jots.ts";
@@ -32,7 +32,7 @@ const REPLIES: Record<
 
 /** `ti:y:<jotId>` moves the jot's line under the TIL heading, `ti:n:<jotId>` keeps it. The
  *  tap is answered after the vault work, so the toast can say how it went. */
-export function tilView(jots: JotController): Composer<Context> {
+export function tilView(jots: JotService): Composer<Context> {
   return namespace(TIL_NS, async (ctx, [action, jotId]) => {
     const outcome = await jots.answerTil(jotId, action === "y");
     const { toast, alert, card } = REPLIES[outcome];

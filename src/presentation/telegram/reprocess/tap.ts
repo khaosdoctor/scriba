@@ -3,10 +3,7 @@ import { jotPreview, STATUS_ICON } from "../../../libs/jot.ts";
 import { logger } from "../../../libs/log.ts";
 import { pluralize } from "../../../libs/text.ts";
 import { IsoDateSchema, plainDate } from "../../../libs/time.ts";
-import type {
-  AdminController,
-  ReprocessScope,
-} from "../../../services/admin.ts";
+import type { AdminService, ReprocessScope } from "../../../services/admin.ts";
 import { Responder } from "../chat.ts";
 import { backTo, pagedScreen, withClose } from "../keyboard.ts";
 import { namespace, type Tap } from "../namespace.ts";
@@ -127,7 +124,7 @@ const rangeEnd = (ctx: Tap, start: string, lead: string, ym: string[]) =>
  *  and its `go:d` button. */
 async function confirmRange(
   ctx: Tap,
-  admin: AdminController,
+  admin: AdminService,
   a: string,
   b: string,
   day: boolean,
@@ -159,7 +156,7 @@ async function confirmRange(
 
 async function showJotPage(
   ctx: Tap,
-  admin: AdminController,
+  admin: AdminService,
   page: number,
 ): Promise<void> {
   await ack(ctx);
@@ -192,7 +189,7 @@ async function showJotPage(
 
 async function confirmJot(
   ctx: Tap,
-  admin: AdminController,
+  admin: AdminService,
   id?: string,
 ): Promise<void> {
   const jot = await admin.reprocessPick(id);
@@ -215,7 +212,7 @@ async function confirmJot(
  *  the spinner stops promptly and later outcomes report through editMessageText. */
 async function execute(
   ctx: Tap,
-  admin: AdminController,
+  admin: AdminService,
   [mode, a = "", b = ""]: string[],
 ): Promise<void> {
   const run = async (scope: ReprocessScope) => {
@@ -237,7 +234,7 @@ async function execute(
   return run({ ...range, day });
 }
 
-export function reprocessView(admin: AdminController): Composer<Context> {
+export function reprocessView(admin: AdminService): Composer<Context> {
   return namespace(REPROCESS_NS, async (ctx, [action, ...args]) => {
     switch (action) {
       case "root":

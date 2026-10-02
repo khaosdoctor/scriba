@@ -5,7 +5,7 @@ import { editConfirmation, type StatusButtons } from "../libs/jot.ts";
 import { anchorLine, journalLine, stripJournalLine } from "../libs/note.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { sampleJot } from "../test/sqlite.ts";
-import { EditController } from "./edits.ts";
+import { EditService } from "./edits.ts";
 
 const ID = "aaaaaaaa";
 const NOTE = "notes/daily notes/2026-08-16.md";
@@ -47,7 +47,7 @@ function setup(over: { jot?: Jot | null; mapped?: boolean } = {}) {
     status: async (_id: string, html: string, opts?: StatusButtons) =>
       void statuses.push([html, opts]),
   };
-  const edits = new EditController({
+  const edits = new EditService({
     repo,
     obsidian,
     enricher: { editText: async (text: string) => text },

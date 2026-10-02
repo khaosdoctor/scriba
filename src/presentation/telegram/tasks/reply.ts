@@ -3,9 +3,9 @@ import type { Message } from "grammy/types";
 import {
   type AnswerOutcome,
   TASK_ADD_REF,
-  type TaskController,
   type TaskField,
   type TaskRef,
+  type TaskService,
 } from "../../../services/tasks.ts";
 import { Responder } from "../chat.ts";
 import { TASKADD_EMPTY } from "./add.ts";
@@ -27,7 +27,7 @@ const REFUSALS: Record<Exclude<AnswerOutcome, "ok">, string> = {
   needsDue: "A task needs a deadline — give me a date for this one.",
 };
 
-export function taskReply(tasks: TaskController) {
+export function taskReply(tasks: TaskService) {
   return async (
     ctx: Filter<Context, "message:text">,
     ref: TaskRef,

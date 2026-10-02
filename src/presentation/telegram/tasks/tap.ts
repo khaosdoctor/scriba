@@ -8,7 +8,7 @@ import {
   TYPE_LABEL,
   VIEW_LABEL,
 } from "../../../libs/tasks.ts";
-import { TASKS_NS, type TaskController } from "../../../services/tasks.ts";
+import { TASKS_NS, type TaskService } from "../../../services/tasks.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
@@ -20,7 +20,7 @@ const asView = (view?: string): TaskView =>
 /** A list screen as a fresh message, or in place of the one that was tapped. */
 export async function showTaskList(
   ctx: Context,
-  tasks: TaskController,
+  tasks: TaskService,
   view: TaskView,
   page: number,
   mode: "edit" | "send",
@@ -48,7 +48,7 @@ export async function showTaskList(
     );
 }
 
-async function showMenu(ctx: Context, tasks: TaskController): Promise<void> {
+async function showMenu(ctx: Context, tasks: TaskService): Promise<void> {
   const { text, keyboard } = await tasks.menu();
   await ctx.editMessageText(text, { reply_markup: keyboard });
 }
@@ -56,7 +56,7 @@ async function showMenu(ctx: Context, tasks: TaskController): Promise<void> {
 /** `tk:<action>[:<args>]`: the card buttons, the lists and the task menu. A card tap is
  *  answered once its draft is known to be live, and Create answers after claiming the draft
  *  and before the note write, which can outlive Telegram's callback window. */
-export function tasksView(tasks: TaskController): Composer<Context> {
+export function tasksView(tasks: TaskService): Composer<Context> {
   return namespace(TASKS_NS, async (ctx, [action, ...args]) => {
     const responder = new Responder(ctx);
     const live = async () => {

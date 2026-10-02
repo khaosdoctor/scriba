@@ -86,7 +86,7 @@ export function followupFromCode(
  *  goes unanswered costs nothing. Answers become normal jots, so placement, anchors, edits
  *  and undo work as for any other. The TIL is a jot prefixed with "TIL:" since enrichment
  *  and the status message belong to the jot pipeline. */
-export class RatingController {
+export class RatingService {
   /** Prompts already skipped, so a double tap asks the next question once. Forgotten on
    *  restart, which only loses the guard for a prompt that was live then. */
   private skipped = new Set<number>();

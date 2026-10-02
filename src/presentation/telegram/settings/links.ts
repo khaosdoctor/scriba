@@ -5,7 +5,7 @@ import { paginate } from "../../../libs/page.ts";
 import { fitTelegram, previewList } from "../../../libs/text.ts";
 import type {
   LinkPrompt,
-  SettingsController,
+  SettingsService,
 } from "../../../services/settings.ts";
 import type { ViewDeps } from "../index.ts";
 import { backTo, pagedScreen, withClose } from "../keyboard.ts";
@@ -161,7 +161,7 @@ export function linkRulesTap(deps: LinkDeps) {
 }
 
 /** Step 1: which kind of link rule to change, with live counts and index health. */
-async function home(ctx: Tap, settings: SettingsController): Promise<void> {
+async function home(ctx: Tap, settings: SettingsService): Promise<void> {
   const { stopwords, rejections, pairs, index } = await settings.linkRules();
   const kb = new InlineKeyboard()
     .text(`🔗 Always link · ${pairs.length}`, "menu:lrg")
@@ -191,7 +191,7 @@ async function home(ctx: Tap, settings: SettingsController): Promise<void> {
 /** Step 2 (never-link): add a word, or go on to pick one to drop. */
 async function stopwordsStep(
   ctx: Tap,
-  settings: SettingsController,
+  settings: SettingsService,
 ): Promise<void> {
   const stops = await settings.stopwords();
   const hidden = Math.max(0, stops.length - STOPWORD_PREVIEW);
@@ -219,7 +219,7 @@ async function stopwordsStep(
 /** Step 3 (never-link): one page of words, tap to allow linking again. */
 async function stopwordPage(
   ctx: Tap,
-  settings: SettingsController,
+  settings: SettingsService,
   page: number,
 ): Promise<void> {
   const stops = await settings.stopwords();
@@ -249,7 +249,7 @@ async function stopwordPage(
 /** Step 2 (rejections): one page of rejected words. */
 async function rejectedWords(
   ctx: Tap,
-  settings: SettingsController,
+  settings: SettingsService,
   page: number,
 ): Promise<void> {
   const list = await settings.rejections();
@@ -285,7 +285,7 @@ async function rejectedWords(
  *  fix. */
 async function rejectedNotes(
   ctx: Tap,
-  settings: SettingsController,
+  settings: SettingsService,
   si: number,
   page: number,
 ): Promise<void> {
@@ -317,7 +317,7 @@ async function rejectedNotes(
 /** Step 2 (always-link): one page of pairs. Tap a pair to edit or drop it. */
 async function pairsPage(
   ctx: Context,
-  settings: SettingsController,
+  settings: SettingsService,
   page: number,
 ): Promise<void> {
   const forced = await settings.pairs();
@@ -346,7 +346,7 @@ async function pairsPage(
 /** Step 3 (always-link): what you can do to one pair, retarget, rename, or drop. */
 async function pairDetail(
   ctx: Tap,
-  settings: SettingsController,
+  settings: SettingsService,
   gi: number,
 ): Promise<void> {
   const r = (await settings.pairs())[gi];

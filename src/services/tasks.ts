@@ -129,7 +129,7 @@ function patchFor(
  *  writes the note. Drafts live in the DB because a description can't ride in Telegram's 64
  *  bytes of callback data. Created tasks are not tracked, the task notes stay the source of
  *  truth. */
-export class TaskController {
+export class TaskService {
   /** Prompt message id -> its draft. A question is scaffolding: once answered, or once the
    *  card settles, it leaves the chat. In memory: a restart forgets at most one prompt. */
   private prompts = new Map<number, string>();

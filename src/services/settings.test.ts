@@ -2,12 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseWizardRef } from "../libs/wizard.ts";
 import { FakeSettings } from "../test/fakes.ts";
-import { SettingsController, type SettingsPrompt } from "./settings.ts";
+import { type SettingsPrompt, SettingsService } from "./settings.ts";
 
 function setup(stored: Record<string, string> = {}) {
   const events: string[] = [];
   const sent: { text: string; opts: any }[] = [];
-  const settings = new SettingsController({
+  const settings = new SettingsService({
     repo: new FakeSettings(stored, (key, value) =>
       events.push(`set ${key}=${value}`),
     ) as never,

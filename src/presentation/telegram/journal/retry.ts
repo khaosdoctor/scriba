@@ -1,6 +1,6 @@
 import type { Composer, Context } from "grammy";
 import { logger } from "../../../libs/log.ts";
-import type { JotController } from "../../../services/jots.ts";
+import type { JotService } from "../../../services/jots.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
@@ -8,7 +8,7 @@ const log = logger("bot");
 
 /** 🔄 Retry (`rt:<jotId>`) on a failed jot's status message: reset its attempts and queue it
  *  now, rather than waiting for the retry pass. The tap is answered after the queueing. */
-export function retryView(jots: JotController): Composer<Context> {
+export function retryView(jots: JotService): Composer<Context> {
   return namespace("rt", async (ctx, [jotId]) => {
     const responder = new Responder(ctx);
     const jot = jotId ? await jots.get(jotId) : undefined;

@@ -5,7 +5,7 @@ import {
   followupFromCode,
   followupQuestions,
   followupRef,
-  RatingController,
+  RatingService,
 } from "./rating.ts";
 
 const DATE = "2026-07-05";
@@ -81,7 +81,7 @@ function setup(
       if (over.deleteFails) throw new Error("message to delete not found");
     },
   };
-  const rating = new RatingController({
+  const rating = new RatingService({
     repo,
     obsidian,
     notifier,
@@ -146,7 +146,7 @@ test("the nightly rating is read at every firing, so its switch needs no restart
     ["ratingTime", "12:00"],
   ]);
   const sent: string[] = [];
-  const rating = new RatingController({
+  const rating = new RatingService({
     repo: new FakeSettings(stored),
     notifier: { send: async (text: string) => void sent.push(text) },
     ratingTime: "22:00",

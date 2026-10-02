@@ -1,5 +1,5 @@
 import type { Context, Filter } from "grammy";
-import type { FillOutcome, HabitController } from "../../../services/habits.ts";
+import type { FillOutcome, HabitService } from "../../../services/habits.ts";
 import { Responder } from "../chat.ts";
 
 const REFUSALS: Record<Exclude<FillOutcome, "saved">, string> = {
@@ -8,7 +8,7 @@ const REFUSALS: Record<Exclude<FillOutcome, "saved">, string> = {
 };
 
 /** A recorded reply leaves the chat: the flow message shows the progress. */
-export function habitReply(habits: HabitController) {
+export function habitReply(habits: HabitService) {
   return async (
     ctx: Filter<Context, "message:text">,
     { date, index }: { date: string; index: number },

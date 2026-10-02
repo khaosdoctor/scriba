@@ -1,5 +1,5 @@
 import { Composer, type Context } from "grammy";
-import type { EditController, EditOutcome } from "../../../services/edits.ts";
+import type { EditOutcome, EditService } from "../../../services/edits.ts";
 
 /** The reply to an edit or delete that has to wait for the jot's line to exist. */
 export const STILL_PROCESSING: Record<"queued" | "removal-queued", string> = {
@@ -18,7 +18,7 @@ const REPLIES: Record<EditOutcome, string | null> = {
 /** A text reply to a jot's own message or its status message edits that jot's line: a
  *  literal `s/old/new/`, or a freeform instruction for the model. Every prompt reply and
  *  task mode get to claim the text first, so any other quoted message is an edit. */
-export function editReply(edits: EditController): Composer<Context> {
+export function editReply(edits: EditService): Composer<Context> {
   const view = new Composer<Context>();
   view.on("message:text", async (ctx, next) => {
     const quoted = ctx.message.reply_to_message;

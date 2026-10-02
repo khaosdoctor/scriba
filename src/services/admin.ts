@@ -20,7 +20,7 @@ import { formatDuration, pluralize } from "../libs/text.ts";
 import { dayBounds, plainDate, startOfToday } from "../libs/time.ts";
 import type { HealthMonitor, UpstreamStatus } from "./health.ts";
 import type { Notifier } from "./notifier.ts";
-import type { ProcessingController } from "./processing.ts";
+import type { ProcessingService } from "./processing.ts";
 import type { FallbackTranscriber } from "./transcriber.ts";
 
 // One logger per command keeps today's logger names in the log stream.
@@ -61,7 +61,7 @@ export type ReprocessScope =
 export interface AdminDeps {
   repo: Repository;
   queue: FlushQueue;
-  processing: ProcessingController;
+  processing: ProcessingService;
   transcriber: FallbackTranscriber;
   links: VaultService;
   github: GithubReleases;
@@ -99,7 +99,7 @@ export interface RejectedWord {
 
 /** What the admin commands and the menu's maintenance screens act on. The text each
  *  command answers with is built here; the views only send it. */
-export class AdminController {
+export class AdminService {
   constructor(private d: AdminDeps) {}
 
   version(): string {

@@ -1,15 +1,12 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
-import {
-  COMMAND_NS,
-  type CommandController,
-} from "../../../services/command.ts";
+import { COMMAND_NS, type CommandService } from "../../../services/command.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
 /** `cm:s:<turnId>` is a status message's ⏹ Stop. `cm:y|n:<id>` answers a write/delete
  *  confirmation: the tap is answered and the question marked before the agent is let
  *  through, so the toast never waits on the vault. */
-export function commandView(command: CommandController): Composer<Context> {
+export function commandView(command: CommandService): Composer<Context> {
   return namespace(COMMAND_NS, async (ctx, [verdict, id]) => {
     const responder = new Responder(ctx);
     if (verdict === "s")
