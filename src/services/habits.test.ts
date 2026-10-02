@@ -32,7 +32,11 @@ const buttons = (opts: any): Buttons => opts?.keyboard?.inline_keyboard;
  *  vault effect in the order it happened. */
 function setup(
   notes: Record<string, string> = { [DATE]: NOTE },
-  opts: { deleteFails?: boolean } = {},
+  opts: {
+    deleteFails?: boolean;
+    /** Runs when a write takes the note lock: an Obsidian edit arriving just before it. */
+    onLock?: (vault: Map<string, string>) => void;
+  } = {},
 ) {
   const events: string[] = [];
   const sent: { text: string; opts: any }[] = [];
@@ -75,7 +79,10 @@ function setup(
     },
     ...noteOps(
       () => obsidian,
-      () => events.push("lock"),
+      () => {
+        events.push("lock");
+        opts.onLock?.(vault);
+      },
     ),
   };
   const habits = new HabitService({
@@ -183,7 +190,36 @@ test("a tap on a habit or note that no longer exists is refused and writes nothi
   const fixture = setup();
   assert.equal(await fixture.habits.tap(DATE, 9, true), false);
   assert.equal(await fixture.habits.tap("2026-01-01", 0, true), false);
-  assert.deepEqual(fixture.events, []);
+  assert.deepEqual(fixture.events, ["lock"]);
+  assert.deepEqual(fixture.writes, []);
+});
+
+test("Yes ticks the line as the note reads under the lock, not the line read before it", async () => {
+  const REWORDED = NOTE.replace("Practiced music", "Practiced guitar");
+  const fixture = setup(undefined, {
+    onLock: (vault) => vault.set(PATH, REWORDED),
+  });
+  assert.equal(await fixture.habits.tap(DATE, 0, true), true);
+  assert.deepEqual(fixture.events, ["lock", `write:${PATH}`]);
+  assert.equal(
+    fixture.vault.get(PATH),
+    REWORDED.replace(
+      "- [ ] Practiced guitar #meta/habits/music",
+      `- [x] Practiced guitar #meta/habits/music [completion:: ${DATE}]`,
+    ),
+  );
+});
+
+test("a habit that left the note before the lock is reported gone and nothing is written", async () => {
+  // Only the finished habit is left, so there is no habit at index 1 any more.
+  const GONE = NOTE.replace(/- \[ \] .*\n/g, "");
+  const tap = setup(undefined, { onLock: (vault) => vault.set(PATH, GONE) });
+  assert.equal(await tap.habits.tap(DATE, 1, true), false);
+  assert.deepEqual(tap.writes, []);
+
+  const fill = setup(undefined, { onLock: (vault) => vault.set(PATH, GONE) });
+  assert.equal(await fill.habits.fill(DATE, 1, "5"), "gone");
+  assert.deepEqual(fill.writes, []);
 });
 
 test("a number fills the value habit and ticks it; decimals and negatives are numbers too", async () => {

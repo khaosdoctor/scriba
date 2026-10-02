@@ -468,7 +468,8 @@ ledger("hb", [
     tap: "hb:2026-08-15:7:y",
     when: "habit gone",
     setup: withHabits,
-    expect: "obsidian.readDailyNote > ack(gone)",
+    expect:
+      "obsidian.readDailyNote > obsidian.updateNote > obsidian.readNote > ack(gone)",
   },
   { tap: "hb:2026-08-15:x", when: "bad index", expect: "ack(bad habit)" },
   { tap: "hb:nope:begin", when: "bad date", expect: "ack(bad habit)" },

@@ -118,14 +118,15 @@ export class HabitService {
 
   /** Record a Yes or No on habit `index`. False when the note or the habit is gone. */
   async tap(date: string, index: number, done: boolean): Promise<boolean> {
-    const found = await this.find(date, index);
-    if (!found) {
+    const habit = done
+      ? await this.tick(date, index)
+      : await this.find(date, index);
+    if (!habit) {
       log.warn({ date, index }, "habit tap ignored: note or habit gone");
       return false;
     }
-    if (done) await this.tick(found.path, found.habit, date);
     log.info(
-      { date, index, label: found.habit.label },
+      { date, index, label: habit.label },
       done ? "habit marked done" : "habit left unfulfilled",
     );
     return true;
@@ -137,33 +138,52 @@ export class HabitService {
       log.warn({ date, value }, "habit value rejected: not a number");
       return "notNumber";
     }
-    const found = await this.find(date, index);
-    if (!found) {
+    const habit = await this.tick(date, index, value);
+    if (!habit) {
       log.warn(
         { date, index },
         "habit value reply ignored: note or habit gone",
       );
       return "gone";
     }
-    await this.tick(found.path, found.habit, date, value);
-    log.info({ date, index, label: found.habit.label }, "habit value recorded");
+    log.info({ date, index, label: habit.label }, "habit value recorded");
     return "saved";
   }
 
-  private async find(date: string, index: number) {
+  /** The habit at `index` as the note reads now, or null when the note or the habit is
+   *  gone. */
+  private async find(date: string, index: number): Promise<Habit | null> {
     const daily = await this.deps.obsidian.readDailyNote(date);
-    const habit =
-      daily &&
-      parseHabits(daily.content, this.deps.heading).find(
-        (h) => h.index === index,
-      );
-    return daily && habit ? { path: daily.path, habit } : null;
+    return daily ? this.habitAt(daily.content, index) : null;
   }
 
-  private tick(path: string, habit: Habit, date: string, value?: string) {
-    const updated = completeHabitLine(habit.line, date, value);
-    return this.deps.obsidian.updateNote(path, (note, write) =>
-      write(note.replace(habit.line, () => updated)),
+  /** Tick habit `index`, locating its line in the note as it reads under the lock, so the
+   *  line replaced is the live one: a habit edited or removed since the question was asked
+   *  is reported gone instead of silently skipped. Null when the habit is gone. */
+  private async tick(
+    date: string,
+    index: number,
+    value?: string,
+  ): Promise<Habit | null> {
+    const { obsidian } = this.deps;
+    const daily = await obsidian.readDailyNote(date);
+    if (!daily) return null;
+    return obsidian.updateNote(daily.path, (note, write) => {
+      const habit = this.habitAt(note, index);
+      if (habit)
+        write(
+          note.replace(habit.line, () =>
+            completeHabitLine(habit.line, date, value),
+          ),
+        );
+      return habit;
+    });
+  }
+
+  private habitAt(note: string, index: number): Habit | null {
+    return (
+      parseHabits(note, this.deps.heading).find((h) => h.index === index) ??
+      null
     );
   }
 
