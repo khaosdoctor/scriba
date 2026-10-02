@@ -63,9 +63,9 @@ A jot (a single journal entry) is written to the note **twice**. First as an ins
 ```mermaid
 sequenceDiagram
     actor U as You (Telegram)
-    participant B as ScribaBot
+    participant B as Telegram views<br/>(JotService / EditService)
     participant Q as FlushQueue
-    participant P as ProcessingController
+    participant P as ProcessingService
     participant T as Transcriber<br/>(Groq / Parakeet)
     participant E as Enricher<br/>(Claude Agent)
     participant O as Obsidian<br/>(Local REST API)
@@ -112,19 +112,23 @@ flowchart LR
 
 ## Environment
 
-Every variable is in [`.env.example`](./.env.example), with a comment explaining it. Four are required (`TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `CLAUDE_CODE_OAUTH_TOKEN`, `OBSIDIAN_API_KEY`), and the rest have working defaults.
+Most variables are in [`.env.example`](./.env.example), with a comment explaining each, and [`src/config.ts`](./src/config.ts) has every one with its default. Four are required (`TELEGRAM_BOT_TOKEN`, `ALLOWED_TELEGRAM_USER_ID`, `CLAUDE_CODE_OAUTH_TOKEN`, `OBSIDIAN_API_KEY`), and the rest have working defaults.
 
 ## Develop
 
-You can run it without Docker:
+You can run it without Docker. [mise](https://mise.jdx.dev) pins Node 24 in `mise.toml`, and the app reads its settings from the environment, so export the variables from `.env` first (only Docker Compose loads that file for you):
 
 ```sh
-npm install     # Node 24, builds the better-sqlite3 addon
+npm install            # Node 24, builds the better-sqlite3 addon
 cp .env.example .env
-npm run migrate # apply schema
-npm run dev     # watch mode
-npm test        # core logic
+npm run migrate        # apply schema
+npm run dev            # watch mode
+npm test               # the whole suite
+npm run test:coverage  # the suite with the coverage floors CI enforces
+npm run typecheck
 ```
+
+How the code is laid out, and the rules for changing it, are in [AGENTS.md](./AGENTS.md).
 
 ## License
 
