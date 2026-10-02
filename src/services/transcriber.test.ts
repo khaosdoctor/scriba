@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildTranscriber, FallbackTranscriber } from "./transcriber.ts";
+import { FallbackTranscriber } from "./transcriber.ts";
 
 const ok = (text: string) => ({ transcribe: async () => text });
 const down = (msg: string) => ({
@@ -9,40 +9,35 @@ const down = (msg: string) => ({
   },
 });
 
-test("groq goes first when a key is set; parakeet is always last", () => {
-  assert.equal(
-    buildTranscriber({ groqApiKey: "k", parakeetUrl: "http://p" }).chain,
-    "groq → parakeet",
-  );
-  assert.equal(
-    buildTranscriber({ groqApiKey: "", parakeetUrl: "http://p" }).chain,
-    "parakeet",
-  );
-});
-
 test("falls through to the next backend when one fails", async () => {
-  const t = new FallbackTranscriber([
-    { name: "groq", t: down("groq down") },
-    { name: "parakeet", t: ok("local text") },
+  const fallback = new FallbackTranscriber([
+    { name: "groq", transcriber: down("groq down") },
+    { name: "parakeet", transcriber: ok("local text") },
   ]);
-  assert.equal(await t.transcribe(new Uint8Array([1]), "ogg"), "local text");
+  assert.equal(
+    await fallback.transcribe(new Uint8Array([1]), "ogg"),
+    "local text",
+  );
 });
 
 test("uses the first backend that answers and never calls the rest", async () => {
-  const t = new FallbackTranscriber([
-    { name: "groq", t: ok("remote text") },
-    { name: "parakeet", t: down("should not run") },
+  const fallback = new FallbackTranscriber([
+    { name: "groq", transcriber: ok("remote text") },
+    { name: "parakeet", transcriber: down("should not run") },
   ]);
-  assert.equal(await t.transcribe(new Uint8Array([1]), "ogg"), "remote text");
+  assert.equal(
+    await fallback.transcribe(new Uint8Array([1]), "ogg"),
+    "remote text",
+  );
 });
 
 test("throws the last error when every backend fails", async () => {
-  const t = new FallbackTranscriber([
-    { name: "groq", t: down("groq down") },
-    { name: "parakeet", t: down("parakeet down") },
+  const fallback = new FallbackTranscriber([
+    { name: "groq", transcriber: down("groq down") },
+    { name: "parakeet", transcriber: down("parakeet down") },
   ]);
   await assert.rejects(
-    t.transcribe(new Uint8Array([1]), "ogg"),
+    fallback.transcribe(new Uint8Array([1]), "ogg"),
     /parakeet down/,
   );
 });

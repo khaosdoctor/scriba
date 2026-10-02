@@ -2,6 +2,8 @@ import { Bot } from "grammy";
 import type { Config } from "./config.ts";
 import { sdkQuery } from "./data/connections/anthropic.ts";
 import { GithubReleases } from "./data/connections/github.ts";
+import { GroqTranscriber } from "./data/connections/groq.ts";
+import { ParakeetTranscriber } from "./data/connections/parakeet.ts";
 import { TelegramFiles } from "./data/connections/telegram-files.ts";
 import { WebService } from "./data/connections/web.ts";
 import { Repository } from "./data/repositories/index.ts";
@@ -37,10 +39,7 @@ import { ProcessingService } from "./services/processing.ts";
 import { RatingService } from "./services/rating.ts";
 import { SettingsService } from "./services/settings.ts";
 import { TaskService } from "./services/tasks.ts";
-import {
-  buildTranscriber,
-  type FallbackTranscriber,
-} from "./services/transcriber.ts";
+import { FallbackTranscriber } from "./services/transcriber.ts";
 import { VoiceService } from "./services/voice.ts";
 
 const log = logger("main");
@@ -112,6 +111,23 @@ async function buildEnricher(
     undefined,
     notifySwitch,
   );
+}
+
+export function buildTranscriber(cfg: {
+  groqApiKey: string;
+  parakeetUrl: string;
+}): FallbackTranscriber {
+  const backends = [];
+  if (cfg.groqApiKey)
+    backends.push({
+      name: "groq",
+      transcriber: new GroqTranscriber(cfg.groqApiKey),
+    });
+  backends.push({
+    name: "parakeet",
+    transcriber: new ParakeetTranscriber(cfg.parakeetUrl),
+  });
+  return new FallbackTranscriber(backends);
 }
 
 const RETRY_EVERY_MS = 5 * 60_000;
