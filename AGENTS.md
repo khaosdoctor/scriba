@@ -299,9 +299,17 @@ deployed on the homelab (Coolify). Single user.
   `til`, so the re-append fallbacks write the line back under TIL, not Journal.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button — `un:<jotId>`, handled by
-  `ScribaBot.handleRemove`, which runs the same `deleteJot` teardown as `/delete` and then
+  the remove callback in `presentation/telegram/journal/remove.ts`, which calls
+  `EditService.undo` (the same teardown as `/delete`) and then
   re-renders the status without a keyboard. Deleting a squashed leader marks its followers
   deleted too: they share the one anchor line that just went away.
+  Both buttons stay tappable on old messages, so the jot's current state decides: Undo
+  removes the line only while it is in the note (`done` or `abandoned`); on a jot sent back
+  for processing since, the tap is answered with no toast and the message is re-rendered
+  without its Undo button (any other button, such as Embed, stays). Delete acts now on a
+  `done`, `abandoned` or `failed` jot and is queued like a `/delete` reply while the jot is
+  `pending` or `processing`. A tap on a squashed follower resolves to its leader, since the
+  two share one line.
 - **Embeddable links are a choice, one tap either way.** When a finished line holds a URL
   Obsidian renders with `![](url)` (YouTube, tweets, external images; any other page needs
   an iframe, so it stays a link), its status message gets **🖼 Embed** next to Undo
@@ -314,7 +322,7 @@ deployed on the homelab (Coolify). Single user.
 - **Every failure is a decision, so it carries both buttons.** Any jot that fails —
   transient (still in the retry cycle), given up on, or thrown during intake in `bot.catch`
   — gets **🔄 Retry** (`rt:<jotId>`, `handleRetry`: `resetForRetry` + requeue now) and
-  **🗑 Delete** (`dl:<jotId>`, the same `handleRemove` as Undo) side by side, built by
+  **🗑 Delete** (`dl:<jotId>`, the same remove callback as Undo, via `EditService.discard`) side by side, built by
   `jotButtons` from the `StatusButtons` flags `status()` takes. The transient case used to
   say nothing at all and leave the message on "✨ Weaving it into your journal…" until the
   sweep came round, which reads as stuck rather than waiting; it now posts `retryNotice`

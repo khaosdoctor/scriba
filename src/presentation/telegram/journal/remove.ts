@@ -3,6 +3,7 @@ import { logger } from "../../../libs/log.ts";
 import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
 import { namespace } from "../namespace.ts";
+import { STILL_PROCESSING } from "./edit-reply.ts";
 
 const log = logger("bot");
 
@@ -35,8 +36,16 @@ export function removeView(
       log.warn({ jotId, source }, "remove: already removed");
       return responder.ack(already);
     }
+    const outcome =
+      source === "undo" ? await edits.undo(jot) : await edits.discard(jot);
+    if (outcome === "stale") {
+      await responder.ack();
+      return responder.dropButtons(`${ns}:`);
+    }
+    if (outcome === "removal-queued")
+      return responder.ack(STILL_PROCESSING[outcome]);
     log.info({ jotId, source, status: jot.status }, "jot removal requested");
     await responder.ack(toast);
-    await edits.remove(jot);
+    await outcome.now();
   });
 }

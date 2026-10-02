@@ -172,7 +172,7 @@ async function harness(over: Opts = {}) {
     unrejectCalls,
     editCalls,
     note: () => notes.get(NOTE),
-    tap: (data: string) =>
+    tap: (data: string, message: object = {}) =>
       update({
         callback_query: {
           id: `q${updateId}`,
@@ -184,6 +184,7 @@ async function harness(over: Opts = {}) {
             date: SEC,
             chat,
             text: "card",
+            ...message,
           },
         },
       }),
@@ -403,6 +404,90 @@ test("undo and discard on a missing or already removed jot only toast", async ()
     removed.events.filter((event) => !event.startsWith("api.")),
     [],
   );
+});
+
+test("undo on a jot sent back for processing drops the Undo button, keeps the others and leaves the note alone", async () => {
+  for (const status of ["pending", "processing", "failed"] as const) {
+    const bot = await harness({ jots: [jot({ status })] });
+    await bot.tap(`un:${ID}`, {
+      reply_markup: {
+        inline_keyboard: [
+          [
+            { text: "↩️ Undo", callback_data: `un:${ID}` },
+            { text: "🖼 Embed", callback_data: `em:${ID}:1` },
+          ],
+        ],
+      },
+    });
+    assert.deepEqual(bot.answers(), [undefined], status);
+    assert.deepEqual(
+      bot.events,
+      ["api.answerCallbackQuery", "api.editMessageReplyMarkup"],
+      status,
+    );
+    assert.deepEqual(
+      bot.buttons(
+        bot.api.find((call) => call.method === "editMessageReplyMarkup"),
+      ),
+      [["🖼 Embed", `em:${ID}:1`]],
+      status,
+    );
+    assert.deepEqual(bot.queuedEdits, [], status);
+    assert.equal(bot.note(), noteWith("bought milk"), status);
+  }
+});
+
+test("discard on a jot still in flight queues the delete like a /delete reply", async () => {
+  for (const status of ["pending", "processing"] as const) {
+    const bot = await harness({ jots: [jot({ status })] });
+    await bot.tap(`dl:${ID}`);
+    assert.deepEqual(bot.queuedEdits, [[ID, "delete"]], status);
+    assert.deepEqual(
+      bot.answers(),
+      ["⏳ still processing \u{2014} I'll remove it once it's done."],
+      status,
+    );
+    assert.deepEqual(bot.events, ["api.answerCallbackQuery"], status);
+    assert.equal(bot.note(), noteWith("bought milk"), status);
+  }
+});
+
+test("discard on a failed, abandoned or finished jot and undo on an abandoned one remove the line now", async () => {
+  for (const [ns, status] of [
+    ["dl", "failed"],
+    ["dl", "abandoned"],
+    ["dl", "done"],
+    ["un", "abandoned"],
+  ] as const) {
+    const bot = await harness({ jots: [jot({ status })] });
+    await bot.tap(`${ns}:${ID}`);
+    assert.ok(bot.events.includes(`repo.markDeleted:${ID}`), `${ns} ${status}`);
+    assert.equal(bot.note(), "# Journal\n\n", `${ns} ${status}`);
+    assert.deepEqual(bot.queuedEdits, [], `${ns} ${status}`);
+  }
+});
+
+test("undo on a squashed follower removes the shared line through its leader and marks both deleted", async () => {
+  const bot = await harness({
+    jots: [jot(), jot({ id: "bbbbbbbb", anchor: ID })],
+    followers: { [ID]: [{ id: "bbbbbbbb" }] },
+  });
+  await bot.tap("un:bbbbbbbb");
+  assert.deepEqual(
+    bot.events.filter((event) => event.startsWith("repo.")),
+    [`repo.markDeleted:${ID}`, "repo.markDeleted:bbbbbbbb"],
+  );
+  assert.equal(bot.note(), "# Journal\n\n");
+
+  const alone = await harness({
+    jots: [jot({ status: "deleted" }), jot({ id: "bbbbbbbb", anchor: ID })],
+  });
+  await alone.tap("un:bbbbbbbb");
+  assert.deepEqual(
+    alone.events.filter((event) => event.startsWith("repo.")),
+    ["repo.markDeleted:bbbbbbbb"],
+  );
+  assert.equal(alone.note(), "# Journal\n\n");
 });
 
 // --- em: embed toggle ---

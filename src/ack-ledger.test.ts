@@ -102,6 +102,18 @@ ledger("un and dl", [
     setup: withJot({ status: "deleted" }),
     expect: "repo.getJot > ack(already deleted)",
   },
+  {
+    tap: `un:${ID}`,
+    when: "jot back in flight, message without a keyboard left alone",
+    setup: withJot({ status: "pending" }),
+    expect: "repo.getJot > ack()",
+  },
+  {
+    tap: `dl:${ID}`,
+    when: "jot processing, the delete is queued before the answer",
+    setup: withJot({ status: "processing" }),
+    expect: `repo.getJot > repo.queueEdit > ack(⏳ still processing ${EM} I'll remove it once it's done.)`,
+  },
 ]);
 
 ledger("em", [

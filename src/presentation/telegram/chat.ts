@@ -53,6 +53,28 @@ export class Responder {
     await this.ctx.answerCallbackQuery(other);
   }
 
+  /** Re-render the tapped message's keyboard without the buttons whose callback data starts
+   *  with `prefix`, keeping the rest. */
+  async dropButtons(prefix: string): Promise<void> {
+    const rows = this.ctx.callbackQuery?.message?.reply_markup?.inline_keyboard;
+    if (!rows?.length) return;
+    const kept = rows
+      .map((row) =>
+        row.filter(
+          (button) =>
+            !(
+              "callback_data" in button &&
+              button.callback_data.startsWith(prefix)
+            ),
+        ),
+      )
+      .filter((row) => row.length > 0);
+    if (kept.flat().length === rows.flat().length) return;
+    await this.ctx.editMessageReplyMarkup({
+      reply_markup: { inline_keyboard: kept },
+    });
+  }
+
   /** A new message in this chat; resolves to its id. */
   async reply(text: string, opts?: SendOptions): Promise<number> {
     const sent = await this.ctx.reply(text, sendParams(opts));

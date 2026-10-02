@@ -41,7 +41,7 @@ export interface EditDeps {
   obsidian: Pick<ObsidianClient, "readNote" | "updateLine" | "updateNote">;
   enricher: Pick<Enricher, "editText">;
   /** Every applied edit is reported on the jot's own status message. */
-  jots: Pick<JotService, "status">;
+  jots: Pick<JotService, "status" | "leaderOf">;
 }
 
 /** Where an edit went: `unmapped` when the message belongs to no jot, `missing` when the
@@ -60,6 +60,11 @@ export type EmbedOutcome =
   | "gone"
   | "no-line"
   | { confirm: () => Promise<void> };
+
+/** A removal a tap may run: `now` is the teardown, handed back so the view can answer the
+ *  tap before the vault write (the note lock can outlast Telegram's callback window), and
+ *  resolves to the confirmation text. */
+export type Removal = { now: () => Promise<string> };
 
 export type LinkVerdict = "rejected" | "linked" | "unchanged";
 export type LinkOutcome =
@@ -155,11 +160,42 @@ export class EditService {
     return "applied";
   }
 
-  /** ↩️ Undo on a finished jot, 🗑 Delete on a failed one: the same teardown either way, one
-   *  tap away while the entry is on screen. The status message is left with no buttons, so
-   *  a second tap can't re-run it. */
-  async remove(jot: Jot): Promise<void> {
-    await this.deps.jots.status(jot.id, await this.deleteJot(jot));
+  /** ↩️ Undo on a finished jot's status message. The button stays tappable on old
+   *  messages, so only a jot whose line is in the note (done or abandoned) is removed; one
+   *  sent back for processing since has lost the state that earned the button. */
+  async undo(jot: Jot): Promise<"stale" | Removal> {
+    const target = await this.deps.jots.leaderOf(jot);
+    if (isEditableJot(target.status)) return this.removal(target);
+    log.warn(
+      { jotId: target.id, tapped: jot.id, status: target.status },
+      "undo refused: jot is no longer in the note",
+    );
+    return "stale";
+  }
+
+  /** 🗑 Delete on a failed jot's status message, or from the jots browser. The line, or a
+   *  failed jot's placeholder, goes now; a jot still processing gets the delete queued like
+   *  a /delete reply, so the processor cannot write the line back after it. */
+  async discard(jot: Jot): Promise<"removal-queued" | Removal> {
+    const target = await this.deps.jots.leaderOf(jot);
+    if (isEditableJot(target.status) || target.status === "failed")
+      return this.removal(target);
+    log.info(
+      { jotId: target.id, tapped: jot.id, status: target.status },
+      "delete queued (jot still processing)",
+    );
+    await this.deps.repo.queueEdit(target.id, "delete");
+    return "removal-queued";
+  }
+
+  private removal(target: Jot): Removal {
+    return {
+      now: async () => {
+        const text = await this.deleteJot(target);
+        await this.deps.jots.status(target.id, text);
+        return text;
+      },
+    };
   }
 
   /** 🖼 Embed / 🔗 Plain link on a finished jot whose line has a YouTube, tweet or image

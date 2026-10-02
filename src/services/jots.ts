@@ -95,6 +95,15 @@ export class JotService {
     return this.deps.repo.getJot(id);
   }
 
+  /** The jot whose line a tap on `jot` is about. A squashed follower shares its leader's
+   *  line, so the leader is what gets retried or removed, unless the leader is gone and
+   *  the follower was written on its own, the processor's own rule. */
+  async leaderOf(jot: Jot): Promise<Jot> {
+    if (jot.anchor === jot.id) return jot;
+    const leader = await this.deps.repo.getJot(jot.anchor);
+    return leader && leader.status !== "deleted" ? leader : jot;
+  }
+
   /** The jot a Telegram message belongs to: the owner's own message or a status message. */
   async byMessage(messageId: number): Promise<Jot | undefined> {
     const id = await this.deps.repo.jotForMessage(messageId);

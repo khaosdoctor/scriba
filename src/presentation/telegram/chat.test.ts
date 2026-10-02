@@ -136,6 +136,24 @@ test("a tap's responder answers the query with a toast, an alert or nothing", as
   ]);
 });
 
+test("dropping buttons makes no edit when no button matches the prefix or there is no keyboard", async () => {
+  const { ctx, rec } = harness();
+  const keyboard = {
+    callback_query: {
+      ...TAP.callback_query,
+      message: {
+        ...TAP.callback_query.message,
+        reply_markup: {
+          inline_keyboard: [[{ text: "Embed", callback_data: "em:a:1" }]],
+        },
+      },
+    },
+  };
+  await new Responder(ctx(keyboard)).dropButtons("un:");
+  await new Responder(ctx(TAP)).dropButtons("un:");
+  assert.deepEqual(rec.calls, []);
+});
+
 test("an update's responder replies in its chat or removes its message", async () => {
   const { ctx, rec } = harness();
   const r = new Responder(ctx(MESSAGE));
