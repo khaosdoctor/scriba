@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ReleaseNote } from "../../domain/release/structures.ts";
 import { logger } from "../../libs/log.ts";
 
 const log = logger("github");
@@ -16,15 +17,6 @@ export const ReleaseSchema = z.object({
   published_at: z.string(),
 });
 export type Release = z.infer<typeof ReleaseSchema>;
-
-export interface ReleaseNote {
-  tag: string; // e.g. "v1.23.1"
-  version: string; // tag with the leading "v" stripped
-  name: string;
-  body: string; // release notes markdown (the changelog section for this version)
-  url: string; // GitHub Release page
-  publishedAt: string; // ISO timestamp
-}
 
 export class GithubReleases {
   constructor(private repo = "khaosdoctor/scriba") {}

@@ -484,7 +484,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   and each transition is one Telegram notice. An upstream probed with a key needs a 2xx:
   Groq answers a bad key with 401, while OpenCode's listing doesn't check the key, so
   there a 2xx only proves the host answers. The rest count any HTTP answer. `/status`
-  lists the snapshot through `formatHealth` (`services/admin.ts`).
+  lists the snapshot through `formatHealth` (`libs/admin.ts`).
 
 ## Conventions
 

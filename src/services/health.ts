@@ -1,18 +1,10 @@
 import { type Dispatcher, fetch } from "undici";
+import type { UpstreamStatus } from "../domain/health/structures.ts";
 import { logger } from "../libs/log.ts";
 import { formatDuration } from "../libs/text.ts";
 import { OPENCODE_BASE_URL } from "./enrich.ts";
 
 const log = logger("health");
-
-export interface UpstreamStatus {
-  name: string;
-  up: boolean;
-  latencyMs: number | null;
-  error: string | null;
-  failures: number;
-  since: number;
-}
 
 /** The model listing next to an OpenAI-style transcription endpoint:
  *  `.../v1/audio/transcriptions` → `.../v1/models`. A GET there generates nothing, which
