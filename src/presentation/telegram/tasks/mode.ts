@@ -25,8 +25,6 @@ export async function openTaskMode(
   await ctx.reply(outcome === "opened" ? INTRO : REFUSALS[outcome]);
 }
 
-/** One message while task mode is open: a card to confirm, or the nudge when it holds no
- *  task. */
 export async function taskMessage(
   ctx: Context,
   tasks: TaskService,

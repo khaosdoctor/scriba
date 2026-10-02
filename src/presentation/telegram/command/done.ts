@@ -6,8 +6,6 @@ const OFF: Record<Mode, string> = {
   command: "🧭 Command mode off — back to journaling.",
 };
 
-/** One /done for both message-stream modes: it closes whichever is open, so there is a
- *  single command to remember rather than one per mode. */
 export const done: CommandView = {
   command: "done",
   description: "Close the vault assistant or task session",

@@ -5,7 +5,6 @@ import { showTaskList } from "./tap.ts";
 
 const log = logger("tasks-flow");
 
-/** What `/tasks <arg>` accepts, mapped onto the list screens. */
 const VIEW_ALIASES: Record<string, TaskView> = {
   day: "day",
   all: "open",
@@ -19,7 +18,6 @@ const VIEW_ALIASES: Record<string, TaskView> = {
   done: "done",
 };
 
-/** `/tasks` lists what is open ahead, `/tasks week` one of the other screens. */
 export const tasksCommand: CommandView = {
   command: "tasks",
   description: "List your tasks — open, today, this week, done",

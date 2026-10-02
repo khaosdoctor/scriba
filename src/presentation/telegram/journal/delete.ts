@@ -5,7 +5,6 @@ import { STILL_PROCESSING } from "./edit-reply.ts";
 
 const log = logger("bot");
 
-/** A removed line is reported on the jot's status message, so it gets no reply here. */
 const REPLIES: Record<EditOutcome, string | null> = {
   unmapped: "Can't find a jot for that message.",
   missing: "Jot not found.",

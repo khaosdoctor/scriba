@@ -8,8 +8,6 @@ const TOASTS: Record<VoiceFixChoice, string> = {
   original: "keeping original",
 };
 
-/** `vf:o:<jotId>` keeps the original transcript, `vf:p:<jotId>` takes the proposed fix.
- *  The tap is answered before the pick reaches the waiting processor. */
 export function voiceFixView(jots: JotService): Composer<Context> {
   return namespace("vf", async (ctx, [verdict, jotId]) => {
     const responder = new Responder(ctx);

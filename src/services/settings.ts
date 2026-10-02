@@ -34,16 +34,13 @@ export interface SettingsDeps {
   enricher: Pick<Enricher, "setModel">;
   scheduler: Pick<Scheduler, "rearm">;
   notifier: Pick<Notifier, "send">;
-  /** The configured nightly rating time, shown until one is stored. */
   ratingTime: string;
 }
 
 export type ModelKey = "enrichModel" | "voiceFixModel";
 
-/** The settings the menu asks for as free text, by the marker kind in their prompt. */
 export type SettingsPrompt = "es" | "rt" | "em" | "vfm";
 
-/** The link-rule replies the wizard asks for, by the marker kind in their prompt. */
 export type LinkPrompt = "sw" | "rg" | "rgn" | "rgm" | "rgw";
 
 const PROMPTS: Record<SettingsPrompt, string> = {
@@ -53,12 +50,8 @@ const PROMPTS: Record<SettingsPrompt, string> = {
   vfm: `🧠 Reply with the model ID for voice fix (e.g. claude-sonnet-5): ${WIZARD_VOICEFIX_MODEL_REF}`,
 };
 
-// Note-search page size. Smaller than the rule lists' page: note titles are long, and a
-// wall of them is exactly the "hard to find things" problem the picker exists to solve.
 const PICK_PAGE = 6;
 
-/** The runtime settings the /menu control panel shows and changes, and the link rules
- *  that steer the enricher's wikilinks. */
 export class SettingsService {
   // The one place the wizard keeps state between messages: picking the note side means
   // searching a vault of thousands, which cannot ride in 64 bytes of callback data.
@@ -73,7 +66,6 @@ export class SettingsService {
 
   constructor(private d: SettingsDeps) {}
 
-  /** What the root menu shows, read in the order its buttons appear. */
   async root() {
     const { repo, ratingTime } = this.d;
     return {
@@ -127,14 +119,10 @@ export class SettingsService {
     log.info({ time }, "menu: rating time changed");
   }
 
-  /** Ask for a value no keyboard can offer; the reply routes back by the prompt's marker. */
   async ask(kind: SettingsPrompt): Promise<void> {
     await this.d.notifier.send(PROMPTS[kind], { forceReply: true });
   }
 
-  // --- link rules ---
-
-  /** Step 1 of the wizard: every rule list and the index health. */
   async linkRules() {
     const { linkRules, links } = this.d;
     const [stopwords, rejections, pairs] = await Promise.all([
@@ -176,7 +164,6 @@ export class SettingsService {
     log.info({ word, removed: n }, "link wizard: never-link word removed");
   }
 
-  /** Undo one rejection; true while the word still has rejected notes. */
   async unreject(surface: string, note: string): Promise<boolean> {
     const n = await this.d.linkRules.unreject(surface, note);
     log.info({ surface, note, removed: n }, "link wizard: rejection undone");
@@ -199,8 +186,6 @@ export class SettingsService {
     log.info({ from: r.surface, to: word }, "link wizard: pair renamed");
   }
 
-  /** Free text for a link rule; the reply routes back by the prompt's marker. `gi` is the
-   *  pair being renamed. */
   async askLink(kind: LinkPrompt, gi?: number): Promise<void> {
     log.info({ kind, gi }, "link wizard: prompting");
     const word = this.currentWord();
@@ -214,14 +199,11 @@ export class SettingsService {
     await this.d.notifier.send(prompts[kind], { forceReply: true });
   }
 
-  // --- the pair flow: typed words, each getting the note picker in turn ---
-
   queueWords(words: string[]): void {
     log.info({ words }, "link wizard: queued words needing a note");
     this.pending = { words, i: 0, query: words[0] ?? "", page: 0 };
   }
 
-  /** "Change note" on an existing pair: the picker for its word, remembering what to replace. */
   retarget(r: LinkRule): void {
     log.info({ surface: r.surface, note: r.note }, "link wizard: retargeting");
     this.pending = {
@@ -233,12 +215,10 @@ export class SettingsService {
     };
   }
 
-  /** The word the picker is on, when a flow is open. */
   currentWord(): string | undefined {
     return this.pending?.words[this.pending.i];
   }
 
-  /** A new search for the current word; false when no flow is open. */
   search(query: string): boolean {
     if (!this.pending) return false;
     this.pending.query = query;
@@ -246,9 +226,6 @@ export class SettingsService {
     return true;
   }
 
-  /** The picker's rows for `page`, remembered so a tap resolves against the same page,
-   *  with the word they are for and its place in the queue. "done" ends a flow whose
-   *  words are all placed. */
   picker(page: number) {
     const p = this.pending;
     if (!p) return "expired" as const;
@@ -270,7 +247,6 @@ export class SettingsService {
     };
   }
 
-  /** The note at row `j` of the remembered page, with the word it is for. */
   pick(j: number): { word: string; note: string } | undefined {
     const p = this.pending;
     const word = p?.words[p.i];
@@ -288,7 +264,6 @@ export class SettingsService {
     return { word, note };
   }
 
-  /** Write one pair, retiring the pair being replaced when this is a retarget. */
   async savePair(word: string, note: string): Promise<void> {
     const old = this.pending?.retarget;
     if (old) await this.d.linkRules.delRegisteredLink(old.surface, old.note);
@@ -299,7 +274,6 @@ export class SettingsService {
     );
   }
 
-  /** Move the queue on: the next word, or undefined once the flow is over. */
   advance(): string | undefined {
     const p = this.pending;
     if (!p) return undefined;

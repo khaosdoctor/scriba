@@ -28,12 +28,10 @@ export interface DownloadedFile {
 }
 
 export interface MediaDeps {
-  /** grammy's Api fits; typed structurally so services stay free of grammy. */
   api: { getFile(fileId: string): Promise<{ file_path?: string }> };
   token: string;
 }
 
-/** Telegram media in, bytes out. Image captions stay in the enricher. */
 export class MediaService {
   constructor(private deps: MediaDeps) {}
 

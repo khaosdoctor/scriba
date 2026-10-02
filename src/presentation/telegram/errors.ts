@@ -6,12 +6,9 @@ import { Responder } from "./chat.ts";
 const log = logger("bot");
 
 export type ErrorDeps = {
-  /** The jot a failing message already created, when intake got that far. */
   jotForMessage(messageId: number): Promise<string | undefined>;
 };
 
-/** `bot.catch`: a failed tap gets its spinner stopped with a toast; a failed message gets a
- *  reply, with the Retry / Delete pair when a jot row exists for it. */
 export function errorHandler({
   jotForMessage,
 }: ErrorDeps): ErrorHandler<Context> {

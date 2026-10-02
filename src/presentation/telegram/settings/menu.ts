@@ -33,8 +33,6 @@ const CLOSE = "menu:close";
 const MODEL_PRESETS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"];
 const ENTRY_SIZES = [140, 280, 560, 1000, 0];
 
-/** Each model setting by its picker action: key, screen title, toast label, the action
- *  of a preset pick and the action of the typed-id prompt. */
 const MODELS: Record<"em" | "vfm", [ModelKey, string, string, string, string]> =
   {
     em: ["enrichModel", "🧠 Enrichment model", "enrichment", "ems", "emc"],
@@ -96,7 +94,6 @@ const maintenanceKeyboard = () =>
     CLOSE,
   );
 
-/** One-tap presets with the current one ticked, a typed-value prompt and Back. */
 function picker(
   options: [label: string, data: string, current: boolean][],
   custom: [label: string, data: string],
@@ -161,8 +158,6 @@ async function entrySizeScreen(
   );
 }
 
-/** The jots browser: recent jots as tappable rows, so finding one no longer means
- *  scrolling chat history. */
 async function jotsList(ctx: Tap, jots: JotService): Promise<unknown> {
   const recent = await jots.recent(10);
   if (!recent.length)
@@ -206,10 +201,6 @@ async function jotDetail(
   });
 }
 
-/** `menu:<action>[:<arg>]`: the control panel's screens. Every tap restarts the menu's
- *  idle countdown. Toggles and model picks answer after the write; an entry-size pick and
- *  a tap that only draws a screen answer first. The link wizard (`menu:l*`) gets every
- *  action this view does not name. */
 export function menuView(deps: ViewDeps): Composer<Context> {
   const {
     settings,

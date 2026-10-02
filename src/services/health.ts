@@ -5,8 +5,6 @@ import { OPENCODE_BASE_URL } from "./enrich.ts";
 
 const log = logger("health");
 
-/** One upstream as the health monitor last saw it. `latencyMs` is null until the first
- *  probe answers; `error` is the latest failed probe's, cleared by the next success. */
 export interface UpstreamStatus {
   name: string;
   up: boolean;
@@ -50,9 +48,6 @@ export interface HealthTargets {
   parakeetUrl: string;
 }
 
-/** The upstreams worth probing for this config. Groq and OpenCode are skipped without a
- *  key: nothing calls them then. `obsidian` is the Obsidian client's own dispatcher, so
- *  a self-signed cert is trusted exactly when the client trusts it. */
 export function upstreams(t: HealthTargets, obsidian: Dispatcher): Upstream[] {
   const list: Upstream[] = [
     { name: "anthropic", url: "https://api.anthropic.com" },
@@ -87,9 +82,6 @@ function describe(err: unknown): string {
   return err.message;
 }
 
-/** Probes every upstream on a timer and keeps the latest status of each. A down
- *  upstream takes 2 failed probes in a row (one blip is not an outage), a recovery takes
- *  one success. Each transition is told to the owner once. */
 export class HealthMonitor {
   private state = new Map<string, UpstreamStatus>();
   private timer: NodeJS.Timeout | null = null;
@@ -136,8 +128,6 @@ export class HealthMonitor {
     return [...this.state.values()].map((s) => ({ ...s }));
   }
 
-  /** One round: every upstream at once. `probe` catches everything, so this never
-   *  throws, and the timeout keeps a round far shorter than the interval. */
   async check(): Promise<void> {
     await Promise.all(this.targets.map((u) => this.probe(u)));
   }

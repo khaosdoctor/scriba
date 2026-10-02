@@ -4,8 +4,6 @@ import { MENU_TEXT, rootKeyboard } from "./menu.ts";
 
 const log = logger("menu");
 
-/** `/menu` sends a fresh root menu and retires the chat's previous one. Later taps edit
- *  that message in place. */
 export const menuCommand: CommandView = {
   command: "menu",
   description: "Open the interactive control menu",

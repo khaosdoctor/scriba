@@ -45,8 +45,6 @@ Write as the owner would, in first person where the note calls for it. Plain, di
 TELEGRAM
 Replies are read on a phone. Keep them short — a few sentences. Report what you changed and where, not how you did it. No markdown headings in replies.`;
 
-/** The tropes.fyi file is fetched rather than copied in, so the list keeps growing without
- *  a deploy. */
 const TROPES_URL = "https://tropes.fyi/tropes-md";
 const TROPES_TTL_MS = 24 * 60 * 60_000;
 /** The page wraps the file in site chrome; the file itself starts at this heading. */
@@ -69,7 +67,6 @@ const ALLOWED = [...READ_ONLY, WRITE_TOOL, DELETE_TOOL];
 
 export type AgentConfig = { model: string; thinkingTokens: number };
 
-/** A vault change the agent wants to make, held until the owner answers. */
 export type Change = {
   kind: "write" | "delete";
   path: string;
@@ -94,7 +91,6 @@ export class PromptStream {
     this.wake = null;
   }
 
-  /** No more prompts: the iterator drains what's left and returns, ending the query. */
   end(): void {
     this.ended = true;
     this.wake?.();
@@ -116,8 +112,6 @@ export class PromptStream {
   }
 }
 
-/** The `/command` agent: a long-lived SDK query over the vault tools and web search, with
- *  every change to the vault held for the owner's say-so. */
 export class AgentService {
   private tropeCache?: { text: string; at: number };
 
@@ -132,8 +126,6 @@ export class AgentService {
     return this.vault.enabled;
   }
 
-  /** Open a query that reads prompts from `prompt` until it ends. `resume` continues an
-   *  earlier conversation; `confirm` is asked before any write or delete. */
   async startQuery(opts: {
     prompt: PromptStream;
     resume?: string;
@@ -231,7 +223,6 @@ export class AgentService {
     };
   }
 
-  /** The vault tool surface. Nothing here can reach outside the vault or the open web. */
   private tools() {
     return [
       tool(

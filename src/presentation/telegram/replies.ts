@@ -14,8 +14,6 @@ import { parseTaskRef, taskReply } from "./tasks/reply.ts";
 
 type Reply = Filter<Context, "message:text">;
 
-/** A text reply whose quoted prompt `parse` recognizes. A reply to a message with no text
- *  is parsed as an empty prompt, which no marker matches. */
 function replyTo<T>(
   parse: (prompt: string) => T | null,
   handle: (ctx: Reply, parsed: T, quoted: Message) => Promise<unknown>,
@@ -30,8 +28,6 @@ function replyTo<T>(
   return view;
 }
 
-/** The prompt replies in the order their owners get to claim one: habit value, follow-up
- *  question, settings prompt, link wizard step, task card prompt. */
 export function promptReplies(deps: ViewDeps): Composer<Context>[] {
   const { habits, rating, jotController, tasks } = deps;
   return [

@@ -18,7 +18,6 @@ const rp = (...parts: (string | number)[]) =>
 const CLOSE = rp("close");
 const ROOT = rp("root");
 
-/** The scope picker the command, the /menu entry and every Back button show. */
 export const rootKeyboard = () =>
   withClose(
     new InlineKeyboard()
@@ -44,14 +43,11 @@ const pad = (n = "") => n.padStart(2, "0");
 const ymd = ([y, m, d]: string[]) => `${y}-${pad(m)}-${pad(d)}`;
 const isDate = (s: string) => IsoDateSchema.safeParse(s).success;
 
-/** Both ends validated and a backwards pair swapped. */
 function span(a: string, b: string) {
   if (!isDate(a) || !isDate(b)) return undefined;
   return a <= b ? { lo: a, hi: b } : { lo: b, hi: a };
 }
 
-/** Weeks (Sun-first) of day-of-month numbers for a year and month (1-12), 0 for the
- *  padding cells outside the month. */
 export function monthGrid(year: number, month: number): number[][] {
   const daysInMonth = new Date(year, month, 0).getDate();
   const startDow = new Date(year, month - 1, 1).getDay();
@@ -126,8 +122,6 @@ const rangeEnd = (
     ? calendar(ctx, rp("rangeend", start), `📆 Start: ${start}. ${lead}`, ym)
     : rejectDate(ctx, { start }, rejected);
 
-/** The confirm prompt for the inclusive day range a..b; `day` keeps the one-day wording
- *  and its `go:d` button. */
 async function confirmRange(
   ctx: Tap,
   admin: AdminService,
@@ -225,8 +219,6 @@ async function confirmJot(
   });
 }
 
-/** `go:d:<date>` runs as the range (date, date). Every mode acks before its DB work, so
- *  the spinner stops promptly and later outcomes report through editMessageText. */
 async function execute(
   ctx: Tap,
   admin: AdminService,

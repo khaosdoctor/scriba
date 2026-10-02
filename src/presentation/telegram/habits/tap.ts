@@ -7,9 +7,6 @@ import { namespace } from "../namespace.ts";
 
 const log = logger("habits");
 
-/** `hb:<date>:begin` starts the review. `hb:<date>:<index>:<digest>:<y|n>` answers one habit,
- *  and the tap is answered once the note is written, before the next question replaces the
- *  card. */
 export function habitsView(habits: HabitService): Composer<Context> {
   return namespace(HABITS_NS, async (ctx, [date, action, digest, verd]) => {
     const responder = new Responder(ctx);

@@ -5,9 +5,6 @@ import { promptReplies } from "../replies.ts";
 import { taskMessage } from "../tasks/mode.ts";
 import { editReply } from "./edit-reply.ts";
 
-/** Plain text, in the order its owners claim it: a slash no command answered is dropped,
- *  command mode takes the whole stream, then the prompt replies, then task mode (replies
- *  included), then a reply edits its jot, and whatever is left is a journal intake. */
 export function textView(bot: Bot, deps: ViewDeps): void {
   const { command, modes, tasks, edits, jotController } = deps;
   bot.on("message:text", async (ctx, next) => {

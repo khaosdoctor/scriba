@@ -10,7 +10,6 @@ import {
 import { Responder } from "../chat.ts";
 import { TASKADD_EMPTY } from "./add.ts";
 
-/** Which prompt a reply answers: the marker rides in the prompt's own text. */
 export function parseTaskRef(prompt: string): TaskRef | null {
   if (prompt.includes(TASK_ADD_REF)) return { field: "add" };
   const m = prompt.match(/\(tk:(d|s|u):([0-9a-f]{6,16})\)/);

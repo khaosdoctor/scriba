@@ -27,9 +27,6 @@ export function navRow(
   return kb.row();
 }
 
-/** One list screen: a button row per item, Prev/Next, the caller's own rows, then Back.
- *  `title` builds the whole message text. Close is the caller's `withClose`, since some
- *  screens are sent through a helper that adds it. */
 export function pagedScreen<T>(opts: {
   view: PageView<T>;
   title: (view: PageView<T>) => string;

@@ -33,7 +33,6 @@ const log = logger("tasks-flow");
 
 export const TASKS_NS = "tk";
 
-/** Marker of `/taskadd`'s "what's the task?" prompt: there is no draft id yet. */
 export const TASK_ADD_REF = "(tk:add)";
 
 export type TaskField = "d" | "s" | "u";
@@ -66,7 +65,6 @@ export interface TaskDeps {
 
 const PAGE = 8;
 
-/** Lists don't self-destruct the way /menu's screens do, so Close is how they go. */
 const CLOSE: Row[number] = ["✖ Close", `${TASKS_NS}:close`];
 
 const MENU_TEXT =
@@ -126,13 +124,7 @@ function patchFor(
   return field === "s" ? { start: date } : { due: date };
 }
 
-/** Nothing is written straight from a message: it becomes a draft on a card and only Create
- *  writes the note. Drafts live in the DB because a description can't ride in Telegram's 64
- *  bytes of callback data. Created tasks are not tracked, the task notes stay the source of
- *  truth. */
 export class TaskService {
-  /** Prompt message id -> its draft. A question is scaffolding: once answered, or once the
-   *  card settles, it leaves the chat. In memory: a restart forgets at most one prompt. */
   private prompts = new Map<number, string>();
 
   constructor(private deps: TaskDeps) {}
@@ -148,7 +140,6 @@ export class TaskService {
     return outcome;
   }
 
-  /** One message in task mode, parsed token-free. False when it holds no task. */
   async handle(text: string): Promise<boolean> {
     this.deps.modes.touch();
     const draft = parseTaskDraft(text, plainDate());
@@ -168,15 +159,10 @@ export class TaskService {
     );
   }
 
-  /** The transcript of a voice note sent while task mode is open. The view owns the
-   *  Telegram side; the layer rule keeps the voice service behind the controller. */
   spokenTask(fileId: string): Promise<string> {
     return this.deps.voice.transcribe(fileId);
   }
 
-  /** `/taskadd`: the enricher reads the line, its timing is resolved by chrono against today,
-   *  and a failed call falls back to the token-free parser (a rougher split beats no task).
-   *  False when the line holds no task. */
   async quickAdd(text: string): Promise<boolean> {
     const today = plainDate();
     let draft: TaskDraft;
@@ -209,7 +195,6 @@ export class TaskService {
     );
   }
 
-  /** A task found in a journal entry, on the same card plus a way to say it wasn't one. */
   async suggest(
     draft: TaskDraft,
     jotId: string,
@@ -224,8 +209,6 @@ export class TaskService {
     if (!row.due) await this.ask(row, "u");
   }
 
-  /** A card for a parsed draft. A task needs a deadline, so `askDue` asks for a missing one
-   *  straight away. */
   private async propose(
     draft: TaskDraft,
     text: string,
@@ -287,7 +270,6 @@ export class TaskService {
       );
   }
 
-  /** Final word on a card: no buttons, so a settled task can't be settled twice. */
   private async settle(row: TaskDraftRow, html: string): Promise<void> {
     const { notifier } = this.deps;
     const text = fitTelegram(html);
@@ -303,8 +285,6 @@ export class TaskService {
       );
   }
 
-  /** The pending draft a tap refers to, or the toast to answer with once it is gone or
-   *  settled. */
   async live(id?: string): Promise<TaskDraftRow | string> {
     const row = id ? await this.deps.repo.getTaskDraft(id) : undefined;
     if (!row) {
@@ -378,10 +358,6 @@ export class TaskService {
     );
   }
 
-  /** Ask for one field; the marker routes the reply back. Only a question that is the direct
-   *  result of a button press gets a force_reply, since you can't have been halfway through
-   *  typing something else. An unasked one (a suggestion, a `/taskadd` with no timing) never
-   *  does: that is how a message meant for the journal gets sent as a date. */
   async ask(
     row: TaskDraftRow,
     field: TaskField,
@@ -415,8 +391,6 @@ export class TaskService {
       if (owner === draft) await this.dropPrompt(id, draft);
   }
 
-  /** The reply to a prompt. A prompt leaves the chat only once its answer is taken: one that
-   *  couldn't be read has to stay, or there'd be nothing left to reply to. */
   async answer(
     ref: TaskRef,
     body: string,
@@ -454,9 +428,6 @@ export class TaskService {
     return "ok";
   }
 
-  /** One list screen. Each row carries the digest of the line it was drawn from, so a tap
-   *  that arrives after the note changed is refused rather than acting on whatever has since
-   *  moved into that position. Rejects when the notes can't be read. */
   async list(
     view: TaskView,
     page: number,
@@ -508,8 +479,6 @@ export class TaskService {
     };
   }
 
-  /** Tick or reopen the task a list row points at. When the note moved since the list was
-   *  drawn nothing is written and the owner is told. */
   async tick(
     type: TaskType,
     index: number,
@@ -552,8 +521,6 @@ export class TaskService {
     };
   }
 
-  /** The task menu as a fresh message: /menu's entry point, which can't edit its own
-   *  message into this one. */
   async promptRoot(): Promise<void> {
     log.info("tasks menu opened (via /menu)");
     const { text, keyboard } = await this.menu();
@@ -573,9 +540,6 @@ export class TaskService {
     return enabled;
   }
 
-  /** The morning summary: what's due today plus whatever is still hanging over. A day with
-   *  nothing due sends nothing, but a failure still speaks up: a morning with no summary
-   *  should only ever mean an empty day. */
   async dailySummary(): Promise<void> {
     const today = plainDate();
     const { notifier } = this.deps;

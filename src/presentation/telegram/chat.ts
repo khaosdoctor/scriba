@@ -5,8 +5,6 @@ import type { MessageOptions, Notifier } from "../../services/notifier.ts";
 
 const log = logger("chat");
 
-/** `MessageOptions` with the keyboard as grammy builds it. `Notifier` types it structurally
- *  so models stay free of grammy; the views narrow it here. */
 export type SendOptions = Omit<MessageOptions, "keyboard"> & {
   keyboard?: InlineKeyboardMarkup;
 };
@@ -18,8 +16,6 @@ function params({ html, keyboard }: SendOptions = {}) {
   };
 }
 
-/** A new message can also point the compose box at itself or hang off an earlier message;
- *  an edit can do neither. */
 function sendParams(opts: SendOptions = {}) {
   return {
     ...params(opts),
@@ -38,11 +34,9 @@ function sendParams(opts: SendOptions = {}) {
   };
 }
 
-/** The update being answered: its chat, its message and the tap that led to it. */
 export class Responder {
   constructor(private ctx: Context) {}
 
-  /** Stop the tapped button's spinner, with a toast or an alert when there is text. */
   async ack(text?: string, opts: { alert?: boolean } = {}): Promise<void> {
     const other =
       text === undefined
@@ -53,8 +47,6 @@ export class Responder {
     await this.ctx.answerCallbackQuery(other);
   }
 
-  /** Re-render the tapped message's keyboard without the buttons whose callback data starts
-   *  with `prefix`, keeping the rest. */
   async dropButtons(prefix: string): Promise<void> {
     const rows = this.ctx.callbackQuery?.message?.reply_markup?.inline_keyboard;
     if (!rows?.length) return;
@@ -75,7 +67,6 @@ export class Responder {
     });
   }
 
-  /** A new message in this chat; resolves to its id. */
   async reply(text: string, opts?: SendOptions): Promise<number> {
     const sent = await this.ctx.reply(text, sendParams(opts));
     return sent.message_id;
@@ -108,7 +99,6 @@ export class Responder {
   }
 }
 
-/** The owner's chat: everything the bot says on its own initiative goes through here. */
 export class Chat implements Notifier {
   constructor(
     private api: Api,

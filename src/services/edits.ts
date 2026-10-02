@@ -30,13 +30,9 @@ export interface EditDeps {
   linkRules: LinkRuleRepository;
   obsidian: ObsidianClient;
   enricher: Pick<Enricher, "editText">;
-  /** Every applied edit is reported on the jot's own status message. */
   jots: Pick<JotService, "status" | "leaderOf">;
 }
 
-/** Where an edit went: `unmapped` when the message belongs to no jot, `missing` when the
- *  jot's row is gone, `queued` or `removal-queued` while the jot is still processing, and
- *  `applied` once the line is rewritten (or removed) and the status message says so. */
 export type EditOutcome =
   | "unmapped"
   | "missing"
@@ -44,8 +40,6 @@ export type EditOutcome =
   | "removal-queued"
   | "applied";
 
-/** The embed toggle's result. `confirm` syncs the jot's source and reports the new line on
- *  the status message, handed back so the view can answer the tap first. */
 export type EmbedOutcome =
   | "gone"
   | "no-line"
@@ -73,8 +67,6 @@ type QueuedEdit = {
 export class EditService {
   constructor(private deps: EditDeps) {}
 
-  /** A reply to a jot's message carries an instruction for its line: a literal swap or a
-   *  freeform edit for the model. */
   async editByReply(
     messageId: number,
     instruction: string,
@@ -139,8 +131,6 @@ export class EditService {
     return "applied";
   }
 
-  /** /delete as a reply to a jot's message. Mirrors the reply edit: the delete is queued
-   *  while the jot is still processing. */
   async deleteByReply(messageId: number): Promise<EditOutcome> {
     const jot = await this.editOrQueue(
       messageId,
@@ -191,8 +181,6 @@ export class EditService {
     };
   }
 
-  /** 🖼 Embed / 🔗 Plain link on a finished jot whose line has a YouTube, tweet or image
-   *  URL: rewrite those URLs as `![](url)` embeds or back to links, token-free. */
   async toggleEmbed(
     jotId: string | undefined,
     embed: boolean,
@@ -228,8 +216,6 @@ export class EditService {
     };
   }
 
-  /** The owner's answer to a "Link X → [[Note]]?" card. Rejecting teaches the pair so it is
-   *  never asked again; accepting rewrites the word on the jot's line. */
   async confirmLink(pendingId: string, accept: boolean): Promise<LinkOutcome> {
     const { repo, obsidian, linkRules } = this.deps;
     const rec = await linkRules.takePendingLink(pendingId);
@@ -252,7 +238,6 @@ export class EditService {
     return { verdict: applied ? "linked" : "unchanged", surface, note };
   }
 
-  /** Apply the edits queued while a jot was still processing, now that its line exists. */
   async drainQueued(jotId: string): Promise<void> {
     const { repo, jots } = this.deps;
     const edits = await repo.queuedEdits(jotId);
@@ -272,8 +257,6 @@ export class EditService {
     );
   }
 
-  /** Remove a jot's line from its daily note and mark it deleted (a terminal state, so a
-   *  retry pass never resurrects it). */
   async deleteJot(jot: Jot): Promise<string> {
     const { repo, obsidian } = this.deps;
     const out = await obsidian.updateNote(jot.note_path, (note, write) => {
@@ -297,9 +280,6 @@ export class EditService {
     return "🗑️ removed that from your journal.";
   }
 
-  /** Resolve the jot a message belongs to. Editable only once a line exists (done or
-   *  abandoned); otherwise queue the edit for drainQueued and return the queued outcome
-   *  instead. Misses are warned only for /delete, the one path where the owner typed a command. */
   private async editOrQueue(
     messageId: number,
     queued: (jot: Jot) => QueuedEdit,
@@ -327,16 +307,12 @@ export class EditService {
     return outcome;
   }
 
-  /** The embed toggle an edited jot's status message should offer, read off the line as it
-   *  now is in the note: an edit can add, remove or embed a URL. */
   private async embedFor(jot: Jot): Promise<StatusButtons["embed"]> {
     const note = await this.deps.obsidian.readNote(jot.note_path);
     const line = anchorLine(note, jot.anchor);
     return line ? embedOffer(stripJournalLine(line, jot.time)) : undefined;
   }
 
-  /** Apply one or more edit instructions to a jot's line, merged into a single write (and
-   *  a single model call for the freeform ones). Returns a short status. */
   private async applyEdits(jot: Jot, instructions: string[]): Promise<string> {
     // deleteJot takes the note lock itself, so it must run before the lock below.
     if (instructions.some((i) => i.trim().toLowerCase() === "delete"))
@@ -387,10 +363,6 @@ export class EditService {
     return editConfirmation(jot.time, newText);
   }
 
-  /** Fold a corrected line back into the jot's own source field (`transcript` for audio,
-   *  `raw_text` for text), so a later /reprocess builds on the fix instead of reverting to
-   *  the original mis-transcription or typo. Only for a standalone jot: a squashed line is
-   *  several jots' sources combined, with no single field to fold the text back into. */
   private async syncEditedSource(jot: Jot, text: string): Promise<void> {
     if (jot.kind !== "audio" && jot.kind !== "text") return;
     if (jot.anchor !== jot.id) return;

@@ -12,7 +12,6 @@ import type { Notifier } from "./notifier.ts";
 
 const log = logger("habits");
 
-/** callback_query namespace of the review card's buttons. */
 export const HABITS_NS = "hb";
 
 export interface HabitDeps {
@@ -23,16 +22,11 @@ export interface HabitDeps {
 
 export type FillOutcome = "saved" | "notNumber" | "gone";
 
-/** The daily habit review: one Telegram message, edited in place through the whole flow
- *  and deleted at the end, when `habitsReviewed: true` is stamped in the note's frontmatter
- *  so a second run can't overwrite answers. */
 export class HabitService {
-  /** The flow message of each date being reviewed. Forgotten on restart. */
   private activeMsg = new Map<string, number>();
 
   constructor(private deps: HabitDeps) {}
 
-  /** `announceEmpty` makes a manual review speak up when there is nothing to ask. */
   async prompt(date: string, announceEmpty = false): Promise<void> {
     const { obsidian, notifier, heading } = this.deps;
     const say = async (text: string) => {
@@ -69,9 +63,6 @@ export class HabitService {
     this.activeMsg.set(date, id);
   }
 
-  /** Ask about the next pending habit at or after `fromIndex` by editing the flow message,
-   *  which is `card` when the tapped Begin card is not the one sent before a restart. When
-   *  none remain, stamp `habitsReviewed` and delete the message. */
   async ask(date: string, fromIndex: number, card?: number): Promise<void> {
     const { obsidian, notifier, heading } = this.deps;
     if (card) this.activeMsg.set(date, card);
@@ -115,7 +106,6 @@ export class HabitService {
     });
   }
 
-  /** Record a Yes or No on habit `index`. False when the note or the habit is gone. */
   async tap(
     date: string,
     index: number,
@@ -159,8 +149,6 @@ export class HabitService {
     return "saved";
   }
 
-  /** The habit at `index` as the note reads now, or null when the note or the habit is
-   *  gone. */
   private async find(
     date: string,
     index: number,

@@ -4,8 +4,6 @@ import type { CommandView } from "../commands.ts";
 
 const log = logger("help");
 
-/** /help lists the admin commands, itself included. It reads the live list, so a command
- *  added to it shows up here with no second edit. */
 export function help(all: CommandView[]): CommandView {
   return {
     command: "help",

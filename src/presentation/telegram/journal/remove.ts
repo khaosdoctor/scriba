@@ -17,9 +17,6 @@ const REMOVALS: Record<
   dl: { source: "discard", toast: "deleting", already: "already deleted" },
 };
 
-/** ↩️ Undo (`un:<jotId>`) on a finished jot and 🗑 Delete (`dl:<jotId>`) on a failed one
- *  pull the line back out of the journal, the same as `/delete`. The tap is answered before
- *  the vault write. */
 export function removeView(
   ns: Namespace,
   { jotController, edits }: ViewDeps,

@@ -2,7 +2,6 @@ import { Composer, type Context, type Filter } from "grammy";
 
 export type Tap = Filter<Context, "callback_query:data">;
 
-/** The taps of one callback namespace, `ns:...`, handed over with the fields after it. */
 export function namespace(
   ns: string,
   handle: (ctx: Tap, rest: string[]) => Promise<unknown>,

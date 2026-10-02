@@ -30,8 +30,6 @@ const REPLIES: Record<
   moved: { toast: "moved to TIL", card: "💡 Moved to TIL." },
 };
 
-/** `ti:y:<jotId>` moves the jot's line under the TIL heading, `ti:n:<jotId>` keeps it. The
- *  tap is answered after the vault work, so the toast can say how it went. */
 export function tilView(jots: JotService): Composer<Context> {
   return namespace(TIL_NS, async (ctx, [action, jotId]) => {
     const outcome = await jots.answerTil(jotId, action === "y");

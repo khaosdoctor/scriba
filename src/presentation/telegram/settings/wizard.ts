@@ -16,9 +16,6 @@ import { advance, type LinkDeps, notePicker, replyMenu } from "./links.ts";
 
 const log = logger("menu");
 
-/** One typed-value prompt: `apply` stores what the body means and answers with the
- *  confirmation text, or null for an unusable body, which is logged under `warn` and
- *  answered with `invalid`. The confirmation carries `button`. */
 interface Reply {
   warn: string;
   invalid: string;
@@ -72,7 +69,6 @@ const REPLIES: Record<SettingsPrompt, Reply> = {
   vfm: model("voiceFixModel", "voice fix", ["🎤 VF model", "menu:vfm"]),
 };
 
-/** The settings prompt a quoted message is, if it is one. */
 export function parseSettingsRef(prompt: string): SettingsPrompt | null {
   const kind = parseWizardRef(prompt)?.kind;
   return kind !== undefined && kind in REPLIES
@@ -82,14 +78,11 @@ export function parseSettingsRef(prompt: string): SettingsPrompt | null {
 
 export type LinkRef = Exclude<WizardPrompt, { kind: SettingsPrompt }>;
 
-/** The link-wizard prompt a quoted message is, if it is one. */
 export function parseLinkRef(prompt: string): LinkRef | null {
   const p = parseWizardRef(prompt);
   return p !== null && !(p.kind in REPLIES) ? (p as LinkRef) : null;
 }
 
-/** A confirmation is still part of the menu: it gets the same Close button and the same
- *  idle countdown. */
 export function wizardReply({ settings, menus }: ViewDeps) {
   return async (ctx: Filter<Context, "message:text">, kind: SettingsPrompt) => {
     const reply = REPLIES[kind];
@@ -112,8 +105,6 @@ export function wizardReply({ settings, menus }: ViewDeps) {
 const LINK_RULES = () =>
   new InlineKeyboard().text("🔗 Link rules", "menu:links");
 
-/** Free text for a link rule: never-link words, always-link words (then a note picker per
- *  word), a note search, a note title typed by hand, or a pair's new word. */
 export function linkReply(deps: LinkDeps) {
   const { settings } = deps;
   return async (ctx: Filter<Context, "message:text">, p: LinkRef) => {

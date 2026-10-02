@@ -43,9 +43,6 @@ const describe = (ctx: Context) => ({
   data: ctx.callbackQuery?.data ?? ctx.entities("bot_command")[0]?.text,
 });
 
-/** Everything Telegram-facing, in the order an update is tried: the owner allowlist and the
- *  one log line per update, the slash commands, the message views, the callback namespaces,
- *  reactions, and the fallback reply for anything else. */
 export function registerViews(bot: Bot, deps: ViewDeps): void {
   bot.catch(errorHandler(deps.errors));
   bot.use(async (ctx, next) => {
@@ -65,7 +62,6 @@ export function registerViews(bot: Bot, deps: ViewDeps): void {
   fallbackView(bot);
 }
 
-/** Populate the `/` command menu Telegram shows in the compose box. */
 export async function publishCommands(
   api: Pick<Api, "setMyCommands">,
 ): Promise<void> {

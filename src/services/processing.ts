@@ -36,7 +36,6 @@ import type { Transcriber } from "./transcriber.ts";
 const log = logger("processor");
 const botLog = logger("bot");
 
-// `error` marker on a jot held back while every model is down.
 export const HELD = "held: every enrichment model is down";
 
 /** The daily note's date, which is the note file's name. */
@@ -44,7 +43,6 @@ const jotDay = (jot: Jot): string => basename(jot.note_path, ".md");
 
 const WEAVING = "✨ Weaving it into your journal…";
 
-/** First status line shown per jot kind while it's being worked on. */
 const STARTING: Record<Jot["kind"], string> = {
   audio: "🎤 Transcribing your voice note…",
   text: WEAVING,
@@ -52,7 +50,6 @@ const STARTING: Record<Jot["kind"], string> = {
   video: "🎬 Saving your video…",
 };
 
-/** Status text for a voice note: its transcript in italics, then the current step. */
 const voiceStatus = (transcript: string, step: string): string =>
   `🎤 <i>${escapeHtml(transcript.trim())}</i>\n\n${step}`;
 
@@ -72,8 +69,6 @@ export interface ProcessingDeps {
   files: { downloadFile(fileId: string): Promise<DownloadedFile> };
 }
 
-/** Turns a queued jot into an enriched, written journal line. Text, voice and image
- *  captions carry enrichable text; video is attach-only. */
 export class ProcessingService {
   constructor(private deps: ProcessingDeps) {}
 
@@ -85,7 +80,6 @@ export class ProcessingService {
     log.info({ count: ids.length }, "batch complete");
   }
 
-  /** Forever-retry for failed jots (capped) + crash recovery for pending. */
   async retryPass(): Promise<void> {
     const pending = await this.deps.repo.pendingJots();
     if (!pending.length) return log.debug("retry sweep: nothing pending");
@@ -121,9 +115,6 @@ export class ProcessingService {
         );
       }
     }
-    // Every model is down: don't claim, don't charge a retry, just wait. The placeholder
-    // keeps the jot's place in the note and the retry pass brings it back once a
-    // breaker's cooldown lets a trial call through. Video needs no model.
     if (loaded.kind !== "video" && !this.deps.enricher.available())
       return this.hold(loaded);
     // Atomic claim: only the winner proceeds, so flush + retry passes can't double-process.
@@ -138,12 +129,9 @@ export class ProcessingService {
     await this.deps.jots.status(id, STARTING[loaded.kind]); // live status message, edited in place from here on
     try {
       let jot = await this.ensureMedia(loaded);
-      // Voice notes: show the transcript the moment it exists, then the enriching step.
       if (jot.kind === "audio" && jot.transcript?.trim()) {
         await this.deps.jots.status(id, voiceStatus(jot.transcript, WEAVING));
       }
-      // Voice fix: when enabled, ask a stronger model to lightly clean the transcript
-      // and let the user pick between original and proposed before enrichment proceeds.
       const vfModel = await this.deps.settings.getSetting("voiceFixModel");
       if (
         jot.kind === "audio" &&
@@ -169,7 +157,6 @@ export class ProcessingService {
             );
             return original;
           });
-        // Only ask when there's an actual difference.
         if (proposed !== original) {
           const choice = await this.deps.jots.awaitVoiceFix(
             id,
@@ -185,9 +172,6 @@ export class ProcessingService {
         }
         await this.deps.jots.status(id, voiceStatus(jot.transcript!, WEAVING));
       }
-      // Fold in any squashed followers (jots sharing this leader's anchor): transcribe
-      // their audio, then enrich the whole burst as one entry. Attach-only leaders
-      // (image/video) never have followers: only text/voice squash.
       const followers: Jot[] = [];
       for (const f of await this.deps.repo.groupFollowers(jot.id))
         followers.push(await this.ensureMedia(f));
@@ -291,9 +275,6 @@ export class ProcessingService {
         );
       }
 
-      // Too long for one entry? The tail becomes jots of its own: this one keeps the
-      // first piece, and each of the rest gets its own line, id and status message, so
-      // it can be edited or deleted on its own.
       const pieces = splitEntry(linkDateWords(textPart, jotDay(jot)), maxChars);
       const linked = pieces[0] ?? "";
       const spillover = pieces
@@ -304,8 +285,6 @@ export class ProcessingService {
           { id, maxChars, pieces: spillover.map((p) => p.id) },
           `entry over ${maxChars} chars — split into ${pieces.length} jots`,
         );
-      // One write for the whole run: the spillover lines go in alongside this jot's own
-      // line, so they go in together, in order, right where the placeholder was.
       await this.writeLine(
         jot,
         [
@@ -320,19 +299,11 @@ export class ProcessingService {
       // ponytail: a crash between the write and these inserts leaves the spillover lines
       // in the note with no jot row (uneditable). Sub-millisecond window, local sqlite.
       for (const p of spillover) await this.deps.repo.insertJot(p);
-      // This jot now owns only its first piece: fold that back into its source so a
-      // later /reprocess re-enriches that piece alone instead of splitting all over
-      // again. Skipped for a squashed leader: its source is several jots' text combined,
-      // so there's no single field to fold into (same rule as EditService.syncEditedSource).
-      // `linked` is the piece's text only: the embed is added by composeLine, so an
-      // image's raw_text stays pure caption and its embed isn't folded in twice.
       if (spillover.length && !merged)
         await this.deps.repo.updateJot(jot.id, {
           [jot.kind === "audio" ? "transcript" : "raw_text"]: linked,
         });
       await this.deps.repo.updateJot(jot.id, { status: "done", error: null });
-      // Followers rode into the leader's line: mark them done too so they're not
-      // reprocessed or counted as in-flight.
       for (const f of followers)
         await this.deps.repo.updateJot(f.id, { status: "done", error: null });
       // Post-`done` steps are best-effort UI + the queued-edit drain. A transient throw
@@ -340,8 +311,6 @@ export class ProcessingService {
       // to `failed`, causing wasted re-enrichment and duplicate link prompts on retry.
       try {
         await this.deps.jots.react(jot.id, "done");
-        // A split entry says which piece each message is; `part` is undefined (so no
-        // marker) when the text fit in one entry.
         const of = spillover.length + 1;
         await this.deps.jots.status(
           jot.id,
@@ -355,8 +324,6 @@ export class ProcessingService {
           ),
           { undo: true, embed: embedOffer(linked) },
         );
-        // One message per spillover piece: each is a jot in its own right, so replying
-        // to its message edits it and its ↩️ Undo removes only that line.
         for (const [i, p] of spillover.entries())
           await this.deps.jots.status(
             p.id,
@@ -372,10 +339,6 @@ export class ProcessingService {
           await this.deps.tasks.suggest(draft, jot.id, jotDay(jot));
         if (tilCard) await this.deps.jots.askTil(jot.id, linked);
         await this.deps.edits.drainQueued(jot.id); // apply anything queued while we were working
-        // Each follower's own message gets the done reaction + its queued edits drained;
-        // the leader carries the single status message for the whole group. Any stray
-        // status message a follower picked up (e.g. processed standalone before squash
-        // caught it, then reconciled) is deleted so the burst ends with one bot message.
         for (const f of followers) {
           await this.deps.jots.react(f.id, "done");
           await this.deps.jots.deleteStatus(f.id);
@@ -408,9 +371,7 @@ export class ProcessingService {
     });
   }
 
-  /** Record a failure: retry if transient and under the cap, else give up gracefully. */
   private async fail(jot: Jot, err: unknown): Promise<void> {
-    // The chain went down under this jot: back to pending, the attempt not counted.
     if (err instanceof ModelsDownError) {
       await this.deps.repo.updateJot(jot.id, { status: "pending" });
       // Always re-post: the status message says "Weaving…" again after this attempt.
@@ -430,16 +391,12 @@ export class ProcessingService {
         error: msg,
       });
       await this.deps.jots.react(jot.id, "retrying");
-      // Say so on the jot's own status message, which otherwise stays on "Weaving it
-      // into your journal…" until the retry pass comes round: indistinguishable from a jot
-      // that's stuck. The buttons are the point: waiting is a choice, not the only one.
       await this.say(
         jot.id,
         retryNotice(jot.kind, attempts, MAX_ATTEMPTS, msg),
       );
       return;
     }
-    // Unrecoverable, or out of tries: post whatever we have un-enriched, then stop.
     const reason = recoverable
       ? `no luck after ${attempts} tries`
       : "unrecoverable error";
@@ -447,8 +404,6 @@ export class ProcessingService {
       { id: jot.id, attempts, recoverable, err },
       "jot abandoned — posting un-enriched",
     );
-    // Fold squashed followers into the un-enriched line too, so nothing is dropped and
-    // no follower is left stranded in `pending`.
     const followers = await this.deps.repo.groupFollowers(jot.id);
     const source = combineEnrichSource(
       [jot, ...followers].map((j) =>
@@ -456,8 +411,6 @@ export class ProcessingService {
       ),
     );
     try {
-      // No splitting on the give-up path: the point here is to get the text into the
-      // note at all, and a jot that never enriched has no topic seams to split on.
       await this.writeLine(
         jot,
         this.composeLine(jot, linkDateWords(source, jotDay(jot))),
@@ -472,8 +425,6 @@ export class ProcessingService {
         error: msg,
       });
       await this.deps.jots.react(j.id, "failed");
-      // Followers folded into the leader's line: drop any stray status message so the
-      // leader carries the single "gave up" confirmation for the whole burst.
       if (j.id !== jot.id) await this.deps.jots.deleteStatus(j.id);
       await this.deps.edits.drainQueued(j.id); // apply edits queued while it was failing
     }
@@ -488,8 +439,6 @@ export class ProcessingService {
     );
   }
 
-  /** Leave a jot waiting while every model is down. The notice goes out once per hold
-   *  (marked in `error`), not on every retry pass that finds it still waiting. */
   private async hold(jot: Jot): Promise<void> {
     if (jot.error === HELD)
       return log.debug({ id: jot.id }, "jot still held, notice already sent");
@@ -555,7 +504,6 @@ export class ProcessingService {
         "audio transcribed",
       );
     }
-    // Captionless image → generate one with vision (used as the embed display).
     if (jot.kind === "image" && !jot.raw_text) {
       log.debug({ id: jot.id }, "captioning image with vision");
       patch.raw_text = await this.deps.enricher.describeImage(
@@ -568,13 +516,6 @@ export class ProcessingService {
     return { ...jot, ...patch };
   }
 
-  /**
-   * Tasks the enricher spotted in this entry, as drafts ready for their confirmation card.
-   * Two guards: the whole feature can be switched off from the task menu, and a jot that
-   * already produced drafts is never asked about again, otherwise /reprocess would
-   * re-propose tasks that were created, or dismissed, weeks ago. Relative phrases resolve
-   * against the jot's own day, so "tomorrow" means the day after the entry.
-   */
   private async tasksFrom(
     detected: DetectedTask[],
     jot: Jot,
@@ -606,12 +547,6 @@ export class ProcessingService {
     return drafts;
   }
 
-  /**
-   * Whether this jot gets a "Move this to TIL?" card. The enricher's read is the signal;
-   * the rest is guards: the feature can be switched off from the task menu, a jot that
-   * is already a TIL jot (routed there by its prefix) needs no card, and each jot is asked once so /reprocess
-   * can't raise a card for an answer already given.
-   */
   private async tilWanted(sounds: boolean, jot: Jot): Promise<boolean> {
     if (!sounds) return false;
     if (!(await this.deps.settings.getSetting("tilDetection"))) {

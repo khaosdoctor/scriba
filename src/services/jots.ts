@@ -23,7 +23,6 @@ const tilLog = logger("til-flow");
  *  well inside Telegram's 4096 whatever the jot holds. */
 const QUOTE_CHARS = 600;
 
-/** callback_query namespace of the "Move this to TIL?" card. */
 export const TIL_NS = "ti";
 
 /** Set (in place of ✍) on a squashed follower's message, marking it as slated to merge
@@ -48,7 +47,6 @@ export interface JotDeps {
   obsidian: ObsidianClient;
   notifier: Notifier;
   queue: Pick<FlushQueue, "add">;
-  /** A text or voice jot this soon after a pending one folds into its line. */
   squashWindowMs: number;
 }
 
@@ -61,10 +59,7 @@ export type TilOutcome =
   | "moved";
 
 export class JotService {
-  // jotId -> the live status message edited in place through the jot's lifecycle. In
-  // memory: after a restart status() posts a fresh message, nothing is lost.
   private statusMsgs = new Map<string, number>();
-  // jotId -> the processor's wait for the owner's pick between the two transcripts.
   private voiceFixPending = new Map<string, (choice: VoiceFixChoice) => void>();
 
   constructor(private deps: JotDeps) {}
@@ -77,28 +72,19 @@ export class JotService {
     return this.deps.repo.getJot(id);
   }
 
-  /** The jot whose line a tap on `jot` is about. A squashed follower shares its leader's
-   *  line, so the leader is what gets retried or removed, unless the leader is gone and
-   *  the follower was written on its own, the processor's own rule. */
   async leaderOf(jot: Jot): Promise<Jot> {
     if (jot.anchor === jot.id) return jot;
     const leader = await this.deps.repo.getJot(jot.anchor);
     return leader && leader.status !== "deleted" ? leader : jot;
   }
 
-  /** The jot a Telegram message belongs to: the owner's own message or a status message. */
   async byMessage(messageId: number): Promise<Jot | undefined> {
     const id = await this.deps.repo.jotForMessage(messageId);
     return id ? this.deps.repo.getJot(id) : undefined;
   }
 
-  /** A message becomes a pending jot: the squash decision, the receipt reaction, the row,
-   *  the message map, the placeholder line (skipped when squashed) and the queue, in that
-   *  order. */
   async intake(input: IntakeInput): Promise<void> {
     const { repo, obsidian, notifier } = this.deps;
-    // `day` files the jot under another day's note (the follow-up after rating yesterday):
-    // the last second of that day, so it reads as the day's final entry.
     const epochMs =
       input.day && input.day !== plainDate(input.sentAt)
         ? dayBounds(input.day)[1] - 1000
@@ -115,11 +101,6 @@ export class JotService {
     const section: JotSection = tilText === null ? "journal" : "til";
     const rawText = tilText ?? input.rawText;
 
-    // A text/voice jot arriving within the squash window of the previous still-pending
-    // text/voice jot in this note folds into that jot's line: it shares the leader's anchor
-    // and skips its own placeholder, so the processor (which groups by anchor) enriches
-    // them into one line. Attach-only kinds never squash. Decided before the reaction, so
-    // a squashed follower gets the 🤝 marker on the same react() call.
     let anchor = id;
     let squashed = false;
     // A follow-up answer (`day`) is stamped with the day's last second, so two of them would
@@ -139,8 +120,6 @@ export class JotService {
       }
     }
 
-    // Receipt reaction (✍ = received/awaiting), swapped to 👌/😱 by react() once processing
-    // settles. Best-effort: intake proceeds if it fails.
     await notifier.react(input.messageId, squashed ? MERGE_EMOJI : "✍");
     log.info(
       {
@@ -227,11 +206,6 @@ export class JotService {
     await notifier.react(messageId, "✍");
   }
 
-  /** Create-or-edit the one live status message for a jot. First call sends it and
-   *  remembers the message id; later calls edit that same message in place, so the chat
-   *  reads as a clean audit trail instead of a stream of notifications. `undo: true`
-   *  attaches an undo button, `embed` the embed toggle; `retry`/`discard` attach the
-   *  failure pair; otherwise any button is cleared. */
   async status(
     jotId: string,
     html: string,
@@ -268,8 +242,6 @@ export class JotService {
     log.debug({ jotId, messageId }, "status message sent");
   }
 
-  /** Delete a jot's live status message, if it has one. Best-effort: used on a squash to
-   *  collapse any stray per-follower message into the leader's single confirmation. */
   async deleteStatus(jotId: string): Promise<void> {
     const messageId = this.statusMsgs.get(jotId);
     if (!messageId) return;
@@ -283,7 +255,6 @@ export class JotService {
     }
   }
 
-  /** Swap the intake reaction on a jot's message to reflect its outcome. */
   async react(jotId: string, state: JotOutcome): Promise<void> {
     const messageId = await this.deps.repo.messageForJot(jotId);
     if (!messageId) return;
@@ -326,8 +297,6 @@ export class JotService {
     });
   }
 
-  /** Claim the owner's pick. The returned call hands it to the waiting processor, so the
-   *  view can answer the tap first; nothing comes back when no pick is pending. */
   pickVoiceFix(
     jotId: string,
     choice: VoiceFixChoice,
@@ -345,9 +314,6 @@ export class JotService {
     return () => resolve(choice);
   }
 
-  /** Put a jot back in the queue by hand: a squashed follower through its leader, whose
-   *  line it shares. The reset skips a jot being processed right now, so a second tap, or
-   *  a tap racing the retry pass, cannot queue it twice. */
   async retry(jot: Jot): Promise<"queued" | "in-flight"> {
     const target = await this.leaderOf(jot);
     if (!(await this.deps.repo.resetForRetry(target.id))) {
@@ -361,8 +327,6 @@ export class JotService {
     return "queued";
   }
 
-  /** A force-reply prompt mapped to the jot, so the answer takes the normal reply-edit
-   *  path with no new edit logic. */
   async askEdit(id: string): Promise<void> {
     const messageId = await this.deps.notifier.send(
       `✏️ Reply to this message with your edit for ${id} (or "delete" to remove it).`,
@@ -371,12 +335,6 @@ export class JotService {
     await this.deps.repo.mapMessage(messageId, id);
   }
 
-  /**
-   * "Move this to TIL?": a card for a jot the enricher read as something the owner learned.
-   * The jot is already in the journal; accepting moves its line under the TIL heading of the
-   * same note, keeping the anchor so edit, undo and reprocess still find it. The jot id is
-   * all the card needs to carry, so there is no draft to store.
-   */
   async askTil(jotId: string, text: string): Promise<void> {
     try {
       await this.deps.notifier.send(

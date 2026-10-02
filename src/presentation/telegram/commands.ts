@@ -26,7 +26,6 @@ import { taskAddCommand } from "./tasks/add.ts";
 import { tasksCommand } from "./tasks/list.ts";
 import { taskCommand } from "./tasks/mode.ts";
 
-/** One slash command: what Telegram's `/` menu shows for it and the view that answers it. */
 export type CommandView = {
   command: string;
   description: string;
@@ -35,7 +34,6 @@ export type CommandView = {
   run(ctx: CommandContext<Context>, deps: ViewDeps): unknown;
 };
 
-/** Every slash command, in the order Telegram's `/` menu and /help list them. */
 export const COMMANDS: CommandView[] = [
   start,
   menuCommand,

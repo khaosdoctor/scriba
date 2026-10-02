@@ -14,23 +14,13 @@ import type { Tap } from "../namespace.ts";
 const log = logger("menu");
 
 const CLOSE = "menu:close";
-// Rows per page of the never-link, rejected and always-link lists.
 const PAGE = 8;
-// Never-link words named inline on the step-2 summary. Anything past this is counted,
-// not dropped: the full list is one tap away on "🗑 Remove a word", which pages.
 const STOPWORD_PREVIEW = 40;
 
 export type LinkDeps = Pick<ViewDeps, "settings" | "menus" | "ownerId">;
 
-/** "edit" redraws the tapped menu; "send" posts a fresh one, which a reply needs because
- *  it arrives as a new message with nothing in place to edit. */
 type Mode = "edit" | "send";
 
-/** `menu:l*`: the link-rules wizard. Step 1 picks the rule kind, step 2 the word, step 3
- *  the note (or the removal). Rows index into lists re-derived on every tap, so an index
- *  that no longer resolves answers "expired" instead of acting on the wrong row. Free
- *  text comes back through a force-reply prompt (replies/wizard.ts). Any other `menu:`
- *  action ends here and is answered empty. */
 export function linkRulesTap(deps: LinkDeps) {
   const { settings } = deps;
   const prompt = async (ctx: Tap, kind: LinkPrompt, gi?: number) => {
@@ -160,7 +150,6 @@ export function linkRulesTap(deps: LinkDeps) {
   };
 }
 
-/** Step 1: which kind of link rule to change, with live counts and index health. */
 async function home(ctx: Tap, settings: SettingsService): Promise<void> {
   const { stopwords, rejections, pairs, index } = await settings.linkRules();
   const kb = new InlineKeyboard()
@@ -188,7 +177,6 @@ async function home(ctx: Tap, settings: SettingsService): Promise<void> {
   );
 }
 
-/** Step 2 (never-link): add a word, or go on to pick one to drop. */
 async function stopwordsStep(
   ctx: Tap,
   settings: SettingsService,
@@ -206,8 +194,6 @@ async function stopwordsStep(
       ? `${stops.length} word(s) are skipped as link candidates:`
       : "No never-link words yet.",
   ];
-  // A summary, not the list: previewList names the leftovers instead of cutting them
-  // off, and "🗑 Remove a word" pages through every word.
   if (stops.length) lines.push(previewList(stops, STOPWORD_PREVIEW));
   if (hidden)
     lines.push("", 'Tap "🗑 Remove a word" to page through all of them.');
@@ -216,7 +202,6 @@ async function stopwordsStep(
   });
 }
 
-/** Step 3 (never-link): one page of words, tap to allow linking again. */
 async function stopwordPage(
   ctx: Tap,
   settings: SettingsService,
@@ -246,7 +231,6 @@ async function stopwordPage(
   });
 }
 
-/** Step 2 (rejections): one page of rejected words. */
 async function rejectedWords(
   ctx: Tap,
   settings: SettingsService,
@@ -279,10 +263,6 @@ async function rejectedWords(
   });
 }
 
-/** Step 3 (rejections): the notes rejected for surface `si`, tap one to allow it. Paged
- *  like every other row list: one surface can carry more rejected notes than fit in a
- *  single keyboard, and a word rejected everywhere is exactly the one you come here to
- *  fix. */
 async function rejectedNotes(
   ctx: Tap,
   settings: SettingsService,
@@ -314,7 +294,6 @@ async function rejectedNotes(
   });
 }
 
-/** Step 2 (always-link): one page of pairs. Tap a pair to edit or drop it. */
 async function pairsPage(
   ctx: Context,
   settings: SettingsService,
@@ -343,7 +322,6 @@ async function pairsPage(
   });
 }
 
-/** Step 3 (always-link): what you can do to one pair, retarget, rename, or drop. */
 async function pairDetail(
   ctx: Tap,
   settings: SettingsService,
@@ -372,7 +350,6 @@ async function pairDetail(
   );
 }
 
-/** The note picker: search results from the vault index as tappable rows. */
 export async function notePicker(
   ctx: Context,
   deps: LinkDeps,
@@ -414,8 +391,6 @@ export async function notePicker(
   return sendMenu(ctx, deps, text, kb);
 }
 
-/** After a pair is saved: the next queued word gets its own picker, an empty queue ends
- *  the flow. */
 export async function advance(
   ctx: Context,
   deps: LinkDeps,
@@ -440,7 +415,6 @@ async function finished(
   );
 }
 
-/** Send a menu screen of our own (not an edit of a tapped one) and start its countdown. */
 async function sendMenu(
   ctx: Context,
   deps: LinkDeps,
@@ -453,8 +427,6 @@ async function sendMenu(
   deps.menus.touch(sent.chat.id, sent.message_id);
 }
 
-/** A confirmation that closes a wizard branch. It is still part of the menu, so it gets
- *  the same Close button and the same countdown. */
 export async function replyMenu(
   ctx: Context,
   deps: LinkDeps,

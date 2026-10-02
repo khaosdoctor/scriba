@@ -21,7 +21,6 @@ export const ENRICH_JSON_ONLY = `
 Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}], "tasks": [{"description":"...","due":"...","type":"personal"}], "til": false}
 Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
 
-/** SDK-side counterpart of the JSON-only tails, for calls that pass an outputFormat. */
 export const USE_OUTPUT_TOOL = `
 Give your answer only by calling the StructuredOutput tool, with each field holding its own value. Write no text.`;
 

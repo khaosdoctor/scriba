@@ -29,11 +29,8 @@ import {
 
 export type QueryFn = typeof sdkQuery;
 
-/** OpenCode Go's OpenAI-compatible API root: the enrichment fallback's `baseUrl` and the
- *  health probe's `/models` listing both hang off it. */
 export const OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1";
 
-/** OpenAI-compatible chat fallback used when the subscription SDK runs out of usage. */
 export interface EnrichFallback {
   apiKey: string;
   model: string;
@@ -41,7 +38,6 @@ export interface EnrichFallback {
   name?: string;
 }
 
-/** One model call's raw answer, before the caller reads it. */
 type SdkOut = {
   text: string;
   usage: { input: number; output: number };
@@ -50,8 +46,6 @@ type SdkOut = {
 
 const log = logger("enrich");
 
-/** Thrown when every step of the chain has its circuit open: nothing is worth calling
- *  until a cooldown runs out. The processor holds jots on this instead of burning a retry. */
 export class ModelsDownError extends Error {
   constructor(cause: unknown) {
     super(
@@ -62,11 +56,8 @@ export class ModelsDownError extends Error {
   }
 }
 
-// Which step answered last; DOWN when none could.
 const DOWN = -1;
 
-/** What a model-switch notice reports: a move down the chain, a recovery to the chosen
- *  model, or every step being down at once. */
 export type SwitchTarget = "fallback" | "primary" | "down";
 
 export type SwitchNotifier = (
@@ -78,12 +69,7 @@ export type SwitchNotifier = (
 export interface EnrichInput {
   text: string;
   candidates: Candidate[];
-  // The text is several quick messages sent moments apart (a squashed burst): weave
-  // them into one flowing, well-punctuated entry rather than keeping them verbatim.
   merge?: boolean;
-  // Character limit one journal entry gets split at. Passed so the model can mark topic
-  // boundaries with blank lines when the text is over it. The split itself is done
-  // deterministically in libs/text.ts, this only puts the seams on a change of subject.
   splitAt?: number;
 }
 export interface EnrichResult {
@@ -105,9 +91,6 @@ const ambiguousSchema = z.array(
   z.object({ surface: z.string(), note: z.string() }),
 );
 const tasksSchema = z.array(DetectedTaskSchema);
-/** Validates the agent's structured_output payload (the SDK's outputFormat already
- *  constrains the shape server-side; this guards against schema drift and the
- *  Groq fallback, which has no native structured-output support). */
 const enrichedPayloadSchema = z.object({
   text: z.string(),
   ambiguous: ambiguousSchema,
@@ -117,9 +100,6 @@ const enrichedPayloadSchema = z.object({
   til: z.boolean().optional(),
 });
 
-/** What the SDK's outputFormat asks the model for: every field present, nothing extra. A
- *  task inside an enrichment may leave its type out, which the lenient schemas above
- *  accept the same way. */
 const EnrichOutputStrict = z.strictObject({
   text: z.string(),
   ambiguous: z.array(z.strictObject({ surface: z.string(), note: z.string() })),
@@ -146,14 +126,8 @@ export const userMessage = (content: unknown) => ({
 /** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
 const fence = (s: string): string => s.replaceAll('"""', "");
 
-/** Enrichment via the Claude Agent SDK on subscription auth (CLAUDE_CODE_OAUTH_TOKEN
- *  in the environment) — no API key. One call per jot. */
 export class Enricher {
-  // Which step of the chain the last call ran on (0 = the chosen model). The user is
-  // warned only when it changes: once on the way down, once on recovery, not per jot.
   private tier = 0;
-  // One breaker per step, keyed by model/fallback name, so a step that keeps timing out
-  // or erroring is skipped outright instead of costing every jot a wait on the way past.
   private breakers = new Map<string, CircuitBreaker>();
 
   constructor(
@@ -161,12 +135,9 @@ export class Enricher {
     private query: QueryFn = sdkQuery,
     private fallbacks: EnrichFallback[] = [],
     private groqChatFn: GroqChatFn = groqChat,
-    // Second Claude model, tried before the chat fallbacks when the chosen one fails.
     private backupModel?: string,
-    // Hard cap on one model call. A call that hangs is a failure like any other.
     private timeoutMs = 15_000,
     private now: () => number = Date.now,
-    // Who hears about a model switch; failures there never break enrichment (see announce).
     private notifySwitch?: SwitchNotifier,
   ) {}
 
@@ -178,15 +149,12 @@ export class Enricher {
     return created;
   }
 
-  /** The Claude steps: `first`, then the backup model when it's a different one. */
   private models(first = this.model): (string | undefined)[] {
     if (this.backupModel && this.backupModel !== first)
       return [first, this.backupModel];
     return [first];
   }
 
-  /** Names of every step of the chain, in the order they're tried. These are the
-   *  breaker keys, so `run` names its steps the same way. */
   private chain(): string[] {
     return [
       ...this.models().map((model) => model ?? "default"),
@@ -194,14 +162,10 @@ export class Enricher {
     ];
   }
 
-  /** False while every step's circuit is open: a call now would fail without trying
-   *  anything, so the processor holds jots instead. Token-free. */
   available(): boolean {
     return this.chain().some((name) => this.breaker(name).allows());
   }
 
-  /** Change the primary enrichment model at runtime (called when the user picks a
-   *  new model from /menu). The next enrichment call uses the new value. */
   setModel(model: string): void {
     this.model = model;
   }
@@ -230,14 +194,9 @@ export class Enricher {
           )
           .join("\n")
       : "(none)";
-    // A squashed burst overrides the "keep English verbatim" rule: the fragments were
-    // dashed off in seconds and need joining into one clean entry with real punctuation.
     const mergeNote = input.merge
       ? "\n\nThis entry arrived as several quick messages sent moments apart (each line below is one). Weave them into ONE coherent journal entry with correct punctuation and natural flow. Keep every point — do not summarise, drop, or reorder content."
       : "";
-    // Over the limit the text becomes several journal entries, and the split is done on
-    // blank lines first — so ask for those at the topic boundaries. Nothing else about the
-    // text may change: the split itself stays deterministic and token-free.
     const splitNote =
       input.splitAt && input.text.length > input.splitAt
         ? `\n\nThis is longer than ${input.splitAt} characters and will be split into several separate journal entries. Put a blank line between distinct topics so the split lands on a change of subject. Add ONLY blank lines — do not summarise, drop, reorder, or reword anything. If it is all one topic, add none.`
@@ -251,7 +210,6 @@ export class Enricher {
       },
       "enrich: calling agent",
     );
-    // Parsed inside the chain: an unusable answer moves on to the next model.
     return this.run({
       prompt,
       system: SYSTEM,
@@ -267,10 +225,6 @@ export class Enricher {
     usage: { input: number; output: number },
     structuredOutput: unknown,
   ): EnrichResult {
-    // Prefer the SDK's schema-validated structured output (only the primary model
-    // supports it — the SDK retries internally before giving up). Fall back to
-    // scraping JSON out of the free-text response for the Groq path, or for the rare
-    // case the structured payload doesn't match our schema.
     const structured =
       structuredOutput === undefined
         ? undefined
@@ -299,8 +253,6 @@ export class Enricher {
       throw new Error(
         `enrichment returned an empty text: ${text.slice(0, 200)}`,
       );
-    // The chat fallbacks have no schema enforcing these, so a malformed list is dropped
-    // rather than trusted.
     const ambiguous = ambiguousSchema.safeParse(unwrapped.ambiguous).data ?? [];
     const tasks = tasksSchema.safeParse(unwrapped.tasks).data ?? [];
     const til = unwrapped.til === true;
@@ -317,14 +269,6 @@ export class Enricher {
     return { text: unwrapped.text, ambiguous, tasks, til, usage };
   }
 
-  /**
-   * One line in, one task out: `/taskadd`'s reading of what you typed. The model's job is
-   * comprehension — pulling the thing to do apart from when it is due, in whatever
-   * language and however messily it was phrased — and explicitly NOT date arithmetic: it
-   * reports the author's own words for the timing and chrono resolves them, the same rule
-   * the jot suggestions follow. An explicit calendar date comes back as YYYY-MM-DD, which
-   * needs no resolving either way.
-   */
   async extractTask(text: string): Promise<DetectedTask> {
     const prompt = `Line:\n"""${fence(text)}"""`;
     log.info({ chars: text.length }, "extractTask: calling agent");
@@ -357,7 +301,6 @@ export class Enricher {
     return parsed;
   }
 
-  /** Vision: caption an image that arrived without one. Returns a short caption. */
   async describeImage(bytes: Uint8Array, mediaType: string): Promise<string> {
     const data = Buffer.from(bytes).toString("base64");
     const caption =
@@ -392,11 +335,6 @@ export class Enricher {
     }
   }
 
-  /**
-   * Lightly fix a voice transcript: remove filler words, fix false starts and garbled
-   * phrases, correct grammar — but keep the speaker's own words and meaning. Returns
-   * the cleaned text, or the original unchanged when the model has nothing to fix.
-   */
   async fixTranscript(text: string, model: string): Promise<string> {
     const prompt = `Voice transcript to clean up:\n"""${fence(text)}"""\n\nReturn ONLY the cleaned text, nothing else.`;
     log.info({ chars: text.length, model }, "fixTranscript: calling agent");
@@ -413,7 +351,6 @@ export class Enricher {
     return result;
   }
 
-  /** Apply a freeform edit instruction to an existing journal line's text. */
   async editText(current: string, instruction: string): Promise<string> {
     const prompt = `Current journal text:\n"""${fence(current)}"""\n\nEdit instruction: ${fence(instruction)}\n\nReturn ONLY the edited text, nothing else. Preserve voice and any [[wikilinks]] unless the edit changes them.`;
     log.debug({ instruction }, "editText: calling agent");
@@ -421,11 +358,6 @@ export class Enricher {
     return text.trim() || current;
   }
 
-  /** Single-turn call down the fallback chain: the chosen Claude model, then the backup
-   *  Claude model, then the free Groq model. Each step runs only when the one before it
-   *  throws (usage exhausted, overload, network) or answers something `parse` rejects.
-   *  The Groq messages are built from the same `prompt` and `system`, with `jsonTail`
-   *  appended to the system text because the chat fallbacks have no structured output. */
   private async run<T = SdkOut>({
     prompt,
     system,
@@ -520,7 +452,6 @@ export class Enricher {
     throw new ModelsDownError(lastErr);
   }
 
-  /** Record which step of the chain answered; warn the user only when that changes. */
   private async settle(
     tier: number,
     model: string,
@@ -532,7 +463,6 @@ export class Enricher {
     await this.announce(tier === 0 ? "primary" : "fallback", model, err);
   }
 
-  /** One Claude Agent SDK call; collects assistant text and token usage. */
   private async runSdk(
     prompt: unknown,
     systemPrompt: string | undefined,

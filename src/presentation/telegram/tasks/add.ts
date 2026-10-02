@@ -7,8 +7,6 @@ const log = logger("tasks-flow");
 export const TASKADD_EMPTY =
   "I couldn't find anything to do in that — try “/taskadd buy cat sand next week”.";
 
-/** `/taskadd <anything>`: one task from one message, no mode to open or close. With nothing
- *  after the command it asks for the line instead. */
 export const taskAddCommand: CommandView = {
   command: "taskadd",
   description: "Add one task in one message: /taskadd <what and when>",

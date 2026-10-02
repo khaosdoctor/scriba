@@ -17,7 +17,6 @@ const log = logger("tasks-flow");
 const asView = (view?: string): TaskView =>
   view && view in VIEW_LABEL ? (view as TaskView) : "open";
 
-/** A list screen as a fresh message, or in place of the one that was tapped. */
 export async function showTaskList(
   ctx: Context,
   tasks: TaskService,

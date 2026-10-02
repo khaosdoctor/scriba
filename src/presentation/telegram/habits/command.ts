@@ -4,7 +4,6 @@ import type { CommandView } from "../commands.ts";
 
 const log = logger("habits");
 
-/** `/habits` reviews yesterday, `/habits 2026-07-05` that day. */
 export const habitsCommand: CommandView = {
   command: "habits",
   description: "Review habits (yesterday, or /habits YYYY-MM-DD)",

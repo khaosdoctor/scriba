@@ -1,8 +1,6 @@
 import { InlineKeyboard } from "grammy";
 import type { CommandView } from "../commands.ts";
 
-/** A row per failed jot with the same retry and delete pair the failure messages carry,
- *  served by the `rt:` and `dl:` callback views. */
 export const failed: CommandView = {
   command: "failed",
   description: "recent failed/abandoned jots, each with retry + delete buttons",

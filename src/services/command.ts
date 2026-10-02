@@ -20,7 +20,6 @@ const log = logger("command");
 
 export const COMMAND_NS = "cm";
 
-/** How long a pending write/delete confirmation waits for a tap before it's refused. */
 const CONFIRM_TTL_MS = 5 * 60_000;
 /** An interrupt normally ends the turn within a second or two. If the agent hasn't come
  *  back by this point, the query is torn down and rebuilt so the session isn't wedged. */
@@ -38,7 +37,6 @@ const WORKING = "🧭 Working…";
 const NO_BUTTONS: MessageOptions["keyboard"] = { inline_keyboard: [] };
 
 export type CommandOpen = "opened" | "already" | "busy" | "noVault";
-/** Settles a claimed confirmation: `true` lets the change through. */
 export type Decision = (allow: boolean) => void;
 
 export interface CommandDeps {
@@ -47,19 +45,11 @@ export interface CommandDeps {
   modes: Modes;
 }
 
-/** One prompt in flight. Its status message is also its answer: it starts as "Working…"
- *  (or "Queued") with a Stop button and is edited in place when the turn settles, so a
- *  reply always shows up under the message that asked for it. Everything else the assistant
- *  says about the turn (reasoning, tool calls, confirmations) is a Telegram reply to
- *  `sourceId`, so several turns in flight stay in separate threads. */
 type Turn = {
   id: string;
   prompt: string;
-  /** The owner's message that asked for this. */
   sourceId?: number;
-  /** The status message, which carries the live feed and then becomes the answer. */
   messageId?: number;
-  /** The tail of what the agent has done on this turn, newest last. */
   feed: string[];
   /** What that message currently shows, so an edit that changes nothing is skipped:
    *  Telegram rejects those outright. */
@@ -67,28 +57,14 @@ type Turn = {
   state: "queued" | "running" | "stopping";
 };
 
-/**
- * `/command`: a sticky agent session over the vault. Every message while it's open goes to
- * the agent instead of becoming a jot; `/done` closes it. Writes and deletes stop for a
- * Telegram confirmation before they touch the vault.
- *
- * Nothing here blocks on the agent. A message is accepted, given its own status message and
- * queued in the same breath; the agent runs in the background against a long-lived query and
- * relays what it's doing (reasoning, tool calls, prose written along the way) to the chat
- * as it happens. Each answer is edited into the status message of the prompt that asked for
- * it, so several in-flight messages stay legible.
- */
 export class CommandService {
   private sessionId?: string;
   private pending = new Map<
     string,
     { decide: Decision; timer: NodeJS.Timeout }
   >();
-  /** Prompts waiting their turn, oldest first. */
   private queue: Turn[] = [];
-  /** The prompt the agent is answering right now, if any. */
   private active?: Turn;
-  /** Assistant prose since the last relayed update, the answer-in-progress. */
   private text = "";
   private stream?: PromptStream;
   private agent?: Query;
@@ -99,17 +75,13 @@ export class CommandService {
   /** Telegram sends are chained rather than awaited: the agent must never stall behind a
    *  slow API call, but the chat still has to read in the order things happened. */
   private sends: Promise<void> = Promise.resolve();
-  /** The pending feed edit, and the earliest moment the one after it may go out. */
   private feedTimer?: NodeJS.Timeout;
   private feedAfter = 0;
-  /** Fires when the running turn has been silent too long. */
   private turnTimer?: NodeJS.Timeout;
 
   constructor(
     private deps: CommandDeps,
-    /** Minimum interval between edits of the live status message. */
     private feedEditMs = FEED_EDIT_MS,
-    /** How long a running turn may produce nothing before it's given up on. */
     private turnSilenceMs = TURN_SILENCE_MS,
   ) {}
 
@@ -117,8 +89,6 @@ export class CommandService {
     return this.deps.modes.isOpen("command");
   }
 
-  /** Open the session. A second /command while it is open changes nothing: the running
-   *  conversation keeps going and /done is the way to start over. */
   open(): CommandOpen {
     const { modes, service } = this.deps;
     if (modes.isOpen("task")) {
@@ -134,7 +104,6 @@ export class CommandService {
     return "opened";
   }
 
-  /** Runs when the mode closes, by /done or by idling out. */
   private close(): void {
     this.sessionId = undefined;
     this.clearWatchdog();
@@ -152,9 +121,6 @@ export class CommandService {
     this.teardown();
   }
 
-  /** Drop the current query: close its input so the generator returns, interrupt whatever
-   *  turn is mid-flight so the CLI doesn't keep working for nobody, and forget it: its
-   *  eventual exit is bookkeeping the caller has already dealt with. */
   private teardown(): void {
     this.runToken = undefined;
     this.runner = undefined;
@@ -169,7 +135,6 @@ export class CommandService {
       .catch((err) => log.debug({ err }, "command: interrupt on teardown"));
   }
 
-  /** Refuse every outstanding write/delete confirmation. */
   private denyPending(): void {
     for (const [, p] of this.pending) {
       clearTimeout(p.timer);
@@ -178,11 +143,6 @@ export class CommandService {
     this.pending.clear();
   }
 
-  /**
-   * Take one message from the owner. Returns as soon as the status message is up. It never
-   * waits on the agent, so the next message is accepted while this one is still being
-   * answered.
-   */
   async handle(prompt: string, sourceId?: number): Promise<void> {
     this.deps.modes.touch();
     const turn: Turn = {
@@ -216,7 +176,6 @@ export class CommandService {
     this.pump();
   }
 
-  /** Hand the next queued prompt to the agent, if it's free. */
   private pump(): void {
     if (!this.isOpen() || this.active) return;
     const next = this.queue.shift();
@@ -258,9 +217,6 @@ export class CommandService {
     this.turnTimer = undefined;
   }
 
-  /** Give up on the running turn: drop the query, answer that turn, and let the queue
-   *  move. The next prompt opens a fresh query with `resume`, so the conversation itself
-   *  survives; only this turn is lost. */
   private abandon(turn: Turn, text: string): void {
     if (this.active !== turn) return;
     this.active = undefined;
@@ -270,8 +226,6 @@ export class CommandService {
     this.pump();
   }
 
-  /** Start the long-lived query if there isn't one. It stays open for the whole session:
-   *  the conversation lives inside it, and prompts are fed in as they come. */
   private ensureAgent(): void {
     if (this.runner) return;
     const stream = new PromptStream();
@@ -293,11 +247,6 @@ export class CommandService {
     })();
   }
 
-  /**
-   * The query ended, whether interrupted, exhausted, or crashed. Settle whatever it was working
-   * on and, if the session is still open with prompts waiting, open a fresh query: the
-   * session id resumes the same conversation, so nothing is forgotten.
-   */
   private afterRun(err: unknown, token: object): void {
     if (this.runToken !== token) {
       // Torn down and replaced already (a stop that timed out, or /done): whatever this
@@ -344,8 +293,6 @@ export class CommandService {
     for await (const msg of q as AsyncIterable<any>) this.onMessage(msg);
   }
 
-  /** One message off the agent's stream. Everything the agent does becomes a line in the
-   *  chat as it happens; the prose it writes is held back, because that's the answer. */
   private onMessage(msg: any): void {
     // A working agent is a live session, however quiet the owner is…
     if (this.isOpen()) this.deps.modes.touch();
@@ -371,8 +318,6 @@ export class CommandService {
       }
       return;
     }
-    // Tool results are the agent's own reading material: only a failure is worth a line,
-    // since that's what explains a sudden change of plan.
     if (msg.type === "user") {
       for (const b of msg.message?.content ?? [])
         if (b.type === "tool_result" && b.is_error)
@@ -382,8 +327,6 @@ export class CommandService {
     if (msg.type === "result") this.onResult(msg);
   }
 
-  /** A turn finished. Its text becomes the answer on the prompt that asked for it, and the
-   *  next queued prompt goes in. */
   private onResult(msg: any): void {
     if (msg.session_id) this.sessionId = msg.session_id; // continue the thread
     const turn = this.active;
@@ -411,35 +354,22 @@ export class CommandService {
     this.pump();
   }
 
-  /** Prose the agent wrote before doing something else is an aside, not the answer: relay
-   *  it and clear, so what's left at the end is only the closing reply. */
   private flushText(): void {
     const text = this.text.trim();
     this.text = "";
     if (text) this.update(`${thoughtIcon(text)} ${text}`);
   }
 
-  /** Relay one live line to the chat, hung off the message that prompted it. Silent, since
-   *  this is a running commentary rather than a notification per thought. */
   private update(raw: string): void {
     const line = clipUpdate(raw);
     const turn = this.active;
     if (!line || !turn) return;
     log.debug({ line, turn: turn.id }, "command: agent update");
     turn.feed.push(line);
-    // A live view, not a transcript: once the message would go past what Telegram
-    // accepts, the oldest lines come off the front until it fits again.
     turn.feed = fitFeed(WORKING, turn.feed);
     this.scheduleFeed(turn);
   }
 
-  /**
-   * Show the feed on the turn's status message, at most one edit per `feedEditMs`. The
-   * agent can emit several events a second and Telegram rate-limits edits, so updates are
-   * coalesced: whatever the feed says when the timer fires is what goes out, and a later
-   * line just rides the next edit. The last line always renders, because every line
-   * schedules a timer if none is pending.
-   */
   private scheduleFeed(turn: Turn): void {
     if (this.feedTimer) return; // already queued, and it will pick up this line too
     const wait = Math.max(0, this.feedAfter - Date.now());
@@ -454,7 +384,6 @@ export class CommandService {
     this.feedTimer.unref?.();
   }
 
-  /** Rewrite a turn's status message, keeping its Stop button. */
   private setStatus(turn: Turn, raw: string): void {
     if (!turn.messageId) return;
     const text = fitTelegram(raw);
@@ -468,9 +397,6 @@ export class CommandService {
     );
   }
 
-  /** Final word on a turn: its status message becomes the answer and loses its button. If
-   *  that message is gone, the answer is sent fresh, still as a reply to the prompt, so
-   *  it can't end up orphaned at the bottom of the chat. */
   private settle(turn: Turn, text: string): void {
     const body = fitTelegram(text);
     const { messageId, sourceId } = turn;
@@ -500,8 +426,6 @@ export class CommandService {
     };
   }
 
-  /** Ask in Telegram and wait for the tap. Times out into a refusal. Asked as a reply to
-   *  the prompt that led here, so it's obvious which request wants the change. */
   private confirm(question: string, preview: string): Promise<boolean> {
     const turn = this.active;
     return new Promise<boolean>((resolvePromise) => {
@@ -539,9 +463,6 @@ export class CommandService {
     });
   }
 
-  /** Claim the confirmation behind a ✅/❌ tap. Nothing when it has expired or was already
-   *  answered; otherwise the function that settles it, for the view to call once the tap
-   *  is answered. */
   takeConfirmation(id?: string): Decision | undefined {
     const entry = id === undefined ? undefined : this.pending.get(id);
     if (entry === undefined || id === undefined) return undefined;
@@ -550,12 +471,6 @@ export class CommandService {
     return entry.decide;
   }
 
-  /**
-   * ⏹ Stop on a turn's status message. The one being answered is interrupted mid-thought
-   * (and any confirmation it was waiting on is refused, since nothing will read the
-   * answer); one still in the queue is simply dropped before it ever runs. `ack` answers
-   * the tap at the point the work allows, since the interrupt can outlive Telegram's window.
-   */
   async stop(
     id: string | undefined,
     ack: (toast: string) => Promise<void>,
@@ -596,7 +511,6 @@ export class CommandService {
   }
 }
 
-/** A tool result's content is either a string or the usual array of blocks. */
 function blockText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "tool failed";

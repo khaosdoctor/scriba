@@ -2,8 +2,6 @@ import { fitTelegram } from "../../../libs/text.ts";
 import type { AdminService } from "../../../services/admin.ts";
 import type { CommandView } from "../commands.ts";
 
-/** An admin command that answers with one text. fitTelegram turns an oversized answer
- *  into a labelled cut instead of a rejected send. */
 export function textCommand(
   command: string,
   description: string,

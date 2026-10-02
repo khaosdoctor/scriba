@@ -14,8 +14,6 @@ export const unreject: CommandView = {
     const kb = new InlineKeyboard();
     for (const [i, surface] of out.surfaces.entries())
       kb.text(surface, `${UNREJECT_NS}:s:${i}`).row();
-    // The keyboard has no pages to turn; the menu's link rules screens page through the
-    // rest, so the text names the cut.
     const cut = out.total > out.surfaces.length;
     await ctx.reply(
       cut

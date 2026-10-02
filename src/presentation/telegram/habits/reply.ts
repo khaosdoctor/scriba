@@ -7,7 +7,6 @@ const REFUSALS: Record<Exclude<FillOutcome, "saved">, string> = {
   gone: "Couldn't find that habit to update.",
 };
 
-/** A recorded reply leaves the chat: the flow message shows the progress. */
 export function habitReply(habits: HabitService) {
   return async (
     ctx: Filter<Context, "message:text">,

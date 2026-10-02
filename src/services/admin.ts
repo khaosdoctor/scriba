@@ -91,14 +91,11 @@ const WINDOWS: Record<
 const isStatsRange = (range: string): range is StatsRange =>
   Object.hasOwn(WINDOWS, range);
 
-/** A rejected word and the notes it was rejected for. */
 export interface RejectedWord {
   surface: string;
   notes: string[];
 }
 
-/** What the admin commands and the menu's maintenance screens act on. The text each
- *  command answers with is built here; the views only send it. */
 export class AdminService {
   constructor(private d: AdminDeps) {}
 
@@ -173,7 +170,6 @@ export class AdminService {
     return `${snapshot}\n\n${formatHealth(health.snapshot(), Date.now())}`;
   }
 
-  /** The failed jots as one text, and their ids so the view can put buttons under it. */
   async failed(): Promise<{ text: string; ids: string[] }> {
     const jots = await this.d.repo.failedJots(10);
     log.failed.info({ count: jots.length }, "/failed command");
@@ -232,8 +228,6 @@ export class AdminService {
       log.retry.info({ id: arg }, "/retry: single jot requeued");
       return `🔄 retrying ${arg}`;
     }
-    // No arg takes the failed jots, `all` adds the abandoned ones; the pass picks them
-    // up once reset.
     const n = await repo.resetFailed(arg === "all");
     if (n) void processing.retryPass();
     log.retry.info({ count: n, all: arg === "all" }, "/retry command");
@@ -296,8 +290,6 @@ export class AdminService {
     return formatListPage(lines, page, REJECTIONS_PAGE, "/rejections");
   }
 
-  /** `/unreject <word> <note>` answers with text. With no arguments it answers with the
-   *  rejected words to pick from, or "(no rejections)". */
   async unreject(
     args: string,
   ): Promise<string | { surfaces: string[]; total: number }> {
@@ -327,9 +319,6 @@ export class AdminService {
     return { surfaces: shown, total: surfaces.length };
   }
 
-  /** The `si`th rejected word and the notes rejected for it. Indices are positions in the
-   *  ordered rejection list, re-derived on every tap so nothing is held between messages;
-   *  undefined when the list changed under the tap. */
   async rejectedWord(
     step: string | undefined,
     idx: string[],
@@ -371,8 +360,6 @@ export class AdminService {
     return reprocessTargets(jots);
   }
 
-  /** How many entries reprocessing the days `lo` to `hi` would redo: a squashed follower
-   *  counts with its leader, whose line carries the combined text. */
   async reprocessCount(lo: string, hi: string): Promise<number> {
     return (await this.targetsBetween(lo, hi)).length;
   }
@@ -405,8 +392,6 @@ export class AdminService {
     return jot;
   }
 
-  /** Resets what `scope` names to pending and queues it. `queued` is false when nothing
-   *  was, and `text` then says why. */
   async reprocessExecute(
     scope: ReprocessScope,
   ): Promise<{ text: string; queued: boolean }> {
@@ -447,7 +432,6 @@ export class AdminService {
     };
   }
 
-  /** Tells the owner how the day went in jots; says nothing on a day without any. */
   async dailySummary(): Promise<void> {
     const s = await this.d.repo.windowStats(startOfToday(), Date.now());
     const failed = s.failed + s.abandoned;
@@ -459,8 +443,6 @@ export class AdminService {
     await this.d.notifier.notify(lines.join("\n"));
   }
 
-  /** Notifies only on an actual new deploy (version or sha changed since the last boot
-   *  recorded), so a plain restart on the same image stays quiet. */
   async announceDeploy(): Promise<void> {
     const { settings, github, notifier, build } = this.d;
     const deployId = `${build.version}@${build.sha}`;
@@ -499,9 +481,6 @@ function pageIndex(raw: string | undefined): number {
   return Math.max(1, Number(raw) || 1) - 1;
 }
 
-/** One page of a list, plus a footer naming the window and the command for the next page.
- *  `page` is 0-based and clamped; `cmd` is the command the footer tells the user to retype
- *  with a page number (e.g. "/rejections"). A single-page list gets no footer. */
 export function formatListPage(
   items: string[],
   page: number,
@@ -518,7 +497,6 @@ export function formatListPage(
   return `${body}\n\nShowing ${from}–${from + shown.length - 1} of ${items.length} · page ${p + 1}/${pages} · ${nav}`;
 }
 
-/** /stats body for a labelled window. */
 export function formatStats(label: string, s: Stats): string {
   const tail = [
     s.inflight ? `in-flight ${s.inflight}` : "",
@@ -543,7 +521,6 @@ export interface StatusView {
   uptimeMs: number;
 }
 
-/** /status body: health at a glance. */
 export function formatStatus(v: StatusView): string {
   const c = v.counts;
   const links = v.links.enabled
@@ -559,8 +536,6 @@ export function formatStatus(v: StatusView): string {
   ].join("\n");
 }
 
-/** /status block for the health monitor: one line per upstream. An error line is capped,
- *  since a fetch error can carry a whole cause chain. */
 export function formatHealth(rows: UpstreamStatus[], now: number): string {
   const lines = ["Upstreams:"];
   for (const r of rows) {
@@ -575,10 +550,6 @@ export function formatHealth(rows: UpstreamStatus[], now: number): string {
   return lines.join("\n");
 }
 
-/** GitHub Release bodies are conventional-changelog markdown: `### Section` headers and
- *  `* item ([#N](url)) ([sha](url))` bullets. Telegram gets plain text, not markdown, so
- *  this strips the `#`/`*` markers and the trailing commit/issue link refs, leaving
- *  `Section:` labels and `• item` bullets. */
 function formatChangelogMarkdown(body: string): string {
   const out: string[] = [];
   for (const raw of body.split("\n")) {
@@ -601,7 +572,6 @@ function formatChangelogMarkdown(body: string): string {
   return out.join("\n");
 }
 
-/** Release body + link, shared by the deploy notice and /changelog. */
 function formatReleaseBody(note: ReleaseNote): string {
   const lines: string[] = [];
   const body = formatChangelogMarkdown(note.body).trim();
@@ -610,9 +580,6 @@ function formatReleaseBody(note: ReleaseNote): string {
   return lines.join("\n\n");
 }
 
-/** Boot notice sent once when the running version/sha differs from the last known deploy.
- *  `note` is this version's GitHub Release, fetched live, so the notice shows what
- *  actually changed. Omitted when the lookup fails. */
 export function formatDeployNotice(
   version: string,
   sha: string,
@@ -622,12 +589,10 @@ export function formatDeployNotice(
   return note ? [header, formatReleaseBody(note)].join("\n\n") : header;
 }
 
-/** /changelog body for one version. */
 export function formatReleaseNote(note: ReleaseNote): string {
   return [`📋 ${note.name}`, formatReleaseBody(note)].join("\n\n");
 }
 
-/** /changelog N: a compact list of the N most recent releases. */
 export function formatReleaseList(notes: ReleaseNote[]): string {
   if (!notes.length) return "no releases found";
   return notes

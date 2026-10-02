@@ -6,8 +6,6 @@ import { namespace } from "../namespace.ts";
 
 const log = logger("bot");
 
-/** 🔄 Retry (`rt:<jotId>`) on a failed jot's status message: reset its attempts and queue it
- *  now, rather than waiting for the retry pass. The tap is answered after the queueing. */
 export function retryView(jots: JotService): Composer<Context> {
   return namespace("rt", async (ctx, [jotId]) => {
     const responder = new Responder(ctx);

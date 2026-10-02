@@ -3,7 +3,6 @@ import type { Notifier } from "./notifier.ts";
 
 const log = logger("modes");
 
-/** Sticky modes own the message stream, so one is open at a time. */
 export type Mode = "task" | "command";
 
 export type OpenOutcome = "opened" | "already" | "busy";
@@ -13,8 +12,6 @@ const TIMEOUT_NOTICE: Record<Mode, string> = {
   command: "🧭 Command mode timed out — back to journaling.",
 };
 
-/** Idle time after which a mode closes itself, so it can't swallow the next thing meant
- *  for the journal. */
 const IDLE_MS = 15 * 60_000;
 
 export class Modes {
@@ -34,7 +31,6 @@ export class Modes {
     return this.active?.mode === mode;
   }
 
-  /** `onClose` runs when the mode closes, by /done or by idling out. */
   open(mode: Mode, onClose?: () => void): OpenOutcome {
     if (this.active && this.active.mode !== mode) return "busy";
     if (this.active) {
@@ -56,7 +52,6 @@ export class Modes {
     open.onClose?.();
   }
 
-  /** Restart the idle countdown of the open mode. */
   touch(): void {
     clearTimeout(this.timer);
     const mode = this.active?.mode;

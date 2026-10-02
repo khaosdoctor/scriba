@@ -13,12 +13,10 @@ export class MenuLifetime {
   // chatId -> message id of the last root menu there. Keyed by chat since message ids are
   // only unique per chat.
   private last = new Map<number, number>();
-  // "<chatId>:<messageId>" -> its pending self-destruct timer.
   private expiry = new Map<string, NodeJS.Timeout>();
 
   constructor(private api: Pick<Api, "deleteMessage">) {}
 
-  /** Delete the previous root menu of a chat, if any, before a new one is sent. */
   async retire(chatId: number): Promise<void> {
     const prev = this.last.get(chatId);
     if (prev === undefined) return;
@@ -26,14 +24,11 @@ export class MenuLifetime {
     await this.api.deleteMessage(chatId, prev).catch(() => {});
   }
 
-  /** A root menu was sent: remember it and start its countdown. */
   opened(chatId: number, msgId: number): void {
     this.last.set(chatId, msgId);
     this.touch(chatId, msgId);
   }
 
-  /** (Re)start a menu message's idle countdown: on send and on every tap, so the minute is
-   *  measured from the last interaction. */
   touch(chatId: number, msgId: number): void {
     const key = `${chatId}:${msgId}`;
     this.cancel(chatId, msgId);
@@ -49,8 +44,6 @@ export class MenuLifetime {
     this.expiry.set(key, timer);
   }
 
-  /** A menu was closed by hand: stop its countdown, and the chat has nothing left to
-   *  retire, whichever menu was last. */
   closed(chatId: number, msgId: number): void {
     this.last.delete(chatId);
     this.cancel(chatId, msgId);

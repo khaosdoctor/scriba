@@ -42,7 +42,6 @@ export function entitiesToMarkdown(
   return out;
 }
 
-/** Build the intake input for a message, or nothing for a kind the bot does not take. */
 export function intakeInput(m: Message): IntakeInput | undefined {
   const base = { messageId: m.message_id, sentAt: m.date * 1000 };
   const caption = () => entitiesToMarkdown(m.caption ?? "", m.caption_entities);

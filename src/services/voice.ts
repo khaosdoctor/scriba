@@ -6,7 +6,6 @@ export interface VoiceDeps {
   transcriber: Transcriber;
 }
 
-/** A voice note as text: the file, then the transcriber chain. */
 export class VoiceService {
   constructor(private deps: VoiceDeps) {}
 

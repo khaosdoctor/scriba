@@ -7,9 +7,6 @@ import { taskMessage } from "../tasks/mode.ts";
 
 const log = logger("bot");
 
-/** A voice note sent while task mode is open is transcribed like any other voice jot and
- *  then read as a task: dictating a task is the point of task mode being a mode rather than
- *  a command with arguments. */
 async function spokenTask(
   ctx: Context,
   tasks: TaskService,
@@ -21,8 +18,6 @@ async function spokenTask(
   await taskMessage(ctx, tasks, text);
 }
 
-/** A voice note or audio file: a spoken task while task mode is open, an audio jot
- *  otherwise. */
 export function voiceView(bot: Bot, { tasks, jotController }: ViewDeps): void {
   bot.on(["message:voice", "message:audio"], (ctx) => {
     const input = intakeInput(ctx.message)!;

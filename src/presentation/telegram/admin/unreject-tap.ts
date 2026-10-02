@@ -5,8 +5,6 @@ import { namespace } from "../namespace.ts";
 
 const log = logger("bot");
 
-/** `ur:s:<si>` opens the note menu for a rejected word; `ur:p:<si>:<ni>` unrejects the
- *  pair. A shifted index answers "expired" rather than undoing the wrong pair. */
 export const UNREJECT_NS = "ur";
 
 export function unrejectView(admin: AdminService): Composer<Context> {

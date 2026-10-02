@@ -11,9 +11,6 @@ const log = logger("rating");
 
 const Payload = z.tuple([z.string().regex(DATE_RE), RatingSchema]);
 
-/** `rate:<date>:<n>` records the day's rating. The tap is answered after the database claim
- *  and the frontmatter write, and the buttons are replaced by the result so the day can't be
- *  rated twice. */
 export function ratingView(rating: RatingService): Composer<Context> {
   return namespace(RATING_NS, async (ctx, [date, n]) => {
     const responder = new Responder(ctx);
