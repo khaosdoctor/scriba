@@ -22,8 +22,8 @@ import type { Notifier } from "../models/ops.ts";
 import type { SwitchKey } from "../models/settings.ts";
 import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
-import type { MediaService } from "../services/media.ts";
 import type { TaskNotesService } from "../services/task-notes.ts";
+import type { VoiceService } from "../services/voice.ts";
 import type { Modes, OpenOutcome } from "./modes.ts";
 
 const log = logger("tasks-flow");
@@ -58,7 +58,7 @@ export interface TaskDeps {
   notifier: Pick<Notifier, "notify" | "send" | "edit" | "delete">;
   modes: Modes;
   ownerId: number;
-  media: Pick<MediaService, "transcribe">;
+  voice: Pick<VoiceService, "transcribe">;
 }
 
 const PAGE = 8;
@@ -156,9 +156,9 @@ export class TaskController {
   }
 
   /** The transcript of a voice note sent while task mode is open. The view owns the
-   *  Telegram side; the layer rule keeps the media service behind the controller. */
+   *  Telegram side; the layer rule keeps the voice service behind the controller. */
   spokenTask(fileId: string): Promise<string> {
-    return this.deps.media.transcribe(fileId);
+    return this.deps.voice.transcribe(fileId);
   }
 
   /** `/taskadd`: the enricher reads the line, its timing is resolved by chrono against today,

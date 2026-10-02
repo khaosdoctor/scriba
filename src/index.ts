@@ -32,6 +32,7 @@ import {
   type FallbackTranscriber,
 } from "./services/transcribe.ts";
 import { VaultService } from "./services/vault.ts";
+import { VoiceService } from "./services/voice.ts";
 import { WebService } from "./services/web.ts";
 import { Chat } from "./views/chat.ts";
 import { publishCommands, registerViews } from "./views/index.ts";
@@ -164,8 +165,8 @@ export async function createScriba(
   const media = new MediaService({
     api: bot.api,
     token: config.telegram.token,
-    transcriber,
   });
+  const voice = new VoiceService({ media, transcriber });
   const links =
     externalServices.links ?? new VaultService(config.vaultPath, obsidian);
   const github = externalServices.github ?? new GithubReleases();
@@ -203,7 +204,7 @@ export async function createScriba(
     notifier: chat,
     modes,
     ownerId: config.telegram.allowedUserId,
-    media,
+    voice,
   });
   const rating = new RatingController({
     repo,

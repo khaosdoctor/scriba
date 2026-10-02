@@ -6,7 +6,6 @@ const service = (file: { file_path?: string }) =>
   new MediaService({
     api: { getFile: async () => file },
     token: "t",
-    transcriber: { transcribe: async () => "" },
   });
 
 test("a Telegram file is downloaded with its extension and mime type", async (testContext) => {

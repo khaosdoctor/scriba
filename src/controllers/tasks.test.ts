@@ -106,7 +106,7 @@ function setup(
     notifier,
     modes,
     ownerId: OWNER,
-    media: { transcribe: async () => "" },
+    voice: { transcribe: async () => "" },
   });
   const buttons = (opts?: any): string[] =>
     (opts?.keyboard?.inline_keyboard ?? [])

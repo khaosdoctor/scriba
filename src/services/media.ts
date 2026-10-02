@@ -1,7 +1,6 @@
 import { extname } from "node:path";
 import { logger } from "../lib/log.ts";
 import type { DownloadedFile } from "../models/domain.ts";
-import type { Transcriber } from "./transcribe.ts";
 
 const log = logger("bot");
 
@@ -27,10 +26,9 @@ export interface MediaDeps {
   /** grammy's Api fits; typed structurally so services stay free of grammy. */
   api: { getFile(fileId: string): Promise<{ file_path?: string }> };
   token: string;
-  transcriber: Transcriber;
 }
 
-/** Telegram media in, bytes or text out. Image captions stay in the enricher. */
+/** Telegram media in, bytes out. Image captions stay in the enricher. */
 export class MediaService {
   constructor(private deps: MediaDeps) {}
 
@@ -47,11 +45,5 @@ export class MediaService {
     const ext = (extname(file.file_path).slice(1) || "bin").toLowerCase();
     log.debug({ fileId, ext, bytes: bytes.length }, "downloaded telegram file");
     return { bytes, ext, mime: MIME[ext] ?? "application/octet-stream" };
-  }
-
-  /** A voice note as text: the file, then the transcriber chain. */
-  async transcribe(fileId: string): Promise<string> {
-    const file = await this.downloadFile(fileId);
-    return this.deps.transcriber.transcribe(file.bytes, file.ext);
   }
 }
