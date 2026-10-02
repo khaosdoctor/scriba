@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { fingerprint } from "../../../libs/tasks.ts";
 import { botHarness } from "../../../test/bot-harness.ts";
 
 const DAY = "2026-08-15";
 const NOTE = `## Habits\n- [ ] Practiced music #meta/habits/music\n- [ ] [Pages read:: 0] #meta/habits/reading\n`;
-const QUESTION = `🌱 Pages read? Reply to this message with a number.\n(hb:${DAY}:1)`;
+const PAGES = fingerprint("- [ ] [Pages read:: 0] #meta/habits/reading");
+const QUESTION = `🌱 Pages read? Reply to this message with a number.\n(hb:${DAY}:1:${PAGES})`;
 
 const RECORD =
   "obsidian.readDailyNote > obsidian.updateNote > obsidian.readNote > obsidian.writeNote";

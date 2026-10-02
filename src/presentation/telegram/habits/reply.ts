@@ -11,10 +11,15 @@ const REFUSALS: Record<Exclude<FillOutcome, "saved">, string> = {
 export function habitReply(habits: HabitService) {
   return async (
     ctx: Filter<Context, "message:text">,
-    { date, index }: { date: string; index: number },
+    { date, index, digest }: { date: string; index: number; digest: string },
   ) => {
     const responder = new Responder(ctx);
-    const outcome = await habits.fill(date, index, ctx.message.text.trim());
+    const outcome = await habits.fill(
+      date,
+      index,
+      digest,
+      ctx.message.text.trim(),
+    );
     if (outcome !== "saved") return responder.reply(REFUSALS[outcome]);
     await responder.remove().catch(() => {});
     await habits.ask(date, index + 1);

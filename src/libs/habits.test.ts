@@ -60,14 +60,18 @@ test("completeHabitLine is idempotent on an already-done line", () => {
   assert.equal(completeHabitLine(done, "2026-06-23"), done); // no double tick, no second completion
 });
 
-test("parseHabitRef extracts the day + index from a question, or null", () => {
+test("parseHabitRef extracts the day, index and line digest from a question, or null", () => {
   assert.deepEqual(
-    parseHabitRef("🌱 Pages read? Reply with a value.\n(hb:2026-06-22:1)"),
+    parseHabitRef(
+      "🌱 Pages read? Reply with a value.\n(hb:2026-06-22:1:4abbc816)",
+    ),
     {
       date: "2026-06-22",
       index: 1,
+      digest: "4abbc816",
     },
   );
+  assert.equal(parseHabitRef("(hb:2026-06-22:1)"), null);
   assert.equal(parseHabitRef("just a normal edit reply"), null);
 });
 

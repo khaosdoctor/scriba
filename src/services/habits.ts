@@ -7,6 +7,7 @@ import {
   parseHabits,
 } from "../libs/habits.ts";
 import { logger } from "../libs/log.ts";
+import { fingerprint } from "../libs/tasks.ts";
 import type { Notifier } from "./notifier.ts";
 
 const log = logger("habits");
@@ -100,14 +101,15 @@ export class HabitService {
       log.warn({ date }, `no active flow message — cannot continue`);
       return;
     }
+    const digest = fingerprint(habit.line);
     if (habit.field)
       return notifier.edit(
         msgId,
-        `🌱 ${habit.label}? Reply to this message with a number.\n(hb:${date}:${habit.index})`,
+        `🌱 ${habit.label}? Reply to this message with a number.\n(hb:${date}:${habit.index}:${digest})`,
       );
     const button = (text: string, verdict: string) => ({
       text,
-      callback_data: `${HABITS_NS}:${date}:${habit.index}:${verdict}`,
+      callback_data: `${HABITS_NS}:${date}:${habit.index}:${digest}:${verdict}`,
     });
     await notifier.edit(msgId, `🌱 ${habit.label}?`, {
       keyboard: {
@@ -117,10 +119,15 @@ export class HabitService {
   }
 
   /** Record a Yes or No on habit `index`. False when the note or the habit is gone. */
-  async tap(date: string, index: number, done: boolean): Promise<boolean> {
+  async tap(
+    date: string,
+    index: number,
+    digest: string,
+    done: boolean,
+  ): Promise<boolean> {
     const habit = done
-      ? await this.tick(date, index)
-      : await this.find(date, index);
+      ? await this.tick(date, index, digest)
+      : await this.find(date, index, digest);
     if (!habit) {
       log.warn({ date, index }, "habit tap ignored: note or habit gone");
       return false;
@@ -132,13 +139,18 @@ export class HabitService {
     return true;
   }
 
-  async fill(date: string, index: number, value: string): Promise<FillOutcome> {
+  async fill(
+    date: string,
+    index: number,
+    digest: string,
+    value: string,
+  ): Promise<FillOutcome> {
     log.info({ date, index, value }, "habit value reply");
     if (!isNumericValue(value)) {
       log.warn({ date, value }, "habit value rejected: not a number");
       return "notNumber";
     }
-    const habit = await this.tick(date, index, value);
+    const habit = await this.tick(date, index, digest, value);
     if (!habit) {
       log.warn(
         { date, index },
@@ -152,9 +164,13 @@ export class HabitService {
 
   /** The habit at `index` as the note reads now, or null when the note or the habit is
    *  gone. */
-  private async find(date: string, index: number): Promise<Habit | null> {
+  private async find(
+    date: string,
+    index: number,
+    digest: string,
+  ): Promise<Habit | null> {
     const daily = await this.deps.obsidian.readDailyNote(date);
-    return daily ? this.habitAt(daily.content, index) : null;
+    return daily ? this.habitAt(daily.content, index, digest) : null;
   }
 
   /** Tick habit `index`, locating its line in the note as it reads under the lock, so the
@@ -163,13 +179,14 @@ export class HabitService {
   private async tick(
     date: string,
     index: number,
+    digest: string,
     value?: string,
   ): Promise<Habit | null> {
     const { obsidian } = this.deps;
     const daily = await obsidian.readDailyNote(date);
     if (!daily) return null;
     return obsidian.updateNote(daily.path, (note, write) => {
-      const habit = this.habitAt(note, index);
+      const habit = this.habitAt(note, index, digest);
       if (habit)
         write(
           note.replace(habit.line, () =>
@@ -180,10 +197,11 @@ export class HabitService {
     });
   }
 
-  private habitAt(note: string, index: number): Habit | null {
+  private habitAt(note: string, index: number, digest: string): Habit | null {
     return (
-      parseHabits(note, this.deps.heading).find((h) => h.index === index) ??
-      null
+      parseHabits(note, this.deps.heading).find(
+        (habit) => habit.index === index && fingerprint(habit.line) === digest,
+      ) ?? null
     );
   }
 

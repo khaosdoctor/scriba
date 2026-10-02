@@ -459,25 +459,25 @@ ledger("hb", [
     expect: "ack() > obsidian.readDailyNote > tg.editMessageText",
   },
   {
-    tap: "hb:2026-08-15:0:y",
+    tap: "hb:2026-08-15:0:ad6e80c7:y",
     when: "yes, answered after the note write",
     setup: withHabits,
     expect:
       "obsidian.readDailyNote > obsidian.updateNote > obsidian.readNote > obsidian.writeNote > ack() > obsidian.readDailyNote",
   },
   {
-    tap: "hb:2026-08-15:0:n",
+    tap: "hb:2026-08-15:0:ad6e80c7:n",
     when: "no leaves the note alone",
     setup: withHabits,
     expect: "obsidian.readDailyNote > ack() > obsidian.readDailyNote",
   },
   {
-    tap: "hb:2026-08-15:0:y",
+    tap: "hb:2026-08-15:0:ad6e80c7:y",
     when: "note gone",
     expect: "obsidian.readDailyNote > ack(gone)",
   },
   {
-    tap: "hb:2026-08-15:7:y",
+    tap: "hb:2026-08-15:7:ad6e80c7:y",
     when: "habit gone",
     setup: withHabits,
     expect:

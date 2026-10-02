@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { fingerprint } from "../libs/tasks.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { HabitService } from "./habits.ts";
 
@@ -23,6 +24,8 @@ const ALL_DONE = NOTE.replace("- [ ] Practiced music", "- [x] Practiced music")
   .replace("[Pages read:: 0]", "[Pages read:: 9]")
   .replace("- [ ] [Pages", "- [x] [Pages");
 const REVIEWED = NOTE.replace("date:", "habitsReviewed: true\ndate:");
+const MUSIC = fingerprint("- [ ] Practiced music #meta/habits/music");
+const PAGES = fingerprint("- [ ] [Pages read:: 0] #meta/habits/reading");
 
 type Buttons = { text: string; callback_data: string }[][];
 const buttons = (opts: any): Buttons => opts?.keyboard?.inline_keyboard;
@@ -144,8 +147,8 @@ test("a yes/no habit turns the card into a question with Yes and No", async () =
   );
   assert.deepEqual(buttons(fixture.edits[0]!.opts), [
     [
-      { text: "✅ Yes", callback_data: `hb:${DATE}:0:y` },
-      { text: "❌ No", callback_data: `hb:${DATE}:0:n` },
+      { text: "✅ Yes", callback_data: `hb:${DATE}:0:${MUSIC}:y` },
+      { text: "❌ No", callback_data: `hb:${DATE}:0:${MUSIC}:n` },
     ],
   ]);
 });
@@ -156,7 +159,7 @@ test("a value habit asks for a number in a reply that carries its marker, with n
   await fixture.habits.ask(DATE, 1);
   assert.equal(
     fixture.edits[0]!.text,
-    `🌱 Pages read? Reply to this message with a number.\n(hb:${DATE}:1)`,
+    `🌱 Pages read? Reply to this message with a number.\n(hb:${DATE}:1:${PAGES})`,
   );
   assert.equal(fixture.edits[0]!.opts, undefined);
 });
@@ -169,7 +172,7 @@ test("the tapped card is the one edited, even when the prompt was sent before a 
 
 test("Yes ticks the line and stamps its completion under the note lock", async () => {
   const fixture = setup();
-  assert.equal(await fixture.habits.tap(DATE, 0, true), true);
+  assert.equal(await fixture.habits.tap(DATE, 0, MUSIC, true), true);
   assert.deepEqual(fixture.events, ["lock", `write:${PATH}`]);
   assert.equal(
     fixture.vault.get(PATH),
@@ -182,30 +185,30 @@ test("Yes ticks the line and stamps its completion under the note lock", async (
 
 test("No leaves the note untouched", async () => {
   const fixture = setup();
-  assert.equal(await fixture.habits.tap(DATE, 0, false), true);
+  assert.equal(await fixture.habits.tap(DATE, 0, MUSIC, false), true);
   assert.deepEqual(fixture.writes, []);
 });
 
 test("a tap on a habit or note that no longer exists is refused and writes nothing", async () => {
   const fixture = setup();
-  assert.equal(await fixture.habits.tap(DATE, 9, true), false);
-  assert.equal(await fixture.habits.tap("2026-01-01", 0, true), false);
+  assert.equal(await fixture.habits.tap(DATE, 9, MUSIC, true), false);
+  assert.equal(await fixture.habits.tap("2026-01-01", 0, MUSIC, true), false);
   assert.deepEqual(fixture.events, ["lock"]);
   assert.deepEqual(fixture.writes, []);
 });
 
-test("Yes ticks the line as the note reads under the lock, not the line read before it", async () => {
-  const REWORDED = NOTE.replace("Practiced music", "Practiced guitar");
+test("Yes ticks the line in the note as it reads under the lock, keeping a jot written just before it", async () => {
+  const JOTTED = NOTE.replace("- hi\n", "- hi\n- a jot that just arrived\n");
   const fixture = setup(undefined, {
-    onLock: (vault) => vault.set(PATH, REWORDED),
+    onLock: (vault) => vault.set(PATH, JOTTED),
   });
-  assert.equal(await fixture.habits.tap(DATE, 0, true), true);
+  assert.equal(await fixture.habits.tap(DATE, 0, MUSIC, true), true);
   assert.deepEqual(fixture.events, ["lock", `write:${PATH}`]);
   assert.equal(
     fixture.vault.get(PATH),
-    REWORDED.replace(
-      "- [ ] Practiced guitar #meta/habits/music",
-      `- [x] Practiced guitar #meta/habits/music [completion:: ${DATE}]`,
+    JOTTED.replace(
+      "- [ ] Practiced music #meta/habits/music",
+      `- [x] Practiced music #meta/habits/music [completion:: ${DATE}]`,
     ),
   );
 });
@@ -214,18 +217,47 @@ test("a habit that left the note before the lock is reported gone and nothing is
   // Only the finished habit is left, so there is no habit at index 1 any more.
   const GONE = NOTE.replace(/- \[ \] .*\n/g, "");
   const tap = setup(undefined, { onLock: (vault) => vault.set(PATH, GONE) });
-  assert.equal(await tap.habits.tap(DATE, 1, true), false);
+  assert.equal(await tap.habits.tap(DATE, 1, PAGES, true), false);
   assert.deepEqual(tap.writes, []);
 
   const fill = setup(undefined, { onLock: (vault) => vault.set(PATH, GONE) });
-  assert.equal(await fill.habits.fill(DATE, 1, "5"), "gone");
+  assert.equal(await fill.habits.fill(DATE, 1, PAGES, "5"), "gone");
   assert.deepEqual(fill.writes, []);
+});
+
+test("a habit whose line changed since it was asked is refused, so another habit shifted into its place is never ticked", async () => {
+  const REMOVED = NOTE.replace(
+    "- [ ] Practiced music #meta/habits/music\n",
+    "",
+  );
+  const tap = setup({ [DATE]: REMOVED });
+  assert.equal(await tap.habits.tap(DATE, 0, MUSIC, true), false);
+  assert.deepEqual(tap.writes, []);
+
+  const ADDED = NOTE.replace(
+    "## Habits\n",
+    "## Habits\n- [ ] Meditated #meta/habits/mind\n",
+  );
+  const fill = setup({ [DATE]: ADDED });
+  assert.equal(await fill.habits.fill(DATE, 1, PAGES, "5"), "gone");
+  assert.deepEqual(fill.writes, []);
+
+  const REWORDED = NOTE.replace("Practiced music", "Practiced guitar");
+  const reworded = setup(undefined, {
+    onLock: (vault) => vault.set(PATH, REWORDED),
+  });
+  assert.equal(await reworded.habits.tap(DATE, 0, MUSIC, true), false);
+  assert.deepEqual(reworded.writes, []);
 });
 
 test("a number fills the value habit and ticks it; decimals and negatives are numbers too", async () => {
   for (const value of ["42", "2.5", "-3"]) {
     const fixture = setup();
-    assert.equal(await fixture.habits.fill(DATE, 1, value), "saved", value);
+    assert.equal(
+      await fixture.habits.fill(DATE, 1, PAGES, value),
+      "saved",
+      value,
+    );
     assert.match(
       fixture.vault.get(PATH)!,
       new RegExp(
@@ -237,23 +269,23 @@ test("a number fills the value habit and ticks it; decimals and negatives are nu
 
 test("an answer that is not a number is refused and nothing is written", async () => {
   const fixture = setup();
-  assert.equal(await fixture.habits.fill(DATE, 1, "a lot"), "notNumber");
+  assert.equal(await fixture.habits.fill(DATE, 1, PAGES, "a lot"), "notNumber");
   assert.deepEqual(fixture.events, []);
 });
 
 test("an answer for a habit or note that is gone is refused and nothing is written", async () => {
   const noHabit = setup();
-  assert.equal(await noHabit.habits.fill(DATE, 9, "5"), "gone");
+  assert.equal(await noHabit.habits.fill(DATE, 9, PAGES, "5"), "gone");
   assert.deepEqual(noHabit.writes, []);
 
-  assert.equal(await setup({}).habits.fill(DATE, 1, "5"), "gone");
+  assert.equal(await setup({}).habits.fill(DATE, 1, PAGES, "5"), "gone");
 });
 
 test("the last answer stamps habitsReviewed under the lock, keeps the other frontmatter, deletes the card, and a second review is refused", async () => {
   const fixture = setup();
   await fixture.habits.prompt(DATE);
-  await fixture.habits.tap(DATE, 0, true);
-  await fixture.habits.fill(DATE, 1, "12");
+  await fixture.habits.tap(DATE, 0, MUSIC, true);
+  await fixture.habits.fill(DATE, 1, PAGES, "12");
   fixture.events.length = 0;
   await fixture.habits.ask(DATE, 2);
   assert.deepEqual(fixture.events, [
@@ -291,7 +323,7 @@ test("when the note disappears mid-review the card is deleted and nothing is ask
 
 test("after a restart a Yes is still recorded but there is no card to continue on", async () => {
   const fixture = setup();
-  assert.equal(await fixture.habits.tap(DATE, 0, true), true);
+  assert.equal(await fixture.habits.tap(DATE, 0, MUSIC, true), true);
   await fixture.habits.ask(DATE, 1);
   assert.equal(fixture.writes.length, 1);
   assert.deepEqual(fixture.edits, []);

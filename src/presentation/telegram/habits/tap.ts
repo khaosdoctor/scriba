@@ -7,10 +7,11 @@ import { namespace } from "../namespace.ts";
 
 const log = logger("habits");
 
-/** `hb:<date>:begin` starts the review. `hb:<date>:<index>:<y|n>` answers one habit, and the
- *  tap is answered once the note is written, before the next question replaces the card. */
+/** `hb:<date>:begin` starts the review. `hb:<date>:<index>:<digest>:<y|n>` answers one habit,
+ *  and the tap is answered once the note is written, before the next question replaces the
+ *  card. */
 export function habitsView(habits: HabitService): Composer<Context> {
-  return namespace(HABITS_NS, async (ctx, [date, action, verd]) => {
+  return namespace(HABITS_NS, async (ctx, [date, action, digest, verd]) => {
     const responder = new Responder(ctx);
     log.debug({ date, action, verd }, "habit button tapped");
     if (!date || !DATE_RE.test(date)) {
@@ -22,11 +23,11 @@ export function habitsView(habits: HabitService): Composer<Context> {
       return habits.ask(date, 0, ctx.callbackQuery.message?.message_id);
     }
     const index = Number(action);
-    if (!Number.isInteger(index)) {
+    if (!Number.isInteger(index) || !digest) {
       log.warn({ date, action, verd }, "habit tap rejected: bad index");
       return responder.ack("bad habit");
     }
-    if (!(await habits.tap(date, index, verd === "y")))
+    if (!(await habits.tap(date, index, digest, verd === "y")))
       return responder.ack("gone");
     await responder.ack();
     await habits.ask(date, index + 1);

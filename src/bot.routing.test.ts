@@ -116,7 +116,7 @@ test("command mode takes the text before any reply routing", async () => {
   await harness.say("research cats");
   await harness.say("1", {
     message_id: 7,
-    text: "🌱 Pages read? (hb:2026-08-15:1)",
+    text: "🌱 Pages read? (hb:2026-08-15:1:4abbc816)",
   });
   assert.deepEqual(handled, ["research cats", "1"]);
   assert.deepEqual(rows, []);
@@ -188,7 +188,7 @@ test("/done closes whichever mode is open, and says so when none is", async () =
 // --- replies ---
 
 const HABIT =
-  "🌱 Pages read? Reply to this message with a number.\n(hb:2026-08-15:1)";
+  "🌱 Pages read? Reply to this message with a number.\n(hb:2026-08-15:1:4abbc816)";
 const FOLLOWUP =
   "💡 Learned anything today? Reply to this message, or skip.\n(fu:t:2026-08-15)";
 const WIZARD =
@@ -408,7 +408,7 @@ const PRODUCERS: Producer[] = [
   {
     name: "habit value question",
     owner: "habit",
-    text: "🌱 Pages read? Reply to this message with a number.\n(hb:2026-08-15:0)",
+    text: "🌱 Pages read? Reply to this message with a number.\n(hb:2026-08-15:0:4abbc816)",
     produce: async (harness) => {
       harness.obsidian.readDailyNote = {
         path: "p.md",

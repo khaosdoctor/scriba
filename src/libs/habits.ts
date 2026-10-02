@@ -78,13 +78,14 @@ export function completeHabitLine(
 }
 
 /** Machine ref embedded in a habit question so a text reply days later routes back to the
- *  right day + habit: the day lives in the message, never the DB. Matches `hb:DATE:INDEX`. */
+ *  right day + habit: the day lives in the message, never the DB. Matches
+ *  `hb:DATE:INDEX:DIGEST`. */
 export function parseHabitRef(
   text: string,
-): { date: string; index: number } | null {
-  const m = text.match(/hb:(\d{4}-\d{2}-\d{2}):(\d+)/);
-  if (!m) return null;
-  return { date: m[1]!, index: Number(m[2]) };
+): { date: string; index: number; digest: string } | null {
+  const match = text.match(/hb:(\d{4}-\d{2}-\d{2}):(\d+):([0-9a-f]{8})/);
+  if (!match) return null;
+  return { date: match[1]!, index: Number(match[2]), digest: match[3]! };
 }
 
 /** Check if the `habitsReviewed` frontmatter field is set to `true` for this note. */
