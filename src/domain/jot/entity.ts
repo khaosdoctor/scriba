@@ -11,7 +11,7 @@ export const JOT_STATUSES = [
 export type JotStatus = (typeof JOT_STATUSES)[number];
 
 /** Finished processing and eligible for reprocess (deleted jots are not). */
-export const TERMINAL_STATUSES = [
+export const REPROCESSABLE_STATUSES = [
   "done",
   "failed",
   "abandoned",

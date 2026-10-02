@@ -5,7 +5,7 @@ import {
   type JotSection,
   type JotStatus,
   MAX_ATTEMPTS,
-  TERMINAL_STATUSES,
+  REPROCESSABLE_STATUSES,
 } from "../../domain/jot/entity.ts";
 import type { Stats, StatusCounts } from "../../domain/jot/structures.ts";
 import { logger } from "../../libs/log.ts";
@@ -141,7 +141,7 @@ export class JotRepository {
         this.k.raw("SUM(CASE WHEN kind='audio' THEN 1 ELSE 0 END) as audio"),
         this.k.raw("SUM(CASE WHEN kind='image' THEN 1 ELSE 0 END) as image"),
         this.k.raw("SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) as video"),
-        ...TERMINAL_STATUSES.map((s) =>
+        ...REPROCESSABLE_STATUSES.map((s) =>
           this.k.raw(`SUM(CASE WHEN status='${s}' THEN 1 ELSE 0 END) as ${s}`),
         ),
         this.k.raw(
@@ -157,8 +157,8 @@ export class JotRepository {
       image: n(row?.image),
       video: n(row?.video),
       ...(Object.fromEntries(
-        TERMINAL_STATUSES.map((s) => [s, n(row?.[s])]),
-      ) as Pick<Stats, (typeof TERMINAL_STATUSES)[number]>),
+        REPROCESSABLE_STATUSES.map((s) => [s, n(row?.[s])]),
+      ) as Pick<Stats, (typeof REPROCESSABLE_STATUSES)[number]>),
       inflight: n(row?.inflight),
     };
   }
@@ -197,13 +197,13 @@ export class JotRepository {
       .select("id", "anchor")
       .where("received_at", ">=", from)
       .andWhere("received_at", "<", to)
-      .whereIn("status", [...TERMINAL_STATUSES])
+      .whereIn("status", [...REPROCESSABLE_STATUSES])
       .orderBy("received_at");
   }
 
   async jotsPage(offset: number, limit: number): Promise<Jot[]> {
     return this.k<Jot>("jots")
-      .whereIn("status", [...TERMINAL_STATUSES])
+      .whereIn("status", [...REPROCESSABLE_STATUSES])
       .orderBy("received_at", "desc")
       .limit(limit)
       .offset(offset);
@@ -229,7 +229,7 @@ export class JotRepository {
       const chunk = ids.slice(i, i + JotRepository.ID_CHUNK);
       const rows: { id: string }[] = await this.k("jots")
         .whereIn("id", chunk)
-        .whereIn("status", [...TERMINAL_STATUSES])
+        .whereIn("status", [...REPROCESSABLE_STATUSES])
         .update({
           status: "pending",
           attempts: 0,

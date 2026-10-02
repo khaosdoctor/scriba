@@ -9,7 +9,7 @@ import type { VaultService } from "../data/repositories/vault.ts";
 import {
   type Jot,
   type JotStatus,
-  TERMINAL_STATUSES,
+  REPROCESSABLE_STATUSES,
 } from "../domain/jot/entity.ts";
 import type { Stats, StatusCounts } from "../domain/jot/structures.ts";
 import { clipUpdate } from "../libs/feed.ts";
@@ -382,7 +382,9 @@ export class AdminService {
     const jot = id ? await this.d.repo.getJot(id) : undefined;
     if (!jot) return "gone";
     // A stale button or a race with the retry job can leave the jot mid-processing.
-    if (!(TERMINAL_STATUSES as readonly JotStatus[]).includes(jot.status)) {
+    if (
+      !(REPROCESSABLE_STATUSES as readonly JotStatus[]).includes(jot.status)
+    ) {
       log.reprocess.warn(
         { id, status: jot.status },
         "reprocess: jot pick rejected: no longer reprocessable",
