@@ -91,8 +91,6 @@ export class Responder {
     } catch (err) {
       log.warn({ err }, "close: delete failed, editing instead");
     }
-    // An empty InlineKeyboard clears the buttons; `reply_markup: undefined` is dropped
-    // from the JSON payload, so Telegram would leave the old ones tappable.
     await this.ctx.editMessageText(fallbackText, {
       reply_markup: new InlineKeyboard(),
     });
