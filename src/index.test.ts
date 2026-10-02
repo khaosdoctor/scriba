@@ -6,25 +6,22 @@ import { type TestContext, test } from "node:test";
 import { Bot } from "grammy";
 import { MockAgent, setGlobalDispatcher } from "undici";
 import { Repository } from "./db.ts";
+import { createScriba } from "./index.ts";
 import { loadConfig } from "./models/config.ts";
 import { HealthMonitor } from "./runtime/health.ts";
+import { Scheduler } from "./runtime/scheduler.ts";
+import { Enricher } from "./services/enrich.ts";
 import { LinkIndex } from "./services/links.ts";
 
-// The classes still read the config singleton, which parses the environment on import.
 const env = {
   TELEGRAM_BOT_TOKEN: "t",
   ALLOWED_TELEGRAM_USER_ID: "1",
   OBSIDIAN_API_KEY: "o",
   SCRIBA_VAULT_HOST_PATH: "",
 };
-Object.assign(process.env, env);
-
-const { createScriba } = await import("./index.ts");
-const { Scheduler } = await import("./runtime/scheduler.ts");
-const { Enricher } = await import("./services/enrich.ts");
 
 type Scriba = Awaited<ReturnType<typeof createScriba>>;
-type Seams = NonNullable<Parameters<typeof createScriba>[2]>;
+type ExternalServices = NonNullable<Parameters<typeof createScriba>[2]>;
 
 const EM = String.fromCharCode(0x2014);
 const COMMANDS = [
@@ -267,7 +264,7 @@ dbTest("a model switch is told to the owner with its reason", async () => {
     setSwitchNotifier: (fn: typeof notify) => {
       notify = fn;
     },
-  } as unknown as Seams["enricher"];
+  } as unknown as ExternalServices["enricher"];
   const app = await createScriba(
     configFor(),
     { version: "9.9.9", sha: "abc" },

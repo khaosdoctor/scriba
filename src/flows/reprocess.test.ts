@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// reprocess.ts pulls in config.ts, which validates process.env at import time.
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { ReprocessCommand } = await import("./reprocess.ts");
-const { config } = await import("../config.ts");
-const { dayBounds } = await import("../time.ts");
+import { testConfig } from "../test/config.ts";
+import { dayBounds } from "../time.ts";
+import { ReprocessCommand } from "./reprocess.ts";
 
 type Button = { text: string; callback_data: string };
 
@@ -80,7 +75,7 @@ function setup(
       },
     },
   };
-  const reprocess = new ReprocessCommand(bot as any, repo as any);
+  const reprocess = new ReprocessCommand(bot as any, testConfig, repo as any);
   if (opts.queue !== false) {
     reprocess.setQueue({
       add: (ids: string[]) => {
@@ -140,7 +135,7 @@ test("/reprocess opens the scope picker with a Close button", async () => {
 test("/menu's Reprocess entry posts a fresh picker to the owner", async () => {
   const fixture = setup();
   await fixture.reprocess.promptRoot();
-  assert.equal(fixture.sent[0]!.chat, config.telegram.allowedUserId);
+  assert.equal(fixture.sent[0]!.chat, testConfig.telegram.allowedUserId);
   assert.equal(fixture.sent[0]!.text, ROOT_TEXT);
   assert.equal(fixture.sent[0]!.kb.inline_keyboard.length, 4);
 });

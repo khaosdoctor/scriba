@@ -1,12 +1,12 @@
 import dns from "node:dns";
 import { readFileSync } from "node:fs";
 import http from "node:http";
+import { createScriba } from "./index.ts";
 import { logger } from "./log.ts";
 import { type Config, loadConfig } from "./models/config.ts";
 
 const log = logger("main");
 
-// The homelab network has no IPv6 route, so an AAAA answer is a dead end: try A first.
 dns.setDefaultResultOrder("ipv4first");
 
 const { version } = JSON.parse(
@@ -28,9 +28,6 @@ function readConfig(): Config {
 
 async function main(): Promise<void> {
   const config = readConfig();
-  // index.ts pulls in the config shim, which parses the environment on import, so it
-  // loads only after the check above has had its say.
-  const { createScriba } = await import("./index.ts");
   log.info({ version, sha }, "scriba boot");
   log.info(
     {

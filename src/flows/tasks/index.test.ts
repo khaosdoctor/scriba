@@ -1,15 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// index.ts pulls in config.ts, which validates process.env at import time — give it the
-// bare minimum before loading, the same trick config.test.ts and menu.test.ts use.
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { TasksFlow, parseTaskPromptRef, taskDetectionEnabled } = await import(
-  "./index.ts"
-);
-const { TaskStore } = await import("../../services/tasks.ts");
+import { TaskStore } from "../../services/tasks.ts";
+import { testConfig } from "../../test/config.ts";
+import {
+  parseTaskPromptRef,
+  TasksFlow,
+  taskDetectionEnabled,
+} from "./index.ts";
 
 type Sent = { chat: number; text: string; markup?: any; silent?: unknown };
 type Edited = { chat: number; msg: number; text: string; markup?: any };
@@ -110,6 +107,7 @@ function harness(
   const enricher = { extractTask: (t: string) => extract(t) };
   const flow = new TasksFlow(
     bot as any,
+    testConfig,
     repo as any,
     store,
     enricher as any,

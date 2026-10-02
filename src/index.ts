@@ -31,7 +31,7 @@ export interface Build {
 }
 
 /** Collaborators a test can replace; each defaults to the real one. */
-export interface Seams {
+export interface ExternalServices {
   obsidian?: ObsidianClient;
   enricher?: Enricher;
   transcriber?: FallbackTranscriber;
@@ -85,20 +85,23 @@ async function buildEnricher(config: Config, repo: Repository) {
 export async function createScriba(
   config: Config,
   { version, sha }: Build,
-  seams: Seams = {},
+  externalServices: ExternalServices = {},
 ): Promise<Scriba> {
   const startedAt = Date.now();
   const repo = await Repository.open(config.dbPath);
   log.debug("repository open, migrations applied");
 
-  const obsidian = seams.obsidian ?? new ObsidianClient(config.obsidian);
+  const obsidian =
+    externalServices.obsidian ?? new ObsidianClient(config.obsidian);
   const transcriber =
-    seams.transcriber ?? buildTranscriber(config.transcription);
-  const enricher = seams.enricher ?? (await buildEnricher(config, repo));
+    externalServices.transcriber ?? buildTranscriber(config.transcription);
+  const enricher =
+    externalServices.enricher ?? (await buildEnricher(config, repo));
   const links = new LinkIndex(config.vaultPath);
   const github = new GithubReleases();
 
   const bot = new ScribaBot(
+    config,
     repo,
     obsidian,
     enricher,
@@ -144,6 +147,7 @@ export async function createScriba(
   bot.setQueue(queue);
 
   const scheduler = new Scheduler(
+    config,
     repo,
     processor,
     (t) => bot.notify(t),
@@ -156,8 +160,6 @@ export async function createScriba(
   );
   bot.setScheduler(scheduler);
 
-  // Probes are plain GETs to a host or a /models listing, never a call that generates
-  // anything.
   const health = new HealthMonitor(
     upstreams(
       {

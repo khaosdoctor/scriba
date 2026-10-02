@@ -1,6 +1,5 @@
 import { type Bot, InlineKeyboard } from "grammy";
 import { commands, type Deps } from "../commands/index.ts";
-import { config } from "../config.ts";
 import {
   cleanNoteTitle,
   distinctSurfaces,
@@ -37,6 +36,7 @@ import {
 } from "../core.ts";
 import type { Jot } from "../db.ts";
 import { logger } from "../log.ts";
+import type { Config } from "../models/config.ts";
 import type { Scheduler } from "../runtime/scheduler.ts";
 import { plainDate } from "../time.ts";
 import { closeMessage } from "../views/chat.ts";
@@ -101,6 +101,7 @@ export class MenuController {
 
   constructor(
     private bot: Bot,
+    private config: Config,
     private rating: RatingCommand,
     private habits: HabitsCommand,
     private reprocess: ReprocessCommand,
@@ -187,7 +188,7 @@ export class MenuController {
     );
     const at = ratingTime(
       await repo.getSetting(RATING_TIME_KEY),
-      config.ratingTime,
+      this.config.ratingTime,
     );
     return new InlineKeyboard()
       .text("📊 Rate today", "menu:rate")
@@ -466,7 +467,7 @@ export class MenuController {
     await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
     log.info("menu: prompting for the rating time");
     await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       `🕛 Reply to this message with the time for the nightly rating, as HH:MM in 24-hour time, like 23:30. A time before 12:00 rates the day that just ended, a later one rates today. ${WIZARD_RATING_TIME_REF}`,
       { reply_markup: { force_reply: true } }, // opened by a tap, see promptEntrySize
     );
@@ -527,7 +528,7 @@ export class MenuController {
       which === "enrich" ? WIZARD_ENRICH_MODEL_REF : WIZARD_VOICEFIX_MODEL_REF;
     log.info({ which }, "menu: prompting for a custom model");
     await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       `🧠 Reply with the model ID for ${label} (e.g. claude-sonnet-5): ${ref}`,
       { reply_markup: { force_reply: true } },
     );
@@ -585,7 +586,7 @@ export class MenuController {
     // pointed at it safely: you just tapped, you weren't halfway through a jot. Prompts
     // that arrive unasked (a task suggested from a jot, a habit review) never do this.
     await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       `✂️ Reply to this message with how many characters one journal entry may be: 40–4000, or "off" to stop splitting. ${WIZARD_ENTRYSIZE_REF}`,
       { reply_markup: { force_reply: true } },
     );
@@ -943,7 +944,7 @@ export class MenuController {
       rgw: `✏️ Reply to this message with the new word for this pair. ${`(${WIZARD_RENAME_REF}:${gi})`}`,
     };
     const text = prompts[kind];
-    await this.bot.api.sendMessage(config.telegram.allowedUserId, text, {
+    await this.bot.api.sendMessage(this.config.telegram.allowedUserId, text, {
       reply_markup: { force_reply: true }, // opened by a tap — see promptEntrySize
     });
   }
@@ -1008,7 +1009,7 @@ export class MenuController {
   /** Send a menu screen of our own (not an edit of a tapped one) and start its countdown. */
   private async sendMenu(text: string, kb: InlineKeyboard): Promise<void> {
     const sent = await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       text,
       { reply_markup: withClose(kb, CLOSE) },
     );
@@ -1358,7 +1359,7 @@ export class MenuController {
     await ctx.answerCallbackQuery();
     log.info({ jotId: id }, "menu: edit jot — prompting for a reply");
     const sent = await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       `✏️ Reply to this message with your edit for ${id} (or "delete" to remove it).`,
       { reply_markup: { force_reply: true } }, // opened by a tap — see promptEntrySize
     );

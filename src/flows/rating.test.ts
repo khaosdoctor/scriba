@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// rating.ts pulls in config.ts, which validates process.env at import time, so give it the
-// bare minimum first (the same trick scheduler.test.ts uses).
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { RatingCommand } = await import("./rating.ts");
+import { testConfig } from "../test/config.ts";
+import { RatingCommand } from "./rating.ts";
 
 const DATE = "2026-07-05";
 
@@ -36,6 +31,7 @@ function harness(
   };
   const rating: any = new RatingCommand(
     {} as any,
+    testConfig,
     repo as any,
     obsidian as any,
     followup as any,
@@ -113,6 +109,7 @@ test("/rate prompts for the day given, and refuses a malformed date with the usa
   };
   const rating: any = new RatingCommand(
     bot as any,
+    testConfig,
     {} as any,
     {} as any,
     {} as any,

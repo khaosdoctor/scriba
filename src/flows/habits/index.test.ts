@@ -1,18 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// index.ts pulls in config.ts, which validates process.env at import time, so give it the
-// bare minimum first (the same trick scheduler.test.ts uses).
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { config } = await import("../../config.ts");
-const { previousDate } = await import("../../time.ts");
-const { HabitsCommand } = await import("./index.ts");
+import { testConfig } from "../../test/config.ts";
+import { previousDate } from "../../time.ts";
+import { HabitsCommand } from "./index.ts";
 
 const DATE = "2026-07-05";
 const PATH = `Daily/${DATE}.md`;
-const CHAT = config.telegram.allowedUserId;
+const CHAT = testConfig.telegram.allowedUserId;
 const FLOW_MSG = 500;
 
 const NOTE = `---
@@ -20,7 +14,7 @@ date: ${DATE}
 ---
 ## Journal
 - hi
-## ${config.obsidian.habitsHeading}
+## ${testConfig.obsidian.habitsHeading}
 - [ ] Practiced music #meta/habits/music
 - [ ] [Pages read:: 0] #meta/habits/reading
 - [x] Exercised #meta/habits/exercise [completion:: ${DATE}]
@@ -101,7 +95,7 @@ function harness(
       return fn();
     },
   };
-  const habits = new HabitsCommand(bot as any, obsidian as any);
+  const habits = new HabitsCommand(bot as any, testConfig, obsidian as any);
   habits.register();
 
   const tap = async (

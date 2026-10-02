@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// menu.ts pulls in config.ts, which validates process.env at import time — give it the
-// bare minimum before loading, the same trick config.test.ts uses.
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { MenuController } = await import("./menu.ts");
+import { testConfig } from "../test/config.ts";
+import { MenuController } from "./menu.ts";
 
 /** A controller wired to a bot stub that only records deleteMessage calls. */
 function harness() {
@@ -20,6 +15,7 @@ function harness() {
   };
   const menu = new MenuController(
     bot as any,
+    testConfig,
     {} as any,
     {} as any,
     {} as any,
@@ -78,6 +74,7 @@ function settingsHarness(initial: Record<string, string> = {}) {
   };
   const menu = new MenuController(
     bot as any,
+    testConfig,
     {} as any,
     {} as any,
     {} as any,
@@ -407,6 +404,7 @@ function wizardHarness(
   };
   const menu = new MenuController(
     bot as any,
+    testConfig,
     {} as any,
     {} as any,
     {} as any,

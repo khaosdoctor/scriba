@@ -1,11 +1,8 @@
 // Drives the real ScribaBot through grammy's handleUpdate with in-memory collaborators.
 // Every call a handler makes to the repository, Obsidian, the queue or Telegram is recorded
 // on one ordered timeline, which is what the routing and ack-ledger tests assert against.
-process.env.TELEGRAM_BOT_TOKEN = "t";
-process.env.ALLOWED_TELEGRAM_USER_ID = "1";
-process.env.OBSIDIAN_API_KEY = "o";
-
 import type { Jot } from "../db.ts";
+import { testConfig } from "./config.ts";
 
 export const OWNER = 1;
 export const CHAT = 1;
@@ -201,6 +198,7 @@ export async function botHarness() {
   const health = { snapshot: () => [] };
 
   const bot: any = new ScribaBot(
+    testConfig,
     repo,
     obsidian,
     enricher,

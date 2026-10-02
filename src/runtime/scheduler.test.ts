@@ -1,13 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// scheduler.ts pulls in config.ts, which validates process.env at import time — give it the
-// bare minimum before loading, the same trick config.test.ts uses.
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { Scheduler } = await import("./scheduler.ts");
-const { plainDate } = await import("../time.ts");
+import { testConfig } from "../test/config.ts";
+import { plainDate } from "../time.ts";
+import { Scheduler } from "./scheduler.ts";
 
 const DAY = 24 * 60 * 60_000;
 
@@ -51,6 +46,7 @@ function harness(
     },
   };
   const scheduler = new Scheduler(
+    testConfig,
     repo as any,
     processor as any,
     async (text: string) => void notified.push(text),
@@ -203,6 +199,7 @@ test("a prompt that throws still re-arms for tomorrow", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   let calls = 0;
   const scheduler = new Scheduler(
+    testConfig,
     {
       windowStats: async () => ({ total: 0 }),
       getSetting: async () => undefined,
@@ -367,6 +364,7 @@ test("a rating prompt that never resolves does not stop the next night's", async
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   let calls = 0;
   const scheduler = new Scheduler(
+    testConfig,
     {
       windowStats: async () => ({ total: 0 }),
       getSetting: async () => undefined,
@@ -395,6 +393,7 @@ test("a rating that throws does not hold back the habit review in the same tick"
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   const habits: string[] = [];
   const scheduler = new Scheduler(
+    testConfig,
     {
       windowStats: async () => ({ total: 0 }),
       getSetting: async () => undefined,

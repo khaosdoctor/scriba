@@ -6,12 +6,8 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { placeholderLine, WIZARD_RATING_TIME_REF } from "./core.ts";
 import { type Jot, Repository } from "./db.ts";
+import { testConfig } from "./test/config.ts";
 import { plainDate, plainTime, previousDate } from "./time.ts";
-
-// config.ts reads process.env at import time, so the bot is imported after these are set.
-process.env.TELEGRAM_BOT_TOKEN = "t";
-process.env.ALLOWED_TELEGRAM_USER_ID = "1";
-process.env.OBSIDIAN_API_KEY = "o";
 
 const NOW = Date.UTC(2026, 7, 16, 10, 0, 0);
 const SEC = NOW / 1000;
@@ -95,6 +91,7 @@ async function harness(over: Fakes = {}) {
     },
   };
   const bot: any = new ScribaBot(
+    testConfig,
     repo as any,
     obsidian as any,
     {} as any,

@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// command.ts pulls in config.ts, which validates process.env at import time — give it the
-// bare minimum before loading, the same trick config.test.ts uses.
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { CommandSession } = await import("./command.ts");
+import { testConfig } from "../test/config.ts";
+import { CommandSession } from "./command.ts";
 
 /** Let the session's promise chains (agent stream, serialized Telegram sends) run out. */
 const settle = async (times = 6) => {
@@ -108,6 +103,7 @@ async function harness(feedEditMs = 0, turnSilenceMs = 30_000) {
   const agent = new FakeAgent();
   const session: any = new CommandSession(
     bot as any,
+    testConfig,
     vault as any,
     agent.query as any,
     feedEditMs,

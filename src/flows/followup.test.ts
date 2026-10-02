@@ -1,12 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// followup.ts pulls in config.ts, which validates process.env at import time, so give it the
-// bare minimum first (the same trick scheduler.test.ts uses).
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { FollowupFlow } = await import("./followup.ts");
+import { testConfig } from "../test/config.ts";
+import { FollowupFlow } from "./followup.ts";
 
 const DATE = "2026-07-05";
 const EMPTY = "## Journal\n-\n## TIL\n-\n";
@@ -48,6 +43,7 @@ function harness(
   };
   const flow = new FollowupFlow(
     bot as any,
+    testConfig,
     repo as any,
     obsidian as any,
     async (_ctx, date, text) => {

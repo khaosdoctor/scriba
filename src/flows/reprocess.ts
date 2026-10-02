@@ -1,5 +1,4 @@
 import { type Bot, InlineKeyboard } from "grammy";
-import { config } from "../config.ts";
 import {
   jotPreview,
   monthGrid,
@@ -9,6 +8,7 @@ import {
 } from "../core.ts";
 import { type JotStatus, type Repository, TERMINAL_STATUSES } from "../db.ts";
 import { logger } from "../log.ts";
+import type { Config } from "../models/config.ts";
 import type { FlushQueue } from "../runtime/queue.ts";
 import { dayBounds, isValidDate, plainDate } from "../time.ts";
 import { closeMessage } from "../views/chat.ts";
@@ -46,6 +46,7 @@ export class ReprocessCommand {
 
   constructor(
     private bot: Bot,
+    private config: Config,
     private repo: Repository,
   ) {}
 
@@ -67,9 +68,13 @@ export class ReprocessCommand {
    *  its own message into this multi-step flow. */
   async promptRoot(): Promise<void> {
     log.info("reprocess menu opened (via /menu)");
-    await this.bot.api.sendMessage(config.telegram.allowedUserId, ROOT_TEXT, {
-      reply_markup: withClose(this.rootMenu(), CLOSE),
-    });
+    await this.bot.api.sendMessage(
+      this.config.telegram.allowedUserId,
+      ROOT_TEXT,
+      {
+        reply_markup: withClose(this.rootMenu(), CLOSE),
+      },
+    );
   }
 
   private rootMenu(): InlineKeyboard {

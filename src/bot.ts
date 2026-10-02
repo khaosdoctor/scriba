@@ -2,7 +2,6 @@ import { extname } from "node:path";
 import { Bot, InlineKeyboard } from "grammy";
 import { commands, type Deps } from "./commands/index.ts";
 import { UNREJECT_NS } from "./commands/unreject.ts";
-import { config } from "./config.ts";
 import {
   anchorLine,
   assetEmbed,
@@ -41,6 +40,7 @@ import { TASKS_NS, TasksFlow } from "./flows/tasks/index.ts";
 import type { TaskDraft } from "./flows/tasks/parse.ts";
 import { TIL_NS, TilFlow } from "./flows/til.ts";
 import { logger } from "./log.ts";
+import type { Config } from "./models/config.ts";
 import type { HealthMonitor } from "./runtime/health.ts";
 import type {
   BotServices,
@@ -138,6 +138,7 @@ export class ScribaBot implements BotServices {
   >();
 
   constructor(
+    private config: Config,
     private repo: Repository,
     private obsidian: ObsidianClient,
     private enricher: Enricher,
@@ -154,16 +155,24 @@ export class ScribaBot implements BotServices {
     });
     this.followup = new FollowupFlow(
       this.bot,
+      config,
       repo,
       obsidian,
       (ctx, date, text) =>
         this.intake(ctx, "text", { rawText: text, day: date }),
     );
-    this.rating = new RatingCommand(this.bot, repo, obsidian, this.followup);
-    this.habits = new HabitsCommand(this.bot, obsidian);
-    this.reprocess = new ReprocessCommand(this.bot, repo);
+    this.rating = new RatingCommand(
+      this.bot,
+      config,
+      repo,
+      obsidian,
+      this.followup,
+    );
+    this.habits = new HabitsCommand(this.bot, config, obsidian);
+    this.reprocess = new ReprocessCommand(this.bot, config, repo);
     this.menu = new MenuController(
       this.bot,
+      config,
       this.rating,
       this.habits,
       this.reprocess,
@@ -174,18 +183,20 @@ export class ScribaBot implements BotServices {
     // reach the host — see flows/command.ts.
     this.command = new CommandSession(
       this.bot,
+      config,
       new VaultTools(config.vaultPath || null, obsidian),
     );
     // /task: every message becomes a task in one of the two task notes instead of a jot.
     // It and command mode both own the message stream, so neither opens over the other.
     this.tasks = new TasksFlow(
       this.bot,
+      config,
       repo,
       new TaskStore(obsidian, config.tasks),
       enricher,
       () => this.command.isOpen(),
     );
-    this.til = new TilFlow(this.bot, repo, obsidian);
+    this.til = new TilFlow(this.bot, config, repo, obsidian);
     this.command.setBusyCheck(() => this.tasks.isOpen());
     this.menu.setTasks(this.tasks);
     this.registerHandlers();
@@ -292,7 +303,7 @@ export class ScribaBot implements BotServices {
   // --- BotServices ---
   async notify(text: string): Promise<void> {
     log.debug({ text }, "notify user");
-    await this.bot.api.sendMessage(config.telegram.allowedUserId, text);
+    await this.bot.api.sendMessage(this.config.telegram.allowedUserId, text);
   }
 
   /** Nightly rating prompt (the scheduler calls this). Delegates to the rating command. */
@@ -320,7 +331,7 @@ export class ScribaBot implements BotServices {
       .text("Yes", `lk:y:${pendingId}`)
       .text("No", `lk:n:${pendingId}`);
     await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       `Link "${surface}" → [[${note}]]?`,
       { reply_markup: kb },
     );
@@ -361,7 +372,7 @@ export class ScribaBot implements BotServices {
     await this.status(jotId, html, undefined as any);
     // Replace the keyboard on the status message (status() with no opts clears it,
     // so we edit again with the choice buttons).
-    const chat = config.telegram.allowedUserId;
+    const chat = this.config.telegram.allowedUserId;
     const msgId = this.statusMsgs.get(jotId);
     if (msgId) {
       await this.bot.api
@@ -394,7 +405,7 @@ export class ScribaBot implements BotServices {
     opts?: StatusButtons,
   ): Promise<void> {
     const reply_markup = jotButtons(jotId, opts);
-    const chat = config.telegram.allowedUserId;
+    const chat = this.config.telegram.allowedUserId;
     const existing = this.statusMsgs.get(jotId);
     if (existing) {
       try {
@@ -431,7 +442,7 @@ export class ScribaBot implements BotServices {
     await this.repo.unmapMessage(messageId); // no stale reply-map to a gone message
     try {
       await this.bot.api.deleteMessage(
-        config.telegram.allowedUserId,
+        this.config.telegram.allowedUserId,
         messageId,
       );
       log.info({ jotId, messageId }, "deleted stray status message (squash)");
@@ -451,7 +462,7 @@ export class ScribaBot implements BotServices {
     if (!messageId) return;
     const emoji = state === "done" ? "👌" : state === "retrying" ? "🤔" : "😱";
     await this.bot.api
-      .setMessageReaction(config.telegram.allowedUserId, messageId, [
+      .setMessageReaction(this.config.telegram.allowedUserId, messageId, [
         { type: "emoji", emoji },
       ])
       .catch(() => {});
@@ -460,7 +471,7 @@ export class ScribaBot implements BotServices {
   /** Best-effort "typing…" chat action. Telegram clears it after ~5s on its own. */
   async typing(): Promise<void> {
     await this.bot.api
-      .sendChatAction(config.telegram.allowedUserId, "typing")
+      .sendChatAction(this.config.telegram.allowedUserId, "typing")
       .catch(() => {});
   }
 
@@ -469,7 +480,7 @@ export class ScribaBot implements BotServices {
     if (!file.file_path) throw new Error(`no file_path for ${fileId}`);
     // Bot API files go up to 20 MB, so longer than a model call, but never unbounded.
     const res = await fetch(
-      `https://api.telegram.org/file/bot${config.telegram.token}/${file.file_path}`,
+      `https://api.telegram.org/file/bot${this.config.telegram.token}/${file.file_path}`,
       { signal: AbortSignal.timeout(60_000) },
     );
     if (!res.ok) throw new Error(`telegram file download: ${res.status}`);
@@ -533,7 +544,7 @@ export class ScribaBot implements BotServices {
 
     // single-user allowlist — everyone else is ignored
     this.bot.use(async (ctx, next) => {
-      if (ctx.from?.id === config.telegram.allowedUserId) await next();
+      if (ctx.from?.id === this.config.telegram.allowedUserId) await next();
     });
 
     this.bot.command("start", (ctx) =>
@@ -766,7 +777,11 @@ export class ScribaBot implements BotServices {
       const prev = await this.repo.lastPendingEnrichableJot(notePath, section);
       if (
         prev &&
-        withinSquashWindow(prev.received_at, epochMs, config.squash.windowMs)
+        withinSquashWindow(
+          prev.received_at,
+          epochMs,
+          this.config.squash.windowMs,
+        )
       ) {
         anchor = prev.anchor;
         squashed = true;

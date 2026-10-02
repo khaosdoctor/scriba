@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-
-// til.ts pulls in config.ts, which validates process.env at import time.
-process.env.TELEGRAM_BOT_TOKEN ??= "t";
-process.env.ALLOWED_TELEGRAM_USER_ID ??= "1";
-process.env.OBSIDIAN_API_KEY ??= "o";
-const { TilFlow } = await import("./til.ts");
-const { moveAnchorLine } = await import("../core.ts");
+import { moveAnchorLine } from "../core.ts";
+import { testConfig } from "../test/config.ts";
+import { TilFlow } from "./til.ts";
 
 type Moved = "moved" | "no-line" | "no-heading";
 
@@ -68,7 +64,12 @@ function harness(
     editMessageText: async (text: string, opts: any) =>
       void edits.push({ text, markup: opts.reply_markup }),
   };
-  const flow = new TilFlow(bot as any, repo as any, obsidian as any);
+  const flow = new TilFlow(
+    bot as any,
+    testConfig,
+    repo as any,
+    obsidian as any,
+  );
   return {
     flow,
     ctx,
@@ -227,6 +228,7 @@ test("a fresh flow can answer a card another instance sent, since the card carri
   await first.flow.ask("abcd1234", "sqlite has WAL");
   const second = new TilFlow(
     { api: {} } as any,
+    testConfig,
     first.repo as any,
     first.obsidian as any,
   );

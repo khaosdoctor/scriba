@@ -1,4 +1,3 @@
-import { config } from "../config.ts";
 import {
   parseClockTime,
   RATING_SWITCH_KEY,
@@ -7,6 +6,7 @@ import {
 } from "../core.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
+import type { Config } from "../models/config.ts";
 import { msUntilNext, plainDate, previousDate, startOfToday } from "../time.ts";
 import type { JotProcessor } from "./processor.ts";
 
@@ -17,11 +17,12 @@ const log = logger("scheduler");
 export class Scheduler {
   private timers: NodeJS.Timeout[] = [];
   // The rating time is the one that changes at runtime (from /menu), so it has its own timer.
-  private ratingAt: string = config.ratingTime;
+  private ratingAt: string;
   private ratingTimer?: NodeJS.Timeout;
   private started = false;
 
   constructor(
+    private config: Config,
     private repo: Repository,
     private processor: JotProcessor,
     private notify: (text: string) => Promise<void>,
@@ -29,11 +30,13 @@ export class Scheduler {
     private askHabits: (date: string) => Promise<void>,
     private sendTaskSummary: () => Promise<void>,
     private retryMs = 5 * 60_000,
-  ) {}
+  ) {
+    this.ratingAt = config.ratingTime;
+  }
 
   start(): void {
     this.scheduleDaily(
-      config.summaryTime,
+      this.config.summaryTime,
       () => this.sendSummary(),
       "daily summary",
     );
@@ -41,24 +44,24 @@ export class Scheduler {
     this.armRating();
     // Fires at 00:00 → review the day that just ended, i.e. yesterday.
     this.scheduleDaily(
-      config.habitsTime,
+      this.config.habitsTime,
       () => this.askHabits(previousDate()),
       "daily habit review",
     );
     // The one message of the day meant to interrupt: what's due today and what is still
     // hanging over from before, in the morning, whether or not you ask.
     this.scheduleDaily(
-      config.tasksTime,
+      this.config.tasksTime,
       () => this.sendTaskSummary(),
       "daily task summary",
     );
     log.info(
       {
         retryMs: this.retryMs,
-        summaryTime: config.summaryTime,
+        summaryTime: this.config.summaryTime,
         ratingTime: this.ratingAt,
-        habitsTime: config.habitsTime,
-        tasksTime: config.tasksTime,
+        habitsTime: this.config.habitsTime,
+        tasksTime: this.config.tasksTime,
       },
       "scheduler started",
     );

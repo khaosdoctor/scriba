@@ -4,7 +4,7 @@ const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM");
 
 // Whole environment is one schema: coercion, defaults, and cross-field checks
 // all live here so a misconfigured deploy fails at boot with a readable message.
-export const EnvSchema = z.object({
+const EnvObject = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(1),
   ALLOWED_TELEGRAM_USER_ID: z.coerce.number(),
   PORT: z.coerce.number().default(8080), // health endpoint only (long polling needs no inbound webhook)
@@ -100,9 +100,7 @@ export const EnvSchema = z.object({
   COMMAND_THINKING_TOKENS: z.coerce.number().min(0).default(4000),
 });
 
-type Env = z.infer<typeof EnvSchema>;
-
-function toConfig(env: Env) {
+function toConfig(env: z.infer<typeof EnvObject>) {
   return {
     telegram: {
       token: env.TELEGRAM_BOT_TOKEN,
@@ -172,7 +170,9 @@ function toConfig(env: Env) {
   } as const;
 }
 
-export type Config = ReturnType<typeof toConfig>;
+export const EnvSchema = EnvObject.transform(toConfig);
+
+export type Config = z.output<typeof EnvSchema>;
 
 export function loadConfig(
   env: Readonly<Record<string, string | undefined>>,
@@ -180,5 +180,5 @@ export function loadConfig(
   const parsed = EnvSchema.safeParse(env);
   if (!parsed.success)
     throw new Error(`Invalid configuration\n${z.prettifyError(parsed.error)}`);
-  return toConfig(parsed.data);
+  return parsed.data;
 }

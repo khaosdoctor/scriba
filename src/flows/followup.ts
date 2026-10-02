@@ -1,5 +1,4 @@
 import { type Bot, InlineKeyboard } from "grammy";
-import { config } from "../config.ts";
 import {
   entitiesToMarkdown,
   FOLLOWUP_CODES,
@@ -12,6 +11,7 @@ import {
 } from "../core.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
+import type { Config } from "../models/config.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import { isValidDate } from "../time.ts";
 
@@ -40,6 +40,7 @@ export class FollowupFlow {
 
   constructor(
     private bot: Bot,
+    private config: Config,
     private repo: Repository,
     private obsidian: ObsidianClient,
     /** Takes `text` as a jot for `date`, replying to the message in `ctx`. */
@@ -63,8 +64,8 @@ export class FollowupFlow {
     const [question] = followupQuestions(
       daily?.content ?? null,
       {
-        journal: config.obsidian.journalHeading,
-        til: config.obsidian.tilHeading,
+        journal: this.config.obsidian.journalHeading,
+        til: this.config.obsidian.tilHeading,
       },
       after,
     );
@@ -74,7 +75,7 @@ export class FollowupFlow {
     }
     log.info({ date, question }, "asking follow-up question");
     await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       `${PROMPTS[question]} Reply to this message, or skip.\n${followupRef(question, date)}`,
       {
         reply_markup: new InlineKeyboard().text(

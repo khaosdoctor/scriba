@@ -7,7 +7,6 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 import { type Bot, InlineKeyboard } from "grammy";
 import { z } from "zod";
-import { config } from "../config.ts";
 import {
   clipUpdate,
   escapeHtml,
@@ -22,6 +21,7 @@ import {
   toolIcon,
 } from "../core.ts";
 import { logger } from "../log.ts";
+import type { Config } from "../models/config.ts";
 import type { VaultTools } from "../services/vault.ts";
 
 const log = logger("command");
@@ -213,6 +213,7 @@ export class CommandSession {
 
   constructor(
     private bot: Bot,
+    private config: Config,
     private vault: VaultTools,
     private query: typeof sdkQuery = sdkQuery,
     /** Minimum gap between edits of the live status message. */
@@ -328,7 +329,7 @@ export class CommandSession {
       this.close();
       void this.bot.api
         .sendMessage(
-          config.telegram.allowedUserId,
+          this.config.telegram.allowedUserId,
           "🧭 Command mode timed out — back to journaling.",
         )
         .catch(() => {});
@@ -348,7 +349,7 @@ export class CommandSession {
       prompt,
       state: "queued",
       feed: [],
-      chatId: ctx.chat?.id ?? config.telegram.allowedUserId,
+      chatId: ctx.chat?.id ?? this.config.telegram.allowedUserId,
       sourceId: ctx.message?.message_id,
     };
     // Queued before the await, so two messages sent in quick succession keep their order
@@ -503,13 +504,13 @@ export class CommandSession {
       prompt: stream,
       options: {
         systemPrompt: `${SYSTEM}\n\nThese are the patterns that give machine writing away. Do not produce any of them.\n\n${await this.tropes()}`,
-        model: config.command.model,
+        model: this.config.command.model,
         maxTurns: MAX_TURNS,
         mcpServers: { vault: server },
         // Reasoning is relayed to the chat as it happens, which is only worth
         // anything if the model is actually allowed to think.
-        ...(config.command.thinkingTokens
-          ? { maxThinkingTokens: config.command.thinkingTokens }
+        ...(this.config.command.thinkingTokens
+          ? { maxThinkingTokens: this.config.command.thinkingTokens }
           : {}),
         // Only the vault tools and web search. Every built-in that touches the host
         // (Bash, Read, Write, Edit, Glob, Grep, NotebookEdit, Task…) is absent from
@@ -766,7 +767,7 @@ export class CommandSession {
       });
       void this.bot.api
         .sendMessage(
-          turn?.chatId ?? config.telegram.allowedUserId,
+          turn?.chatId ?? this.config.telegram.allowedUserId,
           fitTelegram(body),
           { parse_mode: "HTML", reply_markup: kb, ...replyParams(turn) },
         )

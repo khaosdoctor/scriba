@@ -1,8 +1,8 @@
 import { type Bot, InlineKeyboard } from "grammy";
-import { config } from "../config.ts";
 import { clipUpdate, escapeHtml } from "../core.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
+import type { Config } from "../models/config.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = logger("til-flow");
@@ -23,6 +23,7 @@ export const TIL_NS = "ti";
 export class TilFlow {
   constructor(
     private bot: Bot,
+    private config: Config,
     private repo: Repository,
     private obsidian: ObsidianClient,
   ) {}
@@ -33,7 +34,7 @@ export class TilFlow {
       .text("🚫 Keep in Journal", `${TIL_NS}:n:${jotId}`);
     const sent = await this.bot.api
       .sendMessage(
-        config.telegram.allowedUserId,
+        this.config.telegram.allowedUserId,
         `💡 That sounds like a TIL. Move this to TIL?\n<blockquote>${escapeHtml(clipUpdate(text, QUOTE_CHARS))}</blockquote>`,
         { parse_mode: "HTML", reply_markup: kb },
       )

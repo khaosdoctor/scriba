@@ -1,7 +1,7 @@
 import { type Bot, InlineKeyboard } from "grammy";
-import { config } from "../../config.ts";
 import { setFrontmatterValue } from "../../core.ts";
 import { logger } from "../../log.ts";
+import type { Config } from "../../models/config.ts";
 import type { ObsidianClient } from "../../services/obsidian.ts";
 import { DATE_RE, previousDate } from "../../time.ts";
 import {
@@ -34,6 +34,7 @@ export class HabitsCommand {
 
   constructor(
     private bot: Bot,
+    private config: Config,
     private obsidian: ObsidianClient,
   ) {}
 
@@ -61,7 +62,7 @@ export class HabitsCommand {
       log.info({ date }, "habits already reviewed — skipping");
       if (announceEmpty) {
         await this.bot.api.sendMessage(
-          config.telegram.allowedUserId,
+          this.config.telegram.allowedUserId,
           `✅ Habits already reviewed for ${date}.`,
         );
       }
@@ -69,7 +70,7 @@ export class HabitsCommand {
     }
 
     const pending = daily
-      ? parseHabits(daily.content, config.obsidian.habitsHeading).filter(
+      ? parseHabits(daily.content, this.config.obsidian.habitsHeading).filter(
           (h) => !h.done,
         )
       : [];
@@ -77,7 +78,7 @@ export class HabitsCommand {
       log.info({ date, hasNote: !!daily }, "no pending habits to review");
       if (announceEmpty) {
         await this.bot.api.sendMessage(
-          config.telegram.allowedUserId,
+          this.config.telegram.allowedUserId,
           daily
             ? `✅ All habits already done for ${date}.`
             : `No habits found for ${date}.`,
@@ -91,7 +92,7 @@ export class HabitsCommand {
       `${HABITS_NS}:${date}:begin`,
     );
     const sent = await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       `🌱 Time to review habits for ${date} — ${pending.length} to go.`,
       { reply_markup: kb },
     );
@@ -109,7 +110,7 @@ export class HabitsCommand {
     }
     const habit = parseHabits(
       daily.content,
-      config.obsidian.habitsHeading,
+      this.config.obsidian.habitsHeading,
     ).find((h) => h.index >= fromIndex && !h.done);
     if (!habit) {
       log.info({ date }, "habit review complete — stamping frontmatter");
@@ -129,7 +130,7 @@ export class HabitsCommand {
     if (habit.field) {
       const text = `🌱 ${habit.label}? Reply to this message with a number.\n(hb:${date}:${habit.index})`;
       await this.bot.api.editMessageText(
-        config.telegram.allowedUserId,
+        this.config.telegram.allowedUserId,
         msgId,
         text,
       );
@@ -139,7 +140,7 @@ export class HabitsCommand {
       .text("✅ Yes", `${HABITS_NS}:${date}:${habit.index}:y`)
       .text("❌ No", `${HABITS_NS}:${date}:${habit.index}:n`);
     await this.bot.api.editMessageText(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       msgId,
       `🌱 ${habit.label}?`,
       { reply_markup: kb },
@@ -175,7 +176,7 @@ export class HabitsCommand {
     const daily = await this.obsidian.readDailyNote(date);
     const habit =
       daily &&
-      parseHabits(daily.content, config.obsidian.habitsHeading).find(
+      parseHabits(daily.content, this.config.obsidian.habitsHeading).find(
         (h) => h.index === index,
       );
     if (!daily || !habit) {
@@ -211,7 +212,7 @@ export class HabitsCommand {
     const daily = await this.obsidian.readDailyNote(ref.date);
     const habit =
       daily &&
-      parseHabits(daily.content, config.obsidian.habitsHeading).find(
+      parseHabits(daily.content, this.config.obsidian.habitsHeading).find(
         (h) => h.index === ref.index,
       );
     if (!daily || !habit) {
@@ -255,7 +256,7 @@ export class HabitsCommand {
     const msgId = this.activeMsg.get(date);
     if (msgId) {
       await this.bot.api
-        .deleteMessage(config.telegram.allowedUserId, msgId)
+        .deleteMessage(this.config.telegram.allowedUserId, msgId)
         .catch(() => {});
       this.activeMsg.delete(date);
     }

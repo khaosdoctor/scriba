@@ -1,7 +1,7 @@
 import { type Bot, InlineKeyboard } from "grammy";
-import { config } from "../config.ts";
 import type { Repository } from "../db.ts";
 import { logger } from "../log.ts";
+import type { Config } from "../models/config.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import { DATE_RE, plainDate } from "../time.ts";
 import type { FollowupFlow } from "./followup.ts";
@@ -28,6 +28,7 @@ function ratingKeyboard(date: string): InlineKeyboard {
 export class RatingCommand {
   constructor(
     private bot: Bot,
+    private config: Config,
     private repo: Repository,
     private obsidian: ObsidianClient,
     private followup: FollowupFlow,
@@ -52,7 +53,7 @@ export class RatingCommand {
   async prompt(date: string): Promise<void> {
     log.info({ date }, "prompting for daily rating");
     await this.bot.api.sendMessage(
-      config.telegram.allowedUserId,
+      this.config.telegram.allowedUserId,
       `📊 How was ${date}? Rate it 1–10:`,
       { reply_markup: ratingKeyboard(date) },
     );

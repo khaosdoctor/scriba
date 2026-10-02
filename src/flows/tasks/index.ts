@@ -1,5 +1,4 @@
 import { type Bot, InlineKeyboard } from "grammy";
-import { config } from "../../config.ts";
 import {
   escapeHtml,
   fitTelegram,
@@ -8,6 +7,7 @@ import {
 } from "../../core.ts";
 import type { Repository, TaskDraftRow, TaskType } from "../../db.ts";
 import { logger } from "../../log.ts";
+import type { Config } from "../../models/config.ts";
 import type { Enricher } from "../../services/enrich.ts";
 import type { TaskStore } from "../../services/tasks.ts";
 import { plainDate } from "../../time.ts";
@@ -105,6 +105,7 @@ export class TasksFlow {
 
   constructor(
     private bot: Bot,
+    private config: Config,
     private repo: Repository,
     private store: TaskStore,
     /** Reads a `/taskadd` line into a task. Enrichment is the only thing in this flow
@@ -146,7 +147,7 @@ export class TasksFlow {
    */
   private async quickAdd(ctx: any, text: string): Promise<void> {
     const today = plainDate();
-    const chatId = ctx.chat?.id ?? config.telegram.allowedUserId;
+    const chatId = ctx.chat?.id ?? this.config.telegram.allowedUserId;
     let draft: TaskDraft;
     try {
       draft = draftFromDetection(await this.enricher.extractTask(text), today);
@@ -238,7 +239,7 @@ export class TasksFlow {
       this.close();
       void this.bot.api
         .sendMessage(
-          config.telegram.allowedUserId,
+          this.config.telegram.allowedUserId,
           "📝 Task mode timed out — back to journaling.",
         )
         .catch(() => {});
@@ -270,7 +271,7 @@ export class TasksFlow {
       source: "mode",
       jotId: null,
       sourceDate: today,
-      chatId: ctx.chat?.id ?? config.telegram.allowedUserId,
+      chatId: ctx.chat?.id ?? this.config.telegram.allowedUserId,
     });
     await this.sendCard(row, "📝 New task");
   }
@@ -320,7 +321,7 @@ export class TasksFlow {
       source: "jot",
       jotId,
       sourceDate: jotDate,
-      chatId: config.telegram.allowedUserId,
+      chatId: this.config.telegram.allowedUserId,
     });
     log.info(
       { draft: row.id, jotId, due: row.due },
@@ -491,7 +492,10 @@ export class TasksFlow {
       const asked = ctx.message?.reply_to_message?.message_id;
       if (asked)
         await this.bot.api
-          .deleteMessage(ctx.chat?.id ?? config.telegram.allowedUserId, asked)
+          .deleteMessage(
+            ctx.chat?.id ?? this.config.telegram.allowedUserId,
+            asked,
+          )
           .catch(() => {});
       return this.quickAdd(ctx, body);
     }
@@ -718,9 +722,13 @@ export class TasksFlow {
    *  message into this flow. */
   async promptRoot(): Promise<void> {
     log.info("tasks menu opened (via /menu)");
-    await this.bot.api.sendMessage(config.telegram.allowedUserId, MENU_TEXT, {
-      reply_markup: await this.menuKeyboard(),
-    });
+    await this.bot.api.sendMessage(
+      this.config.telegram.allowedUserId,
+      MENU_TEXT,
+      {
+        reply_markup: await this.menuKeyboard(),
+      },
+    );
   }
 
   private async menuKeyboard(): Promise<InlineKeyboard> {
@@ -839,7 +847,7 @@ export class TasksFlow {
    */
   async dailySummary(): Promise<void> {
     const today = plainDate();
-    const chat = config.telegram.allowedUserId;
+    const chat = this.config.telegram.allowedUserId;
     log.info({ date: today }, "tasks: sending the daily summary");
     try {
       const { text, kb, count } = await this.viewMessage(
@@ -894,7 +902,7 @@ export class TasksFlow {
     if (!task) {
       await this.bot.api
         .sendMessage(
-          ctx.chat?.id ?? config.telegram.allowedUserId,
+          ctx.chat?.id ?? this.config.telegram.allowedUserId,
           "⚠️ That task moved or changed in Obsidian since this list was drawn — here it is again.",
         )
         .catch(() => {});
