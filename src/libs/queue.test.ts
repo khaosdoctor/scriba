@@ -116,3 +116,26 @@ test("add(ids) doesn't blow the call stack on a very large batch", (t) => {
   assert.doesNotThrow(() => q.add(huge));
   assert.equal(q.depth, 200_000);
 });
+
+test("a /flush while a batch is draining, or with nothing queued, does nothing", async () => {
+  const gate: { open?: () => void } = {};
+  const flushed: string[][] = [];
+  const queue = new FlushQueue({
+    idleMs: 100_000,
+    maxBatch: 2,
+    maxWaitMs: 100_000,
+    onFlush: (ids) =>
+      new Promise<void>((resolve) => {
+        flushed.push(ids);
+        gate.open = resolve;
+      }),
+  });
+  await queue.flush();
+  assert.deepEqual(flushed, []);
+  queue.add(["a", "b"]);
+  await queue.flush();
+  assert.deepEqual(flushed, [["a", "b"]]);
+  gate.open!();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(queue.depth, 0);
+});

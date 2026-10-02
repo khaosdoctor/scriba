@@ -557,3 +557,10 @@ test("every marker-bearing prompt is claimed by the flow that sent it and by no 
   for (const producer of PRODUCERS)
     assert.deepEqual(claimedBy(producer.text), [producer.owner], producer.name);
 });
+
+test("a reply to a message with no text, like a photo, is not a prompt answer", async () => {
+  const harness = await botHarness();
+  const run = await harness.say("make it shorter", { message_id: 7 });
+  assert.equal(run.rendered, "repo.jotForMessage > tg.sendMessage");
+  assert.equal(first(run.texts("sendMessage")), "Can't find that jot to edit.");
+});

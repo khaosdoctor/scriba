@@ -12,8 +12,10 @@ import {
   parseTaskLine,
   parseTasks,
   renderTaskLine,
+  replaceTaskLineAt,
   taskButtonLabel,
   taskCard,
+  taskListLine,
   uncompleteTaskLine,
   weekBounds,
 } from "./tasks.ts";
@@ -252,6 +254,29 @@ test("a lone start is promoted to the deadline, since due is the mandatory one",
   assert.equal(d.start, null);
   assert.equal(d.due, "2026-08-31");
   assert.equal(d.description, "start the chapter");
+  assert.deepEqual(parseTaskDraft("gym routine starting monday", TODAY), {
+    description: "gym routine",
+    type: "personal",
+    start: null,
+    due: "2026-08-31",
+  });
+});
+
+test("two bare dates are the start and the deadline, earliest first", () => {
+  const expected = {
+    description: "sprint kickoff demo",
+    type: "personal",
+    start: "2026-08-31",
+    due: "2026-09-04",
+  };
+  assert.deepEqual(
+    parseTaskDraft("sprint kickoff monday, demo friday", TODAY),
+    expected,
+  );
+  assert.deepEqual(parseTaskDraft("demo friday, kickoff monday", TODAY), {
+    ...expected,
+    description: "demo kickoff",
+  });
 });
 
 test("work is only work when it's said plainly", () => {
@@ -430,6 +455,85 @@ test("effectiveStart falls back to the deadline", () => {
     effectiveStart(task({ start: "2026-08-30", due: "2026-09-02" })),
     "2026-08-30",
   );
+});
+
+test("open tasks sort by deadline, then start, then text, with undated ones last", () => {
+  const tasks = [
+    task({ text: "no deadline" }),
+    task({ text: "b same day", due: "2026-09-02" }),
+    task({ text: "also no deadline" }),
+    task({ text: "a same day", due: "2026-09-02" }),
+    task({ text: "earlier start", start: "2026-08-30", due: "2026-09-02" }),
+  ];
+  assert.deepEqual(
+    filterTasks(tasks, "open", TODAY).map((row) => row.text),
+    [
+      "earlier start",
+      "a same day",
+      "b same day",
+      "also no deadline",
+      "no deadline",
+    ],
+  );
+});
+
+test("done tasks list the newest completion first and hand-ticked ones without a date last", () => {
+  const tasks = [
+    task({ text: "undated", state: "done" }),
+    task({ text: "older", state: "done", completion: "2026-08-01" }),
+    task({ text: "newer", state: "done", completion: "2026-08-28" }),
+  ];
+  assert.deepEqual(
+    filterTasks(tasks, "done", TODAY).map((row) => row.text),
+    ["newer", "older", "undated"],
+  );
+});
+
+test("a row shows the dates a task carries and says when it has no text", () => {
+  assert.equal(
+    taskListLine(
+      task({ text: "", due: "2026-09-02", start: "2026-08-30" }),
+      1,
+      TODAY,
+    ),
+    "1. ☐ (no description) · due 2026-09-02 · starts 2026-08-30 <i>personal</i>",
+  );
+  assert.equal(
+    taskListLine(task({ text: "no dates" }), 2, TODAY),
+    "2. ☐ no dates <i>personal</i>",
+  );
+  assert.equal(
+    taskListLine(task({ text: "ticked by hand", state: "done" }), 3, TODAY),
+    "3. ☑ ticked by hand <i>personal</i>",
+  );
+  assert.equal(
+    taskListLine(task({ text: "x".repeat(200) }), 4, TODAY),
+    `4. ☐ ${"x".repeat(159)}… <i>personal</i>`,
+  );
+  assert.equal(taskButtonLabel(task({ text: "" }), 5), "☐ 5. (no description)");
+  assert.match(
+    taskCard({
+      description: "",
+      type: "personal",
+      start: null,
+      due: "2026-09-02",
+    }),
+    /\(no description yet\)/,
+  );
+});
+
+test("replaceTaskLineAt counts only checklist rows, so prose inside the section cannot shift a tap", () => {
+  const out = replaceTaskLineAt(
+    NOTE,
+    "Things to do",
+    5,
+    "- [x] Get a DIY Guitar #type/todo",
+  );
+  assert.match(
+    out!,
+    /some prose, not a bullet\n- \[x\] Get a DIY Guitar #type\/todo\n/,
+  );
+  assert.equal(out!.split("\n").length, NOTE.split("\n").length);
 });
 
 // --- detection ---
