@@ -24,7 +24,8 @@ const FIELD_RE = /\[\s*([^[\]:]+?)\s*::\s*([^\]]*?)\s*\]/g;
 const LEGACY_DONE_RE = /✅\s*(\d{4}-\d{2}-\d{2})/;
 const CHECKBOX_RE = /^(\s*-\s*)\[([ xX\-/])\]\s?(.*)$/;
 
-const STATE_BY_MARK: Record<string, TaskState> = {
+type Mark = " " | "x" | "X" | "-" | "/";
+const STATE_BY_MARK: Record<Mark, TaskState> = {
   " ": "open",
   x: "done",
   X: "done",
@@ -65,8 +66,8 @@ export function parseTaskLine(
   type: TaskType,
   tag: string,
 ): Task | null {
-  const m = line.match(CHECKBOX_RE);
-  if (!m) return null;
+  const match = line.match(CHECKBOX_RE);
+  if (!match) return null;
   const f = fields(line);
   const legacy = line.match(LEGACY_DONE_RE)?.[1] ?? null;
   return {
@@ -74,8 +75,8 @@ export function parseTaskLine(
     line,
     fingerprint: fingerprint(line),
     type,
-    state: STATE_BY_MARK[m[2]!] ?? "open",
-    text: taskText(m[3]!, tag),
+    state: STATE_BY_MARK[match[2] as Mark],
+    text: taskText(match[3]!, tag),
     start: dateField(f, "start"),
     due: dateField(f, "due"),
     completion: dateField(f, "completion") ?? legacy,
@@ -102,10 +103,10 @@ export function parseTasks(
 export function renderTaskLine(
   draft: TaskDraft,
   tag: string,
-  sourceDate?: string,
+  sourceDate: string,
 ): string {
   const start = draft.start ?? draft.due;
-  const from = sourceDate ? ` (from [[${sourceDate}]])` : "";
+  const from = ` (from [[${sourceDate}]])`;
   const parts = [`- [ ] ${draft.description.trim()}${from}`, tag];
   if (start) parts.push(`[start:: ${start}]`);
   if (draft.due) parts.push(`[due:: ${draft.due}]`);
@@ -156,7 +157,6 @@ export function replaceTaskLineAt(
   note: string,
   heading: string,
   index: number,
-  expected: string,
   newLine: string,
 ): string | null {
   const lines = note.split("\n");
@@ -166,7 +166,6 @@ export function replaceTaskLineAt(
   for (let i = section.headingIdx + 1; i < section.end; i++) {
     if (!CHECKBOX_RE.test(lines[i]!)) continue;
     if (n++ !== index) continue;
-    if (fingerprint(lines[i]!) !== expected) return null;
     lines[i] = newLine;
     return lines.join("\n");
   }
@@ -422,27 +421,18 @@ export function filterTasks(
   const [weekStart, weekEnd] = weekBounds(today);
   const inWeek = (d: string | null) => !!d && d >= weekStart && d <= weekEnd;
   const twoWeeks = shiftDate(today, 14);
+  const matches: Record<Exclude<TaskView, "done">, (task: Task) => boolean> = {
+    day: (task) =>
+      (!!task.due && task.due <= today) || effectiveStart(task) === today,
+    open: () => true,
+    future: (task) => !!task.due && task.due >= today,
+    overdue: (task) => !!task.due && task.due < today,
+    today: (task) => task.due === today || effectiveStart(task) === today,
+    week: (task) => inWeek(task.due) || inWeek(effectiveStart(task)),
+    two: (task) => !!task.due && task.due >= today && task.due <= twoWeeks,
+  };
   const open = tasks.filter((task) => task.state === "open");
-  const picked = open.filter((t) => {
-    switch (view) {
-      case "day":
-        return (!!t.due && t.due <= today) || effectiveStart(t) === today;
-      case "open":
-        return true;
-      case "future":
-        return !!t.due && t.due >= today;
-      case "overdue":
-        return !!t.due && t.due < today;
-      case "today":
-        return t.due === today || effectiveStart(t) === today;
-      case "week":
-        return inWeek(t.due) || inWeek(effectiveStart(t));
-      case "two":
-        return !!t.due && t.due >= today && t.due <= twoWeeks;
-      default:
-        return false;
-    }
-  });
+  const picked = open.filter(matches[view]);
   return picked.sort(
     (a, b) =>
       (a.due ?? "9999-99-99").localeCompare(b.due ?? "9999-99-99") ||
@@ -494,7 +484,7 @@ export function taskListLine(
       : "";
   const full = t.text || "(no description)";
   const text = full.length > max ? `${full.slice(0, max - 1)}…` : full;
-  return `${n}. ${STATE_ICON[t.state]} ${escapeHtml(text)}${dates}${started} <i>${t.type === "work" ? "work" : "personal"}</i>`;
+  return `${n}. ${STATE_ICON[t.state]} ${escapeHtml(text)}${dates}${started} <i>${t.type}</i>`;
 }
 
 /** Button label for a task row: short enough to survive Telegram's button width. */

@@ -55,11 +55,7 @@ export class FlushQueue {
   }
 
   async flush(): Promise<void> {
-    if (this.draining) return;
-    if (this.ids.length === 0) {
-      this.clearTimers();
-      return;
-    }
+    if (this.draining || this.ids.length === 0) return;
     // At most maxBatch per flush: add() can queue far more than that in one
     // call, and draining it all in a single onFlush would bypass the cap the rest of
     // this class exists to enforce. splice() mutates `ids` down to the remainder.

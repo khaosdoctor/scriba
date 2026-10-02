@@ -94,7 +94,7 @@ async function buildEnricher(
     {
       model: enrichModel,
       backup: config.enrich.backupModel,
-      fallbacks: fallbacks.map((f) => f.name ?? f.model),
+      fallbacks: fallbacks.map((fallback) => fallback.name),
     },
     fallbacks.length
       ? `enricher ready with ${fallbacks.length} chat fallback(s)`

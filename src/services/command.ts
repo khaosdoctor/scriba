@@ -199,7 +199,6 @@ export class CommandService {
   private armWatchdog(turn: Turn): void {
     this.clearWatchdog();
     this.turnTimer = setTimeout(() => {
-      if (this.active !== turn) return;
       // Waiting on a ✅/❌ tap is the owner's move to make, not the agent's: the run is
       // paused on purpose, so the clock starts again rather than running out.
       if (this.pending.size) return this.armWatchdog(turn);
@@ -476,11 +475,9 @@ export class CommandService {
     ack: (toast: string) => Promise<void>,
   ): Promise<void> {
     const turn =
-      id === undefined
-        ? undefined
-        : this.active?.id === id
-          ? this.active
-          : this.queue.find((t) => t.id === id);
+      this.active?.id === id
+        ? this.active
+        : this.queue.find((queued) => queued.id === id);
     if (!turn) {
       log.warn({ turn: id ?? null }, "command: stop for an unknown turn");
       return void ack("nothing to stop");

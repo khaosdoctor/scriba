@@ -46,6 +46,6 @@ export class TaskDraftRepository {
       .where({ jot_id: jotId })
       .count("* as n")
       .first();
-    return Number(row?.n ?? 0);
+    return Number(row!.n);
   }
 }

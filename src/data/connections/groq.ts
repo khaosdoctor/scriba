@@ -40,8 +40,8 @@ export type GroqChatFn = (
   apiKey: string,
   model: string,
   messages: GroqMessage[],
-  baseUrl?: string,
-  timeoutMs?: number,
+  baseUrl: string | undefined,
+  timeoutMs: number,
 ) => Promise<{ text: string; usage: { input: number; output: number } }>;
 
 export const groqChat: GroqChatFn = async (
@@ -56,7 +56,7 @@ export const groqChat: GroqChatFn = async (
   const groq = new Groq({
     apiKey,
     maxRetries: 0,
-    ...(timeoutMs ? { timeout: timeoutMs } : {}),
+    timeout: timeoutMs,
     ...(baseUrl ? { baseURL: baseUrl } : {}),
   });
   const res = await groq.chat.completions.create({

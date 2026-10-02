@@ -12,7 +12,7 @@ export function textCommand(
     description,
     admin: true,
     async run(ctx, { admin }) {
-      const text = await answer(admin, String(ctx.match ?? ""));
+      const text = await answer(admin, ctx.match);
       await ctx.reply(fitTelegram(text));
     },
   };

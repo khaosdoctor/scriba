@@ -8,7 +8,7 @@ export const unreject: CommandView = {
   description: "undo a link-rejection (menu, or /unreject <word> <note>)",
   admin: true,
   async run(ctx, { admin }) {
-    const out = await admin.unreject(String(ctx.match ?? ""));
+    const out = await admin.unreject(ctx.match);
     if (typeof out === "string")
       return void (await ctx.reply(fitTelegram(out)));
     const kb = new InlineKeyboard();

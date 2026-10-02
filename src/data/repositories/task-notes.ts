@@ -78,13 +78,7 @@ export class TaskNotesService {
       const line = done
         ? completeTaskLine(task.line, plainDate())
         : uncompleteTaskLine(task.line);
-      const out = replaceTaskLineAt(
-        note,
-        cfg.heading,
-        index,
-        fingerprint,
-        line,
-      );
+      const out = replaceTaskLineAt(note, cfg.heading, index, line);
       if (!out) return null;
       write(this.touch(out));
       log.info({ type, index, done, text: task.text }, "task state changed");

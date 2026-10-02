@@ -69,15 +69,15 @@ export function dayBounds(date: string): [number, number] {
 }
 
 export function msUntilNext(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
+  const [hour, minute] = hhmm.split(":").map(Number);
   const now = new Date();
   const next = new Date(now);
-  next.setHours(h ?? 0, m ?? 0, 0, 0);
+  next.setHours(hour!, minute!, 0, 0);
   if (next.getTime() <= now.getTime()) next.setDate(next.getDate() + 1);
   return next.getTime() - now.getTime();
 }
 
 export function ratingDay(time: string, now: number = Date.now()): string {
-  const hour = Number((parseClockTime(time) ?? time).slice(0, 2));
+  const hour = Number(parseClockTime(time)!.slice(0, 2));
   return hour < 12 ? previousDate(now) : plainDate(now);
 }
