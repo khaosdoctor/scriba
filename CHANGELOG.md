@@ -1,3 +1,10 @@
+## [1.53.2](https://github.com/khaosdoctor/scriba/compare/v1.53.1...v1.53.2) (2026-10-02)
+
+
+### Bug Fixes
+
+* scrub the Telegram bot token from every log line ([#68](https://github.com/khaosdoctor/scriba/issues/68)) ([269da9a](https://github.com/khaosdoctor/scriba/commit/269da9a09f8b011097697b3f8511077e24f6f2ae))
+
 ## [1.53.1](https://github.com/khaosdoctor/scriba/compare/v1.53.0...v1.53.1) (2026-10-02)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * write TIL-prefixed jots under the TIL heading ([#21](https://github.com/khaosdoctor/scriba/issues/21)) ([932b7e0](https://github.com/khaosdoctor/scriba/commit/932b7e0b8a56bea1cb05a9478e004e1ea4685b08))
-
-## [1.50.0](https://github.com/khaosdoctor/scriba/compare/v1.49.1...v1.50.0) (2026-09-29)
-
-
-### Features
-
-* offer to embed YouTube, tweet and image links as Obsidian embeds ([0366bab](https://github.com/khaosdoctor/scriba/commit/0366babdebe04c1632af0a663152c51728435b2f))
 
