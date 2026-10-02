@@ -2,8 +2,8 @@
 // Every call a handler makes to the repository, Obsidian, the queue or Telegram is recorded
 // on one ordered timeline, which is what the routing and ack-ledger tests assert against.
 
+import { createScriba } from "../app.ts";
 import type { Jot } from "../domain/jot/entity.ts";
-import { createScriba } from "../index.ts";
 import { testConfig } from "./config.ts";
 import { type ApiCall, BOT_INFO, FakeSettings, recordingApi } from "./fakes.ts";
 import { noteOps } from "./note-ops.ts";
