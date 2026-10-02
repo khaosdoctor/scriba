@@ -1,5 +1,6 @@
 import { Bot } from "grammy";
 import type { Config } from "./config.ts";
+import { sdkQuery } from "./data/connections/anthropic.ts";
 import { GithubReleases } from "./data/connections/github.ts";
 import { WebService } from "./data/connections/web.ts";
 import { Repository } from "./data/repositories/index.ts";
@@ -102,7 +103,7 @@ async function buildEnricher(
   );
   return new Enricher(
     enrichModel,
-    undefined,
+    sdkQuery,
     fallbacks,
     undefined,
     config.enrich.backupModel,
@@ -220,7 +221,12 @@ export async function createScriba(
   // /command: an agent session scoped to the vault. It gets no built-in tool that could
   // reach the host; services/agent.ts holds the allow list.
   const command = new CommandService({
-    service: new AgentService(links, new WebService(), config.command),
+    service: new AgentService(
+      links,
+      new WebService(),
+      config.command,
+      sdkQuery,
+    ),
     notifier: chat,
     modes,
   });

@@ -1,11 +1,11 @@
+import { z } from "zod";
 import {
   createSdkMcpServer,
   type Query,
+  type QueryFn,
   type SDKUserMessage,
-  query as sdkQuery,
   tool,
-} from "@anthropic-ai/claude-agent-sdk";
-import { z } from "zod";
+} from "../data/connections/anthropic.ts";
 import type { WebService } from "../data/connections/web.ts";
 import type { VaultService } from "../data/repositories/vault.ts";
 import { logger } from "../libs/log.ts";
@@ -119,7 +119,7 @@ export class AgentService {
     private vault: VaultService,
     private web: WebService,
     private config: AgentConfig,
-    private query: typeof sdkQuery = sdkQuery,
+    private query: QueryFn,
   ) {}
 
   get enabled(): boolean {

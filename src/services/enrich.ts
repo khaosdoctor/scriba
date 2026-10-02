@@ -1,6 +1,5 @@
-import type { OutputFormat } from "@anthropic-ai/claude-agent-sdk";
-import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import { z } from "zod";
+import type { OutputFormat, QueryFn } from "../data/connections/anthropic.ts";
 import {
   type GroqChatFn,
   type GroqMessage,
@@ -26,8 +25,6 @@ import {
   USE_OUTPUT_TOOL,
   VOICE_FIX_SYSTEM,
 } from "./enrich-prompts.ts";
-
-export type QueryFn = typeof sdkQuery;
 
 export const OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1";
 
@@ -132,7 +129,7 @@ export class Enricher {
 
   constructor(
     private model: string | undefined,
-    private query: QueryFn = sdkQuery,
+    private query: QueryFn,
     private fallbacks: EnrichFallback[] = [],
     private groqChatFn: GroqChatFn = groqChat,
     private backupModel?: string,
