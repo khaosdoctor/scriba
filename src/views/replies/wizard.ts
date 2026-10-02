@@ -1,14 +1,14 @@
 import { type Context, type Filter, InlineKeyboard } from "grammy";
-import type {
-  ModelKey,
-  SettingsController,
-  SettingsPrompt,
-} from "../../controllers/settings.ts";
 import { cleanNoteTitle, parseRuleWords } from "../../libs/links.ts";
 import { logger } from "../../libs/log.ts";
 import { parseEntrySize } from "../../libs/text.ts";
 import { parseClockTime } from "../../libs/time.ts";
 import { parseWizardRef, type WizardPrompt } from "../../libs/wizard.ts";
+import type {
+  ModelKey,
+  SettingsController,
+  SettingsPrompt,
+} from "../../services/settings.ts";
 import {
   advance,
   type LinkDeps,

@@ -1,5 +1,5 @@
 import type { Composer, Context } from "grammy";
-import type { EditController } from "../../controllers/edits.ts";
+import type { EditController } from "../../services/edits.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

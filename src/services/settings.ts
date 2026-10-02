@@ -21,8 +21,8 @@ import {
   WIZARD_STOPWORD_REF,
   WIZARD_VOICEFIX_MODEL_REF,
 } from "../libs/wizard.ts";
-import type { Enricher } from "../services/enrich.ts";
-import type { Notifier } from "../services/notifier.ts";
+import type { Enricher } from "./enrich.ts";
+import type { Notifier } from "./notifier.ts";
 
 const log = logger("menu");
 

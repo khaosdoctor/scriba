@@ -1,5 +1,5 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
-import type { AdminController } from "../../controllers/admin.ts";
+import type { AdminController } from "../../services/admin.ts";
 import { namespace } from "./namespace.ts";
 
 /** `ur:s:<si>` opens the note menu for a rejected word; `ur:p:<si>:<ni>` unrejects the

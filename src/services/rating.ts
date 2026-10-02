@@ -3,7 +3,7 @@ import type { ObsidianClient } from "../data/repositories/notes.ts";
 import { logger } from "../libs/log.ts";
 import { sectionHasContent } from "../libs/note.ts";
 import { ratingDay } from "../libs/time.ts";
-import type { Notifier } from "../services/notifier.ts";
+import type { Notifier } from "./notifier.ts";
 
 const log = { rating: logger("rating"), followup: logger("followup") };
 

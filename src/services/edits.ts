@@ -19,7 +19,7 @@ import {
   journalLine,
   stripJournalLine,
 } from "../libs/note.ts";
-import type { Enricher } from "../services/enrich.ts";
+import type { Enricher } from "./enrich.ts";
 import type { JotController } from "./jots.ts";
 
 const log = logger("bot");

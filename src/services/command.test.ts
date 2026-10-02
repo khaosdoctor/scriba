@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AgentService } from "../services/agent.ts";
+import { AgentService } from "./agent.ts";
 import { CommandController } from "./command.ts";
 import { Modes } from "./modes.ts";
 

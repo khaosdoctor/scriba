@@ -1,11 +1,11 @@
 import type { Composer, Context } from "grammy";
+import { logger } from "../../libs/log.ts";
+import { IsoDateSchema } from "../../libs/time.ts";
 import {
   FOLLOWUP_NS,
   followupFromCode,
   type RatingController,
-} from "../../controllers/rating.ts";
-import { logger } from "../../libs/log.ts";
-import { IsoDateSchema } from "../../libs/time.ts";
+} from "../../services/rating.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

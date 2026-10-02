@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { followupRef } from "../../controllers/rating.ts";
 import type { Jot } from "../../domain/jot/entity.ts";
 import { parseHabitRef } from "../../libs/habits.ts";
 import { parseWizardRef } from "../../libs/wizard.ts";
+import { followupRef } from "../../services/rating.ts";
 import { botHarness, NOW } from "../../test/bot-harness.ts";
 import { parseFollowupRef } from "./followup.ts";
 

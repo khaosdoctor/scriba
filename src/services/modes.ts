@@ -1,5 +1,5 @@
 import { logger } from "../libs/log.ts";
-import type { Notifier } from "../services/notifier.ts";
+import type { Notifier } from "./notifier.ts";
 
 const log = logger("modes");
 

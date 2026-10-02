@@ -1,12 +1,9 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
-import type {
-  AdminController,
-  ReprocessScope,
-} from "../../controllers/admin.ts";
 import { jotPreview, STATUS_ICON } from "../../libs/jot.ts";
 import { logger } from "../../libs/log.ts";
 import { pluralize } from "../../libs/text.ts";
 import { IsoDateSchema, plainDate } from "../../libs/time.ts";
+import type { AdminController, ReprocessScope } from "../../services/admin.ts";
 import { Responder } from "../chat.ts";
 import { backTo, pagedScreen, withClose } from "../render/keyboard.ts";
 import { namespace, type Tap } from "./namespace.ts";

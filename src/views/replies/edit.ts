@@ -1,5 +1,5 @@
 import { Composer, type Context } from "grammy";
-import type { EditController, EditOutcome } from "../../controllers/edits.ts";
+import type { EditController, EditOutcome } from "../../services/edits.ts";
 
 /** The reply to an edit or delete that has to wait for the jot's line to exist. */
 export const STILL_PROCESSING: Record<"queued" | "removal-queued", string> = {

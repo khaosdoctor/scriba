@@ -1,9 +1,9 @@
 import type { Composer, Context } from "grammy";
 import { z } from "zod";
-import { RATING_NS, type RatingController } from "../../controllers/rating.ts";
 import { RatingSchema } from "../../domain/rating/entity.ts";
 import { logger } from "../../libs/log.ts";
 import { DATE_RE } from "../../libs/time.ts";
+import { RATING_NS, type RatingController } from "../../services/rating.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

@@ -1,5 +1,4 @@
 import type { Composer, Context } from "grammy";
-import { TASKS_NS, type TaskController } from "../../controllers/tasks.ts";
 import { SETTINGS } from "../../domain/setting/entity.ts";
 import type { TaskType } from "../../domain/task/entity.ts";
 import { logger } from "../../libs/log.ts";
@@ -9,6 +8,7 @@ import {
   TYPE_LABEL,
   VIEW_LABEL,
 } from "../../libs/tasks.ts";
+import { TASKS_NS, type TaskController } from "../../services/tasks.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

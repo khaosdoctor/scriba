@@ -1,5 +1,5 @@
 import { Composer, type Context } from "grammy";
-import { MERGE_EMOJI } from "../../controllers/jots.ts";
+import { MERGE_EMOJI } from "../../services/jots.ts";
 import type { ViewDeps } from "../index.ts";
 
 /** The owner reacting 🤝 to a squashed follower's own message: the merge opt-out. */

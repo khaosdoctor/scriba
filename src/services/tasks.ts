@@ -23,10 +23,10 @@ import {
 } from "../libs/tasks.ts";
 import { escapeHtml, fitTelegram } from "../libs/text.ts";
 import { plainDate } from "../libs/time.ts";
-import type { Enricher } from "../services/enrich.ts";
-import type { Notifier } from "../services/notifier.ts";
-import type { VoiceService } from "../services/voice.ts";
+import type { Enricher } from "./enrich.ts";
 import type { Modes, OpenOutcome } from "./modes.ts";
+import type { Notifier } from "./notifier.ts";
+import type { VoiceService } from "./voice.ts";
 
 const log = logger("tasks-flow");
 

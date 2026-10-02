@@ -1,6 +1,6 @@
 import type { Composer, Context } from "grammy";
-import type { JotController } from "../../controllers/jots.ts";
 import { logger } from "../../libs/log.ts";
+import type { JotController } from "../../services/jots.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

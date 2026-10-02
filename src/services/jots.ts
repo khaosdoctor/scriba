@@ -14,7 +14,7 @@ import { placeholderLine, stripTilPrefix } from "../libs/note.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { escapeHtml } from "../libs/text.ts";
 import { dayBounds, plainDate, plainTime } from "../libs/time.ts";
-import type { Notifier } from "../services/notifier.ts";
+import type { Notifier } from "./notifier.ts";
 
 const log = logger("bot");
 const tilLog = logger("til-flow");

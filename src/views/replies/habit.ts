@@ -1,5 +1,5 @@
 import type { Context, Filter } from "grammy";
-import type { FillOutcome, HabitController } from "../../controllers/habits.ts";
+import type { FillOutcome, HabitController } from "../../services/habits.ts";
 import { Responder } from "../chat.ts";
 
 const REFUSALS: Record<Exclude<FillOutcome, "saved">, string> = {

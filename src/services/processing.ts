@@ -22,13 +22,13 @@ import { logger } from "../libs/log.ts";
 import { journalLine } from "../libs/note.ts";
 import { draftFromDetection } from "../libs/tasks.ts";
 import { escapeHtml, splitEntry } from "../libs/text.ts";
-import { type Enricher, ModelsDownError } from "../services/enrich.ts";
-import type { DownloadedFile } from "../services/media.ts";
-import type { Notifier } from "../services/notifier.ts";
-import type { Transcriber } from "../services/transcriber.ts";
 import type { EditController } from "./edits.ts";
+import { type Enricher, ModelsDownError } from "./enrich.ts";
 import type { JotController } from "./jots.ts";
+import type { DownloadedFile } from "./media.ts";
+import type { Notifier } from "./notifier.ts";
 import type { TaskController } from "./tasks.ts";
+import type { Transcriber } from "./transcriber.ts";
 
 const log = logger("processor");
 const botLog = logger("bot");

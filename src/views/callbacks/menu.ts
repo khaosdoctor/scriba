@@ -1,17 +1,17 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
-import type { JotController } from "../../controllers/jots.ts";
-import type {
-  ModelKey,
-  RootState,
-  SettingsController,
-  SettingsPrompt,
-} from "../../controllers/settings.ts";
 import { SETTINGS, type SwitchKey } from "../../domain/setting/entity.ts";
 import { formatJotDetail, jotPreview, STATUS_ICON } from "../../libs/jot.ts";
 import { logger } from "../../libs/log.ts";
 import { paginate } from "../../libs/page.ts";
 import { fitTelegram } from "../../libs/text.ts";
 import { plainDate } from "../../libs/time.ts";
+import type { JotController } from "../../services/jots.ts";
+import type {
+  ModelKey,
+  RootState,
+  SettingsController,
+  SettingsPrompt,
+} from "../../services/settings.ts";
 import { Responder } from "../chat.ts";
 import { openTaskMode } from "../commands/task.ts";
 import type { ViewDeps } from "../index.ts";

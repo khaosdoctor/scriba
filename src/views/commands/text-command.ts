@@ -1,6 +1,6 @@
 import { Composer, type Context } from "grammy";
-import type { AdminController } from "../../controllers/admin.ts";
 import { fitTelegram } from "../../libs/text.ts";
+import type { AdminController } from "../../services/admin.ts";
 import type { CommandView } from "./index.ts";
 
 /** An admin command that answers with one text. fitTelegram turns an oversized answer

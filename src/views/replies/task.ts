@@ -6,7 +6,7 @@ import {
   type TaskController,
   type TaskField,
   type TaskRef,
-} from "../../controllers/tasks.ts";
+} from "../../services/tasks.ts";
 import { Responder } from "../chat.ts";
 import { TASKADD_EMPTY } from "../commands/taskadd.ts";
 

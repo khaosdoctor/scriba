@@ -1,10 +1,10 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
+import { logger } from "../../libs/log.ts";
 import {
   type JotController,
   TIL_NS,
   type TilOutcome,
-} from "../../controllers/jots.ts";
-import { logger } from "../../libs/log.ts";
+} from "../../services/jots.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

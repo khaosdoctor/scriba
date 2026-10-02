@@ -1,5 +1,5 @@
 import type { Composer, Context } from "grammy";
-import type { JotController, VoiceFixChoice } from "../../controllers/jots.ts";
+import type { JotController, VoiceFixChoice } from "../../services/jots.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

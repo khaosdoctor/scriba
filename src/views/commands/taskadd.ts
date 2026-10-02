@@ -1,5 +1,5 @@
 import { Composer, type Context } from "grammy";
-import { TASK_ADD_REF } from "../../controllers/tasks.ts";
+import { TASK_ADD_REF } from "../../services/tasks.ts";
 import type { CommandView } from "./index.ts";
 
 export const TASKADD_EMPTY =

@@ -1,11 +1,11 @@
 import type { Context, Filter } from "grammy";
 import type { Message } from "grammy/types";
-import type { JotController } from "../../controllers/jots.ts";
+import type { JotController } from "../../services/jots.ts";
 import {
   type FollowupRef,
   followupFromCode,
   type RatingController,
-} from "../../controllers/rating.ts";
+} from "../../services/rating.ts";
 import { entitiesToMarkdown } from "../input.ts";
 
 /** The question and day a follow-up prompt's marker names, or null for any other text. */

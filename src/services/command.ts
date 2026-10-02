@@ -12,9 +12,9 @@ import {
 import { makeJotId } from "../libs/jot.ts";
 import { logger } from "../libs/log.ts";
 import { escapeHtml, fitTelegram } from "../libs/text.ts";
-import { type AgentService, PromptStream } from "../services/agent.ts";
-import type { MessageOptions, Notifier } from "../services/notifier.ts";
+import { type AgentService, PromptStream } from "./agent.ts";
 import type { Modes } from "./modes.ts";
+import type { MessageOptions, Notifier } from "./notifier.ts";
 
 const log = logger("command");
 

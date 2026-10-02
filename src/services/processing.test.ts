@@ -4,10 +4,10 @@ import { Repository } from "../data/repositories/index.ts";
 import { type Jot, MAX_ATTEMPTS } from "../domain/jot/entity.ts";
 import type { SettingKey } from "../domain/setting/entity.ts";
 import { insertJournalLine } from "../libs/note.ts";
-import { ModelsDownError } from "../services/enrich.ts";
 import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { removeDb, sampleJot, tempDbPath } from "../test/sqlite.ts";
+import { ModelsDownError } from "./enrich.ts";
 import { HELD as HELD_MARKER, ProcessingController } from "./processing.ts";
 
 /** Status messages the bot was asked to post, with the buttons each one carried. */

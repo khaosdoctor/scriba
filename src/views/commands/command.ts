@@ -1,5 +1,5 @@
 import { Composer, type Context } from "grammy";
-import type { CommandOpen } from "../../controllers/command.ts";
+import type { CommandOpen } from "../../services/command.ts";
 import type { CommandView } from "./index.ts";
 
 const INTRO = [

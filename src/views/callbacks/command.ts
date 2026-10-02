@@ -1,8 +1,5 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
-import {
-  COMMAND_NS,
-  type CommandController,
-} from "../../controllers/command.ts";
+import { COMMAND_NS, type CommandController } from "../../services/command.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

@@ -1,6 +1,6 @@
 import { Composer, type Context } from "grammy";
-import type { TaskController } from "../../controllers/tasks.ts";
 import { logger } from "../../libs/log.ts";
+import type { TaskController } from "../../services/tasks.ts";
 import { taskMessage } from "../commands/task.ts";
 import type { ViewDeps } from "../index.ts";
 import { intakeInput } from "../input.ts";

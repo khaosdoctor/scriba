@@ -1,5 +1,5 @@
 import { Composer, type Context } from "grammy";
-import type { TaskController } from "../../controllers/tasks.ts";
+import type { TaskController } from "../../services/tasks.ts";
 import type { CommandView } from "./index.ts";
 
 const INTRO = [

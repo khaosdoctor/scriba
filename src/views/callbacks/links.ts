@@ -1,12 +1,12 @@
 import { type Context, InlineKeyboard } from "grammy";
-import type {
-  LinkPrompt,
-  SettingsController,
-} from "../../controllers/settings.ts";
 import { distinctSurfaces } from "../../libs/links.ts";
 import { logger } from "../../libs/log.ts";
 import { paginate } from "../../libs/page.ts";
 import { fitTelegram, previewList } from "../../libs/text.ts";
+import type {
+  LinkPrompt,
+  SettingsController,
+} from "../../services/settings.ts";
 import type { ViewDeps } from "../index.ts";
 import { backTo, pagedScreen, withClose } from "../render/keyboard.ts";
 import type { Tap } from "./namespace.ts";

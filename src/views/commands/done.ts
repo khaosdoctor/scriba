@@ -1,5 +1,5 @@
 import { Composer, type Context } from "grammy";
-import type { Mode } from "../../controllers/modes.ts";
+import type { Mode } from "../../services/modes.ts";
 import type { CommandView } from "./index.ts";
 
 const OFF: Record<Mode, string> = {

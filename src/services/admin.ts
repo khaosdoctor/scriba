@@ -18,10 +18,10 @@ import type { PageView } from "../libs/page.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { formatDuration, pluralize } from "../libs/text.ts";
 import { dayBounds, plainDate, startOfToday } from "../libs/time.ts";
-import type { HealthMonitor, UpstreamStatus } from "../services/health.ts";
-import type { Notifier } from "../services/notifier.ts";
-import type { FallbackTranscriber } from "../services/transcriber.ts";
+import type { HealthMonitor, UpstreamStatus } from "./health.ts";
+import type { Notifier } from "./notifier.ts";
 import type { ProcessingController } from "./processing.ts";
+import type { FallbackTranscriber } from "./transcriber.ts";
 
 // One logger per command keeps today's logger names in the log stream.
 const log = {

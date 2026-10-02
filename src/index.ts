@@ -1,15 +1,5 @@
 import { Bot } from "grammy";
 import type { Config } from "./config.ts";
-import { AdminController } from "./controllers/admin.ts";
-import { CommandController } from "./controllers/command.ts";
-import { EditController } from "./controllers/edits.ts";
-import { HabitController } from "./controllers/habits.ts";
-import { JotController } from "./controllers/jots.ts";
-import { Modes } from "./controllers/modes.ts";
-import { ProcessingController } from "./controllers/processing.ts";
-import { RatingController } from "./controllers/rating.ts";
-import { SettingsController } from "./controllers/settings.ts";
-import { TaskController } from "./controllers/tasks.ts";
 import { GithubReleases } from "./data/connections/github.ts";
 import { WebService } from "./data/connections/web.ts";
 import { Repository } from "./data/repositories/index.ts";
@@ -20,15 +10,25 @@ import { logger } from "./libs/log.ts";
 import { FlushQueue } from "./libs/queue.ts";
 import { Scheduler } from "./libs/scheduler.ts";
 import { previousDate } from "./libs/time.ts";
+import { AdminController } from "./services/admin.ts";
 import { AgentService } from "./services/agent.ts";
+import { CommandController } from "./services/command.ts";
+import { EditController } from "./services/edits.ts";
 import {
   Enricher,
   type EnrichFallback,
   OPENCODE_BASE_URL,
   type SwitchNotifier,
 } from "./services/enrich.ts";
+import { HabitController } from "./services/habits.ts";
 import { HealthMonitor, upstreams } from "./services/health.ts";
+import { JotController } from "./services/jots.ts";
 import { MediaService } from "./services/media.ts";
+import { Modes } from "./services/modes.ts";
+import { ProcessingController } from "./services/processing.ts";
+import { RatingController } from "./services/rating.ts";
+import { SettingsController } from "./services/settings.ts";
+import { TaskController } from "./services/tasks.ts";
 import {
   buildTranscriber,
   type FallbackTranscriber,
