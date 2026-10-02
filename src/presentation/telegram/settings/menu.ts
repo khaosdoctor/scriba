@@ -14,6 +14,7 @@ import type {
 } from "../../../services/settings.ts";
 import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
+import { STILL_PROCESSING } from "../journal/edit-reply.ts";
 import { backTo, pagedScreen, withClose } from "../keyboard.ts";
 import { namespace, type Tap } from "../namespace.ts";
 import {
@@ -400,10 +401,11 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         await responder.ack();
         return jotDetail(ctx, jotController, arg);
       case "jr": {
-        if (!arg || !(await jotController.get(arg)))
-          return responder.ack("gone");
+        const jot = arg ? await jotController.get(arg) : undefined;
+        if (!jot || jot.status === "deleted") return responder.ack("gone");
         log.info({ jotId: arg }, "menu: manual retry requested");
-        await jotController.retry(arg);
+        if ((await jotController.retry(jot)) === "in-flight")
+          return responder.ack("still processing");
         await responder.ack("retrying");
         return ctx.editMessageText(`🔄 retrying ${arg}…`, {
           reply_markup: backTo("menu:jots", CLOSE),
@@ -422,14 +424,18 @@ export function menuView(deps: ViewDeps): Composer<Context> {
       }
       case "jdy": {
         const jot = arg ? await jotController.get(arg) : undefined;
-        if (!jot) return responder.ack("gone");
+        if (!jot || jot.status === "deleted") return responder.ack("gone");
+        log.info({ jotId: arg }, "menu: delete jot");
+        const outcome = await edits.discard(jot);
         // Answer before the note-lock read/write below, which can be slow enough to blow
         // past Telegram's callback-query window: the edited message carries the result.
         await responder.ack();
-        log.info({ jotId: arg }, "menu: delete jot");
-        return ctx.editMessageText(await edits.deleteJot(jot), {
-          reply_markup: backTo("menu:jots", CLOSE),
-        });
+        return ctx.editMessageText(
+          outcome === "removal-queued"
+            ? STILL_PROCESSING["removal-queued"]
+            : await outcome.now(),
+          { reply_markup: backTo("menu:jots", CLOSE) },
+        );
       }
       case "je":
         if (!arg || !(await jotController.get(arg)))

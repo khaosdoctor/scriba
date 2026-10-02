@@ -270,10 +270,24 @@ export class JotRepository {
     });
   }
 
-  /** Reset one jot to be retried from scratch (clears attempts + error). The caller
-   *  re-queues it (the queue lives outside the persistence boundary). */
-  async resetForRetry(id: string): Promise<void> {
-    await this.updateJot(id, { status: "pending", attempts: 0, error: null });
+  /** Reset one jot to be retried from scratch (clears attempts + error), by the same
+   *  compare-and-swap as `claim()`: a jot being processed right now, or a deleted one, is
+   *  left alone, so a second tap or a tap racing the retry pass cannot send a processing
+   *  jot back to pending. True when the row was reset. The caller re-queues it (the queue
+   *  lives outside the persistence boundary). */
+  async resetForRetry(id: string): Promise<boolean> {
+    const changed = await this.k("jots")
+      .where({ id })
+      .whereNotIn("status", ["processing", "deleted"])
+      .update({
+        status: "pending",
+        attempts: 0,
+        error: null,
+        updated_at: Date.now(),
+      });
+    const won = changed > 0;
+    log.debug({ id, won }, "retry reset attempt");
+    return won;
   }
 
   /** Terminal state for a jot whose journal line the user removed. Distinct from

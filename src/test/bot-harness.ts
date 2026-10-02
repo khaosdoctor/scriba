@@ -140,6 +140,7 @@ export async function botHarness() {
     statusCounts: ZERO_COUNTS,
     resetProcessing: 0,
     resetFailed: 0,
+    resetForRetry: true,
   });
   const obsidian: any = recorder(
     "obsidian",

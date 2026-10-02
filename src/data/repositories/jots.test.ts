@@ -80,6 +80,31 @@ test("resetForRetry sends a failed jot back to pending with its attempts and err
   });
 });
 
+test("resetForRetry leaves a jot being processed, or a deleted one, alone", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
+    await jots.insertJot({
+      ...sampleJot("aaaaaaaa"),
+      status: "processing",
+      attempts: 2,
+    });
+    await jots.insertJot({ ...sampleJot("bbbbbbbb"), status: "deleted" });
+    await jots.insertJot({
+      ...sampleJot("cccccccc"),
+      status: "failed",
+      attempts: 3,
+    });
+
+    assert.equal(await jots.resetForRetry("aaaaaaaa"), false);
+    assert.equal((await jots.getJot("aaaaaaaa"))?.status, "processing");
+    assert.equal((await jots.getJot("aaaaaaaa"))?.attempts, 2);
+    assert.equal(await jots.resetForRetry("bbbbbbbb"), false);
+    assert.equal((await jots.getJot("bbbbbbbb"))?.status, "deleted");
+    assert.equal(await jots.resetForRetry("cccccccc"), true);
+    assert.equal((await jots.getJot("cccccccc"))?.status, "pending");
+  });
+});
+
 test("windowStats and statusCounts break down the live table", async (t) => {
   await withDb(t, async (k) => {
     const jots = new JotRepository(k);

@@ -885,7 +885,7 @@ ledger("menu: jot actions", [
     tap: `menu:jdy:${ID}`,
     when: "delete, answered before the vault write",
     setup: withJot(),
-    expect: `repo.getJot > ack() > obsidian.updateNote > obsidian.readNote > obsidian.writeNote > repo.markDeleted > repo.groupFollowers > tg.editMessageText`,
+    expect: `repo.getJot > ack() > obsidian.updateNote > obsidian.readNote > obsidian.writeNote > repo.markDeleted > repo.groupFollowers > tg.sendMessage > repo.mapMessage > tg.editMessageText`,
   },
   {
     tap: `menu:jdy:${ID}`,

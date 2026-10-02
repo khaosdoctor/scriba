@@ -42,6 +42,7 @@ const OUTCOME_EMOJI: Record<JotOutcome, string> = {
 
 export type JotOutcome = "done" | "failed" | "retrying";
 export type VoiceFixChoice = "original" | "proposed";
+export type RetryOutcome = "queued" | "in-flight";
 
 export interface JotDeps {
   repo: Pick<
@@ -363,10 +364,20 @@ export class JotService {
     return () => resolve(choice);
   }
 
-  /** Put a jot back in the queue by hand. */
-  async retry(id: string): Promise<void> {
-    await this.deps.repo.resetForRetry(id);
-    this.deps.queue.add([id]);
+  /** Put a jot back in the queue by hand: a squashed follower through its leader, whose
+   *  line it shares. The reset skips a jot being processed right now, so a second tap, or
+   *  a tap racing the retry pass, cannot queue it twice. */
+  async retry(jot: Jot): Promise<RetryOutcome> {
+    const target = await this.leaderOf(jot);
+    if (!(await this.deps.repo.resetForRetry(target.id))) {
+      log.warn(
+        { jotId: jot.id, target: target.id, status: target.status },
+        "retry refused: jot is being processed",
+      );
+      return "in-flight";
+    }
+    this.deps.queue.add([target.id]);
+    return "queued";
   }
 
   /** A force-reply prompt mapped to the jot, so the answer takes the normal reply-edit

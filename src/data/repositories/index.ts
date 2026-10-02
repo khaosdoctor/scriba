@@ -156,7 +156,7 @@ export class Repository {
   async resetFailed(includeAbandoned: boolean): Promise<number> {
     return this.jots.resetFailed(includeAbandoned);
   }
-  async resetForRetry(id: string): Promise<void> {
+  async resetForRetry(id: string): Promise<boolean> {
     return this.jots.resetForRetry(id);
   }
   async markDeleted(id: string): Promise<void> {

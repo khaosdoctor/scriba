@@ -83,8 +83,10 @@ async function harness(over: Opts = {}) {
     groupFollowers: async (id: string) => over.followers?.[id] ?? [],
     updateJot: async (id: string, patch: object) =>
       void updates.push([id, patch]),
-    resetForRetry: async (id: string) =>
-      void events.push(`repo.resetForRetry:${id}`),
+    resetForRetry: async (id: string) => {
+      events.push(`repo.resetForRetry:${id}`);
+      return jots.get(id)?.status !== "processing";
+    },
     takePendingLink: async (pid: string) => {
       events.push(`repo.takePendingLink:${pid}`);
       const rec = links.get(pid);
@@ -337,6 +339,17 @@ test("retry on a missing jot says gone, and on a deleted jot refuses to put the 
   const bare = await harness();
   await bare.tap("rt");
   assert.deepEqual(bare.answers(), ["gone"]);
+});
+
+test("retry on a jot being processed is refused and nothing is queued", async () => {
+  const busy = await harness({ jots: [jot({ status: "processing" })] });
+  await busy.tap(`rt:${ID}`);
+  assert.deepEqual(busy.events, [
+    `repo.resetForRetry:${ID}`,
+    "api.answerCallbackQuery",
+  ]);
+  assert.deepEqual(busy.answers(), ["still processing"]);
+  assert.deepEqual(busy.edits(), []);
 });
 
 // --- un / dl: undo and discard ---

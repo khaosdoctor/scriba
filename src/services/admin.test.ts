@@ -51,7 +51,7 @@ function setup(over: Record<string, any> = {}) {
     // the rest of the tracked stubs with it.
     repo: {
       getJot: track("getJot", null),
-      resetForRetry: track("resetForRetry"),
+      resetForRetry: track("resetForRetry", true),
       resetFailed: track("resetFailed", 0),
       resetProcessing: track("resetProcessing", 0),
       failedJots: track("failedJots", []),
@@ -86,6 +86,23 @@ test("/retry with an unknown id says so instead of queueing nothing", async () =
   const { admin, calls } = setup();
   assert.equal(await admin.retry("nope"), "no jot nope");
   assert.ok(!calls.some((call) => call.startsWith("resetForRetry")));
+});
+
+test("/retry with an id refuses a jot being processed, and a deleted id is no jot", async () => {
+  const busy = setup({
+    repo: { getJot: async () => aJot(), resetForRetry: async () => false },
+  });
+  assert.equal(
+    await busy.admin.retry("abcd1234"),
+    "⏳ abcd1234 is still processing",
+  );
+  assert.ok(!busy.calls.some((call) => call.startsWith("queue.add")));
+
+  const gone = setup({
+    repo: { getJot: async () => aJot({ status: "deleted" }) },
+  });
+  assert.equal(await gone.admin.retry("abcd1234"), "no jot abcd1234");
+  assert.ok(!gone.calls.some((call) => call.startsWith("resetForRetry")));
 });
 
 test("/retry with no args takes the failed ones; `all` includes the abandoned", async () => {

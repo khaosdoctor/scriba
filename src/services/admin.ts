@@ -221,11 +221,14 @@ export class AdminService {
     const arg = args.trim().toLowerCase();
     if (arg && arg !== "all") {
       const jot = await repo.getJot(arg);
-      if (!jot) {
-        log.retry.warn({ id: arg }, "/retry: no such jot");
+      if (!jot || jot.status === "deleted") {
+        log.retry.warn({ id: arg, status: jot?.status }, "/retry: no such jot");
         return `no jot ${arg}`;
       }
-      await repo.resetForRetry(arg);
+      if (!(await repo.resetForRetry(arg))) {
+        log.retry.warn({ id: arg }, "/retry: jot is being processed");
+        return `⏳ ${arg} is still processing`;
+      }
       queue.add([arg]);
       log.retry.info({ id: arg }, "/retry: single jot requeued");
       return `🔄 retrying ${arg}`;

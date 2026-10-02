@@ -23,7 +23,8 @@ export function retryView(jots: JotService): Composer<Context> {
       return responder.ack("deleted — not retrying");
     }
     log.info({ jotId, status: jot.status }, "manual retry requested");
-    await jots.retry(jot.id);
+    if ((await jots.retry(jot)) === "in-flight")
+      return responder.ack("still processing");
     await responder.ack("retrying");
     await ctx.editMessageText("🔄 retrying…");
   });

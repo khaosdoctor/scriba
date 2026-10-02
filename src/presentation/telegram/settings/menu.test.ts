@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Jot } from "../../../domain/jot/entity.ts";
 import { parseWizardRef } from "../../../libs/wizard.ts";
 import {
   botHarness,
@@ -375,7 +376,11 @@ test("the jots browser lists recent jots, shows a detail card and handles a miss
 
 test("retry resets and queues before it answers, delete answers before the note work, edit maps its prompt", async () => {
   const harness = await botHarness();
-  const jot = sampleJot({ id: "abc12345", status: "failed" });
+  const jot = sampleJot({
+    id: "abc12345",
+    anchor: "abc12345",
+    status: "failed",
+  });
   harness.repo.getJot = async (id: string) => (id === jot.id ? jot : undefined);
   const retry = await harness.tap("menu:jr:abc12345");
   assert.equal(
@@ -398,7 +403,7 @@ test("retry resets and queues before it answers, delete answers before the note 
   const del = await harness.tap("menu:jdy:abc12345");
   assert.equal(
     del.rendered,
-    "repo.getJot > ack() > obsidian.updateNote > obsidian.readNote > repo.markDeleted > repo.groupFollowers > tg.editMessageText",
+    "repo.getJot > ack() > obsidian.updateNote > obsidian.readNote > repo.markDeleted > repo.groupFollowers > tg.sendMessage > repo.mapMessage > tg.editMessageText",
   );
   assert.equal(edit(del)?.text, "🗑️ removed that from your journal.");
 
@@ -416,4 +421,76 @@ test("retry resets and queues before it answers, delete answers before the note 
 
   for (const data of ["menu:jr:zzz", "menu:jdy:zzz", "menu:je:zzz"])
     assert.deepEqual(answers(await harness.tap(data)), ["gone"], data);
+
+  const deleted = sampleJot({ id: "abc12345", status: "deleted" });
+  harness.repo.getJot = async () => deleted;
+  for (const data of ["menu:jr:abc12345", "menu:jdy:abc12345"])
+    assert.deepEqual(answers(await harness.tap(data)), ["gone"], data);
+});
+
+test("retry from the browser refuses a jot being processed and leaves the queue alone", async () => {
+  const harness = await botHarness();
+  const jot = sampleJot({
+    id: "abc12345",
+    anchor: "abc12345",
+    status: "processing",
+  });
+  harness.repo.getJot = async (id: string) => (id === jot.id ? jot : undefined);
+  harness.repo.resetForRetry = false;
+  const run = await harness.tap("menu:jr:abc12345");
+  assert.equal(
+    run.rendered,
+    "repo.getJot > repo.resetForRetry > ack(still processing)",
+  );
+  assert.equal(edit(run), undefined);
+});
+
+test("delete from the browser on a jot still processing is queued and says so", async () => {
+  const harness = await botHarness();
+  const jot = sampleJot({
+    id: "abc12345",
+    anchor: "abc12345",
+    status: "processing",
+  });
+  harness.repo.getJot = async (id: string) => (id === jot.id ? jot : undefined);
+  const queued: [string, string][] = [];
+  harness.repo.queueEdit = async (id: string, text: string) =>
+    void queued.push([id, text]);
+  const run = await harness.tap("menu:jdy:abc12345");
+  assert.equal(
+    run.rendered,
+    "repo.getJot > repo.queueEdit > ack() > tg.editMessageText",
+  );
+  assert.deepEqual(queued, [["abc12345", "delete"]]);
+  assert.equal(
+    edit(run)?.text,
+    `⏳ still processing ${EM} I'll remove it once it's done.`,
+  );
+  assert.deepEqual(callbacks(edit(run)), ["menu:jots", "menu:close"]);
+});
+
+test("retry and delete on a squashed follower act on its leader", async () => {
+  const harness = await botHarness();
+  const leader = sampleJot({ id: "leader01", anchor: "leader01" });
+  const follower = sampleJot({ id: "follow01", anchor: "leader01" });
+  const byId: Record<string, Jot> = { leader01: leader, follow01: follower };
+  harness.repo.getJot = async (id: string) => byId[id];
+  const reset: string[] = [];
+  harness.repo.resetForRetry = async (id: string) => {
+    reset.push(id);
+    return true;
+  };
+  const queued: string[][] = [];
+  harness.queue.add = (ids: string[]) => void queued.push(ids);
+  const retry = await harness.tap("menu:jr:follow01");
+  assert.deepEqual(answers(retry), ["retrying"]);
+  assert.deepEqual(reset, ["leader01"]);
+  assert.deepEqual(queued, [["leader01"]]);
+
+  const marked: string[] = [];
+  harness.repo.markDeleted = async (id: string) => void marked.push(id);
+  harness.repo.groupFollowers = async (id: string) =>
+    id === "leader01" ? [follower] : [];
+  await harness.tap("menu:jdy:follow01");
+  assert.deepEqual(marked, ["leader01", "follow01"]);
 });
