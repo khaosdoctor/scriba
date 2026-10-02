@@ -24,14 +24,11 @@ export class SettingsRepository {
       .onConflict("key")
       .merge();
   }
-  /** Toggle a switch and return its new state. */
   async toggleSetting(key: SwitchKey): Promise<boolean> {
     const next = !(await this.getSetting(key));
     await this.setSetting(key, next ? "on" : "off");
     return next;
   }
-  /** Write each default whose key is unset or blank, in order. First boot only: from then
-   *  on the stored value wins. */
   async seedSettings(
     defaults: Partial<Record<SettingKey, string>>,
   ): Promise<void> {
@@ -42,7 +39,6 @@ export class SettingsRepository {
       if (!(await this.raw(key))) await this.setSetting(key, value);
     }
   }
-  /** The nightly rating time in force: the stored time, else the configured one. */
   async ratingTime(fallback: string): Promise<string> {
     return (
       (await this.getSetting("ratingTime")) ??

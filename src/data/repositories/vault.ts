@@ -31,24 +31,15 @@ const MAX_LIST = 400;
 const MAX_HITS = 60;
 
 interface WalkOptions {
-  /** Stop descending once this many notes are collected. */
   limit?: number;
   /** Include symlinked notes. The agent never follows a link, see safePath. */
   symlinks?: boolean;
-  /** One directory name to skip besides the dot-directories. */
   skip?: string;
 }
 
 const AGENT_WALK: WalkOptions = { limit: MAX_LIST * 4 };
 const INDEX_WALK: WalkOptions = { symlinks: true, skip: "internal" };
 
-/**
- * The vault, read from its read-only mount. Two jobs share one path check and one walker:
- * the sandboxed note tools of the `/command` agent (writes and deletes go through
- * Obsidian's REST API, since the mount is read-only) and the title+alias index behind
- * wikilink candidates. The index re-reads only files whose mtime changed, refreshes on a
- * recursive fs.watch, and rebuilds periodically in case the watch drops events.
- */
 export class VaultService {
   private byFile = new Map<
     string,
@@ -136,7 +127,6 @@ export class VaultService {
     return extname(rel) ? rel : `${rel}.md`;
   }
 
-  /** Vault-relative paths of the notes under `dir` (default: the whole vault). */
   async listNotes(dir = ""): Promise<string> {
     const { root, files } = await this.notesUnder(dir);
     const rels = files.map((f) => relative(root, f)).sort();
@@ -158,7 +148,6 @@ export class VaultService {
       : text;
   }
 
-  /** Case-insensitive substring search across the vault's notes, with line context. */
   async searchNotes(query: string, dir = ""): Promise<string> {
     const q = query.trim().toLowerCase();
     if (!q) throw new Error("query is required");
@@ -179,7 +168,6 @@ export class VaultService {
     return hits.length ? hits.join("\n") : `no note matches "${query}"`;
   }
 
-  /** Create or overwrite a note. */
   async write(path: string, content: string): Promise<string> {
     const vaultPath = await this.notePath(path);
     await this.obsidian.writeNote(vaultPath, content);
@@ -197,12 +185,10 @@ export class VaultService {
     return `deleted ${vaultPath}`;
   }
 
-  /** Alias entries for wikilink candidates. */
   list(): AliasEntry[] {
     return this.flat;
   }
 
-  /** Index health for /status: whether it's enabled and how much it holds. */
   stats(): { enabled: boolean; files: number; aliases: number } {
     return {
       enabled: this.enabled,
@@ -211,7 +197,6 @@ export class VaultService {
     };
   }
 
-  /** Initial scan, then watch for changes with a slow periodic rebuild as backstop. */
   startIndex(periodicMs = 30 * 60_000): void {
     if (!this.root) {
       log.warn(
@@ -232,7 +217,6 @@ export class VaultService {
     this.watcher?.close();
   }
 
-  /** Re-scan the vault, re-reading only changed/added files and dropping deleted ones. */
   async rebuild(): Promise<number> {
     if (!this.root) {
       this.byFile.clear();

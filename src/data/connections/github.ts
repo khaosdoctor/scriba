@@ -8,7 +8,6 @@ const HEADERS = {
   "User-Agent": "scriba",
 };
 
-/** The fields we read from a GitHub release. */
 export const ReleaseSchema = z.object({
   tag_name: z.string(),
   name: z.string().nullable(),
@@ -27,11 +26,6 @@ export interface ReleaseNote {
   publishedAt: string; // ISO timestamp
 }
 
-/** Thin client over the public GitHub Releases API for this repo. Release notes are
- *  authored by the release workflow (conventional-changelog-action, from conventional
- *  commits), so pulling them live keeps the deploy notice and /changelog in sync with
- *  what's actually on GitHub instead of duplicating that content into the image. No
- *  auth: public repo, low volume (once per deploy, plus on-demand /changelog calls). */
 export class GithubReleases {
   constructor(private repo = "khaosdoctor/scriba") {}
 
@@ -67,14 +61,12 @@ export class GithubReleases {
     return raw && this.toNote(raw);
   }
 
-  /** The most recent published release. */
   latest(): Promise<ReleaseNote | null> {
     return this.fetchOne(
       `https://api.github.com/repos/${this.repo}/releases/latest`,
     );
   }
 
-  /** A specific release by version, with or without a leading "v". */
   byVersion(version: string): Promise<ReleaseNote | null> {
     const tag = version.startsWith("v") ? version : `v${version}`;
     return this.fetchOne(
@@ -82,7 +74,6 @@ export class GithubReleases {
     );
   }
 
-  /** The N most recent releases, newest first. */
   async recent(count: number): Promise<ReleaseNote[]> {
     const url = `https://api.github.com/repos/${this.repo}/releases?per_page=${count}`;
     log.debug({ url, count }, "github: listing releases");

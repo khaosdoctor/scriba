@@ -2,7 +2,6 @@ export type PageView<T> = {
   items: T[];
   page: number;
   pages: number;
-  /** Index of the first item in the whole list, so row callbacks can carry global indices. */
   offset: number;
 };
 

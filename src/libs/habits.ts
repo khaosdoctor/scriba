@@ -1,22 +1,9 @@
-/**
- * Pure habit helpers. Deterministic, token-free: unit-tested in habits.test.ts. No network
- * or side effects.
- *
- * A habit is a checklist bullet under the `## Habits` heading:
- *   - [ ] Practiced music #meta/habits/music              (yes/no)
- *   - [ ] [Pages read:: 0] #meta/habits/reading           (has a value to fill in)
- *   - [x] Exercised … #meta/habits/exercise [completion:: 2026-06-22]   (done)
- * An inline field is `[Key:: value]`; the `completion` field is stamped on done and is
- * never treated as the habit's own value.
- */
-
 import type { Habit, HabitField } from "../domain/habit/entity.ts";
 import { findSection, stampCompletion } from "./note.ts";
 
 // `[Pages read:: 0]` → key "Pages read", value "0". Global so we can walk every field.
 const inlineFieldRe = /\[\s*([^\]:]+?)\s*::\s*([^\]]*?)\s*\]/g;
 
-/** The habit's own inline field (the first non-completion `[key:: value]`), or null. */
 function habitField(line: string): HabitField | null {
   for (const m of line.matchAll(inlineFieldRe)) {
     if (m[1]!.trim().toLowerCase() === "completion") continue;
@@ -25,7 +12,6 @@ function habitField(line: string): HabitField | null {
   return null;
 }
 
-/** Prompt label: the field key for value habits, else the text minus fields and #tags. */
 function habitLabel(rest: string, field: HabitField | null): string {
   if (field) return field.key;
   return rest
@@ -35,7 +21,6 @@ function habitLabel(rest: string, field: HabitField | null): string {
     .trim();
 }
 
-/** Parse the checklist bullets under the `## <heading>` section into ordered habits. */
 export function parseHabits(note: string, heading = "Habits"): Habit[] {
   const lines = note.split("\n");
   const section = findSection(lines, heading);
@@ -57,8 +42,6 @@ export function parseHabits(note: string, heading = "Habits"): Habit[] {
   return out;
 }
 
-/** Mark a habit line done: tick the box, fill the inline field value (when given), and
- *  stamp `[completion:: date]` (once). Idempotent on an already-completed line. */
 export function completeHabitLine(
   line: string,
   date: string,
@@ -77,9 +60,6 @@ export function completeHabitLine(
   return stampCompletion(out, date);
 }
 
-/** Machine ref embedded in a habit question so a text reply days later routes back to the
- *  right day + habit: the day lives in the message, never the DB. Matches
- *  `hb:DATE:INDEX:DIGEST`. */
 export function parseHabitRef(
   text: string,
 ): { date: string; index: number; digest: string } | null {
@@ -88,14 +68,12 @@ export function parseHabitRef(
   return { date: match[1]!, index: Number(match[2]), digest: match[3]! };
 }
 
-/** Check if the `habitsReviewed` frontmatter field is set to `true` for this note. */
 export function isHabitsReviewed(note: string): boolean {
   const m = note.match(/^---\n([\s\S]*?)\n---/);
   if (!m) return false;
   return /^habitsReviewed:\s*true\s*$/m.test(m[1]!);
 }
 
-/** A value-habit answer must be a number (integer or decimal). */
 export function isNumericValue(s: string): boolean {
   return /^-?\d+(\.\d+)?$/.test(s.trim());
 }

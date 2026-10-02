@@ -26,9 +26,6 @@ export class LinkRuleRepository {
     return new Set(words.map((w) => w.toLowerCase()));
   }
 
-  /** Registered links: user-curated surface->note pairs that always force a link (the
-   *  opposite of a rejection). Read as a list, not a set, since forcedCandidates needs
-   *  the note target per surface, not just membership. */
   async registeredLinks(): Promise<LinkRule[]> {
     // Ordered by (surface, note) so an interactive picker (mirroring /unreject's) can
     // index into this list by position and re-derive the same order on each tap.

@@ -44,7 +44,6 @@ import { VoiceService } from "./services/voice.ts";
 const log = logger("main");
 const botLog = logger("bot");
 
-/** Collaborators a test can replace; each defaults to the real one. */
 export interface ExternalServices {
   repo?: Repository;
   obsidian?: ObsidianClient;
@@ -58,7 +57,6 @@ export interface ExternalServices {
   github?: GithubReleases;
 }
 
-/** The running app, plus the pieces a test drives directly. */
 export interface Scriba {
   bot: Bot;
   enricher: Enricher;
@@ -116,8 +114,6 @@ async function buildEnricher(
 
 const RETRY_EVERY_MS = 5 * 60_000;
 
-/** Builds and wires everything. Nothing runs until `start()`: no timer is armed and no
- *  update is polled before it. */
 export async function createScriba(
   config: Config,
   { version, sha }: { version: string; sha: string },
@@ -195,7 +191,6 @@ export async function createScriba(
     enricher,
     jots: jotController,
   });
-  // /task: every message becomes a task in one of the two task notes instead of a jot.
   const tasks = new TaskService({
     repo: repo.taskDrafts,
     settings: repo.settings,
@@ -321,8 +316,6 @@ export async function createScriba(
     () => config.habitsTime,
     () => habits.prompt(previousDate()),
   );
-  // The one message of the day meant to interrupt: what's due today and what is still
-  // hanging over from before.
   scheduler.daily(
     "tasks",
     () => config.tasksTime,

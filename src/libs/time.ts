@@ -1,7 +1,3 @@
-/**
- * Time helpers. Date-based; local getters honour process.env.TZ for wall-clock values.
- */
-
 import { z } from "zod";
 
 /** A calendar day as "YYYY-MM-DD". Years 0000-0099 are refused because `new Date(y, m, d)`
@@ -10,30 +6,25 @@ export const IsoDateSchema = z.iso
   .date()
   .refine((d) => Number(d.slice(0, 4)) >= 100);
 
-/** A 24-hour clock time, normalised to `HH:MM` ("9:30" becomes "09:30"). */
 const ClockTimeSchema = z
   .string()
   .trim()
   .regex(/^([01]?\d|2[0-3]):[0-5]\d$/)
   .transform((t) => t.padStart(5, "0"));
 
-/** A typed 24-hour clock time, or null when it isn't one. */
 export function parseClockTime(text: string): string | null {
   return ClockTimeSchema.safeParse(text).data ?? null;
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-/** Matches a bare "YYYY-MM-DD" date string. */
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-/** "HH:MM:SS" for the given instant (default now). */
 export function plainTime(epochMs: number = Date.now()): string {
   const d = new Date(epochMs);
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
-/** "YYYY-MM-DD" for the given instant (default now). */
 export function plainDate(epochMs: number = Date.now()): string {
   const d = new Date(epochMs);
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -49,16 +40,12 @@ export function dateFromIso(date: string): Date {
   return new Date(y!, m! - 1, d!);
 }
 
-/** Local midnight (00:00:00.000) of the day containing `epochMs` (default now), as an
- *  epoch: the start of a "today" window for day-scoped stats. */
 export function startOfToday(epochMs: number = Date.now()): number {
   const d = new Date(epochMs);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-/** "YYYY-MM-DD" of the calendar day before the given instant (default now). Used by the
- *  midnight rating prompt: at 00:00 the day just ended, so we rate yesterday. */
 export function previousDate(epochMs: number = Date.now()): string {
   const d = new Date(startOfToday(epochMs));
   d.setDate(d.getDate() - 1);
@@ -81,7 +68,6 @@ export function dayBounds(date: string): [number, number] {
   return [start.getTime(), end.getTime()];
 }
 
-/** Milliseconds from now until the next occurrence of HH:MM local time. */
 export function msUntilNext(hhmm: string): number {
   const [h, m] = hhmm.split(":").map(Number);
   const now = new Date();
@@ -91,8 +77,6 @@ export function msUntilNext(hhmm: string): number {
   return next.getTime() - now.getTime();
 }
 
-/** The day a nightly rating firing at `time` is about: a time before noon is just after
- *  midnight, so the day that ended is yesterday; a later one rates the day still going. */
 export function ratingDay(time: string, now: number = Date.now()): string {
   const hour = Number((parseClockTime(time) ?? time).slice(0, 2));
   return hour < 12 ? previousDate(now) : plainDate(now);

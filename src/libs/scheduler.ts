@@ -21,8 +21,6 @@ interface Interval {
   timer?: NodeJS.Timeout;
 }
 
-/** Runs named jobs: `daily` ones at an HH:MM that can change at runtime, `every` ones on
- *  a fixed interval. Jobs are registered before `start`; nothing is armed until it. */
 export class Scheduler {
   private dailies = new Map<string, Daily>();
   private intervals: Interval[] = [];
@@ -39,7 +37,6 @@ export class Scheduler {
     this.dailies.set(name, { name, time, run, armBeforeRun });
   }
 
-  /** Runs every `ms`; a run that is still going makes the next tick a no-op. */
   every(name: string, ms: number, run: Job): void {
     this.intervals.push({ name, ms, run });
   }
@@ -66,8 +63,6 @@ export class Scheduler {
     for (const job of this.intervals) clearInterval(job.timer);
   }
 
-  /** Re-reads a daily job's time and, once started, moves its timer to the next
-   *  occurrence. Before `start` it only records the time. */
   async rearm(name: string): Promise<void> {
     const job = this.dailies.get(name);
     if (!job) throw new Error(`no daily job named ${name}`);

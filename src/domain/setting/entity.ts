@@ -1,6 +1,5 @@
 import { parseClockTime } from "../../libs/time.ts";
 
-/** The stored `settings` keys, spelled as they are in the table. */
 export type SettingKey =
   | "entryMaxChars"
   | "fixVoiceTranscript"
@@ -15,9 +14,7 @@ export type SettingKey =
 
 interface Setting {
   kind: "switch" | "number" | "time" | "text";
-  /** The typed value from the stored string; `undefined` is a key that was never written. */
   parse(raw: string | undefined): unknown;
-  /** Switches only: the toast for a switch that was just set to `on`. */
   label?(on: boolean): string;
 }
 
@@ -25,8 +22,6 @@ const text = (raw: string | undefined) => raw;
 const onUnlessOff = (raw: string | undefined) => raw !== "off";
 const onOff = (name: string) => (on: boolean) => `${name} ${on ? "on" : "off"}`;
 
-/** Cap on one journal entry, in characters: 0 disables splitting, anything unusable
- *  (unset, blank, not a whole number) falls back to a tweet. */
 function entryMaxChars(raw: string | undefined): number {
   const s = raw?.trim();
   const n = Number(s);
@@ -35,13 +30,11 @@ function entryMaxChars(raw: string | undefined): number {
 
 export const SETTINGS = {
   entryMaxChars: { kind: "number", parse: entryMaxChars },
-  // Opt-in: unset or anything other than "on" means off.
   fixVoiceTranscript: {
     kind: "switch",
     parse: (raw) => raw === "on",
     label: onOff("Voice fix"),
   },
-  // The two models are seeded from config on first boot.
   enrichModel: { kind: "text", parse: text },
   voiceFixModel: { kind: "text", parse: text },
   nightlyRating: {
@@ -66,7 +59,6 @@ export const SETTINGS = {
     label: (on) =>
       on ? "I'll suggest TILs again" : "I'll stop suggesting TILs",
   },
-  // A valid stored time, normalised; the caller supplies the configured fallback.
   ratingTime: {
     kind: "time",
     parse: (raw) => parseClockTime(raw ?? "") ?? undefined,

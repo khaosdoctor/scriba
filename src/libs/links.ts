@@ -1,4 +1,3 @@
-// Pure link helpers: deterministic, token-free, unit-tested in isolation.
 import * as chrono from "chrono-node";
 import { dateFromIso, plainDate } from "./time.ts";
 
@@ -23,18 +22,13 @@ export interface AliasEntry {
 export interface Candidate {
   surface: string;
   note: string;
-  // Set for user-registered pairs (the opposite of a rejection): the enricher must
-  // apply these unconditionally instead of judging them in context.
   forced?: boolean;
 }
 
-/** Split text into lowercased word tokens, unicode-aware (keeps accented letters). */
 export function tokenize(text: string): string[] {
   return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
-/** `alias` and `lower` are lowercased; a multi-word alias is a substring match, a single
- *  word must be a whole token. */
 export function matchAlias(
   alias: string,
   lower: string,
@@ -43,11 +37,6 @@ export function matchAlias(
   return alias.includes(" ") ? lower.includes(alias) : tokens.has(alias);
 }
 
-/**
- * Propose link candidates from an alias index, no model call. Drops junk (short or
- * stopword aliases) and anything the user rejected; survivors go to the agent.
- * `stopwords` are lowercased; `rejected` keys are `${lowercased-surface} ${note}`.
- */
 export function candidates(
   text: string,
   index: AliasEntry[],
@@ -91,14 +80,6 @@ export function isDateLike(r: chrono.ParsedResult): boolean {
   );
 }
 
-/**
- * Spot relative-date phrases ("yesterday", "three weeks ago", "next Friday") and turn
- * each into a wikilink to that day's daily note, aliased to the original words: the
- * note doesn't need to exist yet, Obsidian creates it lazily on first click.
- * `referenceDate` is the jot's own day (not "now"), so a phrase in an old entry resolves
- * relative to that entry's day. Token-free (chrono-node is a deterministic parser, not
- * a model call) and never touches text already inside an existing `[[wikilink]]`.
- */
 export function linkDateWords(text: string, referenceDate: string): string {
   if (!text.trim()) return text;
   const linkSpans = [...text.matchAll(wikilinkRe)].map(
@@ -135,11 +116,6 @@ export function linkDateWords(text: string, referenceDate: string): string {
   return out;
 }
 
-/**
- * Force-link candidates from user-registered surface->note pairs (`/register`), the
- * opposite of a rejection: hand-curated, so no length/stopword filtering applies. Marked
- * `forced` so the enricher links them unconditionally rather than judging context.
- */
 export function forcedCandidates(
   text: string,
   registered: { surface: string; note: string }[],
@@ -157,9 +133,6 @@ export function forcedCandidates(
   return out;
 }
 
-/** Words out of a reply that may list several: newline- or comma-separated. Inner spaces
- *  are kept, so "Path Of Exile" is one word, not three. Trimmed, lowercased (surfaces are
- *  matched case-insensitively), deduped; empty and over-long fragments are dropped. */
 export function parseRuleWords(text: string, limit = 20): string[] {
   const out = new Set<string>();
   for (const part of text.split(/[\n,]/)) {
@@ -170,8 +143,6 @@ export function parseRuleWords(text: string, limit = 20): string[] {
   return [...out];
 }
 
-/** A note title out of a typed reply: `[[wikilink]]` brackets and stray quotes stripped,
- *  whitespace collapsed. Empty means the caller should re-prompt. */
 export function cleanNoteTitle(text: string): string {
   return text
     .trim()
@@ -181,13 +152,6 @@ export function cleanNoteTitle(text: string): string {
     .trim();
 }
 
-/**
- * Notes matching `query`, best first, from the vault alias index, so the note side of a
- * rule is searched and tapped instead of typed from memory (the vault runs to thousands
- * of notes). Token-free: exact alias beats prefix beats substring, ties break on the
- * shorter alias (the more specific note), and each note appears once however many of its
- * aliases hit. The caller paginates; `limit` only caps how deep a vague query can dig.
- */
 export function noteSuggestions(
   query: string,
   index: AliasEntry[],
@@ -211,8 +175,6 @@ export function noteSuggestions(
     .map(([note]) => note);
 }
 
-/** Unique surfaces from an ordered rejection list, preserving the list's order. Powers
- *  the first step of the interactive /unreject menu. */
 export function distinctSurfaces<T extends { surface: string }>(
   list: T[],
 ): string[] {

@@ -1,8 +1,3 @@
-/**
- * Adaptive batch flush. Pure timers, no tokens, no model calls to decide timing.
- * Flushes when ANY fires: idle time since the last message, batch size cap, or a hard
- * max-wait since the oldest queued item (so a slow trickle still gets flushed).
- */
 import { logger } from "./log.ts";
 
 const log = logger("queue");
@@ -22,13 +17,10 @@ export class FlushQueue {
 
   constructor(private opts: FlushOpts) {}
 
-  /** How many jots are waiting to be flushed, for /status. */
   get depth(): number {
     return this.ids.length;
   }
 
-  /** Enqueue every id, then arm once: re-arming the idle/max timers per id is needless
-   *  churn for a large batch (e.g. /reprocess over a wide date range). */
   add(ids: string[]): void {
     if (!ids.length) return;
     // push(...ids) would spread every element onto the call stack, a RangeError for a

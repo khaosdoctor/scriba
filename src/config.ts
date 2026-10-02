@@ -9,8 +9,6 @@ const EnvObject = z.object({
   ALLOWED_TELEGRAM_USER_ID: z.coerce.number(),
   PORT: z.coerce.number().default(8080), // health endpoint only (long polling needs no inbound webhook)
 
-  // Voice goes to Groq when a key is set, and to the Parakeet sidecar (always up) when
-  // Groq fails or there is no key.
   GROQ_API_KEY: z.string().optional(),
   // Parakeet is the last step for voice, so a blank or broken URL fails at boot.
   PARAKEET_URL: z.url().default("http://parakeet:5092/v1/audio/transcriptions"),
@@ -33,9 +31,6 @@ const EnvObject = z.object({
   HABITS_HEADING: z.string().default("Habits"),
   ASSETS_DIR: z.string().default("internal/assets/journal"),
 
-  // The two task notes. Tasks are checklist bullets under one heading in each: the
-  // work note's list runs newest-first, the personal one is appended to. Both use
-  // `[start:: ]` (planned start, optional) and `[due:: ]` (the deadline, mandatory).
   TASKS_WORK_NOTE: z
     .string()
     .default("notes/work notes/What's going on at work.md"),
@@ -90,9 +85,6 @@ const EnvObject = z.object({
   // enrichment. Sonnet by default: haiku paraphrases too aggressively.
   VOICE_FIX_MODEL: z.string().default("claude-sonnet-5"),
 
-  // /command runs an agent over the vault: research, judgement about an existing note's
-  // shape, and writing that has to read like the owner. Haiku is the wrong tool for
-  // that, so command mode gets its own (stronger) model.
   COMMAND_MODEL: z.string().default("claude-sonnet-5"),
   // Thinking budget for command mode. The session relays the agent's reasoning to the
   // chat as it works, which is only worth anything if the model actually thinks. 0

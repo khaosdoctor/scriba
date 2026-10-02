@@ -1,11 +1,3 @@
-// Pure model-payload helpers: deterministic, token-free, unit-tested in isolation.
-
-/**
- * Per-upstream circuit breaker, token-free. `threshold` failures in a row open it for
- * `cooldownMs`, during which `allows()` is false and callers skip straight to the next
- * option. Once the cooldown is up one trial call is let through: success closes it, a
- * failure opens it for another cooldown.
- */
 export class CircuitBreaker {
   private failures = 0;
   private openUntil = 0;
@@ -57,10 +49,6 @@ function escapeControlsInStrings(s: string): string {
   return out;
 }
 
-/** Read a model's free-text answer as a JSON object. Usually it is clean JSON; sometimes
- *  it's wrapped in a ```json fence or a stray sentence, or carries raw line breaks inside
- *  a string. Tries the clean parse first, then the outermost {...} span, each strictly
- *  and then with those line breaks escaped. `null` when nothing parses to an object. */
 export function parseModelJson(s: string): Record<string, unknown> | null {
   const cleaned = s
     .trim()
@@ -83,7 +71,6 @@ export function parseModelJson(s: string): Record<string, unknown> | null {
   return null;
 }
 
-/** The enrichment payload, as far as it could be read. */
 export interface ModelPayload {
   text: string;
   ambiguous?: unknown;
@@ -91,13 +78,6 @@ export interface ModelPayload {
   til?: unknown;
 }
 
-/**
- * Undo the ways a model mangles the "text" field of an enrichment answer: the whole JSON
- * answer nested inside it again (`{"text": "{\"text\": ...}"}`, or the raw object as a
- * string), and the `"""` fence the prompt wraps the entry in echoed back around it.
- * Nested payloads are unwrapped a few levels deep; the innermost `ambiguous`/`tasks`
- * win when the outer ones are empty, since that's where the model actually put them.
- */
 export function unwrapModelPayload(p: ModelPayload): ModelPayload {
   let out = { ...p };
   for (let i = 0; i < 3; i++) {

@@ -1,5 +1,3 @@
-// Pure text helpers: deterministic, token-free, unit-tested in isolation.
-
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -9,7 +7,6 @@ export function htmlToText(html: string): string {
   const text = html
     .replace(/<!--[\s\S]*?-->/g, "")
     .replace(/<(script|style|noscript|svg|head)[\s\S]*?<\/\1>/gi, "")
-    // Block-level ends become line breaks so the text keeps its shape.
     .replace(/<\/(p|div|li|tr|h[1-6]|section|article|blockquote)>/gi, "\n")
     .replace(/<(br|hr)\s*\/?>/gi, "\n")
     .replace(/<li[^>]*>/gi, "- ")
@@ -32,7 +29,6 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
-/** Escape the five characters that matter for Telegram's HTML parse mode.*/
 export function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -47,14 +43,8 @@ export function escapeHtml(s: string): string {
 // real sentence ends split. Zero-width, so `split` keeps every character.
 const SENTENCE_BOUNDARY = /(?<=[.!?…]["')\]]*)\s+(?=[^\p{Ll}\s])/u;
 
-/** A bullet is one line: newlines and runs of whitespace collapse to single spaces. */
 const collapse = (s: string): string => s.replace(/\s+/g, " ").trim();
 
-/**
- * Split an entry's text into bullet-sized chunks of at most `maxChars`, splitting on topic
- * (blank-line) boundaries first and sentence boundaries within a topic. `maxChars` of 0
- * disables splitting; text already under the limit comes back as one chunk.
- */
 export function splitEntry(text: string, maxChars: number): string[] {
   const clean = collapse(text);
   if (!clean) return [];
@@ -79,24 +69,18 @@ export function splitEntry(text: string, maxChars: number): string[] {
 // A message over 4096 characters is rejected outright, not trimmed, so a list built from an
 // unbounded query has to stop somewhere and always say where: a list that quietly drops its
 // tail reads as complete.
-/** Telegram's hard per-message character cap. */
 export const TELEGRAM_LIMIT = 4096;
 
-/** Last-resort guard on anything about to be sent: cut to the limit, visibly. Paginate at
- *  the source where you can; this only exists so an oversized message degrades to a
- *  labelled cut instead of a failed send. */
 export function fitTelegram(text: string, limit = TELEGRAM_LIMIT): string {
   if (text.length <= limit) return text;
   const notice = `\n… cut here — the rest is past Telegram's ${limit}-character limit.`;
   return `${text.slice(0, limit - notice.length)}${notice}`;
 }
 
-/** `<n> <word>` with a naive plural "s" suffix for anything but 1. */
 export function pluralize(n: number, word: string): string {
   return `${n} ${word}${n === 1 ? "" : "s"}`;
 }
 
-/** Coarse human duration: "3d 4h", "5m 2s", "12s". */
 export function formatDuration(ms: number): string {
   const s = Math.floor(ms / 1000);
   const d = Math.floor(s / 86400);
@@ -119,7 +103,6 @@ export function parseEntrySize(text: string): number | null {
   return n >= 40 && n <= 4000 ? n : null;
 }
 
-/** Inline preview of a list: the first `max` entries, then a count of what's left out. */
 export function previewList(items: string[], max: number): string {
   if (items.length <= max) return items.join(", ");
   return `${items.slice(0, max).join(", ")} … +${items.length - max} more`;

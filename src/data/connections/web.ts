@@ -126,7 +126,6 @@ export class WebService {
     throw new Error("too many redirects");
   }
 
-  /** http(s) only, and never an address on the local machine or the home network. */
   private async assertPublicHttpUrl(raw: string): Promise<void> {
     if (!URL.canParse(raw)) throw new Error(`not a URL: ${raw}`);
     const u = new URL(raw);

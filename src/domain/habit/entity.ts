@@ -1,4 +1,3 @@
-/** One inline `[key:: value]` field. */
 export interface HabitField {
   key: string;
   value: string;

@@ -76,8 +76,6 @@ export class JotRepository {
     log.debug({ id, won }, "unsquash attempt");
     return won;
   }
-  /** Followers folded into a leader's line: other live jots sharing its anchor, oldest
-   *  first. The leader (id === anchor) is excluded; deleted jots are skipped. */
   async groupFollowers(leaderId: string): Promise<Jot[]> {
     return this.k<Jot>("jots")
       .where({ anchor: leaderId })
@@ -85,7 +83,6 @@ export class JotRepository {
       .whereNot({ status: "deleted" })
       .orderBy("received_at");
   }
-  /** Jots eligible for (re)processing: fresh, or failed but under the retry cap. */
   async pendingJots(): Promise<Jot[]> {
     return this.k<Jot>("jots")
       .where({ status: "pending" })
@@ -111,7 +108,6 @@ export class JotRepository {
     const r = await this.k("msg_map").where({ jot_id: jotId }).first();
     return r?.tg_message_id;
   }
-  /** Forget a telegram message → jot mapping (e.g. a status message we just deleted). */
   async unmapMessage(tgMessageId: number): Promise<void> {
     await this.k("msg_map").where({ tg_message_id: tgMessageId }).delete();
   }
@@ -135,8 +131,6 @@ export class JotRepository {
     await this.k("queued_edits").where({ jot_id: jotId }).del();
   }
 
-  /** Jot counts by kind + outcome over a [from,to) epoch-ms window, for /stats and the
-   *  daily summary. */
   async windowStats(from: number, to: number): Promise<Stats> {
     const row = await this.k("jots")
       .where("received_at", ">=", from)
@@ -169,7 +163,6 @@ export class JotRepository {
     };
   }
 
-  /** Live jot counts per status (whole table), for /status. */
   async statusCounts(): Promise<StatusCounts> {
     const rows = await this.k("jots")
       .select("status")
@@ -182,7 +175,6 @@ export class JotRepository {
     return out;
   }
 
-  /** Most recently touched failed/abandoned jots, for /failed. */
   async failedJots(limit = 10): Promise<Jot[]> {
     return this.k<Jot>("jots")
       .whereIn("status", ["failed", "abandoned"])
@@ -190,8 +182,6 @@ export class JotRepository {
       .limit(limit);
   }
 
-  /** Most recent live jots (any status except deleted), newest first, for the /menu
-   *  jots browser, which gives a read/edit surface the reply-to-message flow can't. */
   async recentJots(limit = 10): Promise<Jot[]> {
     return this.k<Jot>("jots")
       .whereNot({ status: "deleted" })
@@ -199,10 +189,6 @@ export class JotRepository {
       .limit(limit);
   }
 
-  /** Reprocess-eligible jots (done/failed/abandoned, not deleted, not in flight) whose
-   *  `received_at` falls in [from, to). Backs /reprocess's day and date-range pickers.
-   *  Only `id`/`anchor` are selected: callers dedupe/resolve to a leader's anchor, they
-   *  never touch the (potentially large) raw_text/transcript payloads. */
   async jotsInRange(
     from: number,
     to: number,
@@ -215,8 +201,6 @@ export class JotRepository {
       .orderBy("received_at");
   }
 
-  /** Page of reprocess-eligible jots, newest first, /reprocess's "one jot" picker, which
-   *  browses full history rather than recentJots' fixed top-10. */
   async jotsPage(offset: number, limit: number): Promise<Jot[]> {
     return this.k<Jot>("jots")
       .whereIn("status", [...TERMINAL_STATUSES])
@@ -258,8 +242,6 @@ export class JotRepository {
     return reset;
   }
 
-  /** Requeue failed (and optionally abandoned) jots: reset to pending, clear attempts.
-   *  Returns how many were reset. */
   async resetFailed(includeAbandoned: boolean): Promise<number> {
     const statuses = includeAbandoned ? ["failed", "abandoned"] : ["failed"];
     return this.k("jots").whereIn("status", statuses).update({
@@ -296,7 +278,6 @@ export class JotRepository {
     await this.updateJot(id, { status: "deleted" });
   }
 
-  /** Whether this jot was already asked "Move this to TIL?", whatever the answer was. */
   async tilOffered(jotId: string): Promise<boolean> {
     const row = await this.k("jots").where({ id: jotId }).first("til_offered");
     return Boolean(row?.til_offered);

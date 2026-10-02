@@ -36,7 +36,6 @@ export class GroqTranscriber {
  *  text turns, or a content-part array for the vision (image) turn. */
 export type GroqMessage = { role: "system" | "user"; content: unknown };
 
-/** OpenAI-compatible chat call, injectable for tests (mirrors the SDK `query` seam). */
 export type GroqChatFn = (
   apiKey: string,
   model: string,

@@ -5,8 +5,6 @@ const log = logger("transcribe");
 
 const ParakeetResponse = z.object({ text: z.string().optional() });
 
-/** Local: a Parakeet sidecar. Transcribes in the source language; the enricher
- *  translates to English downstream. */
 export class ParakeetTranscriber {
   constructor(private url: string) {}
 

@@ -26,7 +26,6 @@ export interface ObsidianConfig {
   insecureTls: boolean;
 }
 
-/** Thin client over the Obsidian Local REST API (the VFB headless instance). */
 export class ObsidianClient {
   // Obsidian's Local REST API serves a self-signed cert, so TLS verification is skipped
   // for a loopback target (the normal case). A non-loopback URL (e.g. the homelab deploy
@@ -107,7 +106,6 @@ export class ObsidianClient {
   // the blank template (the later PUT would erase the earlier's placeholder line).
   private creating = new Map<string, Promise<string>>();
 
-  /** Create today's note from the vault template if it doesn't exist yet. */
   async ensureDailyNote(date: string): Promise<string> {
     const inFlight = this.creating.get(date);
     if (inFlight) return inFlight;
@@ -167,8 +165,6 @@ export class ObsidianClient {
     });
   }
 
-  /** `updateNote` for the line carrying `^anchor`: `fn` gets that line and calls `write`
-   *  with its replacement. Answers null, without calling `fn`, when the line isn't there. */
   async updateLine<T>(
     vaultPath: string,
     anchor: string,
@@ -207,8 +203,6 @@ export class ObsidianClient {
     );
   }
 
-  /** Move a jot's line from wherever it is to the TIL heading of the same note, anchor
-   *  untouched. Says what is missing when the line or the TIL heading isn't in the note. */
   async moveToTil(
     notePath: string,
     anchor: string,
@@ -223,16 +217,12 @@ export class ObsidianClient {
     });
   }
 
-  /** Set the `overallRating` frontmatter of a day's note, creating the note if the day
-   *  was never journaled. */
   async setDailyRating(date: string, rating: number): Promise<void> {
     const path = await this.ensureDailyNote(date);
     await this.setFrontmatter(path, "overallRating", rating);
     log.info({ date, rating, path }, "overallRating frontmatter set");
   }
 
-  /** Read a day's note by date, or null if that day was never journaled (no habits to
-   *  review). Unlike setDailyRating this never creates the note. */
   async readDailyNote(
     date: string,
   ): Promise<{ path: string; content: string } | null> {
@@ -241,7 +231,6 @@ export class ObsidianClient {
     return content === null ? null : { path, content };
   }
 
-  /** Read a note's current content (live — the user may have edited it in Obsidian). */
   async readNote(vaultPath: string): Promise<string> {
     const c = await this.getFile(vaultPath);
     if (c === null) throw new Error(`note not found: ${vaultPath}`);

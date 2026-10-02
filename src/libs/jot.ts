@@ -1,4 +1,3 @@
-// Pure jot helpers: deterministic, token-free, unit-tested in isolation.
 import { randomBytes } from "node:crypto";
 import type {
   Jot,
@@ -11,12 +10,10 @@ import { stripTilPrefix } from "./note.ts";
 import { escapeHtml } from "./text.ts";
 import { plainDate } from "./time.ts";
 
-/** Fixed 8-char hex id, also used as the Obsidian block anchor. */
 export function makeJotId(): string {
   return randomBytes(4).toString("hex");
 }
 
-/** Errors worth retrying (transient infra); anything else is treated as unrecoverable. */
 export function isRecoverable(err: unknown): boolean {
   const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
   // "connection error" / "timed out" are the OpenAI-shaped SDKs' (Groq, OpenCode) words
@@ -32,11 +29,6 @@ export function isEditableJot(status: JotStatus): boolean {
   return status === "done" || status === "abandoned";
 }
 
-/** Pick the enrichable source text for a jot's kind: the transcript for audio (falling back
- *  to `audioFallback` when there isn't one), the raw text for text, and an image's caption
- *  (what you typed alongside the photo is the entry, same as any other jot, so it gets
- *  enriched and wikilinked rather than being demoted to the embed's alt text). A
- *  captionless image uses its vision caption here. Video is still attach-only. */
 export function enrichableSource(jot: Jot, audioFallback = ""): string {
   if (jot.kind === "audio") return jot.transcript ?? audioFallback;
   if (jot.kind === "text" || jot.kind === "image") return jot.raw_text ?? "";
@@ -60,8 +52,6 @@ export function assetEmbed(jot: Jot): string {
 const URL_FORMS =
   /(!?)\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)|(?<![\w/([<])(https?:\/\/[^\s<>()[\]]*[^\s<>()[\].,;:!?'"])/g;
 
-/** Which embed toggle a line can offer: `"embed"` when it holds an embeddable URL written
- *  as a link, `"plain"` when every one is already embedded, undefined when it has none. */
 export function embedOffer(text: string): "embed" | "plain" | undefined {
   let embedded = false;
   for (const m of text.matchAll(URL_FORMS)) {
@@ -72,9 +62,6 @@ export function embedOffer(text: string): "embed" | "plain" | undefined {
   return embedded ? "plain" : undefined;
 }
 
-/** Rewrite every embeddable URL in a line as an Obsidian embed (`embed: true`) or back to
- *  a link. `[text](url)` keeps its text as the embed's alt; a bare URL embeds as `![](url)`
- *  and comes back bare. Other URLs are left alone. */
 export function setEmbeds(text: string, embed: boolean): string {
   return text.replace(URL_FORMS, (all, bang, label, linked, bare) => {
     const url = linked ?? bare;
@@ -85,8 +72,6 @@ export function setEmbeds(text: string, embed: boolean): string {
   });
 }
 
-/** Rolling-window test for squashing: a new jot folds into the previous still-open one
- *  when it arrived within `windowMs` of it. A `windowMs` of 0 disables squashing. */
 export function withinSquashWindow(
   prevReceivedAt: number,
   nowReceivedAt: number,
@@ -95,8 +80,6 @@ export function withinSquashWindow(
   return windowMs > 0 && nowReceivedAt - prevReceivedAt <= windowMs;
 }
 
-/** Join a squash group's source texts into one blob for a single enrichment pass.
- *  Blank parts are dropped so an empty caption or failed transcript adds no noise. */
 export function combineEnrichSource(parts: string[]): string {
   return parts
     .map((p) => p.trim())
@@ -104,7 +87,6 @@ export function combineEnrichSource(parts: string[]): string {
     .join("\n");
 }
 
-/** Confirmation of what was written to the note, shown in full. Attach-only jots carry no text. */
 export function donePreview(kind: JotKind, textPart: string): string {
   const text = textPart.trim();
   if (text) return text;
@@ -112,17 +94,11 @@ export function donePreview(kind: JotKind, textPart: string): string {
   return "saved";
 }
 
-/** Text of a natively edited message as it belongs on the jot's line: a TIL jot keeps its
- *  marker out of the note, so an edit that still starts with "TIL" loses it again. */
 export function editedJotText(section: JotSection, text: string): string {
   if (section !== "til") return text;
   return stripTilPrefix(text) ?? text;
 }
 
-/**
- * Parse a literal edit instruction into an {old,new} swap, or null if freeform
- * (freeform goes to the agent). Supports `s/old/new/` and `replace X with Y`.
- */
 export function parseLiteralEdit(
   msg: string,
 ): { old: string; new: string } | null {
@@ -149,23 +125,13 @@ export function reprocessTargets(jots: Pick<Jot, "anchor">[]): string[] {
   return [...new Set(jots.map((j) => j.anchor))];
 }
 
-// --- status message texts and buttons ---
-
-/** Which buttons a jot's status message carries. A jot that finishes gets `undo`; one that
- *  fails gets `retry` and `discard`: every failure is a decision, and both halves of it
- *  should be one tap away rather than a command you have to remember. */
 export type StatusButtons = {
   retry?: boolean;
   undo?: boolean;
   discard?: boolean;
-  /** Line holds a YouTube/tweet/image URL: offer to embed it, or to turn it back into a
-   *  link (`embedOffer` in libs/jot.ts decides which). */
   embed?: "embed" | "plain";
 };
 
-/** The buttons under a jot's status message, as Telegram's inline keyboard markup. Empty
- *  (which clears any existing keyboard) when none is asked for, so a message that's no
- *  longer actionable stops offering actions. */
 export function statusKeyboard(jotId: string, opts?: StatusButtons) {
   const row: { text: string; callback_data: string }[] = [];
   if (opts?.undo) row.push({ text: "↩️ Undo", callback_data: `un:${jotId}` });
@@ -179,14 +145,10 @@ export function statusKeyboard(jotId: string, opts?: StatusButtons) {
   return { inline_keyboard: [row] };
 }
 
-/** `total` is the number of jots folded into one line (leader + followers); 0 means no
- *  squash. The single confirmation notes it so the merge is explained. */
 export function squashLine(total: number): string {
   return total > 1 ? `\n🧵 ${total} jots squashed into one entry` : "";
 }
 
-/** Final in-chat confirmation once a jot is written: the saved line blockquoted with its
- *  time so it is easy to spot. HTML parse mode: content is escaped. */
 export function doneMessage(
   time: string,
   kind: JotKind,
@@ -195,8 +157,6 @@ export function doneMessage(
   squashedTotal = 0,
   part?: { i: number; of: number },
 ): string {
-  // `part` is set when the text was too long and got split: each piece is its own jot with
-  // its own message, so say which one this is.
   const split = part ? `\n✂️ part ${part.i} of ${part.of}` : "";
   return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squashLine(squashedTotal)}${split}`;
 }
@@ -212,9 +172,6 @@ const errorBlock = (error: string) => {
   return `<code>${escapeHtml(cut ? `${text.slice(0, ERROR_PREVIEW_CHARS)}…` : text)}</code>`;
 };
 
-/** Status line for a jot that failed on a transient error and is still in the retry cycle.
- *  Without this the message stays on "Weaving it into your journal…" until the retry pass
- *  comes round, which reads as a jot that's stuck rather than one that's waiting. */
 export function retryNotice(
   kind: JotKind,
   attempts: number,
@@ -226,14 +183,10 @@ export function retryNotice(
   return `⚠️ That ${kind} jot didn't go through (attempt ${attempts} of ${max}). I'll try again on my own — ${more} left, or decide it now.\n${errorBlock(error)}`;
 }
 
-/** Status line for a jot held back because every enrichment model is down. It keeps its
- *  place in the note and isn't charged a retry; the retry pass picks it up once one is back. */
 export function heldNotice(kind: JotKind): string {
   return `⏸ Every enrichment model is down right now, so this ${kind} jot is waiting. It goes into your journal on its own once one is back.`;
 }
 
-/** Status line once a jot is given up on. The text is in the note un-enriched, so what's
- *  left to decide is whether to run it again or take it out. */
 export function gaveUpMessage(
   kind: JotKind,
   reason: string,
@@ -243,14 +196,10 @@ export function gaveUpMessage(
   return `⚠️ Gave up on a ${kind} jot (${reason}). Posted it un-enriched.\n${errorBlock(error)}${squashLine(squashedTotal)}`;
 }
 
-/** In-chat confirmation after an edit is applied: the corrected line blockquoted so the
- *  new text is visible immediately rather than a bare "updated". HTML parse mode: content
- *  is escaped. */
 export function editConfirmation(time: string, text: string): string {
   return `✏️ Updated\n<blockquote>🕒 ${time} · ${escapeHtml(text.trim() || "…")}</blockquote>`;
 }
 
-/** /jot body: full record for one jot. */
 export function formatJotDetail(j: Jot): string {
   const text = j.transcript ?? j.raw_text ?? "(none)";
   const lines = [
@@ -265,7 +214,6 @@ export function formatJotDetail(j: Jot): string {
   return lines.join("\n");
 }
 
-/** One glyph per jot status: the /menu jots browser and /reprocess pickers. */
 export const STATUS_ICON: Record<JotStatus, string> = {
   pending: "⏳",
   processing: "⚙️",
@@ -275,8 +223,6 @@ export const STATUS_ICON: Record<JotStatus, string> = {
   deleted: "🗑",
 };
 
-/** One-line content preview for list pickers (the /menu jots browser, /reprocess).
- *  Falls back to "(kind)" for attach-only jots with no caption. */
 export function jotPreview(j: Jot, maxLen = 40): string {
   return (j.transcript ?? j.raw_text ?? `(${j.kind})`)
     .replace(/\s+/g, " ")

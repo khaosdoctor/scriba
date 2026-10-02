@@ -1,7 +1,5 @@
-// Pure note helpers: deterministic, token-free, unit-tested in isolation.
 import { escapeRe } from "./text.ts";
 
-/** Journal bullet in the vault's house style: `- _HH:MM:SS ::_ <text> ^anchor` */
 export function journalLine(
   time: string,
   text: string,
@@ -14,13 +12,10 @@ export function journalLine(
 // merely starts with it ("tilde"), is an ordinary jot.
 const TIL_PREFIX = /^til(?:\s*[:\-–—]+\s*|\s+)(?=[\s\S]*[\p{L}\p{N}])/iu;
 
-/** The text after a leading "TIL" marker, or null when the jot doesn't start with one.
- *  The heading already says it is a TIL, so the marker itself is dropped. */
 export function stripTilPrefix(text: string): string | null {
   return TIL_PREFIX.test(text) ? text.replace(TIL_PREFIX, "") : null;
 }
 
-/** Placeholder written the instant a jot arrives, fixes ordering, filled in later. */
 export function placeholderLine(time: string, anchor: string): string {
   return journalLine(time, "⏳", anchor);
 }
@@ -30,16 +25,12 @@ export function placeholderLine(time: string, anchor: string): string {
 // "3^2" in the text itself from being read as one.
 const ANCHOR_SUFFIX = /\s+\^[A-Za-z0-9-]+[ \t\r]*$/;
 
-/** Strip the `- _time ::_ ` prefix and ` ^anchor` suffix off a journal line, leaving
- *  just its content (for literal edits). */
 export function stripJournalLine(line: string, time: string): string {
   return line
     .replace(new RegExp(`^- _${escapeRe(time)} ::_ `), "")
     .replace(ANCHOR_SUFFIX, "");
 }
 
-/** Line range of the section under `heading`: the heading's index and the index of the next
- *  heading (or the end of the note). Null when the note has no such heading. */
 export function findSection(
   lines: string[],
   heading: string,
@@ -57,15 +48,11 @@ export function findSection(
   return { headingIdx, end };
 }
 
-/** Append `[completion:: date]` to a task or habit line unless it already has one. */
 export function stampCompletion(line: string, date: string): string {
   if (/\[\s*completion\s*::/i.test(line)) return line;
   return `${line.replace(/\s*$/, "")} [completion:: ${date}]`;
 }
 
-/** Does the section under `heading` hold anything beyond what the template puts there?
- *  Blank lines, empty bullets (`-`, `- `, `- [ ]`), horizontal rules and HTML comments are
- *  template scaffolding; any other line is content. A missing heading counts as empty. */
 export function sectionHasContent(note: string, heading: string): boolean {
   const lines = note.split("\n");
   const section = findSection(lines, heading);
@@ -77,9 +64,6 @@ export function sectionHasContent(note: string, heading: string): boolean {
     );
 }
 
-/** Insert a journal bullet under `heading`, keeping the vault's indentation:
- *  immediately after the last bullet in that section, or replacing the list when
- *  it holds only the empty template bullet. Falls back to a heading-less append. */
 export function insertJournalLine(
   note: string,
   heading: string,
@@ -143,9 +127,6 @@ export function setFrontmatterValue(
 const anchorRe = (anchor: string) =>
   new RegExp(`^.*\\^${escapeRe(anchor)}[ \\t\\r]*$`, "m");
 
-/** Replace the whole line carrying `^anchor` with `newLine`. Returns null if not found.
- *  `newLine` may itself be several lines: a jot that split into parts writes its own line
- *  plus its parts' lines in one go, so they arrive together and in order. */
 export function replaceAnchorLine(
   note: string,
   anchor: string,
@@ -156,23 +137,18 @@ export function replaceAnchorLine(
   return note.replace(re, () => newLine); // function replacer: `$&` in the text is literal
 }
 
-/** Remove the line carrying `^anchor`. Returns null if not found. */
 export function deleteAnchorLine(note: string, anchor: string): string | null {
   const re = anchorRe(anchor);
   if (!re.test(note)) return null;
   return note.replace(re, "").replace(/\n{3,}/g, "\n\n");
 }
 
-/** Extract the current text of the line carrying `^anchor` (for literal edits). */
 export function anchorLine(note: string, anchor: string): string | null {
   return note.match(anchorRe(anchor))?.[0] ?? null;
 }
 
 export type MoveResult = { note: string } | { missing: "line" | "heading" };
 
-/** Move the line carrying `^anchor` under `heading`, keeping the line (and so its anchor)
- *  exactly as it is. Says what is missing instead of moving when the anchor or the heading
- *  isn't in the note: without the heading the line would be appended at the end of it. */
 export function moveAnchorLine(
   note: string,
   anchor: string,
