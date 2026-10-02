@@ -10,20 +10,20 @@ import { Repository } from "./db.ts";
 const BEFORE_SECTION = "20260922000000";
 const SECTION = "20260930000000";
 
-const columns = async (k: Knex) =>
-  ((await k.raw("PRAGMA table_info(jots)")) as { name: string }[]).map(
-    (c) => c.name,
+const columns = async (knex: Knex) =>
+  ((await knex.raw("PRAGMA table_info(jots)")) as { name: string }[]).map(
+    (column) => column.name,
   );
 
-const insertOld = (k: Knex, id: string) =>
-  k.raw(
+const insertOld = (knex: Knex, id: string) =>
+  knex.raw(
     "INSERT INTO jots (id, kind, note_path, anchor, time, status, received_at, updated_at) VALUES (?, 'text', 'n.md', ?, '10:00:00', 'pending', 1000, 1000)",
     [id, id],
   );
 
 /** A knex on a fresh sqlite file, or null when better-sqlite3 can't build here. */
 async function open(dbPath: string): Promise<Knex | null> {
-  const k = knexLib({
+  const knex = knexLib({
     client: "better-sqlite3",
     connection: { filename: dbPath },
     useNullAsDefault: true,
@@ -36,58 +36,59 @@ async function open(dbPath: string): Promise<Knex | null> {
     },
   });
   try {
-    await k.raw("select 1");
-    return k;
+    await knex.raw("select 1");
+    return knex;
   } catch {
-    await k.destroy();
+    await knex.destroy();
     return null;
   }
 }
 
 async function withDb(
-  t: { skip: (why: string) => void },
-  fn: (k: Knex, dbPath: string) => Promise<void>,
+  testContext: { skip: (why: string) => void },
+  fn: (knex: Knex, dbPath: string) => Promise<void>,
 ) {
   const dbPath = join(
     tmpdir(),
     `scriba-mig-${randomBytes(6).toString("hex")}.db`,
   );
-  const k = await open(dbPath);
-  if (!k) return t.skip("native sqlite unavailable");
+  const knex = await open(dbPath);
+  if (!knex) return testContext.skip("native sqlite unavailable");
   try {
-    await fn(k, dbPath);
+    await fn(knex, dbPath);
   } finally {
-    await k.destroy().catch(() => {});
+    await knex.destroy().catch(() => {});
     for (const suffix of ["", "-shm", "-wal"])
       await rm(`${dbPath}${suffix}`, { force: true });
   }
 }
 
-async function migrateTo(k: Knex, version: string) {
-  while ((await k.migrate.currentVersion()) !== version) await k.migrate.up();
+async function migrateTo(knex: Knex, version: string) {
+  while ((await knex.migrate.currentVersion()) !== version)
+    await knex.migrate.up();
 }
 
-test("jot_section adds the section column and down removes only that column", async (t) => {
-  await withDb(t, async (k) => {
-    await migrateTo(k, SECTION);
-    const up = await columns(k);
+test("jot_section adds the section column and down removes only that column", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await migrateTo(knex, SECTION);
+    const up = await columns(knex);
     assert.ok(up.includes("section"));
 
-    await k.migrate.down();
-    const down = await columns(k);
+    await knex.migrate.down();
+    const down = await columns(knex);
     assert.ok(!down.includes("section"));
     assert.deepEqual(
       down,
-      up.filter((c) => c !== "section"),
+      up.filter((column) => column !== "section"),
     );
-    assert.equal(await k.migrate.currentVersion(), BEFORE_SECTION);
+    assert.equal(await knex.migrate.currentVersion(), BEFORE_SECTION);
   });
 });
 
-test("rolling jot_section back keeps the rows and the status index", async (t) => {
-  await withDb(t, async (k) => {
-    await migrateTo(k, SECTION);
-    await k("jots").insert([
+test("rolling jot_section back keeps the rows and the status index", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await migrateTo(knex, SECTION);
+    await knex("jots").insert([
       {
         id: "aaaaaaaa",
         kind: "text",
@@ -113,30 +114,30 @@ test("rolling jot_section back keeps the rows and the status index", async (t) =
         section: "til",
       },
     ]);
-    await k.migrate.down();
+    await knex.migrate.down();
 
-    const rows = await k("jots")
+    const rows = await knex("jots")
       .select("id", "raw_text", "status")
       .orderBy("id");
     assert.deepEqual(rows, [
       { id: "aaaaaaaa", raw_text: "one", status: "pending" },
       { id: "bbbbbbbb", raw_text: "two", status: "done" },
     ]);
-    await assert.rejects(() => k("jots").select("section"), /section/);
-    const indexes = (await k.raw("PRAGMA index_list(jots)")) as {
+    await assert.rejects(() => knex("jots").select("section"), /section/);
+    const indexes = (await knex.raw("PRAGMA index_list(jots)")) as {
       name: string;
     }[];
-    assert.ok(indexes.some((i) => i.name.includes("status")));
+    assert.ok(indexes.some((index) => index.name.includes("status")));
   });
 });
 
-test("jot_section gives rows that predate it the journal section", async (t) => {
-  await withDb(t, async (k, dbPath) => {
-    await migrateTo(k, BEFORE_SECTION);
-    await insertOld(k, "aaaaaaaa");
-    await k.migrate.latest();
-    assert.equal((await k("jots").first())?.section, "journal");
-    await k.destroy();
+test("jot_section gives rows that predate it the journal section", async (testContext) => {
+  await withDb(testContext, async (knex, dbPath) => {
+    await migrateTo(knex, BEFORE_SECTION);
+    await insertOld(knex, "aaaaaaaa");
+    await knex.migrate.latest();
+    assert.equal((await knex("jots").first())?.section, "journal");
+    await knex.destroy();
 
     // The repository sees that old row as a journal jot and never as a TIL one.
     const repo = await Repository.open(dbPath);
@@ -155,85 +156,85 @@ test("jot_section gives rows that predate it the journal section", async (t) => 
   });
 });
 
-test("a row inserted without a section reads back as journal", async (t) => {
-  await withDb(t, async (k) => {
-    await k.migrate.latest();
-    await insertOld(k, "aaaaaaaa");
-    assert.equal((await k("jots").first())?.section, "journal");
+test("a row inserted without a section reads back as journal", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await knex.migrate.latest();
+    await insertOld(knex, "aaaaaaaa");
+    assert.equal((await knex("jots").first())?.section, "journal");
   });
 });
 
-test("jot_section can be rolled back and applied again", async (t) => {
-  await withDb(t, async (k) => {
-    await migrateTo(k, SECTION);
-    await k.migrate.down();
-    await migrateTo(k, SECTION);
-    assert.ok((await columns(k)).includes("section"));
-    assert.equal(await k.migrate.currentVersion(), SECTION);
+test("jot_section can be rolled back and applied again", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await migrateTo(knex, SECTION);
+    await knex.migrate.down();
+    await migrateTo(knex, SECTION);
+    assert.ok((await columns(knex)).includes("section"));
+    assert.equal(await knex.migrate.currentVersion(), SECTION);
   });
 });
 
-test("til_offered adds a column that defaults to false for rows that predate it", async (t) => {
-  await withDb(t, async (k) => {
-    await migrateTo(k, SECTION);
-    await insertOld(k, "aaaaaaaa");
-    await insertOld(k, "bbbbbbbb");
-    await k.migrate.latest();
-    const rows = await k("jots").select("id", "til_offered").orderBy("id");
+test("til_offered adds a column that defaults to false for rows that predate it", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await migrateTo(knex, SECTION);
+    await insertOld(knex, "aaaaaaaa");
+    await insertOld(knex, "bbbbbbbb");
+    await knex.migrate.latest();
+    const rows = await knex("jots").select("id", "til_offered").orderBy("id");
     assert.deepEqual(
-      rows.map((r) => Number(r.til_offered)),
+      rows.map((row) => Number(row.til_offered)),
       [0, 0],
     );
   });
 });
 
-test("til_offered down drops only its column, and up again does not collide", async (t) => {
-  await withDb(t, async (k) => {
-    await k.migrate.latest();
-    await insertOld(k, "aaaaaaaa");
-    await insertOld(k, "bbbbbbbb");
-    await k("jots").where({ id: "aaaaaaaa" }).update({ til_offered: true });
+test("til_offered down drops only its column, and up again does not collide", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await knex.migrate.latest();
+    await insertOld(knex, "aaaaaaaa");
+    await insertOld(knex, "bbbbbbbb");
+    await knex("jots").where({ id: "aaaaaaaa" }).update({ til_offered: true });
 
-    await k.migrate.down();
-    const down = await columns(k);
+    await knex.migrate.down();
+    const down = await columns(knex);
     assert.ok(!down.includes("til_offered"));
     assert.ok(down.includes("section"));
-    assert.equal(await k.migrate.currentVersion(), SECTION);
-    assert.equal((await k("jots").select("id")).length, 2);
+    assert.equal(await knex.migrate.currentVersion(), SECTION);
+    assert.equal((await knex("jots").select("id")).length, 2);
 
-    await k.migrate.latest();
-    const rows = await k("jots").select("til_offered");
+    await knex.migrate.latest();
+    const rows = await knex("jots").select("til_offered");
     // The earlier offered state is gone with the column, which is expected.
     assert.deepEqual(
-      rows.map((r) => Number(r.til_offered)),
+      rows.map((row) => Number(row.til_offered)),
       [0, 0],
     );
   });
 });
 
-const schema = async (k: Knex) =>
-  (await k.raw(
+const schema = async (knex: Knex) =>
+  (await knex.raw(
     "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE 'knex_%' ORDER BY type, name",
   )) as { type: string; name: string; sql: string }[];
 
-test("every migration rolls back, and migrating again rebuilds the same schema", async (t) => {
-  await withDb(t, async (k) => {
-    await k.migrate.latest();
-    const built = await schema(k);
-    const stopwords = await k("stopwords").count("* as n").first();
+test("every migration rolls back, and migrating again rebuilds the same schema", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await knex.migrate.latest();
+    const built = await schema(knex);
+    const stopwords = await knex("stopwords").count("* as n").first();
     assert.ok(built.length > 8);
     assert.ok(Number(stopwords?.n) > 100);
 
     // A down() that misses a table, index or column would leave it behind or make the
     // next up() collide with it.
-    await k.migrate.rollback(undefined, true);
-    assert.deepEqual(await schema(k), []);
-    assert.equal(await k.migrate.currentVersion(), "none");
+    await knex.migrate.rollback(undefined, true);
+    assert.deepEqual(await schema(knex), []);
+    assert.equal(await knex.migrate.currentVersion(), "none");
 
-    await k.migrate.latest();
-    assert.deepEqual(await schema(k), built);
+    await knex.migrate.latest();
+    assert.deepEqual(await schema(knex), built);
     assert.deepEqual(
-      await k("stopwords").count("* as n").first(),
+      await knex("stopwords").count("* as n").first(),
       stopwords,
       "the seeded stopwords come back",
     );

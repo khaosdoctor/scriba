@@ -14,7 +14,7 @@ import type { Command, Deps } from "./types.ts";
  */
 
 const byName = (name: string): Command => {
-  const cmd = commands.find((c) => c.name === name);
+  const cmd = commands.find((command) => command.name === name);
   assert.ok(cmd, `no /${name} in the registry`);
   return cmd;
 };
@@ -46,7 +46,7 @@ function deps(over: Record<string, any> = {}) {
       calls.push(`${name}(${args.join(",")})`);
       return typeof out === "function" ? out(...args) : out;
     };
-  const d = {
+  const fakeDeps = {
     links: {},
     github: {},
     version: "1.34.0",
@@ -77,7 +77,7 @@ function deps(over: Record<string, any> = {}) {
     processor: { retrySweep: track("retrySweep"), ...over.processor },
     transcriber: { chain: "groq → parakeet", ...over.transcriber },
   };
-  return d as unknown as Deps & { calls: string[] };
+  return fakeDeps as unknown as Deps & { calls: string[] };
 }
 
 /** A ctx that records replies, for the commands that answer with a keyboard themselves. */
@@ -95,66 +95,79 @@ function ctx() {
 
 test("the registry is well-formed and safe to hand to Telegram", () => {
   assert.ok(commands.length > 5);
-  const names = commands.map((c) => c.name);
+  const names = commands.map((command) => command.name);
   assert.deepEqual(
-    names.filter((n, i) => names.indexOf(n) !== i),
+    names.filter((name, index) => names.indexOf(name) !== index),
     [],
     "duplicate command names would register two handlers for one command",
   );
-  for (const c of commands) {
+  for (const command of commands) {
     // setMyCommands rejects anything outside this shape, and bot.ts only warns on that
     // failure — one bad name silently costs the whole `/` menu.
-    assert.match(c.name, /^[a-z0-9_]{1,32}$/, `bad command name: ${c.name}`);
-    assert.ok(c.description.trim(), `/${c.name} has no description`);
-    assert.ok(
-      c.description.length <= 256,
-      `/${c.name}'s description is too long`,
+    assert.match(
+      command.name,
+      /^[a-z0-9_]{1,32}$/,
+      `bad command name: ${command.name}`,
     );
-    assert.equal(typeof c.run, "function");
+    assert.ok(
+      command.description.trim(),
+      `/${command.name} has no description`,
+    );
+    assert.ok(
+      command.description.length <= 256,
+      `/${command.name}'s description is too long`,
+    );
+    assert.equal(typeof command.run, "function");
   }
 });
 
 test("/help lists the whole registry, itself included", async () => {
   const out = await byName("help").run({} as any, "", deps());
   assert.ok(typeof out === "string");
-  for (const c of commands)
-    assert.ok(out.includes(`/${c.name} —`), `/help omits /${c.name}`);
+  for (const command of commands)
+    assert.ok(
+      out.includes(`/${command.name} —`),
+      `/help omits /${command.name}`,
+    );
   assert.ok(out.includes("/help —"));
 });
 
 test("/retry with an id resets and queues that jot alone", async () => {
-  const d = deps({ repo: { getJot: async () => aJot() } });
+  const fakeDeps = deps({ repo: { getJot: async () => aJot() } });
   assert.equal(
-    await byName("retry").run({} as any, " ABCD1234 ", d),
+    await byName("retry").run({} as any, " ABCD1234 ", fakeDeps),
     "🔄 retrying abcd1234",
   );
-  assert.ok(d.calls.includes("resetForRetry(abcd1234)"));
-  assert.ok(d.calls.includes("queue.add(abcd1234)"));
+  assert.ok(fakeDeps.calls.includes("resetForRetry(abcd1234)"));
+  assert.ok(fakeDeps.calls.includes("queue.add(abcd1234)"));
   // One jot, so the sweep isn't kicked for the whole backlog.
-  assert.ok(!d.calls.some((c) => c.startsWith("retrySweep")));
+  assert.ok(!fakeDeps.calls.some((call) => call.startsWith("retrySweep")));
 });
 
 test("/retry with an unknown id says so instead of queueing nothing", async () => {
-  const d = deps();
-  assert.equal(await byName("retry").run({} as any, "nope", d), "no jot nope");
-  assert.ok(!d.calls.some((c) => c.startsWith("resetForRetry")));
+  const fakeDeps = deps();
+  assert.equal(
+    await byName("retry").run({} as any, "nope", fakeDeps),
+    "no jot nope",
+  );
+  assert.ok(!fakeDeps.calls.some((call) => call.startsWith("resetForRetry")));
 });
 
 test("/retry with no args takes the failed ones; `all` includes the abandoned", async () => {
   // An override replaces the tracked stub, so it records its own argument: whether the
   // abandoned jots are swept back in is the whole difference between these two calls.
   const scope: boolean[] = [];
-  const resetFailed = (n: number) => async (all: boolean) => {
+  const resetFailed = (count: number) => async (all: boolean) => {
     scope.push(all);
-    return n;
+    return count;
   };
 
-  const d = deps({ repo: { resetFailed: resetFailed(3) } });
+  const fakeDeps = deps({ repo: { resetFailed: resetFailed(3) } });
   assert.equal(
-    await byName("retry").run({} as any, "", d),
+    await byName("retry").run({} as any, "", fakeDeps),
     "🔄 requeued 3 jots",
   );
-  assert.ok(d.calls.some((c) => c.startsWith("retrySweep")));
+  assert.ok(fakeDeps.calls.some((call) => call.startsWith("retrySweep")));
 
   const all = deps({ repo: { resetFailed: resetFailed(1) } });
   assert.equal(
@@ -165,9 +178,9 @@ test("/retry with no args takes the failed ones; `all` includes the abandoned", 
 });
 
 test("/retry doesn't run a sweep when nothing was requeued", async () => {
-  const d = deps({ repo: { resetFailed: async () => 0 } });
-  await byName("retry").run({} as any, "", d);
-  assert.ok(!d.calls.some((c) => c.startsWith("retrySweep")));
+  const fakeDeps = deps({ repo: { resetFailed: async () => 0 } });
+  await byName("retry").run({} as any, "", fakeDeps);
+  assert.ok(!fakeDeps.calls.some((call) => call.startsWith("retrySweep")));
 });
 
 test("/stopword add and del need a word, and say what changed", async () => {
@@ -195,24 +208,30 @@ test("/stopword add and del need a word, and say what changed", async () => {
 });
 
 test("/stopword list paginates, and a bad subcommand gets usage", async () => {
-  const words = new Set(Array.from({ length: 130 }, (_, i) => `w${i + 1000}`));
-  const d = deps({ repo: { stopwords: async () => words } });
-  const page1 = (await byName("stopword").run({} as any, "list", d)) as string;
+  const words = new Set(
+    Array.from({ length: 130 }, (_, index) => `w${index + 1000}`),
+  );
+  const fakeDeps = deps({ repo: { stopwords: async () => words } });
+  const page1 = (await byName("stopword").run(
+    {} as any,
+    "list",
+    fakeDeps,
+  )) as string;
   assert.match(page1, /page 1\/3/);
   assert.match(page1, /next: \/stopword list 2/);
   const page2 = (await byName("stopword").run(
     {} as any,
     "list 2",
-    d,
+    fakeDeps,
   )) as string;
   assert.match(page2, /page 2\/3/);
   // Out-of-range and junk page numbers clamp rather than answering with a blank page.
   assert.match(
-    (await byName("stopword").run({} as any, "list 99", d)) as string,
+    (await byName("stopword").run({} as any, "list 99", fakeDeps)) as string,
     /page 3\/3/,
   );
   assert.match(
-    (await byName("stopword").run({} as any, "list zz", d)) as string,
+    (await byName("stopword").run({} as any, "list zz", fakeDeps)) as string,
     /page 1\/3/,
   );
   assert.equal(
@@ -262,12 +281,12 @@ test("/failed lists nothing cheerfully, and otherwise gives a button per jot", a
   assert.match(reply!.text, /abcd1234 \[text\] failed ×2 — fetch failed/);
   // grammy leaves a trailing empty row after the last .row(); count the filled ones.
   const rows = reply!.opts.reply_markup.inline_keyboard.filter(
-    (r: any[]) => r.length,
+    (row: any[]) => row.length,
   );
   assert.equal(rows.length, 2, "one row per jot");
   // The same 🔄 Retry / 🗑 Delete pair the failure messages carry, per row.
   assert.deepEqual(
-    rows.map((r: any[]) => r.map((b: any) => b.callback_data)),
+    rows.map((row: any[]) => row.map((button: any) => button.callback_data)),
     [
       ["rt:abcd1234", "dl:abcd1234"],
       ["rt:ffff0001", "dl:ffff0001"],
@@ -318,9 +337,9 @@ const release = (over: Partial<ReleaseNote> = {}): ReleaseNote => ({
 });
 
 test("/changelog with no args shows the latest release as plain text", async () => {
-  const d = deps({ github: { latest: async () => release() } });
+  const fakeDeps = deps({ github: { latest: async () => release() } });
   assert.equal(
-    await byName("changelog").run({} as any, "", d),
+    await byName("changelog").run({} as any, "", fakeDeps),
     "📋 v1.34.0\n\nFeatures:\n• offer to move TIL jots\n\nBug Fixes:\n• keep the card\n\nhttps://github.com/o/r/releases/tag/v1.34.0",
   );
 });
@@ -347,16 +366,16 @@ test("/changelog says so when GitHub can't be reached", async () => {
 
 test("/changelog with a version looks that version up", async () => {
   const asked: string[] = [];
-  const d = deps({
+  const fakeDeps = deps({
     github: {
-      byVersion: async (v: string) => {
-        asked.push(v);
+      byVersion: async (version: string) => {
+        asked.push(version);
         return release({ name: "v1.2.3", body: "", url: "https://x/1.2.3" });
       },
     },
   });
   assert.equal(
-    await byName("changelog").run({} as any, " 1.2.3 ", d),
+    await byName("changelog").run({} as any, " 1.2.3 ", fakeDeps),
     "📋 v1.2.3\n\nhttps://x/1.2.3",
   );
   assert.deepEqual(asked, ["1.2.3"]);
@@ -364,10 +383,10 @@ test("/changelog with a version looks that version up", async () => {
 
 test("/changelog N lists the N most recent releases and clamps N to 1-20", async () => {
   const asked: number[] = [];
-  const d = deps({
+  const fakeDeps = deps({
     github: {
-      recent: async (n: number) => {
-        asked.push(n);
+      recent: async (count: number) => {
+        asked.push(count);
         return [
           release(),
           release({
@@ -380,17 +399,17 @@ test("/changelog N lists the N most recent releases and clamps N to 1-20", async
     },
   });
   assert.equal(
-    await byName("changelog").run({} as any, "2", d),
+    await byName("changelog").run({} as any, "2", fakeDeps),
     `• v1.34.0 (2026-09-30) ${DASH} https://github.com/o/r/releases/tag/v1.34.0\n• v1.33.0 (2026-09-22) ${DASH} https://github.com/o/r/releases/tag/v1.33.0`,
   );
-  await byName("changelog").run({} as any, "0", d);
-  await byName("changelog").run({} as any, "99", d);
+  await byName("changelog").run({} as any, "0", fakeDeps);
+  await byName("changelog").run({} as any, "99", fakeDeps);
   assert.deepEqual(asked, [2, 1, 20]);
 });
 
-test("/stats asks for the window it names and refuses anything else", async (t) => {
+test("/stats asks for the window it names and refuses anything else", async (testContext) => {
   const NOW = 1_790_000_000_000;
-  t.mock.timers.enable({ apis: ["Date"], now: NOW });
+  testContext.mock.timers.enable({ apis: ["Date"], now: NOW });
   const windows: [number, number][] = [];
   const row = {
     total: 10,
@@ -403,7 +422,7 @@ test("/stats asks for the window it names and refuses anything else", async (t) 
     abandoned: 1,
     inflight: 1,
   };
-  const d = deps({
+  const fakeDeps = deps({
     repo: {
       windowStats: async (from: number, to: number) => {
         windows.push([from, to]);
@@ -413,16 +432,16 @@ test("/stats asks for the window it names and refuses anything else", async (t) 
   });
 
   assert.equal(
-    await byName("stats").run({} as any, "week", d),
+    await byName("stats").run({} as any, "week", fakeDeps),
     "📊 last 7 days\nJots: 10\n  text 6 · voice 2 · image 1 · video 1\nDone 7 · in-flight 1 · failed 1 · abandoned 1",
   );
   assert.match(
-    (await byName("stats").run({} as any, "ALL", d)) as string,
+    (await byName("stats").run({} as any, "ALL", fakeDeps)) as string,
     /^📊 all time\n/,
   );
   // No argument means today, from local midnight.
   assert.match(
-    (await byName("stats").run({} as any, "", d)) as string,
+    (await byName("stats").run({} as any, "", fakeDeps)) as string,
     /^📊 today\n/,
   );
   assert.deepEqual(windows, [
@@ -432,16 +451,16 @@ test("/stats asks for the window it names and refuses anything else", async (t) 
   ]);
 
   assert.equal(
-    await byName("stats").run({} as any, "month", d),
+    await byName("stats").run({} as any, "month", fakeDeps),
     "usage: /stats [today|week|all]",
   );
   assert.equal(windows.length, 3, "a bad range never reaches the database");
 });
 
-test("/status joins the snapshot with the upstream health", async (t) => {
+test("/status joins the snapshot with the upstream health", async (testContext) => {
   const NOW = 1_790_000_000_000;
-  t.mock.timers.enable({ apis: ["Date"], now: NOW });
-  const d = deps({
+  testContext.mock.timers.enable({ apis: ["Date"], now: NOW });
+  const fakeDeps = deps({
     startedAt: NOW - 10_500_000,
     repo: {
       statusCounts: async () => ({
@@ -479,7 +498,7 @@ test("/status joins the snapshot with the upstream health", async (t) => {
     sha: "abc1234def",
   });
   assert.equal(
-    await byName("status").run({} as any, "", d),
+    await byName("status").run({} as any, "", fakeDeps),
     "🩺 scriba 1.34.0 (abc1234)\nUptime: 2h 55m\nJots: 5 done · 2 in-flight · 2 failed · 1 abandoned\nQueue depth: 3\nTranscriber: groq → parakeet\nLink index: 12 files / 40 aliases\n\nUpstreams:\n🟢 groq · 120 ms\n🔴 parakeet · down 1m 30s · not probed yet · ECONNREFUSED",
   );
 });
@@ -532,11 +551,11 @@ test("/unreject with no args offers one button per rejected word", async () => {
   const [reply] = some.replies;
   assert.equal(reply!.text, "Pick a rejected word to unreject:");
   const rows = reply!.opts.reply_markup.inline_keyboard.filter(
-    (r: any[]) => r.length,
+    (row: any[]) => row.length,
   );
   // One button per distinct word, however many notes it was rejected for.
   assert.deepEqual(
-    rows.map((r: any[]) => [r[0].text, r[0].callback_data]),
+    rows.map((row: any[]) => [row[0].text, row[0].callback_data]),
     [
       ["monday", "ur:s:0"],
       ["norway", "ur:s:1"],
@@ -545,8 +564,8 @@ test("/unreject with no args offers one button per rejected word", async () => {
 });
 
 test("/unreject caps the keyboard at 30 words and names the cut", async () => {
-  const list = Array.from({ length: 35 }, (_, i) => ({
-    surface: `word${i}`,
+  const list = Array.from({ length: 35 }, (_, index) => ({
+    surface: `word${index}`,
     note: "N",
   }));
   const some = ctx();
@@ -561,27 +580,30 @@ test("/unreject caps the keyboard at 30 words and names the cut", async () => {
     `Pick a rejected word to unreject (30 of 35 ${DASH} /menu › 🔗 Link rules pages through the rest):`,
   );
   const rows = reply!.opts.reply_markup.inline_keyboard.filter(
-    (r: any[]) => r.length,
+    (row: any[]) => row.length,
   );
   assert.equal(rows.length, 30);
 });
 
 test("/flush drains the queue and reports how many were waiting", async () => {
   const flushed: string[] = [];
-  const d = deps({
+  const fakeDeps = deps({
     queue: { depth: 3, flush: async () => void flushed.push("flush") },
   });
   assert.equal(
-    await byName("flush").run({} as any, "", d),
+    await byName("flush").run({} as any, "", fakeDeps),
     "⚡ flushed (3 queued)",
   );
   assert.deepEqual(flushed, ["flush"]);
 });
 
 test("/sweep runs the retry sweep and confirms", async () => {
-  const d = deps();
-  assert.equal(await byName("sweep").run({} as any, "", d), "🧹 sweep done");
-  assert.deepEqual(d.calls, ["retrySweep()"]);
+  const fakeDeps = deps();
+  assert.equal(
+    await byName("sweep").run({} as any, "", fakeDeps),
+    "🧹 sweep done",
+  );
+  assert.deepEqual(fakeDeps.calls, ["retrySweep()"]);
 });
 
 test("/version names the running release and the first seven characters of the sha", async () => {

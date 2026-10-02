@@ -22,7 +22,7 @@ import {
 type Row = {
   tap: string;
   when: string;
-  setup?: (h: Harness) => void | Promise<void>;
+  setup?: (harness: Harness) => void | Promise<void>;
   /** The message the button belongs to; null is a tap that carries none. */
   message?: object | null;
   fail?: string[];
@@ -32,10 +32,10 @@ type Row = {
 async function actual(rows: Row[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   for (const row of rows) {
-    const h = await botHarness();
-    await row.setup?.(h);
-    for (const method of row.fail ?? []) h.failApi.add(method);
-    const run = await h.tap(
+    const harness = await botHarness();
+    await row.setup?.(harness);
+    for (const method of row.fail ?? []) harness.failApi.add(method);
+    const run = await harness.tap(
       row.tap,
       row.message === undefined ? {} : { message: row.message },
     );
@@ -45,7 +45,7 @@ async function actual(rows: Row[]): Promise<Record<string, string>> {
 }
 
 const expected = (rows: Row[]) =>
-  Object.fromEntries(rows.map((r) => [`${r.tap} ${r.when}`, r.expect]));
+  Object.fromEntries(rows.map((row) => [`${row.tap} ${row.when}`, row.expect]));
 
 const ledger = (name: string, rows: Row[]) =>
   test(`ack ledger: ${name}`, async () => {
@@ -60,9 +60,9 @@ const YOUTUBE = "https://youtu.be/abc123";
 
 const withJot =
   (over: Partial<Jot> = {}, note = noteWith("bought milk")) =>
-  (h: Harness) => {
-    h.repo.getJot = jot(over);
-    h.obsidian.readNote = note;
+  (harness: Harness) => {
+    harness.repo.getJot = jot(over);
+    harness.obsidian.readNote = note;
   };
 
 const REMOVED =
@@ -160,13 +160,13 @@ ledger("vf", [
   {
     tap: `vf:o:${ID}`,
     when: "keep the original",
-    setup: (h) => h.bot.voiceFixPending.set(ID, () => {}),
+    setup: (harness) => harness.bot.voiceFixPending.set(ID, () => {}),
     expect: "ack(keeping original)",
   },
   {
     tap: `vf:p:${ID}`,
     when: "use the fixed version",
-    setup: (h) => h.bot.voiceFixPending.set(ID, () => {}),
+    setup: (harness) => harness.bot.voiceFixPending.set(ID, () => {}),
     expect: "ack(using fixed version)",
   },
   { tap: `vf:o:${ID}`, when: "no pending choice", expect: "ack(expired)" },
@@ -174,8 +174,8 @@ ledger("vf", [
 ]);
 
 const REJECTED = [{ surface: "milk", note: "Milk" }];
-const withRejected = (h: Harness) => {
-  h.repo.rejectionList = REJECTED;
+const withRejected = (harness: Harness) => {
+  harness.repo.rejectionList = REJECTED;
 };
 
 ledger("ur", [
@@ -188,9 +188,9 @@ ledger("ur", [
   {
     tap: "ur:p:0:0",
     when: "rejection undone, answered after the write",
-    setup: (h) => {
-      withRejected(h);
-      h.repo.unreject = 1;
+    setup: (harness) => {
+      withRejected(harness);
+      harness.repo.unreject = 1;
     },
     expect:
       "repo.rejectionList > repo.unreject > ack(unrejected) > tg.editMessageText",
@@ -198,9 +198,9 @@ ledger("ur", [
   {
     tap: "ur:p:0:0",
     when: "rejection already gone",
-    setup: (h) => {
-      withRejected(h);
-      h.repo.unreject = 0;
+    setup: (harness) => {
+      withRejected(harness);
+      harness.repo.unreject = 0;
     },
     expect:
       "repo.rejectionList > repo.unreject > ack(already gone) > tg.editMessageText",
@@ -230,9 +230,9 @@ ledger("lk", [
   {
     tap: "lk:y:p1",
     when: "confirm, answered after the vault write",
-    setup: (h) => {
-      h.repo.takePendingLink = PENDING_LINK;
-      withJot()(h);
+    setup: (harness) => {
+      harness.repo.takePendingLink = PENDING_LINK;
+      withJot()(harness);
     },
     expect:
       "repo.takePendingLink > repo.getJot > obsidian.readNote > obsidian.writeNote > ack(linked) > tg.editMessageText",
@@ -240,8 +240,8 @@ ledger("lk", [
   {
     tap: "lk:n:p1",
     when: "reject, answered after the write",
-    setup: (h) => {
-      h.repo.takePendingLink = PENDING_LINK;
+    setup: (harness) => {
+      harness.repo.takePendingLink = PENDING_LINK;
     },
     expect:
       "repo.takePendingLink > repo.reject > ack(won't link again) > tg.editMessageText",
@@ -249,8 +249,8 @@ ledger("lk", [
   {
     tap: "lk:y:p1",
     when: "confirm but the jot is gone",
-    setup: (h) => {
-      h.repo.takePendingLink = PENDING_LINK;
+    setup: (harness) => {
+      harness.repo.takePendingLink = PENDING_LINK;
     },
     expect:
       "repo.takePendingLink > repo.getJot > ack(no change) > tg.editMessageText",
@@ -258,9 +258,9 @@ ledger("lk", [
   {
     tap: "lk:y:p1",
     when: "confirm but the word is not on the line",
-    setup: (h) => {
-      h.repo.takePendingLink = { ...PENDING_LINK, surface: "bread" };
-      withJot()(h);
+    setup: (harness) => {
+      harness.repo.takePendingLink = { ...PENDING_LINK, surface: "bread" };
+      withJot()(harness);
     },
     expect:
       "repo.takePendingLink > repo.getJot > obsidian.readNote > ack(no change) > tg.editMessageText",
@@ -278,9 +278,9 @@ ledger("unknown namespace and handler errors", [
   {
     tap: `rt:${ID}`,
     when: "handler throws, the toast is cut to 200 characters",
-    setup: (h) => {
-      withJot({ status: "failed" })(h);
-      h.repo.resetForRetry = () => {
+    setup: (harness) => {
+      withJot({ status: "failed" })(harness);
+      harness.repo.resetForRetry = () => {
         throw new Error("x".repeat(300));
       };
     },
@@ -294,10 +294,10 @@ ledger("ti", [
   {
     tap: `ti:y:${ID}`,
     when: "moved, answered after the vault move and the section update",
-    setup: (h) => {
-      withJot()(h);
-      h.obsidian.moveToTil = "moved";
-      h.repo.groupFollowers = [jot({ id: "bbbbbbbb" })];
+    setup: (harness) => {
+      withJot()(harness);
+      harness.obsidian.moveToTil = "moved";
+      harness.repo.groupFollowers = [jot({ id: "bbbbbbbb" })];
     },
     expect:
       "repo.getJot > obsidian.moveToTil > repo.groupFollowers > repo.updateJot×2 > ack(moved to TIL) > tg.editMessageText",
@@ -305,9 +305,9 @@ ledger("ti", [
   {
     tap: `ti:y:${ID}`,
     when: "move fails, alert and the card keeps its buttons",
-    setup: (h) => {
-      withJot()(h);
-      h.obsidian.moveToTil = () => {
+    setup: (harness) => {
+      withJot()(harness);
+      harness.obsidian.moveToTil = () => {
         throw new Error("obsidian is down");
       };
     },
@@ -317,9 +317,9 @@ ledger("ti", [
   {
     tap: `ti:y:${ID}`,
     when: "line is gone",
-    setup: (h) => {
-      withJot()(h);
-      h.obsidian.moveToTil = "no-line";
+    setup: (harness) => {
+      withJot()(harness);
+      harness.obsidian.moveToTil = "no-line";
     },
     expect:
       "repo.getJot > obsidian.moveToTil > ack(couldn't find the line) > tg.editMessageText",
@@ -327,9 +327,9 @@ ledger("ti", [
   {
     tap: `ti:y:${ID}`,
     when: "no TIL heading",
-    setup: (h) => {
-      withJot()(h);
-      h.obsidian.moveToTil = "no-heading";
+    setup: (harness) => {
+      withJot()(harness);
+      harness.obsidian.moveToTil = "no-heading";
     },
     expect:
       "repo.getJot > obsidian.moveToTil > ack(no TIL heading) > tg.editMessageText",
@@ -359,8 +359,8 @@ ledger("rate", [
   {
     tap: "rate:2026-08-15:5",
     when: "recorded, answered after the database and the frontmatter write",
-    setup: (h) => {
-      h.repo.recordRating = { recorded: true, current: 5 };
+    setup: (harness) => {
+      harness.repo.recordRating = { recorded: true, current: 5 };
     },
     expect:
       "repo.recordRating > obsidian.setDailyRating > ack(saved 5/10) > tg.editMessageText > repo.getSetting > obsidian.readDailyNote > tg.sendMessage",
@@ -368,17 +368,17 @@ ledger("rate", [
   {
     tap: "rate:2026-08-15:5",
     when: "day already rated",
-    setup: (h) => {
-      h.repo.recordRating = { recorded: false, current: 7 };
+    setup: (harness) => {
+      harness.repo.recordRating = { recorded: false, current: 7 };
     },
     expect: "repo.recordRating > ack(already rated 7/10) > tg.editMessageText",
   },
   {
     tap: "rate:2026-08-15:5",
     when: "frontmatter write fails, the error handler answers",
-    setup: (h) => {
-      h.repo.recordRating = { recorded: true, current: 5 };
-      h.obsidian.setDailyRating = () => {
+    setup: (harness) => {
+      harness.repo.recordRating = { recorded: true, current: 5 };
+      harness.obsidian.setDailyRating = () => {
         throw new Error("obsidian is down");
       };
     },
@@ -403,7 +403,7 @@ ledger("fu", [
   {
     tap: "fu:j:2026-08-15",
     when: "second tap on the same prompt",
-    setup: async (h) => void (await h.tap("fu:j:2026-08-15")),
+    setup: async (harness) => void (await harness.tap("fu:j:2026-08-15")),
     expect: "ack()",
   },
   {
@@ -431,8 +431,8 @@ const HABITS_NOTE = [
   "- [ ] Practiced music #meta/habits/music",
   "- [ ] [Pages read:: 0] #meta/habits/reading",
 ].join("\n");
-const withHabits = (h: Harness) => {
-  h.obsidian.readDailyNote = { path: "p.md", content: HABITS_NOTE };
+const withHabits = (harness: Harness) => {
+  harness.obsidian.readDailyNote = { path: "p.md", content: HABITS_NOTE };
 };
 
 ledger("hb", [
@@ -480,8 +480,8 @@ const turn = (over: object = {}) => ({
   chatId: 1,
   ...over,
 });
-const withConfirmation = (h: Harness) =>
-  h.bot.command.pending.set("c1", {
+const withConfirmation = (harness: Harness) =>
+  harness.bot.command.pending.set("c1", {
     decide: () => {},
     timer: setTimeout(() => {}, 0),
   });
@@ -503,17 +503,17 @@ ledger("cm", [
   {
     tap: "cm:s:t1",
     when: "stop the running turn",
-    setup: (h) => {
-      h.bot.command.active = turn();
+    setup: (harness) => {
+      harness.bot.command.active = turn();
     },
     expect: "ack(stopping…)",
   },
   {
     tap: "cm:s:t2",
     when: "drop a queued turn",
-    setup: (h) => {
-      h.bot.command.active = turn();
-      h.bot.command.queue = [turn({ id: "t2", state: "queued" })];
+    setup: (harness) => {
+      harness.bot.command.active = turn();
+      harness.bot.command.queue = [turn({ id: "t2", state: "queued" })];
     },
     expect: "ack(dropped) > tg.sendMessage",
   },
@@ -528,9 +528,9 @@ ledger("cm", [
 
 const DONE_JOTS = [jot(), jot({ id: "bbbbbbbb", anchor: "bbbbbbbb" })];
 const RESET = "repo.resetForReprocess > queue.addMany > tg.editMessageText";
-const withDayJots = (h: Harness) => {
-  h.repo.jotsInRange = DONE_JOTS;
-  h.repo.resetForReprocess = ["aaaaaaaa", "bbbbbbbb"];
+const withDayJots = (harness: Harness) => {
+  harness.repo.jotsInRange = DONE_JOTS;
+  harness.repo.resetForReprocess = ["aaaaaaaa", "bbbbbbbb"];
 };
 
 ledger("rp", [
@@ -549,9 +549,9 @@ ledger("rp", [
   {
     tap: `rp:go:j:${ID}`,
     when: "execute one jot, answered before the lookup and the reset",
-    setup: (h) => {
-      withJot()(h);
-      h.repo.resetForReprocess = [ID];
+    setup: (harness) => {
+      withJot()(harness);
+      harness.repo.resetForReprocess = [ID];
     },
     expect: `ack() > repo.getJot > ${RESET}`,
   },
@@ -651,8 +651,8 @@ ledger("rp", [
   {
     tap: "rp:jot:0",
     when: "jot page",
-    setup: (h) => {
-      h.repo.jotsPage = DONE_JOTS;
+    setup: (harness) => {
+      harness.repo.jotsPage = DONE_JOTS;
     },
     expect: "ack() > repo.jotsPage > tg.editMessageText",
   },
@@ -711,21 +711,21 @@ const draft = (over: Partial<TaskDraftRow> = {}): TaskDraftRow => ({
 });
 const withDraft =
   (over: Partial<TaskDraftRow> = {}) =>
-  (h: Harness) => {
-    h.repo.getTaskDraft = draft(over);
+  (harness: Harness) => {
+    harness.repo.getTaskDraft = draft(over);
   };
-const withTaskNote = (h: Harness) => {
-  h.obsidian.readNote = TASK_NOTE;
+const withTaskNote = (harness: Harness) => {
+  harness.obsidian.readNote = TASK_NOTE;
 };
 
 ledger("tk", [
   {
     tap: "tk:ok:d1d1d1d1",
     when: "create, answered after the claim and before the note write",
-    setup: (h) => {
-      withDraft()(h);
-      withTaskNote(h);
-      h.repo.claimTaskDraft = true;
+    setup: (harness) => {
+      withDraft()(harness);
+      withTaskNote(harness);
+      harness.repo.claimTaskDraft = true;
     },
     expect:
       "repo.getTaskDraft > repo.claimTaskDraft > ack(creating…) > obsidian.withNoteLock > obsidian.readNote > obsidian.writeNote > tg.editMessageText",
@@ -733,9 +733,9 @@ ledger("tk", [
   {
     tap: "tk:ok:d1d1d1d1",
     when: "create loses the claim",
-    setup: (h) => {
-      withDraft()(h);
-      h.repo.claimTaskDraft = false;
+    setup: (harness) => {
+      withDraft()(harness);
+      harness.repo.claimTaskDraft = false;
     },
     expect: "repo.getTaskDraft > repo.claimTaskDraft > ack(already created)",
   },
@@ -795,8 +795,8 @@ ledger("tk", [
   {
     tap: `tk:r:personal:0:${TASK_FINGERPRINT}:done:0`,
     when: "reopen after the note changed",
-    setup: (h) => {
-      h.obsidian.readNote = "## Things to do\n";
+    setup: (harness) => {
+      harness.obsidian.readNote = "## Things to do\n";
     },
     expect:
       "ack(reopening…) > obsidian.withNoteLock > obsidian.readNote > tg.sendMessage > obsidian.readNote×2 > tg.editMessageText",
@@ -820,8 +820,8 @@ ledger("tk", [
   {
     tap: "tk:v:open:0",
     when: "notes cannot be read",
-    setup: (h) => {
-      h.obsidian.readNote = () => {
+    setup: (harness) => {
+      harness.obsidian.readNote = () => {
         throw new Error("obsidian is down");
       };
     },
@@ -857,15 +857,15 @@ ledger("tk", [
 
 const STOPWORDS = ["the", "and"];
 const PAIRS = [{ surface: "milk", note: "Milk" }];
-const withFlow = (h: Harness, over: object = {}) => {
-  h.bot.menu.pending = {
+const withFlow = (harness: Harness, over: object = {}) => {
+  harness.bot.menu.pending = {
     words: ["milk"],
     i: 0,
     query: "milk",
     page: 0,
     ...over,
   };
-  h.links.entries = [{ note: "Milk", alias: "milk" }];
+  harness.links.entries = [{ note: "Milk", alias: "milk" }];
 };
 
 ledger("menu: jot actions", [
@@ -946,8 +946,8 @@ ledger("menu: screens", [
   {
     tap: "menu:jots",
     when: "recent jots",
-    setup: (h) => {
-      h.repo.recentJots = DONE_JOTS;
+    setup: (harness) => {
+      harness.repo.recentJots = DONE_JOTS;
     },
     expect: "ack() > repo.recentJots > tg.editMessageText",
   },
@@ -970,8 +970,8 @@ ledger("menu: screens", [
   {
     tap: "menu:failed",
     when: "failed jots",
-    setup: (h) => {
-      h.repo.failedJots = [jot({ status: "failed", error: "boom" })];
+    setup: (harness) => {
+      harness.repo.failedJots = [jot({ status: "failed", error: "boom" })];
     },
     expect: "ack() > repo.failedJots > tg.editMessageText",
   },
@@ -1150,8 +1150,8 @@ ledger("menu: link rules", [
   {
     tap: "menu:lswd:0",
     when: "remove a word, answered before the write",
-    setup: (h) => {
-      h.repo.stopwordList = STOPWORDS;
+    setup: (harness) => {
+      harness.repo.stopwordList = STOPWORDS;
     },
     expect:
       "repo.stopwordList > ack() > repo.delStopword > repo.stopwordList > tg.editMessageText",
@@ -1164,9 +1164,9 @@ ledger("menu: link rules", [
   {
     tap: "menu:lrju:0:0",
     when: "undo a rejection, answered before the write",
-    setup: (h) => {
-      h.repo.rejectionList = PAIRS;
-      h.repo.unreject = 1;
+    setup: (harness) => {
+      harness.repo.rejectionList = PAIRS;
+      harness.repo.unreject = 1;
     },
     expect:
       "repo.rejectionList > ack() > repo.unreject > repo.rejectionList×2 > tg.editMessageText",
@@ -1179,8 +1179,8 @@ ledger("menu: link rules", [
   {
     tap: "menu:lrgd:0",
     when: "delete a pair, answered before the write",
-    setup: (h) => {
-      h.repo.registeredLinks = PAIRS;
+    setup: (harness) => {
+      harness.repo.registeredLinks = PAIRS;
     },
     expect:
       "repo.registeredLinks > ack(dropped milk) > repo.delRegisteredLink > repo.registeredLinks > tg.editMessageText",
@@ -1193,35 +1193,35 @@ ledger("menu: link rules", [
   {
     tap: "menu:lrgp:0",
     when: "pick a note, answered before the write",
-    setup: (h) => withFlow(h),
+    setup: (harness) => withFlow(harness),
     expect:
       "ack(milk → Milk) > repo.addRegisteredLink > repo.registeredLinks > tg.editMessageText",
   },
   {
     tap: "menu:lrgp:5",
     when: "pick a suggestion that is not there",
-    setup: (h) => withFlow(h),
+    setup: (harness) => withFlow(harness),
     expect: "ack(expired)",
   },
   { tap: "menu:lrgp:0", when: "pick without a flow", expect: "ack(expired)" },
   {
     tap: "menu:lrgs",
     when: "skip a word",
-    setup: (h) => withFlow(h, { words: ["milk", "bread"] }),
+    setup: (harness) => withFlow(harness, { words: ["milk", "bread"] }),
     expect: "ack(skipped) > tg.editMessageText",
   },
   {
     tap: "menu:lrgc",
     when: "cancel the flow",
-    setup: (h) => withFlow(h),
+    setup: (harness) => withFlow(harness),
     expect: "ack(cancelled) > repo.registeredLinks > tg.editMessageText",
   },
   {
     tap: "menu:lrgt:0",
     when: "change the note of a pair",
-    setup: (h) => {
-      h.repo.registeredLinks = PAIRS;
-      h.links.entries = [{ note: "Milk", alias: "milk" }];
+    setup: (harness) => {
+      harness.repo.registeredLinks = PAIRS;
+      harness.links.entries = [{ note: "Milk", alias: "milk" }];
     },
     expect: "repo.registeredLinks > ack() > tg.editMessageText",
   },
@@ -1233,7 +1233,7 @@ ledger("menu: link rules", [
   {
     tap: "menu:lrgn:0",
     when: "note picker page",
-    setup: (h) => withFlow(h),
+    setup: (harness) => withFlow(harness),
     expect: "ack() > tg.editMessageText",
   },
   {
@@ -1265,8 +1265,8 @@ ledger("menu: link rules", [
   {
     tap: "menu:lrjs:0",
     when: "rejected notes of a word",
-    setup: (h) => {
-      h.repo.rejectionList = PAIRS;
+    setup: (harness) => {
+      harness.repo.rejectionList = PAIRS;
     },
     expect: "ack() > repo.rejectionList > tg.editMessageText",
   },
@@ -1278,8 +1278,8 @@ ledger("menu: link rules", [
   {
     tap: "menu:lrgv:0",
     when: "pair detail",
-    setup: (h) => {
-      h.repo.registeredLinks = PAIRS;
+    setup: (harness) => {
+      harness.repo.registeredLinks = PAIRS;
     },
     expect: "ack() > repo.registeredLinks > tg.editMessageText",
   },

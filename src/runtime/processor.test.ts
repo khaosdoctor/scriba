@@ -84,9 +84,9 @@ function harness(
 }
 
 /** Which buttons a status message asked for. */
-const buttons = (p: Posted | undefined) => ({
-  retry: !!p?.opts?.retry,
-  discard: !!p?.opts?.discard,
+const buttons = (message: Posted | undefined) => ({
+  retry: !!message?.opts?.retry,
+  discard: !!message?.opts?.discard,
 });
 
 test("a transient failure says so on the jot's message, with both buttons", async () => {
@@ -223,7 +223,10 @@ function pipeline(
     raw_text: over.raw ?? "a thought",
   } as Partial<Jot>);
   const jots = new Map<string, Jot>(
-    [leader, ...(over.followers ?? [])].map((j) => [j.id, j]),
+    [leader, ...(over.followers ?? [])].map((storedJot) => [
+      storedJot.id,
+      storedJot,
+    ]),
   );
   let note = `## Journal\n- _10:00:00 ::_ ⏳ ^${leader.id}`;
   const repo = {
@@ -244,9 +247,9 @@ function pipeline(
     ensureDailyNote: async () => "",
     withNoteLock: async (_p: string, fn: () => Promise<unknown>) => fn(),
     readNote: async () => note,
-    writeNote: async (_p: string, c: string) => {
+    writeNote: async (_p: string, content: string) => {
       if (over.writeFails) throw new Error("obsidian is down");
-      note = c;
+      note = content;
       calls.push("write");
     },
     appendJournalLine: async () => {
@@ -273,8 +276,8 @@ function pipeline(
     react: async () => {},
     deleteStatus: async () => {},
     askLink: async () => {},
-    askTask: async (d: { description: string }) =>
-      void calls.push(`askTask:${d.description}`),
+    askTask: async (draft: { description: string }) =>
+      void calls.push(`askTask:${draft.description}`),
     askTil: async (id: string, text: string) => {
       tilAsks.push([id, text]);
       calls.push("askTil");
@@ -301,49 +304,49 @@ function pipeline(
 }
 
 test("a jot the enricher read as a TIL gets its card after the entry is written and before the drain", async () => {
-  const p = pipeline({ til: true });
-  await p.processor.processJot(p.leaderId);
-  assert.deepEqual(p.tilAsks, [[p.leaderId, "Learned that X"]]);
-  const at = (c: string) => p.calls.indexOf(c);
+  const scenario = pipeline({ til: true });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.deepEqual(scenario.tilAsks, [[scenario.leaderId, "Learned that X"]]);
+  const at = (call: string) => scenario.calls.indexOf(call);
   assert.ok(at("write") < at("status:done"));
   assert.ok(at("status:done") < at("askTil"));
   assert.ok(at("askTil") < at("onJotDone"));
 });
 
 test("no card when the enricher did not read it as a TIL", async () => {
-  const p = pipeline({ til: false });
-  await p.processor.processJot(p.leaderId);
-  assert.deepEqual(p.tilAsks, []);
-  assert.ok(p.calls.includes("status:done"));
-  assert.ok(p.calls.includes("onJotDone"));
+  const scenario = pipeline({ til: false });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.deepEqual(scenario.tilAsks, []);
+  assert.ok(scenario.calls.includes("status:done"));
+  assert.ok(scenario.calls.includes("onJotDone"));
 });
 
 test("a blank jot never reaches the enricher or the card", async () => {
   for (const raw of ["", "   "]) {
-    const p = pipeline({ til: true, raw });
-    await p.processor.processJot(p.leaderId);
-    assert.deepEqual(p.enriched, []);
-    assert.deepEqual(p.tilAsks, []);
-    assert.ok(p.calls.includes("status:done"));
+    const scenario = pipeline({ til: true, raw });
+    await scenario.processor.processJot(scenario.leaderId);
+    assert.deepEqual(scenario.enriched, []);
+    assert.deepEqual(scenario.tilAsks, []);
+    assert.ok(scenario.calls.includes("status:done"));
   }
 });
 
 test("a jot whose note write fails gets no card", async () => {
-  const p = pipeline({ til: true, writeFails: true });
-  await p.processor.processJot(p.leaderId);
-  assert.deepEqual(p.tilAsks, []);
+  const scenario = pipeline({ til: true, writeFails: true });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.deepEqual(scenario.tilAsks, []);
 });
 
 test("a task card comes before the TIL card, both before the drain", async () => {
-  const p = pipeline({
+  const scenario = pipeline({
     til: true,
     tasks: [{ description: "book flights", type: "personal" }],
   });
-  await p.processor.processJot(p.leaderId);
-  const at = (c: string) => p.calls.indexOf(c);
+  await scenario.processor.processJot(scenario.leaderId);
+  const at = (call: string) => scenario.calls.indexOf(call);
   assert.ok(at("askTask:book flights") < at("askTil"));
   assert.ok(at("askTil") < at("onJotDone"));
-  assert.equal(p.tilAsks[0]?.[0], p.leaderId);
+  assert.equal(scenario.tilAsks[0]?.[0], scenario.leaderId);
 });
 
 test("a squashed burst asks once, for the leader, on the leader's section", async () => {
@@ -354,25 +357,25 @@ test("a squashed burst asks once, for the leader, on the leader's section", asyn
     raw_text: "and more",
     section: "til",
   } as Partial<Jot>);
-  const p = pipeline({ til: true, followers: [follower] });
-  await p.processor.processJot(p.leaderId);
-  assert.deepEqual(p.tilAsks, [[p.leaderId, "Learned that X"]]);
-  assert.match(p.enriched[0]!, /a thought/);
-  assert.match(p.enriched[0]!, /and more/);
+  const scenario = pipeline({ til: true, followers: [follower] });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.deepEqual(scenario.tilAsks, [[scenario.leaderId, "Learned that X"]]);
+  assert.match(scenario.enriched[0]!, /a thought/);
+  assert.match(scenario.enriched[0]!, /and more/);
 });
 
 test("a TIL jot is never offered the card", async () => {
-  const p = pipeline({ til: true, section: "til" });
-  await p.processor.processJot(p.leaderId);
-  assert.deepEqual(p.tilAsks, []);
+  const scenario = pipeline({ til: true, section: "til" });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.deepEqual(scenario.tilAsks, []);
 });
 
 test("a reprocess after the card was sent does not ask again", async () => {
-  const p = pipeline({ til: true });
-  await p.processor.processJot(p.leaderId);
-  p.offered.add(p.leaderId); // what TilFlow.ask does once the card is out
-  await p.processor.processJot(p.leaderId);
-  assert.equal(p.tilAsks.length, 1);
+  const scenario = pipeline({ til: true });
+  await scenario.processor.processJot(scenario.leaderId);
+  scenario.offered.add(scenario.leaderId); // what TilFlow.ask does once the card is out
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.equal(scenario.tilAsks.length, 1);
 });
 
 test("every model down: the jot goes back to pending, no attempt charged, one held notice", async () => {
@@ -497,7 +500,7 @@ interface WorldOptions {
   voiceChoice?: "original" | "proposed";
 }
 
-async function world(t: TestContext, options: WorldOptions = {}) {
+async function world(testContext: TestContext, options: WorldOptions = {}) {
   const dbPath = join(
     tmpdir(),
     `scriba-processor-${randomBytes(6).toString("hex")}.db`,
@@ -505,11 +508,13 @@ async function world(t: TestContext, options: WorldOptions = {}) {
   let repo: Repository;
   try {
     repo = await Repository.open(dbPath);
-  } catch (e) {
-    t.skip(`native sqlite unavailable: ${(e as Error).message.slice(0, 80)}`);
+  } catch (error) {
+    testContext.skip(
+      `native sqlite unavailable: ${(error as Error).message.slice(0, 80)}`,
+    );
     return null;
   }
-  t.after(async () => {
+  testContext.after(async () => {
     await repo.close();
     await rm(dbPath, { force: true });
     await rm(`${dbPath}-wal`, { force: true });
@@ -526,13 +531,13 @@ async function world(t: TestContext, options: WorldOptions = {}) {
   const voiceFixAsks: [string, string][] = [];
   let note = "## Journal\n";
 
-  const add = async (j: Jot) => {
-    await repo.insertJot(j);
-    if (j.anchor === j.id)
+  const add = async (newJot: Jot) => {
+    await repo.insertJot(newJot);
+    if (newJot.anchor === newJot.id)
       note = insertJournalLine(
         note,
         "Journal",
-        `- _${j.time} ::_ ⏳ ^${j.anchor}`,
+        `- _${newJot.time} ::_ ⏳ ^${newJot.anchor}`,
       );
   };
 
@@ -622,45 +627,45 @@ async function world(t: TestContext, options: WorldOptions = {}) {
     enriched,
     assets,
     voiceFixAsks,
-    htmls: () => statuses.map((s) => s.html),
+    htmls: () => statuses.map((seen) => seen.html),
   };
 }
 
-test("a batch processes its jots one after the other, in the order given", async (t) => {
-  const w = await world(t);
-  if (!w) return;
-  await w.add(
+test("a batch processes its jots one after the other, in the order given", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
+  await testWorld.add(
     stored({ id: "aaaaaaaa", anchor: "aaaaaaaa", raw_text: "first" }),
   );
-  await w.add(
+  await testWorld.add(
     stored({ id: "bbbbbbbb", anchor: "bbbbbbbb", raw_text: "second" }),
   );
-  await w.processor.processBatch(["bbbbbbbb", "aaaaaaaa"]);
+  await testWorld.processor.processBatch(["bbbbbbbb", "aaaaaaaa"]);
 
-  assert.deepEqual(w.enriched, ["second", "first"]);
-  assert.equal((await w.repo.getJot("aaaaaaaa"))?.status, "done");
-  assert.equal((await w.repo.getJot("bbbbbbbb"))?.status, "done");
-  assert.deepEqual(w.reactions, [
+  assert.deepEqual(testWorld.enriched, ["second", "first"]);
+  assert.equal((await testWorld.repo.getJot("aaaaaaaa"))?.status, "done");
+  assert.equal((await testWorld.repo.getJot("bbbbbbbb"))?.status, "done");
+  assert.deepEqual(testWorld.reactions, [
     ["bbbbbbbb", "done"],
     ["aaaaaaaa", "done"],
   ]);
-  assert.match(w.note(), /first \^aaaaaaaa/);
-  assert.match(w.note(), /second \^bbbbbbbb/);
+  assert.match(testWorld.note(), /first \^aaaaaaaa/);
+  assert.match(testWorld.note(), /second \^bbbbbbbb/);
 });
 
-test("a batch naming a jot that no longer exists skips it and carries on", async (t) => {
-  const w = await world(t);
-  if (!w) return;
-  await w.add(stored({ id: "aaaaaaaa", anchor: "aaaaaaaa" }));
-  await w.processor.processBatch(["gone0000", "aaaaaaaa"]);
-  assert.equal((await w.repo.getJot("aaaaaaaa"))?.status, "done");
+test("a batch naming a jot that no longer exists skips it and carries on", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
+  await testWorld.add(stored({ id: "aaaaaaaa", anchor: "aaaaaaaa" }));
+  await testWorld.processor.processBatch(["gone0000", "aaaaaaaa"]);
+  assert.equal((await testWorld.repo.getJot("aaaaaaaa"))?.status, "done");
 });
 
-test("retrySweep picks up pending jots and failed ones under the cap, and nothing else", async (t) => {
-  const w = await world(t);
-  if (!w) return;
+test("retrySweep picks up pending jots and failed ones under the cap, and nothing else", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
   const row = (id: string, status: Jot["status"], attempts = 0) =>
-    w.add(
+    testWorld.add(
       stored({
         id,
         anchor: id,
@@ -678,47 +683,48 @@ test("retrySweep picks up pending jots and failed ones under the cap, and nothin
   await row("6aaaaaaa", "processing");
   await row("7aaaaaaa", "deleted");
 
-  await w.processor.retrySweep();
+  await testWorld.processor.retrySweep();
 
-  assert.deepEqual(w.enriched, ["text 1aaaaaaa", "text 2aaaaaaa"]);
-  const statusOf = async (id: string) => (await w.repo.getJot(id))?.status;
+  assert.deepEqual(testWorld.enriched, ["text 1aaaaaaa", "text 2aaaaaaa"]);
+  const statusOf = async (id: string) =>
+    (await testWorld.repo.getJot(id))?.status;
   assert.equal(await statusOf("1aaaaaaa"), "done");
   assert.equal(await statusOf("2aaaaaaa"), "done");
   assert.equal(await statusOf("3aaaaaaa"), "failed");
   assert.equal(await statusOf("6aaaaaaa"), "processing");
 });
 
-test("retrySweep with nothing pending does no work", async (t) => {
-  const w = await world(t);
-  if (!w) return;
-  await w.add(stored({ status: "done" }));
-  await w.processor.retrySweep();
-  assert.deepEqual(w.enriched, []);
-  assert.deepEqual(w.statuses, []);
+test("retrySweep with nothing pending does no work", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
+  await testWorld.add(stored({ status: "done" }));
+  await testWorld.processor.retrySweep();
+  assert.deepEqual(testWorld.enriched, []);
+  assert.deepEqual(testWorld.statuses, []);
 });
 
-test("a squashed follower waits for its leader and does no work of its own", async (t) => {
-  const w = await world(t);
-  if (!w) return;
-  await w.add(stored({ id: "aaaaaaaa", anchor: "aaaaaaaa" }));
-  await w.add(
+test("a squashed follower waits for its leader and does no work of its own", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
+  await testWorld.add(stored({ id: "aaaaaaaa", anchor: "aaaaaaaa" }));
+  await testWorld.add(
     stored({ id: "ffff0001", anchor: "aaaaaaaa", received_at: 1001 }),
   );
-  await w.processor.processJot("ffff0001");
+  await testWorld.processor.processJot("ffff0001");
 
-  assert.deepEqual(w.enriched, []);
-  assert.deepEqual(w.statuses, []);
-  assert.equal((await w.repo.getJot("ffff0001"))?.status, "pending");
+  assert.deepEqual(testWorld.enriched, []);
+  assert.deepEqual(testWorld.statuses, []);
+  assert.equal((await testWorld.repo.getJot("ffff0001"))?.status, "pending");
 });
 
-test("a follower left behind by a finished leader is marked done, not processed again", async (t) => {
+test("a follower left behind by a finished leader is marked done, not processed again", async (testContext) => {
   for (const leaderStatus of ["done", "abandoned"] as const) {
-    const w = await world(t);
-    if (!w) return;
-    await w.add(
+    const testWorld = await world(testContext);
+    if (!testWorld) return;
+    await testWorld.add(
       stored({ id: "aaaaaaaa", anchor: "aaaaaaaa", status: leaderStatus }),
     );
-    await w.add(
+    await testWorld.add(
       stored({
         id: "ffff0001",
         anchor: "aaaaaaaa",
@@ -727,22 +733,22 @@ test("a follower left behind by a finished leader is marked done, not processed 
         received_at: 1001,
       }),
     );
-    await w.processor.processJot("ffff0001");
+    await testWorld.processor.processJot("ffff0001");
 
-    const follower = await w.repo.getJot("ffff0001");
+    const follower = await testWorld.repo.getJot("ffff0001");
     assert.equal(follower?.status, "done");
     assert.equal(follower?.error, null);
-    assert.deepEqual(w.enriched, []);
+    assert.deepEqual(testWorld.enriched, []);
   }
 });
 
-test("a follower whose leader was deleted is processed on its own and appended to the note", async (t) => {
-  const w = await world(t);
-  if (!w) return;
-  await w.add(
+test("a follower whose leader was deleted is processed on its own and appended to the note", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
+  await testWorld.add(
     stored({ id: "aaaaaaaa", anchor: "aaaaaaaa", status: "deleted" }),
   );
-  await w.add(
+  await testWorld.add(
     stored({
       id: "ffff0001",
       anchor: "aaaaaaaa",
@@ -750,11 +756,11 @@ test("a follower whose leader was deleted is processed on its own and appended t
       received_at: 1001,
     }),
   );
-  await w.processor.processJot("ffff0001");
+  await testWorld.processor.processJot("ffff0001");
 
-  assert.deepEqual(w.enriched, ["orphaned thought"]);
-  assert.equal((await w.repo.getJot("ffff0001"))?.status, "done");
-  assert.match(w.note(), /orphaned thought \^aaaaaaaa/);
+  assert.deepEqual(testWorld.enriched, ["orphaned thought"]);
+  assert.equal((await testWorld.repo.getJot("ffff0001"))?.status, "done");
+  assert.match(testWorld.note(), /orphaned thought \^aaaaaaaa/);
 });
 
 const voiceSettings = {
@@ -769,175 +775,182 @@ const voiceJot = (transcript: string) =>
     file_id: "voice-file",
   });
 
-test("a voice fix with a change asks which one to keep, and the pick is what gets enriched", async (t) => {
-  const w = await world(t, {
+test("a voice fix with a change asks which one to keep, and the pick is what gets enriched", async (testContext) => {
+  const testWorld = await world(testContext, {
     settings: voiceSettings,
     fixTranscript: async () => "Ship the release on Friday.",
     voiceChoice: "proposed",
   });
-  if (!w) return;
-  await w.add(voiceJot("ship the release on friday"));
-  await w.processor.processJot("abcd1234");
+  if (!testWorld) return;
+  await testWorld.add(voiceJot("ship the release on friday"));
+  await testWorld.processor.processJot("abcd1234");
 
-  assert.deepEqual(w.htmls().slice(0, 4), [
+  assert.deepEqual(testWorld.htmls().slice(0, 4), [
     "🎤 Transcribing your voice note…",
     "🎤 <i>ship the release on friday</i>\n\n✨ Weaving it into your journal…",
     "🎤 <i>ship the release on friday</i>\n\n🔧 Checking transcript…",
     "🎤 <i>Ship the release on Friday.</i>\n\n✨ Weaving it into your journal…",
   ]);
-  assert.deepEqual(w.voiceFixAsks, [
+  assert.deepEqual(testWorld.voiceFixAsks, [
     ["ship the release on friday", "Ship the release on Friday."],
   ]);
-  assert.deepEqual(w.enriched, ["Ship the release on Friday."]);
+  assert.deepEqual(testWorld.enriched, ["Ship the release on Friday."]);
   assert.equal(
-    (await w.repo.getJot("abcd1234"))?.transcript,
+    (await testWorld.repo.getJot("abcd1234"))?.transcript,
     "Ship the release on Friday.",
   );
 });
 
-test("picking the original keeps the transcript as it was", async (t) => {
-  const w = await world(t, {
+test("picking the original keeps the transcript as it was", async (testContext) => {
+  const testWorld = await world(testContext, {
     settings: voiceSettings,
     fixTranscript: async () => "Ship the release on Friday.",
     voiceChoice: "original",
   });
-  if (!w) return;
-  await w.add(voiceJot("ship the release on friday"));
-  await w.processor.processJot("abcd1234");
+  if (!testWorld) return;
+  await testWorld.add(voiceJot("ship the release on friday"));
+  await testWorld.processor.processJot("abcd1234");
 
   assert.equal(
-    w.htmls()[3],
+    testWorld.htmls()[3],
     "🎤 <i>ship the release on friday</i>\n\n✨ Weaving it into your journal…",
   );
-  assert.deepEqual(w.enriched, ["ship the release on friday"]);
+  assert.deepEqual(testWorld.enriched, ["ship the release on friday"]);
   assert.equal(
-    (await w.repo.getJot("abcd1234"))?.transcript,
+    (await testWorld.repo.getJot("abcd1234"))?.transcript,
     "ship the release on friday",
   );
 });
 
-test("a voice fix that changes nothing asks nobody and escapes the transcript in HTML", async (t) => {
-  const w = await world(t, { settings: voiceSettings });
-  if (!w) return;
-  await w.add(voiceJot("if a < b & c"));
-  await w.processor.processJot("abcd1234");
+test("a voice fix that changes nothing asks nobody and escapes the transcript in HTML", async (testContext) => {
+  const testWorld = await world(testContext, { settings: voiceSettings });
+  if (!testWorld) return;
+  await testWorld.add(voiceJot("if a < b & c"));
+  await testWorld.processor.processJot("abcd1234");
 
-  assert.deepEqual(w.voiceFixAsks, []);
-  assert.deepEqual(w.htmls().slice(0, 4), [
+  assert.deepEqual(testWorld.voiceFixAsks, []);
+  assert.deepEqual(testWorld.htmls().slice(0, 4), [
     "🎤 Transcribing your voice note…",
     "🎤 <i>if a &lt; b &amp; c</i>\n\n✨ Weaving it into your journal…",
     "🎤 <i>if a &lt; b &amp; c</i>\n\n🔧 Checking transcript…",
     "🎤 <i>if a &lt; b &amp; c</i>\n\n✨ Weaving it into your journal…",
   ]);
-  assert.deepEqual(w.enriched, ["if a < b & c"]);
+  assert.deepEqual(testWorld.enriched, ["if a < b & c"]);
 });
 
-test("a voice fix that errors keeps the original transcript and the jot still completes", async (t) => {
-  const w = await world(t, {
+test("a voice fix that errors keeps the original transcript and the jot still completes", async (testContext) => {
+  const testWorld = await world(testContext, {
     settings: voiceSettings,
     fixTranscript: async () => {
       throw new Error("fix model 500");
     },
   });
-  if (!w) return;
-  await w.add(voiceJot("plain words"));
-  await w.processor.processJot("abcd1234");
+  if (!testWorld) return;
+  await testWorld.add(voiceJot("plain words"));
+  await testWorld.processor.processJot("abcd1234");
 
-  assert.deepEqual(w.voiceFixAsks, []);
-  assert.deepEqual(w.enriched, ["plain words"]);
-  assert.equal((await w.repo.getJot("abcd1234"))?.status, "done");
+  assert.deepEqual(testWorld.voiceFixAsks, []);
+  assert.deepEqual(testWorld.enriched, ["plain words"]);
+  assert.equal((await testWorld.repo.getJot("abcd1234"))?.status, "done");
 });
 
-test("the voice fix is skipped when it is off or has no model", async (t) => {
+test("the voice fix is skipped when it is off or has no model", async (testContext) => {
   const variants: Record<string, string>[] = [
     { [VOICE_FIX_MODEL_KEY]: "haiku-test" },
     { [VOICE_FIX_KEY]: "on" },
     { [VOICE_FIX_MODEL_KEY]: "haiku-test", [VOICE_FIX_KEY]: "off" },
   ];
   for (const settings of variants) {
-    const w = await world(t, {
+    const testWorld = await world(testContext, {
       settings,
       fixTranscript: async () => {
         throw new Error("must not be called");
       },
     });
-    if (!w) return;
-    await w.add(voiceJot("plain words"));
-    await w.processor.processJot("abcd1234");
+    if (!testWorld) return;
+    await testWorld.add(voiceJot("plain words"));
+    await testWorld.processor.processJot("abcd1234");
 
-    assert.equal((await w.repo.getJot("abcd1234"))?.status, "done");
-    assert.ok(!w.htmls().some((h) => h.includes("Checking transcript")));
+    assert.equal((await testWorld.repo.getJot("abcd1234"))?.status, "done");
+    assert.ok(
+      !testWorld.htmls().some((html) => html.includes("Checking transcript")),
+    );
   }
 });
 
-test("every model down during the voice fix holds the jot: pending, no attempt charged, held notice", async (t) => {
-  const w = await world(t, {
+test("every model down during the voice fix holds the jot: pending, no attempt charged, held notice", async (testContext) => {
+  const testWorld = await world(testContext, {
     settings: voiceSettings,
     fixTranscript: async () => {
       throw new ModelsDownError(new Error("overloaded 529"));
     },
   });
-  if (!w) return;
-  await w.add(voiceJot("plain words"));
-  const before = w.note();
-  await w.processor.processJot("abcd1234");
+  if (!testWorld) return;
+  await testWorld.add(voiceJot("plain words"));
+  const before = testWorld.note();
+  await testWorld.processor.processJot("abcd1234");
 
-  const row = await w.repo.getJot("abcd1234");
+  const row = await testWorld.repo.getJot("abcd1234");
   assert.equal(row?.status, "pending");
   assert.equal(row?.attempts, 0);
   assert.equal(row?.error, HELD_MARKER);
-  assert.deepEqual(w.voiceFixAsks, []);
-  assert.deepEqual(w.enriched, []);
-  assert.equal(w.note(), before);
-  const last = w.statuses.at(-1);
+  assert.deepEqual(testWorld.voiceFixAsks, []);
+  assert.deepEqual(testWorld.enriched, []);
+  assert.equal(testWorld.note(), before);
+  const last = testWorld.statuses.at(-1);
   assert.match(last!.html, /Every enrichment model is down/);
   assert.deepEqual(last!.opts, { discard: true });
 });
 
-test("an image with a caption is saved to the vault, embedded, and never sent to vision", async (t) => {
-  const w = await world(t);
-  if (!w) return;
-  await w.add(
+test("an image with a caption is saved to the vault, embedded, and never sent to vision", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
+  await testWorld.add(
     stored({
       kind: "image",
       raw_text: "the front door",
       file_id: "photo-file",
     }),
   );
-  await w.processor.processJot("abcd1234");
+  await testWorld.processor.processJot("abcd1234");
 
-  assert.deepEqual(w.calls, [
+  assert.deepEqual(testWorld.calls, [
     "download:photo-file",
     "saveAsset:2026-08-16_100000_abcd1234.jpg:3:image/jpeg",
   ]);
-  const row = await w.repo.getJot("abcd1234");
+  const row = await testWorld.repo.getJot("abcd1234");
   assert.equal(row?.asset_path, "assets/2026-08-16_100000_abcd1234.jpg");
   assert.equal(row?.raw_text, "the front door");
   assert.match(
-    w.note(),
+    testWorld.note(),
     /the front door !\[\[assets\/2026-08-16_100000_abcd1234\.jpg\]\] \^abcd1234/,
   );
 });
 
-test("a captionless image gets a vision caption that becomes its entry text", async (t) => {
-  const w = await world(t);
-  if (!w) return;
-  await w.add(stored({ kind: "image", raw_text: "", file_id: "photo-file" }));
-  await w.processor.processJot("abcd1234");
+test("a captionless image gets a vision caption that becomes its entry text", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
+  await testWorld.add(
+    stored({ kind: "image", raw_text: "", file_id: "photo-file" }),
+  );
+  await testWorld.processor.processJot("abcd1234");
 
-  assert.deepEqual(w.calls, [
+  assert.deepEqual(testWorld.calls, [
     "download:photo-file",
     "saveAsset:2026-08-16_100000_abcd1234.jpg:3:image/jpeg",
     "describeImage:3:image/jpeg",
   ]);
-  assert.equal((await w.repo.getJot("abcd1234"))?.raw_text, "a red door");
-  assert.deepEqual(w.enriched, ["a red door"]);
+  assert.equal(
+    (await testWorld.repo.getJot("abcd1234"))?.raw_text,
+    "a red door",
+  );
+  assert.deepEqual(testWorld.enriched, ["a red door"]);
 });
 
-test("a voice note without a transcript is downloaded and transcribed, never attached", async (t) => {
-  const w = await world(t);
-  if (!w) return;
-  await w.add(
+test("a voice note without a transcript is downloaded and transcribed, never attached", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
+  await testWorld.add(
     stored({
       kind: "audio",
       raw_text: null,
@@ -945,36 +958,44 @@ test("a voice note without a transcript is downloaded and transcribed, never att
       file_id: "voice-file",
     }),
   );
-  await w.processor.processJot("abcd1234");
+  await testWorld.processor.processJot("abcd1234");
 
-  assert.deepEqual(w.calls, ["download:voice-file", "transcribe:3:oga"]);
-  const row = await w.repo.getJot("abcd1234");
+  assert.deepEqual(testWorld.calls, [
+    "download:voice-file",
+    "transcribe:3:oga",
+  ]);
+  const row = await testWorld.repo.getJot("abcd1234");
   assert.equal(row?.transcript, "spoken words");
   assert.equal(row?.asset_path, null);
-  assert.deepEqual(w.enriched, ["spoken words"]);
+  assert.deepEqual(testWorld.enriched, ["spoken words"]);
 });
 
-test("a video is saved and embedded but never transcribed, captioned or enriched", async (t) => {
-  const w = await world(t, { settings: voiceSettings });
-  if (!w) return;
-  await w.add(stored({ kind: "video", raw_text: "", file_id: "video-file" }));
-  await w.processor.processJot("abcd1234");
+test("a video is saved and embedded but never transcribed, captioned or enriched", async (testContext) => {
+  const testWorld = await world(testContext, { settings: voiceSettings });
+  if (!testWorld) return;
+  await testWorld.add(
+    stored({ kind: "video", raw_text: "", file_id: "video-file" }),
+  );
+  await testWorld.processor.processJot("abcd1234");
 
-  assert.deepEqual(w.calls, [
+  assert.deepEqual(testWorld.calls, [
     "download:video-file",
     "saveAsset:2026-08-16_100000_abcd1234.mp4:3:video/mp4",
   ]);
-  assert.deepEqual(w.enriched, []);
-  const row = await w.repo.getJot("abcd1234");
+  assert.deepEqual(testWorld.enriched, []);
+  const row = await testWorld.repo.getJot("abcd1234");
   assert.equal(row?.status, "done");
   assert.equal(row?.raw_text, "");
-  assert.match(w.note(), /!\[\[assets\/2026-08-16_100000_abcd1234\.mp4\]\]/);
+  assert.match(
+    testWorld.note(),
+    /!\[\[assets\/2026-08-16_100000_abcd1234\.mp4\]\]/,
+  );
 });
 
-test("media already on file is not downloaded again", async (t) => {
-  const w = await world(t);
-  if (!w) return;
-  await w.add(
+test("media already on file is not downloaded again", async (testContext) => {
+  const testWorld = await world(testContext);
+  if (!testWorld) return;
+  await testWorld.add(
     stored({
       id: "aaaaaaaa",
       anchor: "aaaaaaaa",
@@ -984,7 +1005,7 @@ test("media already on file is not downloaded again", async (t) => {
       asset_path: "assets/already.jpg",
     }),
   );
-  await w.add(
+  await testWorld.add(
     stored({
       id: "bbbbbbbb",
       anchor: "bbbbbbbb",
@@ -994,25 +1015,27 @@ test("media already on file is not downloaded again", async (t) => {
       file_id: "voice-file",
     }),
   );
-  await w.add(stored({ id: "cccccccc", anchor: "cccccccc", file_id: null }));
-  await w.processor.processBatch(["aaaaaaaa", "bbbbbbbb", "cccccccc"]);
+  await testWorld.add(
+    stored({ id: "cccccccc", anchor: "cccccccc", file_id: null }),
+  );
+  await testWorld.processor.processBatch(["aaaaaaaa", "bbbbbbbb", "cccccccc"]);
 
-  assert.deepEqual(w.calls, []);
-  assert.equal((await w.repo.getJot("aaaaaaaa"))?.status, "done");
+  assert.deepEqual(testWorld.calls, []);
+  assert.equal((await testWorld.repo.getJot("aaaaaaaa"))?.status, "done");
 });
 
-test("an over-long entry's spillover jots copy the parent row, til_offered included", async (t) => {
-  const w = await world(t, {
+test("an over-long entry's spillover jots copy the parent row, til_offered included", async (testContext) => {
+  const testWorld = await world(testContext, {
     settings: { [ENTRY_MAX_CHARS_KEY]: "40" },
     enrichText:
       "The first sentence is a fairly long one. The second sentence is also a long one.",
   });
-  if (!w) return;
-  await w.add(stored());
-  await w.repo.markTilOffered("abcd1234");
-  await w.processor.processJot("abcd1234");
+  if (!testWorld) return;
+  await testWorld.add(stored());
+  await testWorld.repo.markTilOffered("abcd1234");
+  await testWorld.processor.processJot("abcd1234");
 
-  const rows = await w.repo.recentJots(3);
+  const rows = await testWorld.repo.recentJots(3);
   assert.equal(rows.length, 2);
   const [piece, parent] = rows;
   assert.equal(parent?.id, "abcd1234");
@@ -1022,5 +1045,5 @@ test("an over-long entry's spillover jots copy the parent row, til_offered inclu
   assert.equal(piece?.section, "journal");
   assert.equal(piece?.anchor, piece?.id);
   assert.equal(piece?.received_at, 1001);
-  assert.equal(await w.repo.tilOffered(piece!.id), true);
+  assert.equal(await testWorld.repo.tilOffered(piece!.id), true);
 });

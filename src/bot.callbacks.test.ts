@@ -37,7 +37,7 @@ const jot = (over: Partial<Jot> = {}): Jot => ({
 const noteWith = (text: string, id = ID) =>
   `# Journal\n${journalLine("10:00:00", text, id)}\n`;
 
-const tick = () => new Promise<void>((r) => setImmediate(r));
+const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 type Opts = {
   jots?: Jot[];
@@ -57,7 +57,9 @@ async function harness(over: Opts = {}) {
   const api: { method: string; payload: any }[] = [];
   const apiResult: Record<string, unknown> = {};
   const failApi = new Set<string>();
-  const jots = new Map((over.jots ?? [jot()]).map((j) => [j.id, j]));
+  const jots = new Map(
+    (over.jots ?? [jot()]).map((storedJot) => [storedJot.id, storedJot]),
+  );
   const messages = new Map<number, string>(over.mapped ?? [[77, ID]]);
   const notes = new Map(
     Object.entries(over.notes ?? { [NOTE]: noteWith("bought milk") }),
@@ -72,12 +74,13 @@ async function harness(over: Opts = {}) {
 
   const repo: any = {
     getJot: async (id: string) => jots.get(id),
-    jotForMessage: async (m: number) => messages.get(m),
-    mapMessage: async (m: number, id: string) => void messages.set(m, id),
-    unmapMessage: async (m: number) => void messages.delete(m),
+    jotForMessage: async (messageId: number) => messages.get(messageId),
+    mapMessage: async (messageId: number, id: string) =>
+      void messages.set(messageId, id),
+    unmapMessage: async (messageId: number) => void messages.delete(messageId),
     messageForJot: async (id: string) =>
-      [...messages].find(([, j]) => j === id)?.[0],
-    insertJot: async (j: Jot) => void jots.set(j.id, j),
+      [...messages].find(([, mappedJotId]) => mappedJotId === id)?.[0],
+    insertJot: async (newJot: Jot) => void jots.set(newJot.id, newJot),
     lastPendingEnrichableJot: async () => undefined,
     queueEdit: async (id: string, text: string) =>
       void queuedEdits.push([id, text]),
@@ -86,8 +89,8 @@ async function harness(over: Opts = {}) {
       void events.push(`repo.clearQueuedEdits:${id}`),
     markDeleted: async (id: string) => {
       events.push(`repo.markDeleted:${id}`);
-      const j = jots.get(id);
-      if (j) jots.set(id, { ...j, status: "deleted" });
+      const existing = jots.get(id);
+      if (existing) jots.set(id, { ...existing, status: "deleted" });
     },
     groupFollowers: async (id: string) => over.followers?.[id] ?? [],
     updateJot: async (id: string, patch: object) =>
@@ -179,24 +182,26 @@ async function harness(over: Opts = {}) {
   const chat = { id: 1, type: "private" as const };
   let updateId = 0;
   // Long polling routes a handler's BotError to bot.catch; handleUpdate alone rethrows it.
-  const update = (u: object) =>
+  const update = (payload: object) =>
     bot.bot
-      .handleUpdate({ update_id: ++updateId, ...u })
+      .handleUpdate({ update_id: ++updateId, ...payload })
       .catch((err: unknown) => bot.bot.errorHandler(err));
   const answers = () =>
     api
-      .filter((c) => c.method === "answerCallbackQuery")
-      .map((c) => c.payload.text);
+      .filter((call) => call.method === "answerCallbackQuery")
+      .map((call) => call.payload.text);
   const sends = () =>
-    api.filter((c) => c.method === "sendMessage").map((c) => c.payload.text);
+    api
+      .filter((call) => call.method === "sendMessage")
+      .map((call) => call.payload.text);
   const edits = () =>
     api
-      .filter((c) => c.method === "editMessageText")
-      .map((c) => c.payload.text);
+      .filter((call) => call.method === "editMessageText")
+      .map((call) => call.payload.text);
   const buttons = (call: { payload: any } | undefined) =>
     (call?.payload.reply_markup?.inline_keyboard ?? [])
       .flat()
-      .map((b: any) => [b.text, b.callback_data]);
+      .map((button: any) => [button.text, button.callback_data]);
 
   return {
     bot,
@@ -283,85 +288,87 @@ async function harness(over: Opts = {}) {
 
 // --- vf: voice fix choice ---
 
-async function openVoiceFix(h: Awaited<ReturnType<typeof harness>>) {
-  const pending: Promise<"original" | "proposed"> = h.bot.awaitVoiceFix(
+async function openVoiceFix(fixture: Awaited<ReturnType<typeof harness>>) {
+  const pending: Promise<"original" | "proposed"> = fixture.bot.awaitVoiceFix(
     ID,
     "a <b> original",
     "the fixed one",
   );
-  while (!h.bot.voiceFixPending.has(ID)) await tick();
+  while (!fixture.bot.voiceFixPending.has(ID)) await tick();
   return pending;
 }
 
-test("the voice-fix prompt shows both transcripts and the two choice buttons", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const h = await harness();
-  const pending = openVoiceFix(h);
+test("the voice-fix prompt shows both transcripts and the two choice buttons", async (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const fixture = await harness();
+  const pending = openVoiceFix(fixture);
   await tick();
-  const sent = h.api.find((c) => c.method === "sendMessage");
+  const sent = fixture.api.find((call) => call.method === "sendMessage");
   assert.equal(
     sent?.payload.text,
     "<b>Original transcript:</b>\n<i>a &lt;b&gt; original</i>\n\n<b>Proposed fix:</b>\n<i>the fixed one</i>",
   );
   assert.equal(sent?.payload.parse_mode, "HTML");
-  const markup = h.api.find((c) => c.method === "editMessageReplyMarkup");
-  assert.deepEqual(h.buttons(markup), [
+  const markup = fixture.api.find(
+    (call) => call.method === "editMessageReplyMarkup",
+  );
+  assert.deepEqual(fixture.buttons(markup), [
     ["📝 Use original", `vf:o:${ID}`],
     ["✨ Use fixed", `vf:p:${ID}`],
   ]);
-  await h.tap(`vf:o:${ID}`);
+  await fixture.tap(`vf:o:${ID}`);
   await pending;
 });
 
-test("tapping a voice-fix button resolves the wait with that choice", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("tapping a voice-fix button resolves the wait with that choice", async (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
   for (const [data, choice, toast] of [
     [`vf:p:${ID}`, "proposed", "using fixed version"],
     [`vf:o:${ID}`, "original", "keeping original"],
   ] as const) {
-    const h = await harness();
-    const pending = openVoiceFix(h);
+    const fixture = await harness();
+    const pending = openVoiceFix(fixture);
     await tick();
-    await h.tap(data);
+    await fixture.tap(data);
     assert.equal(await pending, choice);
-    assert.deepEqual(h.answers(), [toast]);
-    assert.equal(h.bot.voiceFixPending.has(ID), false);
+    assert.deepEqual(fixture.answers(), [toast]);
+    assert.equal(fixture.bot.voiceFixPending.has(ID), false);
   }
 });
 
-test("an unanswered voice-fix prompt falls back to the original after five minutes", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const h = await harness();
-  const pending = openVoiceFix(h);
+test("an unanswered voice-fix prompt falls back to the original after five minutes", async (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const fixture = await harness();
+  const pending = openVoiceFix(fixture);
   await tick();
-  t.mock.timers.tick(5 * 60 * 1000);
+  testContext.mock.timers.tick(5 * 60 * 1000);
   assert.equal(await pending, "original");
-  assert.equal(h.bot.voiceFixPending.has(ID), false);
+  assert.equal(fixture.bot.voiceFixPending.has(ID), false);
 
-  await h.tap(`vf:p:${ID}`);
-  assert.deepEqual(h.answers(), ["expired"]);
+  await fixture.tap(`vf:p:${ID}`);
+  assert.deepEqual(fixture.answers(), ["expired"]);
 });
 
 test("a voice-fix tap with no pending choice says expired, and a malformed one is just acknowledged", async () => {
-  const h = await harness();
-  await h.tap(`vf:o:${ID}`);
-  await h.tap("vf:o");
-  assert.deepEqual(h.answers(), ["expired", undefined]);
+  const fixture = await harness();
+  await fixture.tap(`vf:o:${ID}`);
+  await fixture.tap("vf:o");
+  assert.deepEqual(fixture.answers(), ["expired", undefined]);
 });
 
 // --- rt: retry ---
 
 test("retry resets the jot and queues it before answering, then rewrites the status card", async () => {
-  const h = await harness({ jots: [jot({ status: "failed" })] });
-  await h.tap(`rt:${ID}`);
-  assert.deepEqual(h.events, [
+  const fixture = await harness({ jots: [jot({ status: "failed" })] });
+  await fixture.tap(`rt:${ID}`);
+  assert.deepEqual(fixture.events, [
     `repo.resetForRetry:${ID}`,
     `queue.add:${ID}`,
     "api.answerCallbackQuery",
     "api.editMessageText",
   ]);
-  assert.deepEqual(h.answers(), ["retrying"]);
-  assert.deepEqual(h.edits(), ["🔄 retrying…"]);
+  assert.deepEqual(fixture.answers(), ["retrying"]);
+  assert.deepEqual(fixture.edits(), ["🔄 retrying…"]);
 });
 
 test("retry on a missing jot says gone, and on a deleted jot refuses to put the line back", async () => {
@@ -387,41 +394,43 @@ test("undo and discard answer first, then pull the line out and clear the button
     ["un", "undoing"],
     ["dl", "deleting"],
   ] as const) {
-    const h = await harness();
-    await h.tap(`${ns}:${ID}`);
-    assert.deepEqual(h.events, [
+    const fixture = await harness();
+    await fixture.tap(`${ns}:${ID}`);
+    assert.deepEqual(fixture.events, [
       "api.answerCallbackQuery",
       "obsidian.read",
       "obsidian.write",
       `repo.markDeleted:${ID}`,
       "api.sendMessage",
     ]);
-    assert.deepEqual(h.answers(), [toast]);
-    assert.deepEqual(h.sends(), ["🗑️ removed that from your journal."]);
+    assert.deepEqual(fixture.answers(), [toast]);
+    assert.deepEqual(fixture.sends(), ["🗑️ removed that from your journal."]);
     assert.deepEqual(
-      h.buttons(h.api.find((c) => c.method === "sendMessage")),
+      fixture.buttons(
+        fixture.api.find((call) => call.method === "sendMessage"),
+      ),
       [],
     );
-    assert.equal(h.note(), "# Journal\n\n");
+    assert.equal(fixture.note(), "# Journal\n\n");
   }
 });
 
 test("removing a squashed leader also marks its followers deleted", async () => {
-  const h = await harness({
+  const fixture = await harness({
     jots: [jot(), jot({ id: "bbbbbbbb", anchor: ID })],
     followers: { [ID]: [{ id: "bbbbbbbb" }] },
   });
-  await h.tap(`dl:${ID}`);
+  await fixture.tap(`dl:${ID}`);
   assert.deepEqual(
-    h.events.filter((e) => e.startsWith("repo.")),
+    fixture.events.filter((event) => event.startsWith("repo.")),
     [`repo.markDeleted:${ID}`, "repo.markDeleted:bbbbbbbb"],
   );
 });
 
 test("removing a jot whose line is already gone still marks it deleted", async () => {
-  const h = await harness({ notes: { [NOTE]: "# Journal\n" } });
-  await h.tap(`un:${ID}`);
-  assert.deepEqual(h.events, [
+  const fixture = await harness({ notes: { [NOTE]: "# Journal\n" } });
+  await fixture.tap(`un:${ID}`);
+  assert.deepEqual(fixture.events, [
     "api.answerCallbackQuery",
     "obsidian.read",
     `repo.markDeleted:${ID}`,
@@ -440,7 +449,7 @@ test("undo and discard on a missing or already removed jot only toast", async ()
   await removed.tap(`dl:${ID}`);
   assert.deepEqual(removed.answers(), ["already undone", "already deleted"]);
   assert.deepEqual(
-    removed.events.filter((e) => !e.startsWith("api.")),
+    removed.events.filter((event) => !event.startsWith("api.")),
     [],
   );
 });
@@ -448,27 +457,32 @@ test("undo and discard on a missing or already removed jot only toast", async ()
 // --- em: embed toggle ---
 
 test("embed rewrites the URL, answers after the write, and offers the opposite toggle", async () => {
-  const h = await harness({ notes: { [NOTE]: noteWith(`watch ${YT}`) } });
-  await h.tap(`em:${ID}:1`);
-  assert.deepEqual(h.events, [
+  const fixture = await harness({ notes: { [NOTE]: noteWith(`watch ${YT}`) } });
+  await fixture.tap(`em:${ID}:1`);
+  assert.deepEqual(fixture.events, [
     "obsidian.read",
     "obsidian.write",
     "api.answerCallbackQuery",
     "api.sendMessage",
   ]);
-  assert.deepEqual(h.answers(), ["embedded"]);
-  assert.equal(h.note(), noteWith(`watch ![](${YT})`));
-  assert.deepEqual(h.updates, [[ID, { raw_text: `watch ![](${YT})` }]]);
-  assert.deepEqual(h.buttons(h.api.find((c) => c.method === "sendMessage")), [
-    ["↩️ Undo", `un:${ID}`],
-    ["🔗 Plain link", `em:${ID}:0`],
-  ]);
+  assert.deepEqual(fixture.answers(), ["embedded"]);
+  assert.equal(fixture.note(), noteWith(`watch ![](${YT})`));
+  assert.deepEqual(fixture.updates, [[ID, { raw_text: `watch ![](${YT})` }]]);
+  assert.deepEqual(
+    fixture.buttons(fixture.api.find((call) => call.method === "sendMessage")),
+    [
+      ["↩️ Undo", `un:${ID}`],
+      ["🔗 Plain link", `em:${ID}:0`],
+    ],
+  );
 
-  await h.tap(`em:${ID}:0`);
-  assert.deepEqual(h.answers(), ["embedded", "plain link"]);
-  assert.equal(h.note(), noteWith(`watch ${YT}`));
-  const last = h.api.filter((c) => c.method === "editMessageText").at(-1);
-  assert.deepEqual(h.buttons(last), [
+  await fixture.tap(`em:${ID}:0`);
+  assert.deepEqual(fixture.answers(), ["embedded", "plain link"]);
+  assert.equal(fixture.note(), noteWith(`watch ${YT}`));
+  const last = fixture.api
+    .filter((call) => call.method === "editMessageText")
+    .at(-1);
+  assert.deepEqual(fixture.buttons(last), [
     ["↩️ Undo", `un:${ID}`],
     ["🖼 Embed", `em:${ID}:1`],
   ]);
@@ -497,18 +511,18 @@ const pending = {
 };
 
 test("confirming a link reads and writes the note, then answers linked", async () => {
-  const h = await harness({ links: pending });
-  await h.tap("lk:y:p1");
-  assert.deepEqual(h.events, [
+  const fixture = await harness({ links: pending });
+  await fixture.tap("lk:y:p1");
+  assert.deepEqual(fixture.events, [
     "repo.takePendingLink:p1",
     "obsidian.read",
     "obsidian.write",
     "api.answerCallbackQuery",
     "api.editMessageText",
   ]);
-  assert.deepEqual(h.answers(), ["linked"]);
-  assert.deepEqual(h.edits(), ['🔗 "milk" → [[Dairy]]']);
-  assert.equal(h.note(), noteWith("bought [[Dairy|milk]]"));
+  assert.deepEqual(fixture.answers(), ["linked"]);
+  assert.deepEqual(fixture.edits(), ['🔗 "milk" → [[Dairy]]']);
+  assert.equal(fixture.note(), noteWith("bought [[Dairy|milk]]"));
 });
 
 test("confirming a link that changes nothing answers no change", async () => {
@@ -524,31 +538,33 @@ test("confirming a link that changes nothing answers no change", async () => {
   await noJot.tap("lk:y:p1");
   assert.deepEqual(noJot.answers(), ["no change"]);
   assert.deepEqual(
-    noJot.events.filter((e) => e.startsWith("obsidian.")),
+    noJot.events.filter((event) => event.startsWith("obsidian.")),
     [],
   );
 });
 
 test("rejecting a link teaches it before answering", async () => {
-  const h = await harness({ links: pending });
-  await h.tap("lk:n:p1");
-  assert.deepEqual(h.events, [
+  const fixture = await harness({ links: pending });
+  await fixture.tap("lk:n:p1");
+  assert.deepEqual(fixture.events, [
     "repo.takePendingLink:p1",
     "repo.reject",
     "api.answerCallbackQuery",
     "api.editMessageText",
   ]);
-  assert.deepEqual(h.rejected, [["milk", "Dairy"]]);
-  assert.deepEqual(h.answers(), ["won't link again"]);
-  assert.deepEqual(h.edits(), ['✋ "milk" ✗ [[Dairy]] (won\'t ask again)']);
+  assert.deepEqual(fixture.rejected, [["milk", "Dairy"]]);
+  assert.deepEqual(fixture.answers(), ["won't link again"]);
+  assert.deepEqual(fixture.edits(), [
+    '✋ "milk" ✗ [[Dairy]] (won\'t ask again)',
+  ]);
 });
 
 test("a link tap with no pending record says expired, and one without an id is acknowledged", async () => {
-  const h = await harness();
-  await h.tap("lk:y:p9");
-  await h.tap("lk:y");
-  assert.deepEqual(h.answers(), ["expired", undefined]);
-  assert.deepEqual(h.edits(), []);
+  const fixture = await harness();
+  await fixture.tap("lk:y:p9");
+  await fixture.tap("lk:y");
+  assert.deepEqual(fixture.answers(), ["expired", undefined]);
+  assert.deepEqual(fixture.edits(), []);
 });
 
 // --- ur: unreject picker ---
@@ -560,16 +576,18 @@ const rejections = [
 ];
 
 test("the unreject picker lists the notes rejected for a word", async () => {
-  const h = await harness({ rejections });
-  await h.tap("ur:s:0");
-  assert.deepEqual(h.events, [
+  const fixture = await harness({ rejections });
+  await fixture.tap("ur:s:0");
+  assert.deepEqual(fixture.events, [
     "api.answerCallbackQuery",
     "api.editMessageText",
   ]);
-  assert.deepEqual(h.answers(), [undefined]);
-  assert.deepEqual(h.edits(), ['Unreject "foo" → which note?']);
+  assert.deepEqual(fixture.answers(), [undefined]);
+  assert.deepEqual(fixture.edits(), ['Unreject "foo" → which note?']);
   assert.deepEqual(
-    h.buttons(h.api.find((c) => c.method === "editMessageText")),
+    fixture.buttons(
+      fixture.api.find((call) => call.method === "editMessageText"),
+    ),
     [
       ["Alpha", "ur:p:0:0"],
       ["Beta", "ur:p:0:1"],
@@ -578,16 +596,16 @@ test("the unreject picker lists the notes rejected for a word", async () => {
 });
 
 test("picking a rejected note undoes it, and says so when it is already gone", async () => {
-  const h = await harness({ rejections });
-  await h.tap("ur:p:0:1");
-  assert.deepEqual(h.unrejectCalls, [["foo", "Beta"]]);
-  assert.deepEqual(h.events, [
+  const fixture = await harness({ rejections });
+  await fixture.tap("ur:p:0:1");
+  assert.deepEqual(fixture.unrejectCalls, [["foo", "Beta"]]);
+  assert.deepEqual(fixture.events, [
     "repo.unreject",
     "api.answerCallbackQuery",
     "api.editMessageText",
   ]);
-  assert.deepEqual(h.answers(), ["unrejected"]);
-  assert.deepEqual(h.edits(), ['↩️ "foo" may link to [[Beta]] again']);
+  assert.deepEqual(fixture.answers(), ["unrejected"]);
+  assert.deepEqual(fixture.edits(), ['↩️ "foo" may link to [[Beta]] again']);
 
   const gone = await harness({ rejections, unrejected: 0 });
   await gone.tap("ur:p:1:0");
@@ -596,42 +614,42 @@ test("picking a rejected note undoes it, and says so when it is already gone", a
 });
 
 test("a shifted unreject index answers expired instead of undoing the wrong pair", async () => {
-  const h = await harness({ rejections });
-  await h.tap("ur:s:5");
-  await h.tap("ur:p:5:0");
-  await h.tap("ur:p:0:5");
-  assert.deepEqual(h.answers(), ["expired", "expired", "expired"]);
-  assert.deepEqual(h.unrejectCalls, []);
-  assert.deepEqual(h.edits(), []);
+  const fixture = await harness({ rejections });
+  await fixture.tap("ur:s:5");
+  await fixture.tap("ur:p:5:0");
+  await fixture.tap("ur:p:0:5");
+  assert.deepEqual(fixture.answers(), ["expired", "expired", "expired"]);
+  assert.deepEqual(fixture.unrejectCalls, []);
+  assert.deepEqual(fixture.edits(), []);
 });
 
 test("an unknown unreject step is acknowledged and nothing changes", async () => {
-  const h = await harness({ rejections });
-  await h.tap("ur:x:0");
-  assert.deepEqual(h.answers(), [undefined]);
-  assert.deepEqual(h.unrejectCalls, []);
+  const fixture = await harness({ rejections });
+  await fixture.tap("ur:x:0");
+  assert.deepEqual(fixture.answers(), [undefined]);
+  assert.deepEqual(fixture.unrejectCalls, []);
 });
 
 test("an unknown callback namespace is answered with no text", async () => {
-  const h = await harness();
-  await h.tap("zz:whatever");
-  assert.deepEqual(h.events, ["api.answerCallbackQuery"]);
-  assert.deepEqual(h.answers(), [undefined]);
+  const fixture = await harness();
+  await fixture.tap("zz:whatever");
+  assert.deepEqual(fixture.events, ["api.answerCallbackQuery"]);
+  assert.deepEqual(fixture.answers(), [undefined]);
 });
 
 // --- /delete ---
 
 test("/delete removes the replied-to jot's line and reports it on the status message", async () => {
-  const h = await harness();
-  await h.deleteCommand(true);
-  assert.deepEqual(h.events, [
+  const fixture = await harness();
+  await fixture.deleteCommand(true);
+  assert.deepEqual(fixture.events, [
     "obsidian.read",
     "obsidian.write",
     `repo.markDeleted:${ID}`,
     "api.sendMessage",
   ]);
-  assert.deepEqual(h.sends(), ["🗑️ removed that from your journal."]);
-  assert.equal(h.note(), "# Journal\n\n");
+  assert.deepEqual(fixture.sends(), ["🗑️ removed that from your journal."]);
+  assert.equal(fixture.note(), "# Journal\n\n");
 });
 
 test("/delete asks for a reply, and says when it cannot find the jot", async () => {
@@ -648,63 +666,63 @@ test("/delete asks for a reply, and says when it cannot find the jot", async () 
   const noJot = await harness({ jots: [] });
   await noJot.deleteCommand(true);
   assert.deepEqual(noJot.sends(), ["Jot not found."]);
-  for (const h of [noReply, unmapped, noJot])
-    assert.equal(h.events.includes("obsidian.write"), false);
+  for (const fixture of [noReply, unmapped, noJot])
+    assert.equal(fixture.events.includes("obsidian.write"), false);
 });
 
 test("/delete on a jot still processing queues the delete", async () => {
   for (const status of ["pending", "processing"] as const) {
-    const h = await harness({ jots: [jot({ status })] });
-    await h.deleteCommand(true);
-    assert.deepEqual(h.queuedEdits, [[ID, "delete"]], status);
+    const fixture = await harness({ jots: [jot({ status })] });
+    await fixture.deleteCommand(true);
+    assert.deepEqual(fixture.queuedEdits, [[ID, "delete"]], status);
     assert.deepEqual(
-      h.sends(),
+      fixture.sends(),
       ["⏳ still processing \u{2014} I'll remove it once it's done."],
       status,
     );
-    assert.equal(h.events.includes("obsidian.write"), false, status);
+    assert.equal(fixture.events.includes("obsidian.write"), false, status);
   }
 });
 
 // --- reply edit ---
 
 test("a reply with a literal edit rewrites the line without calling the model", async () => {
-  const h = await harness();
-  await h.replyTo("s/milk/oat milk/");
-  assert.equal(h.note(), noteWith("bought oat milk"));
-  assert.deepEqual(h.editCalls, []);
-  assert.deepEqual(h.updates, [[ID, { raw_text: "bought oat milk" }]]);
-  const card = h.api.find((c) => c.method === "sendMessage");
+  const fixture = await harness();
+  await fixture.replyTo("s/milk/oat milk/");
+  assert.equal(fixture.note(), noteWith("bought oat milk"));
+  assert.deepEqual(fixture.editCalls, []);
+  assert.deepEqual(fixture.updates, [[ID, { raw_text: "bought oat milk" }]]);
+  const card = fixture.api.find((call) => call.method === "sendMessage");
   assert.equal(
     card?.payload.text,
     "✏️ Updated\n<blockquote>🕒 10:00:00 · bought oat milk</blockquote>",
   );
-  assert.deepEqual(h.buttons(card), [["↩️ Undo", `un:${ID}`]]);
+  assert.deepEqual(fixture.buttons(card), [["↩️ Undo", `un:${ID}`]]);
 });
 
 test("a freeform reply goes to the model with the line's text", async () => {
-  const h = await harness();
-  await h.replyTo("make it shorter");
-  assert.deepEqual(h.editCalls, [["bought milk", "make it shorter"]]);
-  assert.equal(h.note(), noteWith("bought milk (make it shorter)"));
+  const fixture = await harness();
+  await fixture.replyTo("make it shorter");
+  assert.deepEqual(fixture.editCalls, [["bought milk", "make it shorter"]]);
+  assert.equal(fixture.note(), noteWith("bought milk (make it shorter)"));
 });
 
 test("a reply of delete removes the entry and offers no Undo", async () => {
-  const h = await harness();
-  await h.replyTo("delete");
-  assert.equal(h.note(), "# Journal\n\n");
-  assert.deepEqual(h.sends(), ["🗑️ removed that from your journal."]);
+  const fixture = await harness();
+  await fixture.replyTo("delete");
+  assert.equal(fixture.note(), "# Journal\n\n");
+  assert.deepEqual(fixture.sends(), ["🗑️ removed that from your journal."]);
   assert.deepEqual(
-    h.buttons(h.api.find((c) => c.method === "sendMessage")),
+    fixture.buttons(fixture.api.find((call) => call.method === "sendMessage")),
     [],
   );
 });
 
 test("a reply to a line that is no longer in the note says so", async () => {
-  const h = await harness({ notes: { [NOTE]: "# Journal\n" } });
-  await h.replyTo("s/milk/oat/");
-  assert.deepEqual(h.sends(), ["Couldn't find that line in the note."]);
-  assert.deepEqual(h.updates, []);
+  const fixture = await harness({ notes: { [NOTE]: "# Journal\n" } });
+  await fixture.replyTo("s/milk/oat/");
+  assert.deepEqual(fixture.sends(), ["Couldn't find that line in the note."]);
+  assert.deepEqual(fixture.updates, []);
 });
 
 test("a reply to a jot still processing is queued, and one to an unknown jot is refused", async () => {
@@ -725,17 +743,17 @@ test("a reply to a jot still processing is queued, and one to an unknown jot is 
 });
 
 test("edits queued during processing are applied once the jot is done, in one status update", async () => {
-  const h = await harness({
+  const fixture = await harness({
     queuedEdits: { [ID]: ["s/milk/oat milk/", "s/bought/got/"] },
   });
-  await h.bot.onJotDone(ID);
-  assert.equal(h.note(), noteWith("got oat milk"));
-  assert.equal(h.events.at(-1), "api.sendMessage");
+  await fixture.bot.onJotDone(ID);
+  assert.equal(fixture.note(), noteWith("got oat milk"));
+  assert.equal(fixture.events.at(-1), "api.sendMessage");
   assert.ok(
-    h.events.indexOf(`repo.clearQueuedEdits:${ID}`) <
-      h.events.indexOf("api.sendMessage"),
+    fixture.events.indexOf(`repo.clearQueuedEdits:${ID}`) <
+      fixture.events.indexOf("api.sendMessage"),
   );
-  assert.match(h.sends()[0]!, /\(applied 2 queued edits\)$/);
+  assert.match(fixture.sends()[0]!, /\(applied 2 queued edits\)$/);
 
   const none = await harness();
   await none.bot.onJotDone(ID);
@@ -743,72 +761,74 @@ test("edits queued during processing are applied once the jot is done, in one st
 });
 
 test("one queued edit is reported in the singular", async () => {
-  const h = await harness({ queuedEdits: { [ID]: ["s/milk/tea/"] } });
-  await h.bot.onJotDone(ID);
-  assert.match(h.sends()[0]!, /\(applied 1 queued edit\)$/);
+  const fixture = await harness({ queuedEdits: { [ID]: ["s/milk/tea/"] } });
+  await fixture.bot.onJotDone(ID);
+  assert.match(fixture.sends()[0]!, /\(applied 1 queued edit\)$/);
 });
 
 // --- edited messages and captions ---
 
 test("editing a message text rewrites the processed jot's line and updates its status", async () => {
-  const h = await harness();
-  await h.edited({ text: "bought oat milk" });
-  assert.equal(h.note(), noteWith("bought oat milk"));
+  const fixture = await harness();
+  await fixture.edited({ text: "bought oat milk" });
+  assert.equal(fixture.note(), noteWith("bought oat milk"));
   assert.deepEqual(
-    h.api.map((c) => c.method),
+    fixture.api.map((call) => call.method),
     ["sendMessage", "editMessageText"],
   );
-  assert.equal(h.sends()[0], "✍️ got your edit \u{2014} applying…");
+  assert.equal(fixture.sends()[0], "✍️ got your edit \u{2014} applying…");
   assert.equal(
-    h.edits()[0],
+    fixture.edits()[0],
     "✏️ Updated\n<blockquote>🕒 10:00:00 · bought oat milk</blockquote>",
   );
-  assert.deepEqual(h.buttons(h.api.at(-1)), [["↩️ Undo", `un:${ID}`]]);
+  assert.deepEqual(fixture.buttons(fixture.api.at(-1)), [
+    ["↩️ Undo", `un:${ID}`],
+  ]);
 });
 
 test("editing an image caption keeps the image embed in the line", async () => {
-  const h = await harness({
+  const fixture = await harness({
     jots: [
       jot({ kind: "image", asset_path: "assets/cat.png", raw_text: "a cat" }),
     ],
     notes: { [NOTE]: noteWith("a cat ![[assets/cat.png]]") },
   });
-  await h.edited({ caption: "a sleepy cat" });
-  assert.equal(h.note(), noteWith("a sleepy cat ![[assets/cat.png]]"));
-  assert.deepEqual(h.updates, []);
+  await fixture.edited({ caption: "a sleepy cat" });
+  assert.equal(fixture.note(), noteWith("a sleepy cat ![[assets/cat.png]]"));
+  assert.deepEqual(fixture.updates, []);
 });
 
 test("edited text carries its formatting into the line as markdown", async () => {
-  const h = await harness();
-  await h.edited({
+  const fixture = await harness();
+  await fixture.edited({
     text: "bought oat milk",
     entities: [{ type: "bold", offset: 7, length: 3 }],
   });
-  assert.equal(h.note(), noteWith("bought **oat** milk"));
+  assert.equal(fixture.note(), noteWith("bought **oat** milk"));
 });
 
 test("clearing a processed message's text removes the line", async () => {
-  const h = await harness();
-  await h.edited({ text: "  " });
-  assert.equal(h.note(), "# Journal\n\n");
-  assert.equal(h.sends()[0], "🗑️ got it \u{2014} removing…");
-  assert.equal(h.edits()[0], "🗑️ removed that from your journal.");
-  assert.equal(h.events.includes(`repo.markDeleted:${ID}`), true);
+  const fixture = await harness();
+  await fixture.edited({ text: "  " });
+  assert.equal(fixture.note(), "# Journal\n\n");
+  assert.equal(fixture.sends()[0], "🗑️ got it \u{2014} removing…");
+  assert.equal(fixture.edits()[0], "🗑️ removed that from your journal.");
+  assert.equal(fixture.events.includes(`repo.markDeleted:${ID}`), true);
 });
 
 test("an edit while the jot is still processing is queued and acknowledged", async () => {
-  const h = await harness({ jots: [jot({ status: "processing" })] });
-  await h.edited({ text: "bought oat milk" });
-  await h.edited({ caption: " " });
-  assert.deepEqual(h.queuedEdits, [
+  const fixture = await harness({ jots: [jot({ status: "processing" })] });
+  await fixture.edited({ text: "bought oat milk" });
+  await fixture.edited({ caption: " " });
+  assert.deepEqual(fixture.queuedEdits, [
     [ID, "bought oat milk"],
     [ID, "delete"],
   ]);
-  assert.deepEqual(h.sends(), [
+  assert.deepEqual(fixture.sends(), [
     "⏳ still processing \u{2014} I'll apply that edit once it's done.",
     "⏳ still processing \u{2014} I'll remove it once it's done.",
   ]);
-  assert.equal(h.events.includes("obsidian.write"), false);
+  assert.equal(fixture.events.includes("obsidian.write"), false);
 });
 
 test("editing a message with no jot behind it does nothing", async () => {
@@ -816,51 +836,51 @@ test("editing a message with no jot behind it does nothing", async () => {
   await unmapped.edited({ text: "hello" });
   const noJot = await harness({ jots: [] });
   await noJot.edited({ caption: "hello" });
-  for (const h of [unmapped, noJot]) {
-    assert.deepEqual(h.api, []);
-    assert.deepEqual(h.queuedEdits, []);
+  for (const fixture of [unmapped, noJot]) {
+    assert.deepEqual(fixture.api, []);
+    assert.deepEqual(fixture.queuedEdits, []);
   }
 });
 
 // --- status message map ---
 
 test("the first status message is sent and mapped to the jot, later ones edit it in place", async () => {
-  const h = await harness({ mapped: [] });
-  await h.bot.status(ID, "working", { retry: true, discard: true });
-  const first = h.api[0]!;
+  const fixture = await harness({ mapped: [] });
+  await fixture.bot.status(ID, "working", { retry: true, discard: true });
+  const first = fixture.api[0]!;
   assert.equal(first.method, "sendMessage");
   assert.equal(first.payload.parse_mode, "HTML");
-  assert.deepEqual(h.buttons(first), [
+  assert.deepEqual(fixture.buttons(first), [
     ["🔄 Retry", `rt:${ID}`],
     ["🗑 Delete", `dl:${ID}`],
   ]);
-  assert.equal(h.messages.get(900), ID);
+  assert.equal(fixture.messages.get(900), ID);
 
-  await h.bot.status(ID, "done", { undo: true });
-  const second = h.api[1]!;
+  await fixture.bot.status(ID, "done", { undo: true });
+  const second = fixture.api[1]!;
   assert.equal(second.method, "editMessageText");
   assert.equal(second.payload.message_id, 900);
   assert.equal(second.payload.text, "done");
-  assert.deepEqual(h.buttons(second), [["↩️ Undo", `un:${ID}`]]);
+  assert.deepEqual(fixture.buttons(second), [["↩️ Undo", `un:${ID}`]]);
 
-  await h.bot.status(ID, "plain");
-  assert.deepEqual(h.buttons(h.api[2]), []);
+  await fixture.bot.status(ID, "plain");
+  assert.deepEqual(fixture.buttons(fixture.api[2]), []);
 });
 
 test("a status edit Telegram rejects is sent as a fresh message that replaces the old one", async () => {
-  const h = await harness({ mapped: [] });
-  await h.bot.status(ID, "one");
-  h.failApi.add("editMessageText");
-  await h.bot.status(ID, "two");
+  const fixture = await harness({ mapped: [] });
+  await fixture.bot.status(ID, "one");
+  fixture.failApi.add("editMessageText");
+  await fixture.bot.status(ID, "two");
   assert.deepEqual(
-    h.api.map((c) => c.method),
+    fixture.api.map((call) => call.method),
     ["sendMessage", "editMessageText", "sendMessage"],
   );
-  assert.equal(h.messages.get(901), ID);
+  assert.equal(fixture.messages.get(901), ID);
 
-  h.failApi.delete("editMessageText");
-  await h.bot.status(ID, "three");
-  assert.equal(h.api.at(-1)?.payload.message_id, 901);
+  fixture.failApi.delete("editMessageText");
+  await fixture.bot.status(ID, "three");
+  assert.equal(fixture.api.at(-1)?.payload.message_id, 901);
 });
 
 test("deleting a status message unmaps it and tolerates Telegram refusing", async () => {
@@ -868,16 +888,16 @@ test("deleting a status message unmaps it and tolerates Telegram refusing", asyn
   await none.bot.deleteStatus(ID);
   assert.deepEqual(none.api, []);
 
-  const h = await harness({ mapped: [] });
-  await h.bot.status(ID, "stray");
-  await h.bot.deleteStatus(ID);
-  assert.equal(h.messages.has(900), false);
-  assert.deepEqual(h.api.at(-1), {
+  const fixture = await harness({ mapped: [] });
+  await fixture.bot.status(ID, "stray");
+  await fixture.bot.deleteStatus(ID);
+  assert.equal(fixture.messages.has(900), false);
+  assert.deepEqual(fixture.api.at(-1), {
     method: "deleteMessage",
     payload: { chat_id: 1, message_id: 900 },
   });
-  await h.bot.deleteStatus(ID);
-  assert.equal(h.api.length, 2);
+  await fixture.bot.deleteStatus(ID);
+  assert.equal(fixture.api.length, 2);
 
   const refused = await harness({ mapped: [] });
   await refused.bot.status(ID, "stray");
@@ -887,12 +907,16 @@ test("deleting a status message unmaps it and tolerates Telegram refusing", asyn
 });
 
 test("the outcome reaction follows the jot's message and never throws", async () => {
-  const h = await harness();
-  await h.bot.react(ID, "done");
-  await h.bot.react(ID, "retrying");
-  await h.bot.react(ID, "failed");
+  const fixture = await harness();
+  await fixture.bot.react(ID, "done");
+  await fixture.bot.react(ID, "retrying");
+  await fixture.bot.react(ID, "failed");
   assert.deepEqual(
-    h.api.map((c) => [c.method, c.payload.message_id, c.payload.reaction]),
+    fixture.api.map((call) => [
+      call.method,
+      call.payload.message_id,
+      call.payload.reaction,
+    ]),
     [
       ["setMessageReaction", 77, [{ type: "emoji", emoji: "👌" }]],
       ["setMessageReaction", 77, [{ type: "emoji", emoji: "🤔" }]],
@@ -900,8 +924,8 @@ test("the outcome reaction follows the jot's message and never throws", async ()
     ],
   );
 
-  h.failApi.add("setMessageReaction");
-  await h.bot.react(ID, "done");
+  fixture.failApi.add("setMessageReaction");
+  await fixture.bot.react(ID, "done");
 
   const unmapped = await harness({ mapped: [] });
   await unmapped.bot.react(ID, "done");
@@ -910,15 +934,15 @@ test("the outcome reaction follows the jot's message and never throws", async ()
 
 // --- downloadFile ---
 
-test("a Telegram file is downloaded with its extension and mime type", async (t) => {
-  const h = await harness();
-  h.apiResult.getFile = { file_id: "f1", file_path: "voice/file_1.OGA" };
+test("a Telegram file is downloaded with its extension and mime type", async (testContext) => {
+  const fixture = await harness();
+  fixture.apiResult.getFile = { file_id: "f1", file_path: "voice/file_1.OGA" };
   const urls: string[] = [];
-  t.mock.method(globalThis, "fetch", async (url: string) => {
+  testContext.mock.method(globalThis, "fetch", async (url: string) => {
     urls.push(url);
     return new Response(new Uint8Array([1, 2, 3]));
   });
-  const file = await h.bot.downloadFile("f1");
+  const file = await fixture.bot.downloadFile("f1");
   assert.deepEqual(urls, [
     "https://api.telegram.org/file/bott/voice/file_1.OGA",
   ]);
@@ -926,25 +950,28 @@ test("a Telegram file is downloaded with its extension and mime type", async (t)
   assert.equal(file.ext, "oga");
   assert.equal(file.mime, "audio/ogg");
 
-  h.apiResult.getFile = { file_id: "f2", file_path: "documents/file_2" };
-  const other = await h.bot.downloadFile("f2");
+  fixture.apiResult.getFile = { file_id: "f2", file_path: "documents/file_2" };
+  const other = await fixture.bot.downloadFile("f2");
   assert.equal(other.ext, "bin");
   assert.equal(other.mime, "application/octet-stream");
 });
 
-test("a file Telegram will not serve fails the download with its reason", async (t) => {
-  const h = await harness();
-  h.apiResult.getFile = { file_id: "f1" };
-  await assert.rejects(() => h.bot.downloadFile("f1"), /no file_path for f1/);
+test("a file Telegram will not serve fails the download with its reason", async (testContext) => {
+  const fixture = await harness();
+  fixture.apiResult.getFile = { file_id: "f1" };
+  await assert.rejects(
+    () => fixture.bot.downloadFile("f1"),
+    /no file_path for f1/,
+  );
 
-  h.apiResult.getFile = { file_id: "f1", file_path: "voice/a.oga" };
-  t.mock.method(
+  fixture.apiResult.getFile = { file_id: "f1", file_path: "voice/a.oga" };
+  testContext.mock.method(
     globalThis,
     "fetch",
     async () => new Response("no", { status: 404 }),
   );
   await assert.rejects(
-    () => h.bot.downloadFile("f1"),
+    () => fixture.bot.downloadFile("f1"),
     /telegram file download: 404/,
   );
 });
@@ -952,45 +979,45 @@ test("a file Telegram will not serve fails the download with its reason", async 
 // --- error handler ---
 
 test("a failed button tap gets a toast of at most 200 characters and no other message", async () => {
-  const h = await harness();
-  h.repo.getJot = async () => {
+  const fixture = await harness();
+  fixture.repo.getJot = async () => {
     throw new Error("db is locked");
   };
-  await h.tap(`rt:${ID}`);
-  assert.deepEqual(h.answers(), ["⚠️ db is locked"]);
-  assert.deepEqual(h.sends(), []);
+  await fixture.tap(`rt:${ID}`);
+  assert.deepEqual(fixture.answers(), ["⚠️ db is locked"]);
+  assert.deepEqual(fixture.sends(), []);
 
-  h.repo.getJot = async () => {
+  fixture.repo.getJot = async () => {
     throw new Error("x".repeat(500));
   };
-  await h.tap(`rt:${ID}`);
-  const long = h.answers()[1]!;
+  await fixture.tap(`rt:${ID}`);
+  const long = fixture.answers()[1]!;
   assert.equal(long.length, 200);
   assert.ok(long.startsWith("⚠️ xxx"));
 });
 
 test("a failed message that already has a jot gets Retry and Delete buttons", async () => {
-  const h = await harness({ jots: [], mapped: [] });
-  h.bot.obsidian.appendJournalLine = async () => {
+  const fixture = await harness({ jots: [], mapped: [] });
+  fixture.bot.obsidian.appendJournalLine = async () => {
     throw new Error("obsidian is down");
   };
-  await h.send("buy milk");
-  const reply = h.api.find((c) => c.method === "sendMessage");
+  await fixture.send("buy milk");
+  const reply = fixture.api.find((call) => call.method === "sendMessage");
   assert.equal(reply?.payload.text, "⚠️ Couldn't save that: obsidian is down");
-  const [row] = [...h.jots.keys()];
-  assert.deepEqual(h.buttons(reply), [
+  const [row] = [...fixture.jots.keys()];
+  assert.deepEqual(fixture.buttons(reply), [
     ["🔄 Retry", `rt:${row}`],
     ["🗑 Delete", `dl:${row}`],
   ]);
 });
 
 test("a failed message with no jot gets a plain error and a non-Error reason is stringified", async () => {
-  const h = await harness({ mapped: [] });
-  h.repo.insertJot = async () => {
+  const fixture = await harness({ mapped: [] });
+  fixture.repo.insertJot = async () => {
     throw "disk full";
   };
-  await h.send("buy milk");
-  const reply = h.api.find((c) => c.method === "sendMessage");
+  await fixture.send("buy milk");
+  const reply = fixture.api.find((call) => call.method === "sendMessage");
   assert.equal(reply?.payload.text, "⚠️ Couldn't save that: disk full");
-  assert.deepEqual(h.buttons(reply), []);
+  assert.deepEqual(fixture.buttons(reply), []);
 });

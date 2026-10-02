@@ -85,8 +85,8 @@ function recorder(
         if (opts.props && prop in opts.props) return opts.props[prop];
         const run = (args: unknown[]) => {
           if (!opts.quiet?.includes(prop)) timeline.push(`${layer}.${prop}`);
-          const b = prop in impl ? impl[prop] : defaults[prop];
-          return typeof b === "function" ? b(...args) : b;
+          const member = prop in impl ? impl[prop] : defaults[prop];
+          return typeof member === "function" ? member(...args) : member;
         };
         if (opts.sync?.includes(prop)) return (...args: unknown[]) => run(args);
         return async (...args: unknown[]) => run(args);
@@ -97,11 +97,11 @@ function recorder(
 
 export function renderTimeline(events: string[]): string {
   const out: string[] = [];
-  for (let i = 0; i < events.length; ) {
-    let n = 1;
-    while (events[i + n] === events[i]) n++;
-    out.push(n > 1 ? `${events[i]}×${n}` : events[i]!);
-    i += n;
+  for (let index = 0; index < events.length; ) {
+    let repeats = 1;
+    while (events[index + repeats] === events[index]) repeats++;
+    out.push(repeats > 1 ? `${events[index]}×${repeats}` : events[index]!);
+    index += repeats;
   }
   return out.join(" > ");
 }
@@ -270,7 +270,9 @@ export async function botHarness() {
       rendered: renderTimeline(events),
       calls: done,
       texts: (method) =>
-        done.filter((c) => c.method === method).map((c) => c.payload.text),
+        done
+          .filter((call) => call.method === method)
+          .map((call) => call.payload.text),
     };
   }
 
@@ -293,8 +295,8 @@ export async function botHarness() {
       : { text };
   };
   type Reply = { message_id: number; text?: string };
-  const replyTo = (r?: Reply) =>
-    r ? { reply_to_message: { date: 0, chat, ...r } } : {};
+  const replyTo = (target?: Reply) =>
+    target ? { reply_to_message: { date: 0, chat, ...target } } : {};
 
   return {
     bot,
