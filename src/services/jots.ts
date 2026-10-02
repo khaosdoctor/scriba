@@ -1,4 +1,4 @@
-import type { Repository } from "../data/repositories/index.ts";
+import type { JotRepository } from "../data/repositories/jots.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { Jot, JotSection } from "../domain/jot/entity.ts";
 import type { IntakeInput } from "../domain/jot/structures.ts";
@@ -45,26 +45,8 @@ export type VoiceFixChoice = "original" | "proposed";
 export type RetryOutcome = "queued" | "in-flight";
 
 export interface JotDeps {
-  repo: Pick<
-    Repository,
-    | "getJot"
-    | "groupFollowers"
-    | "updateJot"
-    | "markTilOffered"
-    | "recentJots"
-    | "resetForRetry"
-    | "mapMessage"
-    | "unmapMessage"
-    | "insertJot"
-    | "lastPendingEnrichableJot"
-    | "jotForMessage"
-    | "messageForJot"
-    | "unsquash"
-  >;
-  obsidian: Pick<
-    ObsidianClient,
-    "moveToTil" | "dailyPath" | "ensureDailyNote" | "appendJournalLine"
-  >;
+  repo: JotRepository;
+  obsidian: ObsidianClient;
   notifier: Notifier;
   queue: Pick<FlushQueue, "add">;
   /** A text or voice jot this soon after a pending one folds into its line. */

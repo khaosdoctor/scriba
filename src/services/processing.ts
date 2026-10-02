@@ -1,6 +1,9 @@
 import { basename } from "node:path";
-import type { Repository } from "../data/repositories/index.ts";
+import type { JotRepository } from "../data/repositories/jots.ts";
+import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
+import type { SettingsRepository } from "../data/repositories/settings.ts";
+import type { TaskDraftRepository } from "../data/repositories/task-drafts.ts";
 import type { VaultService } from "../data/repositories/vault.ts";
 import { type Jot, MAX_ATTEMPTS } from "../domain/jot/entity.ts";
 import type { TaskDraft } from "../domain/task/entity.ts";
@@ -54,15 +57,15 @@ const voiceStatus = (transcript: string, step: string): string =>
   `🎤 <i>${escapeHtml(transcript.trim())}</i>\n\n${step}`;
 
 export interface ProcessingDeps {
-  repo: Repository;
+  repo: JotRepository;
+  settings: SettingsRepository;
+  linkRules: LinkRuleRepository;
+  taskDrafts: TaskDraftRepository;
   obsidian: ObsidianClient;
   transcriber: Transcriber;
   enricher: Enricher;
   links: VaultService;
-  jots: Pick<
-    JotService,
-    "status" | "deleteStatus" | "react" | "awaitVoiceFix" | "askTil"
-  >;
+  jots: JotService;
   edits: Pick<EditService, "drainQueued">;
   tasks: Pick<TaskService, "suggest">;
   notifier: Pick<Notifier, "send" | "typing">;
@@ -141,12 +144,12 @@ export class ProcessingService {
       }
       // Voice fix: when enabled, ask a stronger model to lightly clean the transcript
       // and let the user pick between original and proposed before enrichment proceeds.
-      const vfModel = await this.deps.repo.getSetting("voiceFixModel");
+      const vfModel = await this.deps.settings.getSetting("voiceFixModel");
       if (
         jot.kind === "audio" &&
         jot.transcript?.trim() &&
         vfModel &&
-        (await this.deps.repo.getSetting("fixVoiceTranscript"))
+        (await this.deps.settings.getSetting("fixVoiceTranscript"))
       ) {
         const original = jot.transcript.trim();
         await this.deps.jots.status(
@@ -204,9 +207,9 @@ export class ProcessingService {
       let tilCard = false;
       if (source.trim()) {
         const [stopwords, rejections, registered] = await Promise.all([
-          this.deps.repo.stopwords(),
-          this.deps.repo.rejections(),
-          this.deps.repo.registeredLinks(),
+          this.deps.linkRules.stopwords(),
+          this.deps.linkRules.rejections(),
+          this.deps.linkRules.registeredLinks(),
         ]);
         const index = this.deps.links.list();
         if (!index.length)
@@ -269,7 +272,12 @@ export class ProcessingService {
         tilCard = await this.tilWanted(res.til, jot);
         for (const a of res.ambiguous) {
           const pid = makeJotId();
-          await this.deps.repo.addPendingLink(pid, jot.id, a.surface, a.note);
+          await this.deps.linkRules.addPendingLink(
+            pid,
+            jot.id,
+            a.surface,
+            a.note,
+          );
           await this.askLink(pid, a.surface, a.note);
           log.debug(
             { id, pid, surface: a.surface, note: a.note },
@@ -572,11 +580,11 @@ export class ProcessingService {
     jot: Jot,
   ): Promise<TaskDraft[]> {
     if (!detected?.length) return [];
-    if (!(await this.deps.repo.getSetting("taskDetection"))) {
+    if (!(await this.deps.settings.getSetting("taskDetection"))) {
       log.debug({ id: jot.id }, "task detection off — suggestions dropped");
       return [];
     }
-    if (await this.deps.repo.taskDraftsForJot(jot.id)) {
+    if (await this.deps.taskDrafts.taskDraftsForJot(jot.id)) {
       log.info(
         { id: jot.id, tasks: detected.length },
         "task detection: this jot was already asked about — not asking again",
@@ -606,7 +614,7 @@ export class ProcessingService {
    */
   private async tilWanted(sounds: boolean, jot: Jot): Promise<boolean> {
     if (!sounds) return false;
-    if (!(await this.deps.repo.getSetting("tilDetection"))) {
+    if (!(await this.deps.settings.getSetting("tilDetection"))) {
       log.debug({ id: jot.id }, "til detection off, no card");
       return false;
     }
@@ -657,7 +665,7 @@ export class ProcessingService {
 
   /** Current entry-size limit: the runtime setting, or the default when unset. */
   private async maxChars(): Promise<number> {
-    return this.deps.repo.getSetting("entryMaxChars");
+    return this.deps.settings.getSetting("entryMaxChars");
   }
 
   private composeLine(jot: Jot, textPart: string): string {

@@ -128,7 +128,13 @@ async function harness(over: Opts = {}) {
     testConfig,
     { version: "0.0.0", sha: "0123456789" },
     {
-      repo,
+      repo: {
+        jots: repo,
+        linkRules: repo,
+        settings: repo,
+        taskDrafts: repo,
+        ratings: repo,
+      } as never,
       obsidian,
       enricher,
       queue: {

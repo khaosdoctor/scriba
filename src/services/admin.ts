@@ -2,7 +2,9 @@ import type {
   GithubReleases,
   ReleaseNote,
 } from "../data/connections/github.ts";
-import type { Repository } from "../data/repositories/index.ts";
+import type { JotRepository } from "../data/repositories/jots.ts";
+import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
+import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { VaultService } from "../data/repositories/vault.ts";
 import {
   type Jot,
@@ -60,7 +62,9 @@ export type ReprocessScope =
   | { jot: string };
 
 export interface AdminDeps {
-  repo: Repository;
+  repo: JotRepository;
+  linkRules: LinkRuleRepository;
+  settings: SettingsRepository;
   queue: FlushQueue;
   processing: ProcessingService;
   transcriber: FallbackTranscriber;
@@ -249,11 +253,11 @@ export class AdminService {
   }
 
   async stopwords(args: string): Promise<string> {
-    const { repo } = this.d;
+    const { linkRules } = this.d;
     const [sub, ...rest] = args.trim().split(/\s+/);
     const word = rest.join(" ");
     if (sub === "list") {
-      const words = [...(await repo.stopwords())].sort();
+      const words = [...(await linkRules.stopwords())].sort();
       const page = pageIndex(rest[0]);
       log.stopword.info({ count: words.length, page }, "/stopword list");
       if (!words.length) return "(none)";
@@ -270,7 +274,7 @@ export class AdminService {
         log.stopword.warn("/stopword add rejected: no word given");
         return "usage: /stopword add <word>";
       }
-      await repo.addStopword(word);
+      await linkRules.addStopword(word);
       log.stopword.info({ word }, "/stopword add");
       return `➕ stopword "${word.toLowerCase()}"`;
     }
@@ -279,7 +283,7 @@ export class AdminService {
         log.stopword.warn("/stopword del rejected: no word given");
         return "usage: /stopword del <word>";
       }
-      const n = await repo.delStopword(word);
+      const n = await linkRules.delStopword(word);
       log.stopword.info({ word, removed: n }, "/stopword del");
       return n
         ? `➖ removed "${word.toLowerCase()}"`
@@ -290,7 +294,7 @@ export class AdminService {
   }
 
   async rejections(args: string): Promise<string> {
-    const list = await this.d.repo.rejectionList();
+    const list = await this.d.linkRules.rejectionList();
     const page = pageIndex(args.trim());
     log.rejections.info({ count: list.length, page }, "/rejections command");
     if (!list.length) return "(no rejections)";
@@ -301,7 +305,7 @@ export class AdminService {
   /** `/unreject <word> <note>` answers with text. With no arguments it answers with the
    *  rejected words to pick from, or "(no rejections)". */
   async unreject(args: string): Promise<string | UnrejectPicker> {
-    const { repo } = this.d;
+    const { linkRules } = this.d;
     const arg = args.trim();
     // The note is the last token, the surface is everything before it.
     if (arg) {
@@ -310,14 +314,14 @@ export class AdminService {
         return "usage: /unreject <word> <note> (or /unreject with no args for a menu)";
       const surface = arg.slice(0, i);
       const note = arg.slice(i + 1);
-      const n = await repo.unreject(surface, note);
+      const n = await linkRules.unreject(surface, note);
       log.unreject.info({ surface, note, removed: n }, "/unreject direct");
       return n
         ? `↩️ "${surface}" may link to [[${note}]] again`
         : `no rejection for "${surface}" → [[${note}]]`;
     }
 
-    const list = await repo.rejectionList();
+    const list = await linkRules.rejectionList();
     if (!list.length) return "(no rejections)";
     const surfaces = distinctSurfaces(list);
     log.unreject.info({ surfaces: surfaces.length }, "/unreject menu opened");
@@ -334,7 +338,7 @@ export class AdminService {
     step: string | undefined,
     idx: string[],
   ): Promise<RejectedWord | undefined> {
-    const list = await this.d.repo.rejectionList();
+    const list = await this.d.linkRules.rejectionList();
     const surface = distinctSurfaces(list)[Number(idx[0])];
     if (surface === undefined) {
       log.unreject.warn({ step, idx }, "unreject: surface index out of range");
@@ -358,7 +362,7 @@ export class AdminService {
       log.unreject.warn({ surface, idx }, "unreject: note index out of range");
       return undefined;
     }
-    const removed = await this.d.repo.unreject(surface, note);
+    const removed = await this.d.linkRules.unreject(surface, note);
     log.unreject.info({ surface, note, removed }, "unreject via menu");
     return { note, removed };
   }
@@ -462,9 +466,9 @@ export class AdminService {
   /** Notifies only on an actual new deploy (version or sha changed since the last boot
    *  recorded), so a plain restart on the same image stays quiet. */
   async announceDeploy(): Promise<void> {
-    const { repo, github, notifier, build } = this.d;
+    const { settings, github, notifier, build } = this.d;
     const deployId = `${build.version}@${build.sha}`;
-    const lastDeployId = await repo.getSetting("deployId");
+    const lastDeployId = await settings.getSetting("deployId");
     if (lastDeployId === deployId) return;
     log.main.info(
       { deployId, lastDeployId },
@@ -483,7 +487,7 @@ export class AdminService {
       await notifier.notify(
         formatDeployNotice(build.version, build.sha, releaseNote),
       );
-      await repo.setSetting("deployId", deployId);
+      await settings.setSetting("deployId", deployId);
     } catch (err) {
       log.main.warn(
         { err },

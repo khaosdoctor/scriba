@@ -1,4 +1,5 @@
-import type { Repository } from "../data/repositories/index.ts";
+import type { JotRepository } from "../data/repositories/jots.ts";
+import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import type { EditInput } from "../domain/jot/structures.ts";
@@ -25,20 +26,9 @@ import type { JotService } from "./jots.ts";
 const log = logger("bot");
 
 export interface EditDeps {
-  repo: Pick<
-    Repository,
-    | "getJot"
-    | "jotForMessage"
-    | "queueEdit"
-    | "queuedEdits"
-    | "clearQueuedEdits"
-    | "markDeleted"
-    | "groupFollowers"
-    | "updateJot"
-    | "takePendingLink"
-    | "reject"
-  >;
-  obsidian: Pick<ObsidianClient, "readNote" | "updateLine" | "updateNote">;
+  repo: JotRepository;
+  linkRules: LinkRuleRepository;
+  obsidian: ObsidianClient;
   enricher: Pick<Enricher, "editText">;
   /** Every applied edit is reported on the jot's own status message. */
   jots: Pick<JotService, "status" | "leaderOf">;
@@ -238,13 +228,13 @@ export class EditService {
   /** The owner's answer to a "Link X → [[Note]]?" card. Rejecting teaches the pair so it is
    *  never asked again; accepting rewrites the word on the jot's line. */
   async confirmLink(pendingId: string, accept: boolean): Promise<LinkOutcome> {
-    const { repo, obsidian } = this.deps;
-    const rec = await repo.takePendingLink(pendingId);
+    const { repo, obsidian, linkRules } = this.deps;
+    const rec = await linkRules.takePendingLink(pendingId);
     if (!rec) return "expired";
     const { surface, note } = rec;
     if (!accept) {
       log.info({ surface, note }, "link rejected — learning it");
-      await repo.reject(surface, note);
+      await linkRules.reject(surface, note);
       return { verdict: "rejected", surface, note };
     }
     const jot = await repo.getJot(rec.jot_id);

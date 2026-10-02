@@ -100,6 +100,7 @@ function setup(
   const modes = new Modes(notifier);
   const tasks = new TaskService({
     repo: repo as any,
+    settings: repo as any,
     notes,
     enricher: { extractTask: (text: string) => extract(text) } as any,
     notifier,

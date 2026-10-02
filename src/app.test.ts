@@ -126,10 +126,10 @@ function fakeTelegram(
 
 /** Records every settings write on `events`, then performs it. */
 function recordSettingWrites(t: TestContext, events: string[]) {
-  const write = SettingsRepository.prototype.set;
+  const write = SettingsRepository.prototype.setSetting;
   t.mock.method(
     SettingsRepository.prototype,
-    "set",
+    "setSetting",
     function (this: SettingsRepository, key: SettingKey, value: string) {
       events.push(`set ${key}=${value}`);
       return write.call(this, key, value);
@@ -332,7 +332,7 @@ dbTest("the enricher starts on the model saved in the database", async (t) => {
   const first = await createScriba(config, build);
   await first.stop();
   const saved = await Repository.open(config.dbPath);
-  await saved.setSetting("enrichModel", "saved-model");
+  await saved.settings.setSetting("enrichModel", "saved-model");
   await saved.close();
   const second = await createScriba(config, build);
   await second.stop();

@@ -1,4 +1,5 @@
-import type { Repository } from "../data/repositories/index.ts";
+import type { SettingsRepository } from "../data/repositories/settings.ts";
+import type { TaskDraftRepository } from "../data/repositories/task-drafts.ts";
 import type { TaskNotesService } from "../data/repositories/task-notes.ts";
 import type { SwitchKey } from "../domain/setting/entity.ts";
 import type {
@@ -54,7 +55,8 @@ export type Keyboard = {
 export type Screen = { text: string; keyboard: Keyboard };
 
 export interface TaskDeps {
-  repo: Repository;
+  repo: TaskDraftRepository;
+  settings: SettingsRepository;
   notes: TaskNotesService;
   enricher: Enricher;
   notifier: Pick<Notifier, "notify" | "send" | "edit" | "delete">;
@@ -534,9 +536,9 @@ export class TaskService {
   }
 
   async menu(): Promise<Screen> {
-    const { repo } = this.deps;
-    const tasks = await repo.getSetting("taskDetection");
-    const til = await repo.getSetting("tilDetection");
+    const { settings } = this.deps;
+    const tasks = await settings.getSetting("taskDetection");
+    const til = await settings.getSetting("tilDetection");
     const screens = Object.keys(VIEW_LABEL).filter((v) => v !== "future");
     return {
       text: MENU_TEXT,
@@ -562,7 +564,7 @@ export class TaskService {
   async toggle(
     key: Extract<SwitchKey, "taskDetection" | "tilDetection">,
   ): Promise<boolean> {
-    const enabled = await this.deps.repo.toggleSetting(key);
+    const enabled = await this.deps.settings.toggleSetting(key);
     log.info(
       { enabled },
       key === "taskDetection"

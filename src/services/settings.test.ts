@@ -11,6 +11,7 @@ function setup(stored: Record<string, string> = {}) {
     repo: new FakeSettings(stored, (key, value) =>
       events.push(`set ${key}=${value}`),
     ) as never,
+    linkRules: {} as never,
     links: {
       list: () => [],
       stats: () => ({ enabled: true, aliases: 0, files: 0 }),

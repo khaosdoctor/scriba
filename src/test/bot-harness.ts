@@ -199,7 +199,14 @@ export async function botHarness() {
     testConfig,
     { version: "0.0.0", sha: "0123456789" },
     {
-      repo,
+      repo: {
+        jots: repo,
+        linkRules: repo,
+        settings: repo,
+        taskDrafts: repo,
+        ratings: repo,
+        close: repo.close,
+      } as never,
       obsidian,
       enricher,
       transcriber,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Repository } from "../data/repositories/index.ts";
+import type { JotRepository } from "../data/repositories/jots.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import type { IntakeInput } from "../domain/jot/structures.ts";
 import { moveAnchorLine, placeholderLine } from "../libs/note.ts";
@@ -243,7 +244,7 @@ type IntakeFakes = {
   jotId?: string;
   unsquash?: boolean;
   appendFails?: boolean;
-  realRepo?: Repository;
+  realRepo?: JotRepository;
   /** Offer the newest inserted jot back as the still-pending one, like the real repo. */
   chain?: boolean;
 };
@@ -438,10 +439,10 @@ test("a TIL jot does not join a pending journal jot in the real repository", asy
     );
   }
   try {
-    await repo.insertJot(leader());
-    const h = intakeSetup({ realRepo: repo });
+    await repo.jots.insertJot(leader());
+    const h = intakeSetup({ realRepo: repo.jots });
     await h.intake({ rawText: "TIL: x y" });
-    const til = await repo.getJot((await repo.jotForMessage(77))!);
+    const til = await repo.jots.getJot((await repo.jots.jotForMessage(77))!);
     assert.equal(til?.section, "til");
     assert.equal(til?.anchor, til?.id);
     assert.deepEqual(h.reacts(), ["✍"]);
@@ -449,7 +450,7 @@ test("a TIL jot does not join a pending journal jot in the real repository", asy
     // and the other way round: a plain jot after the TIL jot skips it and rejoins the
     // journal run it left off
     await h.intake({ rawText: "plain", messageId: 78, sentAt: NOW + 1000 });
-    const plain = await repo.getJot((await repo.jotForMessage(78))!);
+    const plain = await repo.jots.getJot((await repo.jots.jotForMessage(78))!);
     assert.equal(plain?.section, "journal");
     assert.equal(plain?.anchor, "aaaaaaaa");
     assert.deepEqual(h.reacts(), ["✍", "🤝"]);

@@ -69,6 +69,7 @@ function wizardHarness(
   };
   const settings = new SettingsService({
     repo,
+    linkRules: repo,
     links: {
       list: () => init.aliases ?? [],
       stats: () => ({ enabled: true, aliases: 3, files: 2 }),

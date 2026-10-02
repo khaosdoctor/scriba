@@ -49,6 +49,7 @@ function setup(over: { jot?: Jot | null; mapped?: boolean } = {}) {
   };
   const edits = new EditService({
     repo,
+    linkRules: repo,
     obsidian,
     enricher: { editText: async (text: string) => text },
     jots,

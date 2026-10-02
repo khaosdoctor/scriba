@@ -1,4 +1,5 @@
-import type { Repository } from "../data/repositories/index.ts";
+import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
+import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { VaultService } from "../data/repositories/vault.ts";
 import type { LinkRule } from "../domain/link-rule/entity.ts";
 import type {
@@ -27,21 +28,8 @@ import type { Notifier } from "./notifier.ts";
 const log = logger("menu");
 
 export interface SettingsDeps {
-  repo: Pick<
-    Repository,
-    | "getSetting"
-    | "setSetting"
-    | "toggleSetting"
-    | "ratingTime"
-    | "stopwordList"
-    | "addStopword"
-    | "delStopword"
-    | "rejectionList"
-    | "unreject"
-    | "registeredLinks"
-    | "addRegisteredLink"
-    | "delRegisteredLink"
-  >;
+  repo: SettingsRepository;
+  linkRules: LinkRuleRepository;
   links: Pick<VaultService, "list" | "stats">;
   enricher: Pick<Enricher, "setModel">;
   scheduler: Pick<Scheduler, "rearm">;
@@ -148,11 +136,11 @@ export class SettingsService {
 
   /** Step 1 of the wizard: every rule list and the index health. */
   async linkRules() {
-    const { repo, links } = this.d;
+    const { linkRules, links } = this.d;
     const [stopwords, rejections, pairs] = await Promise.all([
-      repo.stopwordList(),
-      repo.rejectionList(),
-      repo.registeredLinks(),
+      linkRules.stopwordList(),
+      linkRules.rejectionList(),
+      linkRules.registeredLinks(),
     ]);
     const index = links.stats();
     log.info(
@@ -167,38 +155,38 @@ export class SettingsService {
   }
 
   stopwords(): Promise<string[]> {
-    return this.d.repo.stopwordList();
+    return this.d.linkRules.stopwordList();
   }
 
   rejections(): Promise<LinkRule[]> {
-    return this.d.repo.rejectionList();
+    return this.d.linkRules.rejectionList();
   }
 
   pairs(): Promise<LinkRule[]> {
-    return this.d.repo.registeredLinks();
+    return this.d.linkRules.registeredLinks();
   }
 
   async addStopwords(words: string[]): Promise<void> {
-    for (const w of words) await this.d.repo.addStopword(w);
+    for (const w of words) await this.d.linkRules.addStopword(w);
     log.info({ words }, "link wizard: never-link words added");
   }
 
   async removeStopword(word: string): Promise<void> {
-    const n = await this.d.repo.delStopword(word);
+    const n = await this.d.linkRules.delStopword(word);
     log.info({ word, removed: n }, "link wizard: never-link word removed");
   }
 
   /** Undo one rejection; true while the word still has rejected notes. */
   async unreject(surface: string, note: string): Promise<boolean> {
-    const n = await this.d.repo.unreject(surface, note);
+    const n = await this.d.linkRules.unreject(surface, note);
     log.info({ surface, note, removed: n }, "link wizard: rejection undone");
-    return (await this.d.repo.rejectionList()).some(
+    return (await this.d.linkRules.rejectionList()).some(
       (r) => r.surface === surface,
     );
   }
 
   async removePair(r: LinkRule): Promise<void> {
-    const n = await this.d.repo.delRegisteredLink(r.surface, r.note);
+    const n = await this.d.linkRules.delRegisteredLink(r.surface, r.note);
     log.info(
       { surface: r.surface, note: r.note, removed: n },
       "link wizard: always-link pair removed",
@@ -206,8 +194,8 @@ export class SettingsService {
   }
 
   async renamePair(r: LinkRule, word: string): Promise<void> {
-    await this.d.repo.delRegisteredLink(r.surface, r.note);
-    await this.d.repo.addRegisteredLink(word, r.note);
+    await this.d.linkRules.delRegisteredLink(r.surface, r.note);
+    await this.d.linkRules.addRegisteredLink(word, r.note);
     log.info({ from: r.surface, to: word }, "link wizard: pair renamed");
   }
 
@@ -303,8 +291,8 @@ export class SettingsService {
   /** Write one pair, retiring the pair being replaced when this is a retarget. */
   async savePair(word: string, note: string): Promise<void> {
     const old = this.pending?.retarget;
-    if (old) await this.d.repo.delRegisteredLink(old.surface, old.note);
-    await this.d.repo.addRegisteredLink(word, note);
+    if (old) await this.d.linkRules.delRegisteredLink(old.surface, old.note);
+    await this.d.linkRules.addRegisteredLink(word, note);
     log.info(
       { surface: word, note, replaced: old?.note },
       "link wizard: pair saved",

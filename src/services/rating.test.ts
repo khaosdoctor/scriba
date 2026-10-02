@@ -83,6 +83,7 @@ function setup(
   };
   const rating = new RatingService({
     repo,
+    ratings: repo,
     obsidian,
     notifier,
     ratingTime: "22:00",

@@ -82,7 +82,7 @@ async function buildEnricher(
   notifySwitch: SwitchNotifier,
 ) {
   const enrichModel =
-    (await repo.getSetting("enrichModel")) ?? config.enrich.model;
+    (await repo.settings.getSetting("enrichModel")) ?? config.enrich.model;
   const fallbacks: EnrichFallback[] = [];
   if (config.enrich.groqApiKey)
     fallbacks.push({
@@ -187,21 +187,23 @@ export async function createScriba(
     });
 
   const jotController = new JotService({
-    repo,
+    repo: repo.jots,
     obsidian,
     notifier: chat,
     queue,
     squashWindowMs: config.squash.windowMs,
   });
   const edits = new EditService({
-    repo,
+    repo: repo.jots,
+    linkRules: repo.linkRules,
     obsidian,
     enricher,
     jots: jotController,
   });
   // /task: every message becomes a task in one of the two task notes instead of a jot.
   const tasks = new TaskService({
-    repo,
+    repo: repo.taskDrafts,
+    settings: repo.settings,
     notes: new TaskNotesService(obsidian, config.tasks),
     enricher,
     notifier: chat,
@@ -210,7 +212,8 @@ export async function createScriba(
     voice,
   });
   const rating = new RatingService({
-    repo,
+    repo: repo.settings,
+    ratings: repo.ratings,
     obsidian,
     notifier: chat,
     ratingTime: config.ratingTime,
@@ -232,7 +235,8 @@ export async function createScriba(
     modes,
   });
   const settings = new SettingsService({
-    repo,
+    repo: repo.settings,
+    linkRules: repo.linkRules,
     links,
     enricher,
     scheduler,
@@ -242,7 +246,10 @@ export async function createScriba(
   const processing: ProcessingService =
     externalServices.processing ??
     new ProcessingService({
-      repo,
+      repo: repo.jots,
+      settings: repo.settings,
+      linkRules: repo.linkRules,
+      taskDrafts: repo.taskDrafts,
       obsidian,
       transcriber,
       enricher,
@@ -269,7 +276,9 @@ export async function createScriba(
       notify,
     );
   const admin = new AdminService({
-    repo,
+    repo: repo.jots,
+    linkRules: repo.linkRules,
+    settings: repo.settings,
     queue,
     processing,
     transcriber,
@@ -294,7 +303,7 @@ export async function createScriba(
     edits,
     admin,
     errors: {
-      jotForMessage: (messageId) => repo.jotForMessage(messageId),
+      jotForMessage: (messageId) => repo.jots.jotForMessage(messageId),
     },
   });
 
@@ -307,7 +316,7 @@ export async function createScriba(
   // after it.
   scheduler.daily(
     "rating",
-    () => repo.ratingTime(config.ratingTime),
+    () => repo.settings.ratingTime(config.ratingTime),
     () => rating.nightly(),
     { armBeforeRun: true },
   );
@@ -335,10 +344,10 @@ export async function createScriba(
     tasks,
     command,
     async start() {
-      const unstuck = await repo.resetProcessing();
+      const unstuck = await repo.jots.resetProcessing();
       log.info({ requeued: unstuck }, "crash recovery done");
       // First boot only: from then on the DB value wins, changed at runtime via /menu.
-      await repo.seedSettings({
+      await repo.settings.seedSettings({
         enrichModel: config.enrich.model,
         voiceFixModel: config.voiceFix.model,
       });

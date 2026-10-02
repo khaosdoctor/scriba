@@ -1,5 +1,6 @@
-import type { Repository } from "../data/repositories/index.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
+import type { RatingRepository } from "../data/repositories/ratings.ts";
+import type { SettingsRepository } from "../data/repositories/settings.ts";
 import { logger } from "../libs/log.ts";
 import { sectionHasContent } from "../libs/note.ts";
 import { ratingDay } from "../libs/time.ts";
@@ -14,10 +15,8 @@ export const RATING_NS = "rate";
 export const FOLLOWUP_NS = "fu";
 
 export interface RatingDeps {
-  repo: Pick<
-    Repository,
-    "getSetting" | "ratingTime" | "recordRating" | "clearRating"
-  >;
+  repo: SettingsRepository;
+  ratings: RatingRepository;
   obsidian: Pick<ObsidianClient, "setDailyRating" | "readDailyNote">;
   notifier: Pick<Notifier, "send" | "delete">;
   /** The configured nightly time, used until one is stored. */
@@ -126,8 +125,8 @@ export class RatingService {
   /** Record `rating` for `date`. The DB claim makes it write-once; a failed frontmatter
    *  write releases the claim so the tap can be retried. */
   async rate(date: string, rating: number): Promise<RateOutcome> {
-    const { repo, obsidian } = this.deps;
-    const { recorded, current } = await repo.recordRating(date, rating);
+    const { ratings, obsidian } = this.deps;
+    const { recorded, current } = await ratings.recordRating(date, rating);
     if (!recorded) {
       log.rating.info(
         { date, attempted: rating, current },
@@ -143,7 +142,7 @@ export class RatingService {
         { err: e, date, rating },
         "frontmatter write failed, releasing rating for retry",
       );
-      await repo.clearRating(date);
+      await ratings.clearRating(date);
       throw e;
     }
     log.rating.info({ date, rating }, "daily rating saved");

@@ -40,6 +40,19 @@ function setup(over: Record<string, any> = {}) {
       calls.push(`${name}(${args.join(",")})`);
       return typeof out === "function" ? out(...args) : out;
     };
+  const repo = {
+    getJot: track("getJot", null),
+    resetFailed: track("resetFailed", 0),
+    resetProcessing: track("resetProcessing", 0),
+    failedJots: track("failedJots", []),
+    stopwords: track("stopwords", new Set<string>()),
+    addStopword: track("addStopword"),
+    delStopword: track("delStopword", 0),
+    rejectionList: track("rejectionList", []),
+    unreject: track("unreject", 0),
+    setSetting: track("setSetting"),
+    ...over.repo,
+  };
   const deps = {
     links: {},
     github: {},
@@ -49,19 +62,9 @@ function setup(over: Record<string, any> = {}) {
     ...over,
     // Spread per collaborator, after `over`: overriding one repo method must not drop
     // the rest of the tracked stubs with it.
-    repo: {
-      getJot: track("getJot", null),
-      resetFailed: track("resetFailed", 0),
-      resetProcessing: track("resetProcessing", 0),
-      failedJots: track("failedJots", []),
-      stopwords: track("stopwords", new Set<string>()),
-      addStopword: track("addStopword"),
-      delStopword: track("delStopword", 0),
-      rejectionList: track("rejectionList", []),
-      unreject: track("unreject", 0),
-      setSetting: track("setSetting"),
-      ...over.repo,
-    },
+    repo,
+    linkRules: repo,
+    settings: repo,
     queue: {
       add: (ids: string[]) => void calls.push(`queue.add(${ids.join(",")})`),
       ...over.queue,

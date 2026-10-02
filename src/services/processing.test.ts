@@ -61,6 +61,9 @@ function harness(
   };
   const processor: any = new ProcessingService({
     repo,
+    settings: repo,
+    linkRules: repo,
+    taskDrafts: repo,
     obsidian,
     jots,
     edits: { drainQueued: async () => {} },
@@ -277,6 +280,9 @@ function pipeline(
   };
   const processor: any = new ProcessingService({
     repo,
+    settings: repo,
+    linkRules: repo,
+    taskDrafts: repo,
     obsidian,
     enricher,
     links: { list: () => [] },
@@ -534,7 +540,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
     await repo.close();
     await removeDb(dbPath);
   });
-  await repo.seedSettings(options.settings ?? {});
+  await repo.settings.seedSettings(options.settings ?? {});
 
   const statuses: Seen[] = [];
   const reactions: [string, string][] = [];
@@ -545,7 +551,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
   let note = "## Journal\n";
 
   const add = async (newJot: Jot) => {
-    await repo.insertJot(newJot);
+    await repo.jots.insertJot(newJot);
     if (newJot.anchor === newJot.id)
       note = insertJournalLine(
         note,
@@ -610,7 +616,10 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
     },
   };
   const processor = new ProcessingService({
-    repo,
+    repo: repo.jots,
+    settings: repo.settings,
+    linkRules: repo.linkRules,
+    taskDrafts: repo.taskDrafts,
     obsidian,
     transcriber,
     enricher,
@@ -631,7 +640,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
     },
   } as any);
   return {
-    repo,
+    repo: repo.jots,
     processor,
     add,
     note: () => note,
