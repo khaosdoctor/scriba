@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Task } from "../domain/task/entity.ts";
 import {
   completeTaskLine,
   draftFromDetection,
@@ -11,7 +12,6 @@ import {
   parseTaskLine,
   parseTasks,
   renderTaskLine,
-  type Task,
   taskButtonLabel,
   taskCard,
   uncompleteTaskLine,

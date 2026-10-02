@@ -1,4 +1,5 @@
 import { Bot } from "grammy";
+import type { Config } from "./config.ts";
 import { AdminController } from "./controllers/admin.ts";
 import { CommandController } from "./controllers/command.ts";
 import { EditController } from "./controllers/edits.ts";
@@ -9,11 +10,10 @@ import { ProcessingController } from "./controllers/processing.ts";
 import { RatingController } from "./controllers/rating.ts";
 import { SettingsController } from "./controllers/settings.ts";
 import { TaskController } from "./controllers/tasks.ts";
-import { logger } from "./lib/log.ts";
-import { FlushQueue } from "./lib/queue.ts";
-import { Scheduler } from "./lib/scheduler.ts";
-import { previousDate } from "./lib/time.ts";
-import type { Config } from "./models/config.ts";
+import { logger } from "./libs/log.ts";
+import { FlushQueue } from "./libs/queue.ts";
+import { Scheduler } from "./libs/scheduler.ts";
+import { previousDate } from "./libs/time.ts";
 import { Repository } from "./repositories/index.ts";
 import { AgentService } from "./services/agent.ts";
 import {

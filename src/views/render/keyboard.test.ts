@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { InlineKeyboard } from "grammy";
-import { paginate } from "../../lib/page.ts";
+import { paginate } from "../../libs/page.ts";
 import { backTo, navRow, pagedScreen, withClose } from "./keyboard.ts";
 
 const rows = (kb: InlineKeyboard) =>

@@ -1,5 +1,5 @@
 import type { Message, MessageEntity } from "grammy/types";
-import type { EditInput, IntakeInput } from "../models/domain.ts";
+import type { EditInput, IntakeInput } from "../domain/jot/structures.ts";
 
 const ENTITY_WRAP: Partial<Record<string, readonly [string, string]>> = {
   bold: ["**", "**"],

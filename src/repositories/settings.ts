@@ -1,11 +1,11 @@
 import type { Knex } from "knex";
 import {
-  parseClockTime,
   SETTINGS,
   type SettingKey,
   type SettingValue,
   type SwitchKey,
-} from "../models/settings.ts";
+} from "../domain/setting/entity.ts";
+import { parseClockTime } from "../libs/time.ts";
 
 export class SettingsRepository {
   constructor(private k: Knex) {}

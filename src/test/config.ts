@@ -1,4 +1,4 @@
-import { loadConfig } from "../models/config.ts";
+import { loadConfig } from "../config.ts";
 
 export const testConfig = loadConfig({
   TELEGRAM_BOT_TOKEN: "t",

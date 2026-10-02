@@ -3,11 +3,10 @@ import type {
   AdminController,
   ReprocessScope,
 } from "../../controllers/admin.ts";
-import { jotPreview, STATUS_ICON } from "../../lib/jot.ts";
-import { logger } from "../../lib/log.ts";
-import { pluralize } from "../../lib/text.ts";
-import { plainDate } from "../../lib/time.ts";
-import { IsoDateSchema } from "../../models/settings.ts";
+import { jotPreview, STATUS_ICON } from "../../libs/jot.ts";
+import { logger } from "../../libs/log.ts";
+import { pluralize } from "../../libs/text.ts";
+import { IsoDateSchema, plainDate } from "../../libs/time.ts";
 import { Responder } from "../chat.ts";
 import { backTo, pagedScreen, withClose } from "../render/keyboard.ts";
 import { namespace, type Tap } from "./namespace.ts";

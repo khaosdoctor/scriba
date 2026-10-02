@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseHabitRef } from "./lib/habits.ts";
-import type { Jot } from "./models/domain.ts";
+import type { Jot } from "./domain/jot/entity.ts";
+import { parseHabitRef } from "./libs/habits.ts";
 import {
   botHarness,
   EM,

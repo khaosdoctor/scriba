@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseWizardRef } from "../../lib/wizard.ts";
+import { parseWizardRef } from "../../libs/wizard.ts";
 import {
   botHarness,
   EM,

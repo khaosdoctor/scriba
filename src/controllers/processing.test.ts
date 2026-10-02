@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
-import { insertJournalLine } from "../lib/note.ts";
-import type { Jot } from "../models/domain.ts";
-import { MAX_ATTEMPTS } from "../models/domain.ts";
-import type { SettingKey } from "../models/settings.ts";
+import { type Jot, MAX_ATTEMPTS } from "../domain/jot/entity.ts";
+import type { SettingKey } from "../domain/setting/entity.ts";
+import { insertJournalLine } from "../libs/note.ts";
 import { Repository } from "../repositories/index.ts";
 import { ModelsDownError } from "../services/enrich.ts";
 import { FakeSettings } from "../test/fakes.ts";

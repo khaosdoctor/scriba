@@ -5,7 +5,7 @@ import {
   WIZARD_ENTRYSIZE_REF,
   WIZARD_RATING_TIME_REF,
   WIZARD_VOICEFIX_MODEL_REF,
-} from "../../lib/wizard.ts";
+} from "../../libs/wizard.ts";
 import {
   botHarness,
   EM,

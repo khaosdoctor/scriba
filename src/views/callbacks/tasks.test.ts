@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { TaskDraftRow } from "../../models/domain.ts";
+import type { TaskDraftRow } from "../../domain/task/entity.ts";
 import { botHarness, NOW } from "../../test/bot-harness.ts";
 
 const draft = (over: Partial<TaskDraftRow> = {}): TaskDraftRow => ({

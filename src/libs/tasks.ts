@@ -16,32 +16,16 @@
 
 import { createHash } from "node:crypto";
 import * as chrono from "chrono-node";
-import type { TaskDraft, TaskType } from "../models/domain.ts";
+import type {
+  Task,
+  TaskDraft,
+  TaskState,
+  TaskType,
+} from "../domain/task/entity.ts";
 import { isDateLike } from "./links.ts";
 import { findSection, stampCompletion } from "./note.ts";
 import { escapeHtml, escapeRe } from "./text.ts";
 import { DATE_RE, dateFromIso, plainDate } from "./time.ts";
-
-export type { TaskDraft, TaskType } from "../models/domain.ts";
-/** `- [ ]` open, `- [x]` done, `- [-]` cancelled (terminal, never listed or reopened). */
-export type TaskState = "open" | "done" | "cancelled";
-
-export interface Task {
-  /** Position among the checklist bullets of its section, stable regardless of state. */
-  index: number;
-  /** The full raw bullet line, exactly as written in the note. */
-  line: string;
-  /** Short digest of `line`, carried in callback data so a tap that arrives after the note
-   *  changed underneath is refused instead of ticking whatever is now at that index. */
-  fingerprint: string;
-  type: TaskType;
-  state: TaskState;
-  /** The description: the bullet minus its checkbox, tag and inline fields. */
-  text: string;
-  start: string | null;
-  due: string | null;
-  completion: string | null;
-}
 
 /** What a task is unless something plainly says otherwise. A bare "work" is a verb as often
  *  as a category, and getting it wrong puts the task in the wrong note, so anything that

@@ -10,20 +10,8 @@
  * never treated as the habit's own value.
  */
 
+import type { Habit, HabitField } from "../domain/habit/entity.ts";
 import { findSection, stampCompletion } from "./note.ts";
-
-/** One inline `[key:: value]` field. */
-export interface HabitField {
-  key: string;
-  value: string;
-}
-export interface Habit {
-  index: number; // position among habit bullets, stable regardless of check state
-  line: string; // the full raw bullet line
-  done: boolean; // `- [x]`
-  label: string; // human prompt: the field key for value habits, else the bare text
-  field: HabitField | null; // non-completion inline field, or null ⇒ yes/no habit
-}
 
 // `[Pages read:: 0]` → key "Pages read", value "0". Global so we can walk every field.
 const inlineFieldRe = /\[\s*([^\]:]+?)\s*::\s*([^\]]*?)\s*\]/g;

@@ -8,12 +8,12 @@ import {
   silentNotice,
   thoughtIcon,
   toolIcon,
-} from "../lib/feed.ts";
-import { makeJotId } from "../lib/jot.ts";
-import { logger } from "../lib/log.ts";
-import { escapeHtml, fitTelegram } from "../lib/text.ts";
-import type { MessageOptions, Notifier } from "../models/ops.ts";
+} from "../libs/feed.ts";
+import { makeJotId } from "../libs/jot.ts";
+import { logger } from "../libs/log.ts";
+import { escapeHtml, fitTelegram } from "../libs/text.ts";
 import { type AgentService, PromptStream } from "../services/agent.ts";
+import type { MessageOptions, Notifier } from "../services/notifier.ts";
 import type { Modes } from "./modes.ts";
 
 const log = logger("command");

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { loadConfig } from "./models/config.ts";
+import { loadConfig } from "./config.ts";
 
 const BASE: Record<string, string> = {
   TELEGRAM_BOT_TOKEN: "t",

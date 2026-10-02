@@ -3,7 +3,9 @@ import { test } from "node:test";
 import {
   dateFromIso,
   dayBounds,
+  IsoDateSchema,
   msUntilNext,
+  parseClockTime,
   plainDate,
   plainTime,
   previousDate,
@@ -130,4 +132,58 @@ test("ratingDay rates yesterday for a just-after-midnight time and today for an 
 test("ratingDay reads an unpadded hour", () => {
   const now = new Date(2026, 6, 6, 12, 0).getTime();
   assert.equal(ratingDay("9:30", now), "2026-07-05");
+});
+
+test("IsoDateSchema rejects malformed shapes, sub-100 years, and out-of-range month/day", () => {
+  const ok = (d: string) => IsoDateSchema.safeParse(d).success;
+  assert.equal(ok("2026-07-10"), true);
+  assert.equal(ok("2024-02-29"), true); // 2024 is a leap year
+  assert.equal(ok("0500-01-01"), true); // outside Date's 0-99 special case
+  assert.equal(ok("not-a-date"), false);
+  assert.equal(ok("2026-7-10"), false); // not zero-padded
+  assert.equal(ok("0099-01-01"), false); // Date's 1900+ special case
+  assert.equal(ok("2026-99-99"), false); // out-of-range month/day
+  assert.equal(ok("2026-13-01"), false); // month 13 doesn't exist
+  assert.equal(ok("2026-02-30"), false); // Feb never has a 30th
+  assert.equal(ok("2026-02-29"), false); // 2026 is not a leap year
+});
+
+test("parseClockTime takes valid 24h times, trims, and pads the hour", () => {
+  for (const [input, out] of [
+    ["0:00", "00:00"],
+    ["00:59", "00:59"],
+    ["19:05", "19:05"],
+    ["23:00", "23:00"],
+    ["1:00", "01:00"],
+    [" 23:59 ", "23:59"],
+  ] as const)
+    assert.equal(parseClockTime(input), out, input);
+});
+
+test("parseClockTime rejects malformed, non-ASCII and multi-line input", () => {
+  for (const bad of [
+    "24:00",
+    "2:60",
+    "12:60",
+    "-1:00",
+    "1:2:3",
+    "12:00:00",
+    "12.30",
+    "12:5",
+    "1230",
+    "１２:３０",
+    "12:30pm",
+    "12:30\n13:00",
+    "",
+    " ",
+    "\t",
+    ":30",
+    "12:",
+    "7pm",
+    "abc",
+    "🕛",
+    "12",
+    "ab:cd",
+  ])
+    assert.equal(parseClockTime(bad), null, JSON.stringify(bad));
 });

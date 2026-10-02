@@ -1,5 +1,5 @@
 import { InlineKeyboard } from "grammy";
-import type { PageView } from "../../lib/page.ts";
+import type { PageView } from "../../libs/page.ts";
 
 /** Empty rows are dropped first: a keyboard built with a trailing .row() would otherwise
  *  render an empty row above the button. */

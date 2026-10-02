@@ -1,6 +1,6 @@
 import { Composer, type Context } from "grammy";
-import { logger } from "../../lib/log.ts";
-import { DATE_RE, previousDate } from "../../lib/time.ts";
+import { logger } from "../../libs/log.ts";
+import { DATE_RE, previousDate } from "../../libs/time.ts";
 import type { CommandView } from "./index.ts";
 
 const log = logger("habits");

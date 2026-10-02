@@ -1,27 +1,29 @@
-import { makeJotId } from "../lib/jot.ts";
-import { logger } from "../lib/log.ts";
-import { paginate } from "../lib/page.ts";
+import type { SwitchKey } from "../domain/setting/entity.ts";
+import type {
+  TaskDraft,
+  TaskDraftRow,
+  TaskType,
+} from "../domain/task/entity.ts";
+import { makeJotId } from "../libs/jot.ts";
+import { logger } from "../libs/log.ts";
+import { paginate } from "../libs/page.ts";
 import {
   draftFromDetection,
   filterTasks,
   parseTaskDate,
   parseTaskDraft,
-  type TaskDraft,
-  type TaskType,
   type TaskView,
   TYPE_LABEL,
   taskButtonLabel,
   taskCard,
   taskListLine,
   VIEW_LABEL,
-} from "../lib/tasks.ts";
-import { escapeHtml, fitTelegram } from "../lib/text.ts";
-import { plainDate } from "../lib/time.ts";
-import type { TaskDraftRow } from "../models/domain.ts";
-import type { Notifier } from "../models/ops.ts";
-import type { SwitchKey } from "../models/settings.ts";
+} from "../libs/tasks.ts";
+import { escapeHtml, fitTelegram } from "../libs/text.ts";
+import { plainDate } from "../libs/time.ts";
 import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
+import type { Notifier } from "../services/notifier.ts";
 import type { TaskNotesService } from "../services/task-notes.ts";
 import type { VoiceService } from "../services/voice.ts";
 import type { Modes, OpenOutcome } from "./modes.ts";

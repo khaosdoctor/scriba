@@ -1,5 +1,5 @@
 import type { Api } from "grammy";
-import { logger } from "../lib/log.ts";
+import { logger } from "../libs/log.ts";
 
 const log = logger("menu");
 

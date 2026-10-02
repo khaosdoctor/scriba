@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { editConfirmation } from "../lib/jot.ts";
-import { anchorLine, journalLine, stripJournalLine } from "../lib/note.ts";
-import type { Jot } from "../models/domain.ts";
-import type { StatusButtons } from "../models/ops.ts";
+import type { Jot } from "../domain/jot/entity.ts";
+import { editConfirmation, type StatusButtons } from "../libs/jot.ts";
+import { anchorLine, journalLine, stripJournalLine } from "../libs/note.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { sampleJot } from "../test/sqlite.ts";
 import { EditController } from "./edits.ts";

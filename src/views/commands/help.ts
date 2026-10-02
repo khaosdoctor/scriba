@@ -1,5 +1,5 @@
 import { Composer, type Context } from "grammy";
-import { fitTelegram } from "../../lib/text.ts";
+import { fitTelegram } from "../../libs/text.ts";
 import type { CommandView } from "./index.ts";
 
 /** /help lists the admin commands, itself included. It reads the live list, so a command

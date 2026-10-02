@@ -1,8 +1,9 @@
 // Drives the app createScriba builds through grammy's handleUpdate with in-memory collaborators.
 // Every call a handler makes to the repository, Obsidian, the queue or Telegram is recorded
 // on one ordered timeline, which is what the routing and ack-ledger tests assert against.
+
+import type { Jot } from "../domain/jot/entity.ts";
 import { createScriba } from "../index.ts";
-import type { Jot } from "../models/domain.ts";
 import { testConfig } from "./config.ts";
 import { type ApiCall, BOT_INFO, FakeSettings, recordingApi } from "./fakes.ts";
 import { noteOps } from "./note-ops.ts";

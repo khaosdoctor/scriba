@@ -1,13 +1,19 @@
-import { clipUpdate } from "../lib/feed.ts";
-import { makeJotId, statusKeyboard, withinSquashWindow } from "../lib/jot.ts";
-import { logger } from "../lib/log.ts";
-import { placeholderLine, stripTilPrefix } from "../lib/note.ts";
-import type { FlushQueue } from "../lib/queue.ts";
-import { escapeHtml } from "../lib/text.ts";
-import { dayBounds, plainDate, plainTime } from "../lib/time.ts";
-import type { IntakeInput, Jot, JotSection } from "../models/domain.ts";
-import type { Notifier, StatusButtons } from "../models/ops.ts";
+import type { Jot, JotSection } from "../domain/jot/entity.ts";
+import type { IntakeInput } from "../domain/jot/structures.ts";
+import { clipUpdate } from "../libs/feed.ts";
+import {
+  makeJotId,
+  type StatusButtons,
+  statusKeyboard,
+  withinSquashWindow,
+} from "../libs/jot.ts";
+import { logger } from "../libs/log.ts";
+import { placeholderLine, stripTilPrefix } from "../libs/note.ts";
+import type { FlushQueue } from "../libs/queue.ts";
+import { escapeHtml } from "../libs/text.ts";
+import { dayBounds, plainDate, plainTime } from "../libs/time.ts";
 import type { Repository } from "../repositories/index.ts";
+import type { Notifier } from "../services/notifier.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = logger("bot");

@@ -1,3 +1,5 @@
+import type { Jot } from "../domain/jot/entity.ts";
+import type { EditInput } from "../domain/jot/structures.ts";
 import {
   assetEmbed,
   editConfirmation,
@@ -5,17 +7,16 @@ import {
   embedOffer,
   isEditableJot,
   parseLiteralEdit,
+  type StatusButtons,
   setEmbeds,
-} from "../lib/jot.ts";
-import { logger } from "../lib/log.ts";
+} from "../libs/jot.ts";
+import { logger } from "../libs/log.ts";
 import {
   anchorLine,
   deleteAnchorLine,
   journalLine,
   stripJournalLine,
-} from "../lib/note.ts";
-import type { EditInput, Jot } from "../models/domain.ts";
-import type { StatusButtons } from "../models/ops.ts";
+} from "../libs/note.ts";
 import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";

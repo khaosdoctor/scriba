@@ -1,7 +1,13 @@
-import { noteSuggestions } from "../lib/links.ts";
-import { logger } from "../lib/log.ts";
-import { paginate } from "../lib/page.ts";
-import type { Scheduler } from "../lib/scheduler.ts";
+import type { LinkRule } from "../domain/link-rule/entity.ts";
+import type {
+  SettingKey,
+  SettingValue,
+  SwitchKey,
+} from "../domain/setting/entity.ts";
+import { noteSuggestions } from "../libs/links.ts";
+import { logger } from "../libs/log.ts";
+import { paginate } from "../libs/page.ts";
+import type { Scheduler } from "../libs/scheduler.ts";
 import {
   WIZARD_ENRICH_MODEL_REF,
   WIZARD_ENTRYSIZE_REF,
@@ -12,16 +18,10 @@ import {
   WIZARD_RENAME_REF,
   WIZARD_STOPWORD_REF,
   WIZARD_VOICEFIX_MODEL_REF,
-} from "../lib/wizard.ts";
-import type { LinkRule } from "../models/domain.ts";
-import type { Notifier } from "../models/ops.ts";
-import type {
-  SettingKey,
-  SettingValue,
-  SwitchKey,
-} from "../models/settings.ts";
+} from "../libs/wizard.ts";
 import type { Repository } from "../repositories/index.ts";
 import type { Enricher } from "../services/enrich.ts";
+import type { Notifier } from "../services/notifier.ts";
 import type { VaultService } from "../services/vault.ts";
 
 const log = logger("menu");

@@ -2,7 +2,7 @@ import {
   anchorLine,
   replaceAnchorLine,
   setFrontmatterValue,
-} from "../lib/note.ts";
+} from "../libs/note.ts";
 
 type NoteIo = {
   readNote(path: string): Promise<string>;

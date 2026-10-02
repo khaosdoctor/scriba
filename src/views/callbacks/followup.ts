@@ -4,8 +4,8 @@ import {
   followupFromCode,
   type RatingController,
 } from "../../controllers/rating.ts";
-import { logger } from "../../lib/log.ts";
-import { IsoDateSchema } from "../../models/settings.ts";
+import { logger } from "../../libs/log.ts";
+import { IsoDateSchema } from "../../libs/time.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

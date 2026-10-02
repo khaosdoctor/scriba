@@ -1,6 +1,6 @@
 import Groq, { toFile } from "groq-sdk";
 import { z } from "zod";
-import { logger } from "../lib/log.ts";
+import { logger } from "../libs/log.ts";
 
 const log = logger("transcribe");
 

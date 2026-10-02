@@ -1,9 +1,9 @@
 import dns from "node:dns";
 import { readFileSync } from "node:fs";
 import http from "node:http";
+import { type Config, loadConfig } from "./config.ts";
 import { createScriba } from "./index.ts";
-import { logger } from "./lib/log.ts";
-import { type Config, loadConfig } from "./models/config.ts";
+import { logger } from "./libs/log.ts";
 
 const log = logger("main");
 

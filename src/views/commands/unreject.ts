@@ -1,5 +1,5 @@
 import { Composer, type Context, InlineKeyboard } from "grammy";
-import { fitTelegram } from "../../lib/text.ts";
+import { fitTelegram } from "../../libs/text.ts";
 import { UNREJECT_NS } from "../callbacks/unreject.ts";
 import type { CommandView } from "./index.ts";
 

@@ -1,6 +1,6 @@
 import { type Dispatcher, fetch } from "undici";
-import { logger } from "../lib/log.ts";
-import { formatDuration } from "../lib/text.ts";
+import { logger } from "../libs/log.ts";
+import { formatDuration } from "../libs/text.ts";
 import { OPENCODE_BASE_URL } from "./enrich.ts";
 
 const log = logger("health");

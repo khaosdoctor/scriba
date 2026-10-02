@@ -8,7 +8,7 @@ import type { Modes } from "../controllers/modes.ts";
 import type { RatingController } from "../controllers/rating.ts";
 import type { SettingsController } from "../controllers/settings.ts";
 import type { TaskController } from "../controllers/tasks.ts";
-import { logger } from "../lib/log.ts";
+import { logger } from "../libs/log.ts";
 import { callbackViews } from "./callbacks/index.ts";
 import { COMMANDS } from "./commands/index.ts";
 import { type ErrorDeps, errorHandler } from "./errors.ts";

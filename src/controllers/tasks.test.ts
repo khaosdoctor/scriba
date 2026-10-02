@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { TaskType } from "../lib/tasks.ts";
-import type { TaskDraftRow } from "../models/domain.ts";
+import type { TaskDraftRow, TaskType } from "../domain/task/entity.ts";
 import { TaskNotesService } from "../services/task-notes.ts";
 import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";

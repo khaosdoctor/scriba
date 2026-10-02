@@ -1,7 +1,7 @@
 import type { Composer, Context } from "grammy";
 import { HABITS_NS, type HabitController } from "../../controllers/habits.ts";
-import { logger } from "../../lib/log.ts";
-import { DATE_RE } from "../../lib/time.ts";
+import { logger } from "../../libs/log.ts";
+import { DATE_RE } from "../../libs/time.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

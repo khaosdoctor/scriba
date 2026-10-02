@@ -3,7 +3,7 @@ import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Knex } from "knex";
-import type { Jot } from "../models/domain.ts";
+import type { Jot } from "../domain/jot/entity.ts";
 import { openDb } from "../repositories/db.ts";
 
 export function sampleJot(id: string, over: Partial<Jot> = {}): Jot {

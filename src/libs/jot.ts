@@ -1,7 +1,11 @@
 // Pure jot helpers: deterministic, token-free, unit-tested in isolation.
 import { randomBytes } from "node:crypto";
-import type { Jot, JotKind, JotSection, JotStatus } from "../models/domain.ts";
-import type { StatusButtons } from "../models/ops.ts";
+import type {
+  Jot,
+  JotKind,
+  JotSection,
+  JotStatus,
+} from "../domain/jot/entity.ts";
 import { isEmbeddableUrl } from "./links.ts";
 import { stripTilPrefix } from "./note.ts";
 import { escapeHtml } from "./text.ts";
@@ -146,6 +150,18 @@ export function reprocessTargets(jots: Pick<Jot, "anchor">[]): string[] {
 }
 
 // --- status message texts and buttons ---
+
+/** Which buttons a jot's status message carries. A jot that finishes gets `undo`; one that
+ *  fails gets `retry` and `discard`: every failure is a decision, and both halves of it
+ *  should be one tap away rather than a command you have to remember. */
+export type StatusButtons = {
+  retry?: boolean;
+  undo?: boolean;
+  discard?: boolean;
+  /** Line holds a YouTube/tweet/image URL: offer to embed it, or to turn it back into a
+   *  link (`embedOffer` in libs/jot.ts decides which). */
+  embed?: "embed" | "plain";
+};
 
 /** The buttons under a jot's status message, as Telegram's inline keyboard markup. Empty
  *  (which clears any existing keyboard) when none is asked for, so a message that's no

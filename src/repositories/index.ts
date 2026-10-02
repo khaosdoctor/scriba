@@ -1,17 +1,13 @@
 import type { Knex } from "knex";
-import type {
-  Jot,
-  JotSection,
-  LinkRule,
-  PendingLink,
-  TaskDraftRow,
-} from "../models/domain.ts";
-import type { Stats, StatusCounts } from "../models/ops.ts";
+import type { Jot, JotSection } from "../domain/jot/entity.ts";
+import type { Stats, StatusCounts } from "../domain/jot/structures.ts";
+import type { LinkRule, PendingLink } from "../domain/link-rule/entity.ts";
 import type {
   SettingKey,
   SettingValue,
   SwitchKey,
-} from "../models/settings.ts";
+} from "../domain/setting/entity.ts";
+import type { TaskDraftRow } from "../domain/task/entity.ts";
 import { openDb } from "./db.ts";
 import { JotRepository } from "./jots.ts";
 import { LinkRuleRepository } from "./link-rules.ts";

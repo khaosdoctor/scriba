@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TELEGRAM_LIMIT } from "../../lib/text.ts";
+import { TELEGRAM_LIMIT } from "../../libs/text.ts";
 import { botHarness, sampleJot } from "../../test/bot-harness.ts";
 import { COMMANDS } from "./index.ts";
 

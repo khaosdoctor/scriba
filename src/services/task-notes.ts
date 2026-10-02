@@ -1,5 +1,6 @@
-import { logger } from "../lib/log.ts";
-import { setFrontmatterValue } from "../lib/note.ts";
+import type { Task, TaskDraft, TaskType } from "../domain/task/entity.ts";
+import { logger } from "../libs/log.ts";
+import { setFrontmatterValue } from "../libs/note.ts";
 import {
   completeTaskLine,
   insertTaskLine,
@@ -7,12 +8,9 @@ import {
   parseTasks,
   renderTaskLine,
   replaceTaskLineAt,
-  type Task,
-  type TaskDraft,
   uncompleteTaskLine,
-} from "../lib/tasks.ts";
-import { plainDate } from "../lib/time.ts";
-import type { TaskType } from "../models/domain.ts";
+} from "../libs/tasks.ts";
+import { plainDate } from "../libs/time.ts";
 import type { ObsidianClient } from "./obsidian.ts";
 
 const log = logger("tasks");
@@ -33,7 +31,7 @@ export interface TaskNoteConfig {
 
 /**
  * Read and write the two task notes. All the vault I/O for tasks lives here; the shaping of
- * a line is pure and lives in lib/tasks.ts. Every write is a read-modify-write under
+ * a line is pure and lives in libs/tasks.ts. Every write is a read-modify-write under
  * the per-note lock, so a task added from Telegram can't overwrite an edit made in Obsidian
  * a second earlier, the same discipline every journal write already follows.
  */

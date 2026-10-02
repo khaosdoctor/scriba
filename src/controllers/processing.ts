@@ -1,4 +1,7 @@
 import { basename } from "node:path";
+import { type Jot, MAX_ATTEMPTS } from "../domain/jot/entity.ts";
+import type { TaskDraft } from "../domain/task/entity.ts";
+import type { DetectedTask } from "../domain/task/structures.ts";
 import {
   assetEmbed,
   combineEnrichSource,
@@ -10,18 +13,17 @@ import {
   isRecoverable,
   makeJotId,
   retryNotice,
-} from "../lib/jot.ts";
-import { candidates, forcedCandidates, linkDateWords } from "../lib/links.ts";
-import { logger } from "../lib/log.ts";
-import { journalLine } from "../lib/note.ts";
-import { draftFromDetection, type TaskDraft } from "../lib/tasks.ts";
-import { escapeHtml, splitEntry } from "../lib/text.ts";
-import type { DetectedTask, DownloadedFile } from "../models/domain.ts";
-import { type Jot, MAX_ATTEMPTS } from "../models/domain.ts";
-import type { Notifier } from "../models/ops.ts";
+} from "../libs/jot.ts";
+import { candidates, forcedCandidates, linkDateWords } from "../libs/links.ts";
+import { logger } from "../libs/log.ts";
+import { journalLine } from "../libs/note.ts";
+import { draftFromDetection } from "../libs/tasks.ts";
+import { escapeHtml, splitEntry } from "../libs/text.ts";
 import type { Repository } from "../repositories/index.ts";
 import { type Enricher, ModelsDownError } from "../services/enrich.ts";
 import type { LinkIndex } from "../services/links.ts";
+import type { DownloadedFile } from "../services/media.ts";
+import type { Notifier } from "../services/notifier.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 import type { Transcriber } from "../services/transcribe.ts";
 import type { EditController } from "./edits.ts";

@@ -1,6 +1,5 @@
 import { extname } from "node:path";
-import { logger } from "../lib/log.ts";
-import type { DownloadedFile } from "../models/domain.ts";
+import { logger } from "../libs/log.ts";
 
 const log = logger("bot");
 
@@ -21,6 +20,12 @@ const MIME: Record<string, string> = {
   mov: "video/quicktime",
   webm: "video/webm",
 };
+
+export interface DownloadedFile {
+  bytes: Uint8Array;
+  ext: string;
+  mime: string;
+}
 
 export interface MediaDeps {
   /** grammy's Api fits; typed structurally so services stay free of grammy. */

@@ -2,9 +2,25 @@
  * Time helpers. Date-based; local getters honour process.env.TZ for wall-clock values.
  */
 
-import { IsoDateSchema, parseClockTime } from "../models/settings.ts";
+import { z } from "zod";
 
-export { parseClockTime };
+/** A calendar day as "YYYY-MM-DD". Years 0000-0099 are refused because `new Date(y, m, d)`
+ *  maps them to 1900-1999 and would reprocess the wrong day. */
+export const IsoDateSchema = z.iso
+  .date()
+  .refine((d) => Number(d.slice(0, 4)) >= 100);
+
+/** A 24-hour clock time, normalised to `HH:MM` ("9:30" becomes "09:30"). */
+const ClockTimeSchema = z
+  .string()
+  .trim()
+  .regex(/^([01]?\d|2[0-3]):[0-5]\d$/)
+  .transform((t) => t.padStart(5, "0"));
+
+/** A typed 24-hour clock time, or null when it isn't one. */
+export function parseClockTime(text: string): string | null {
+  return ClockTimeSchema.safeParse(text).data ?? null;
+}
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { SettingsController } from "../../controllers/settings.ts";
-import { parseWizardRef } from "../../lib/wizard.ts";
+import { parseWizardRef } from "../../libs/wizard.ts";
 import { linkReply, parseLinkRef } from "../replies/wizard.ts";
 import { type LinkDeps, linkRulesTap } from "./links.ts";
 

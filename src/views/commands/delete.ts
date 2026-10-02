@@ -1,6 +1,6 @@
 import { Composer, type Context } from "grammy";
 import type { EditOutcome } from "../../controllers/edits.ts";
-import { logger } from "../../lib/log.ts";
+import { logger } from "../../libs/log.ts";
 import { STILL_PROCESSING } from "../replies/edit.ts";
 import type { CommandView } from "./index.ts";
 

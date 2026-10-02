@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dayBounds, startOfToday } from "../lib/time.ts";
-import type { Jot } from "../models/domain.ts";
-import type { Stats } from "../models/ops.ts";
+import type { Jot } from "../domain/jot/entity.ts";
+import type { Stats } from "../domain/jot/structures.ts";
+import { dayBounds, startOfToday } from "../libs/time.ts";
 import type { ReleaseNote } from "../services/github.ts";
 import { sampleJot } from "../test/sqlite.ts";
 import {

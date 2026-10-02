@@ -2,8 +2,8 @@ import { lookup as resolveHost } from "node:dns";
 import { lookup } from "node:dns/promises";
 import type { LookupFunction } from "node:net";
 import { Agent, type Dispatcher, fetch, type Response } from "undici";
-import { logger } from "../lib/log.ts";
-import { htmlToText } from "../lib/text.ts";
+import { logger } from "../libs/log.ts";
+import { htmlToText } from "../libs/text.ts";
 
 const log = logger("web");
 

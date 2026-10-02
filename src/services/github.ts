@@ -1,8 +1,17 @@
 import { z } from "zod";
-import { logger } from "../lib/log.ts";
-import { type Release, ReleaseSchema } from "../models/ops.ts";
+import { logger } from "../libs/log.ts";
 
 const log = logger("github");
+
+/** The fields we read from a GitHub release. */
+export const ReleaseSchema = z.object({
+  tag_name: z.string(),
+  name: z.string().nullable(),
+  body: z.string().nullable(),
+  html_url: z.string(),
+  published_at: z.string(),
+});
+export type Release = z.infer<typeof ReleaseSchema>;
 
 export interface ReleaseNote {
   tag: string; // e.g. "v1.23.1"

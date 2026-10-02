@@ -1,5 +1,4 @@
 import type { Knex } from "knex";
-import { logger } from "../lib/log.ts";
 import {
   JOT_STATUSES,
   type Jot,
@@ -7,8 +6,9 @@ import {
   type JotStatus,
   MAX_ATTEMPTS,
   TERMINAL_STATUSES,
-} from "../models/domain.ts";
-import type { Stats, StatusCounts } from "../models/ops.ts";
+} from "../domain/jot/entity.ts";
+import type { Stats, StatusCounts } from "../domain/jot/structures.ts";
+import { logger } from "../libs/log.ts";
 
 const log = logger("db");
 

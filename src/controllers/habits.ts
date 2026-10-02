@@ -1,12 +1,12 @@
+import type { Habit } from "../domain/habit/entity.ts";
 import {
   completeHabitLine,
-  type Habit,
   isHabitsReviewed,
   isNumericValue,
   parseHabits,
-} from "../lib/habits.ts";
-import { logger } from "../lib/log.ts";
-import type { Notifier } from "../models/ops.ts";
+} from "../libs/habits.ts";
+import { logger } from "../libs/log.ts";
+import type { Notifier } from "../services/notifier.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = logger("habits");

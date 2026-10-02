@@ -2,15 +2,15 @@ import type { OutputFormat } from "@anthropic-ai/claude-agent-sdk";
 import { query as sdkQuery } from "@anthropic-ai/claude-agent-sdk";
 import Groq from "groq-sdk";
 import { z } from "zod";
-import { isRecoverable } from "../lib/jot.ts";
-import type { Candidate } from "../lib/links.ts";
-import { logger } from "../lib/log.ts";
+import type { DetectedTask } from "../domain/task/structures.ts";
+import { isRecoverable } from "../libs/jot.ts";
+import type { Candidate } from "../libs/links.ts";
+import { logger } from "../libs/log.ts";
 import {
   CircuitBreaker,
   parseModelJson,
   unwrapModelPayload,
-} from "../lib/model.ts";
-import type { DetectedTask } from "../models/domain.ts";
+} from "../libs/model.ts";
 import {
   ENRICH_JSON_ONLY,
   SYSTEM,
@@ -118,7 +118,7 @@ export interface EnrichInput {
   merge?: boolean;
   // Character limit one journal entry gets split at. Passed so the model can mark topic
   // boundaries with blank lines when the text is over it. The split itself is done
-  // deterministically in lib/text.ts, this only puts the seams on a change of subject.
+  // deterministically in libs/text.ts, this only puts the seams on a change of subject.
   splitAt?: number;
 }
 export interface EnrichResult {

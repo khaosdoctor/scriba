@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dayBounds } from "../../lib/time.ts";
+import { dayBounds } from "../../libs/time.ts";
 import {
   botHarness,
   type Harness,

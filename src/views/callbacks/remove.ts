@@ -1,5 +1,5 @@
 import type { Composer, Context } from "grammy";
-import { logger } from "../../lib/log.ts";
+import { logger } from "../../libs/log.ts";
 import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
 import { namespace } from "./namespace.ts";

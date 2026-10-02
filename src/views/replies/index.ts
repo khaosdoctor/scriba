@@ -1,6 +1,6 @@
 import { Composer, type Context, type Filter } from "grammy";
 import type { Message } from "grammy/types";
-import { parseHabitRef } from "../../lib/habits.ts";
+import { parseHabitRef } from "../../libs/habits.ts";
 import type { ViewDeps } from "../index.ts";
 import { followupReply, parseFollowupRef } from "./followup.ts";
 import { habitReply } from "./habit.ts";

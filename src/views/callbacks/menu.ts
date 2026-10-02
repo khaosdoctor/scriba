@@ -6,12 +6,12 @@ import type {
   SettingsController,
   SettingsPrompt,
 } from "../../controllers/settings.ts";
-import { formatJotDetail, jotPreview, STATUS_ICON } from "../../lib/jot.ts";
-import { logger } from "../../lib/log.ts";
-import { paginate } from "../../lib/page.ts";
-import { fitTelegram } from "../../lib/text.ts";
-import { plainDate } from "../../lib/time.ts";
-import { SETTINGS, type SwitchKey } from "../../models/settings.ts";
+import { SETTINGS, type SwitchKey } from "../../domain/setting/entity.ts";
+import { formatJotDetail, jotPreview, STATUS_ICON } from "../../libs/jot.ts";
+import { logger } from "../../libs/log.ts";
+import { paginate } from "../../libs/page.ts";
+import { fitTelegram } from "../../libs/text.ts";
+import { plainDate } from "../../libs/time.ts";
 import { Responder } from "../chat.ts";
 import { openTaskMode } from "../commands/task.ts";
 import type { ViewDeps } from "../index.ts";

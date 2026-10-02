@@ -4,7 +4,7 @@ import {
   TIL_NS,
   type TilOutcome,
 } from "../../controllers/jots.ts";
-import { logger } from "../../lib/log.ts";
+import { logger } from "../../libs/log.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "./namespace.ts";
 

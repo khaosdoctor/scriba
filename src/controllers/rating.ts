@@ -1,8 +1,8 @@
-import { logger } from "../lib/log.ts";
-import { sectionHasContent } from "../lib/note.ts";
-import { ratingDay } from "../lib/time.ts";
-import type { Notifier } from "../models/ops.ts";
+import { logger } from "../libs/log.ts";
+import { sectionHasContent } from "../libs/note.ts";
+import { ratingDay } from "../libs/time.ts";
 import type { Repository } from "../repositories/index.ts";
+import type { Notifier } from "../services/notifier.ts";
 import type { ObsidianClient } from "../services/obsidian.ts";
 
 const log = { rating: logger("rating"), followup: logger("followup") };

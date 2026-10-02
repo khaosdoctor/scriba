@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { previousDate } from "../../lib/time.ts";
+import { previousDate } from "../../libs/time.ts";
 import { botHarness } from "../../test/bot-harness.ts";
 
 test("/habits refuses a malformed date with the usage line and reads nothing", async () => {

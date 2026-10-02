@@ -1,20 +1,21 @@
-import { clipUpdate } from "../lib/feed.ts";
-import { formatJotDetail, reprocessTargets } from "../lib/jot.ts";
-import { distinctSurfaces } from "../lib/links.ts";
-import { logger } from "../lib/log.ts";
-import type { PageView } from "../lib/page.ts";
-import type { FlushQueue } from "../lib/queue.ts";
-import { formatDuration, pluralize } from "../lib/text.ts";
-import { dayBounds, plainDate, startOfToday } from "../lib/time.ts";
 import {
   type Jot,
   type JotStatus,
   TERMINAL_STATUSES,
-} from "../models/domain.ts";
-import type { Notifier, Stats, StatusCounts } from "../models/ops.ts";
+} from "../domain/jot/entity.ts";
+import type { Stats, StatusCounts } from "../domain/jot/structures.ts";
+import { clipUpdate } from "../libs/feed.ts";
+import { formatJotDetail, reprocessTargets } from "../libs/jot.ts";
+import { distinctSurfaces } from "../libs/links.ts";
+import { logger } from "../libs/log.ts";
+import type { PageView } from "../libs/page.ts";
+import type { FlushQueue } from "../libs/queue.ts";
+import { formatDuration, pluralize } from "../libs/text.ts";
+import { dayBounds, plainDate, startOfToday } from "../libs/time.ts";
 import type { Repository } from "../repositories/index.ts";
 import type { GithubReleases, ReleaseNote } from "../services/github.ts";
 import type { HealthMonitor, UpstreamStatus } from "../services/health.ts";
+import type { Notifier } from "../services/notifier.ts";
 import type { FallbackTranscriber } from "../services/transcribe.ts";
 import type { VaultService } from "../services/vault.ts";
 import type { ProcessingController } from "./processing.ts";

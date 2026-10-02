@@ -4,11 +4,11 @@ import type {
   SettingsController,
   SettingsPrompt,
 } from "../../controllers/settings.ts";
-import { cleanNoteTitle, parseRuleWords } from "../../lib/links.ts";
-import { logger } from "../../lib/log.ts";
-import { parseEntrySize } from "../../lib/text.ts";
-import { parseWizardRef, type WizardPrompt } from "../../lib/wizard.ts";
-import { parseClockTime } from "../../models/settings.ts";
+import { cleanNoteTitle, parseRuleWords } from "../../libs/links.ts";
+import { logger } from "../../libs/log.ts";
+import { parseEntrySize } from "../../libs/text.ts";
+import { parseClockTime } from "../../libs/time.ts";
+import { parseWizardRef, type WizardPrompt } from "../../libs/wizard.ts";
 import {
   advance,
   type LinkDeps,

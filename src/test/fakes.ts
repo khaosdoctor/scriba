@@ -1,10 +1,10 @@
 import {
-  parseClockTime,
   SETTINGS,
   type SettingKey,
   type SettingValue,
   type SwitchKey,
-} from "../models/settings.ts";
+} from "../domain/setting/entity.ts";
+import { parseClockTime } from "../libs/time.ts";
 
 /** The settings half of a fake Repository: typed reads and string writes over a plain map,
  *  the way SettingsRepository behaves over the table. Members are arrow properties so the
