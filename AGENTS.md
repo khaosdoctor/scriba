@@ -56,10 +56,14 @@ Layers call downward only: presentation calls services, services call data. `dom
   the read-only mount and the link index).
 - **External clients live in `data/connections/`.** One client per source, with no business
   operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber` and `groqChat`
-  (`groq.ts`), `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`) and
-  `GithubReleases` (`github.ts`). A new API gets its client here. Still to move: `Enricher`
-  and `AgentService` call the Agent SDK from `services/`, `MediaService` fetches Telegram
-  files and `HealthMonitor` probes the upstreams. Don't add more of those.
+  (`groq.ts`), `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`),
+  `GithubReleases` (`github.ts`), `TelegramFiles` (`telegram-files.ts`, `getFile` and the
+  download URL that carries the bot token) and `sdkQuery` (`anthropic.ts`, the Agent SDK's
+  `query`, which also re-exports `createSdkMcpServer`, `tool` and the SDK types). A service
+  takes its connection through the constructor: `Enricher` and `AgentService` get
+  `sdkQuery`, `MediaService` gets `TelegramFiles`, and `FallbackTranscriber` gets its
+  backend list from `buildTranscriber` in `app.ts`. A new API gets its client here. Still
+  to move: `HealthMonitor` probes the upstreams itself. Don't add more of those.
 - **Pure helpers in `libs/` and `domain/`.** Deterministic, token-free helpers (formatting,
   anchor replacement, candidate filtering, edit parsing) live in `libs/<topic>.ts`, each with
   its `<topic>.test.ts`. No network, vault or database access there; the only side effects
