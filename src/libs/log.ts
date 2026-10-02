@@ -12,6 +12,12 @@ const redact = {
   paths: ["*.token", "*.key", "*.groqApiKey", "*.opencodeApiKey"],
   censor: "***",
 };
+// A failed Telegram request puts the whole api.telegram.org/bot<token>/ URL in its error
+// message, which no redact path reaches, so every finished line is scrubbed instead.
+const TELEGRAM_TOKEN = /bot\d+:[\w-]+/g;
+const hooks = {
+  streamWrite: (line: string) => line.replace(TELEGRAM_TOKEN, "bot***"),
+};
 const stream =
   process.env.LOG_JSON === "1"
     ? pino.destination({ dest: 1, sync: true })
@@ -21,7 +27,7 @@ const stream =
         ignore: "pid,hostname,ns",
         messageFormat: "[{ns}] {msg}",
       });
-const root = pino({ level, redact }, stream);
+const root = pino({ level, redact, hooks }, stream);
 
 export type Logger = pino.Logger;
 
