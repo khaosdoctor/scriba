@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { type TestContext, test } from "node:test";
 import { Bot } from "grammy";
 import { MockAgent, setGlobalDispatcher } from "undici";
-import { createScriba } from "./app.ts";
+import { buildTranscriber, createScriba } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { Repository } from "./data/repositories/index.ts";
 import { SettingsRepository } from "./data/repositories/settings.ts";
@@ -363,4 +363,15 @@ dbTest("a model switch is told to the owner with its reason", async () => {
   assert.match(texts[0]!, /fallback model groq-model[\s\S]*usage exhausted/);
   assert.match(texts[1]!, /back on haiku/);
   assert.match(texts[2]!, /Every enrichment model is down[\s\S]*overloaded/);
+});
+
+test("groq goes first when a key is set; parakeet is always last", () => {
+  assert.equal(
+    buildTranscriber({ groqApiKey: "k", parakeetUrl: "http://p" }).chain,
+    "groq → parakeet",
+  );
+  assert.equal(
+    buildTranscriber({ groqApiKey: "", parakeetUrl: "http://p" }).chain,
+    "parakeet",
+  );
 });

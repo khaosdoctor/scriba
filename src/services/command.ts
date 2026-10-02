@@ -1,4 +1,4 @@
-import type { Query } from "@anthropic-ai/claude-agent-sdk";
+import type { Query } from "../data/connections/anthropic.ts";
 import {
   clipUpdate,
   feedMessage,

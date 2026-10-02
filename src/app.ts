@@ -1,6 +1,10 @@
 import { Bot } from "grammy";
 import type { Config } from "./config.ts";
+import { sdkQuery } from "./data/connections/anthropic.ts";
 import { GithubReleases } from "./data/connections/github.ts";
+import { GroqTranscriber } from "./data/connections/groq.ts";
+import { ParakeetTranscriber } from "./data/connections/parakeet.ts";
+import { TelegramFiles } from "./data/connections/telegram-files.ts";
 import { WebService } from "./data/connections/web.ts";
 import { Repository } from "./data/repositories/index.ts";
 import { ObsidianClient } from "./data/repositories/notes.ts";
@@ -35,10 +39,7 @@ import { ProcessingService } from "./services/processing.ts";
 import { RatingService } from "./services/rating.ts";
 import { SettingsService } from "./services/settings.ts";
 import { TaskService } from "./services/tasks.ts";
-import {
-  buildTranscriber,
-  type FallbackTranscriber,
-} from "./services/transcriber.ts";
+import { FallbackTranscriber } from "./services/transcriber.ts";
 import { VoiceService } from "./services/voice.ts";
 
 const log = logger("main");
@@ -102,7 +103,7 @@ async function buildEnricher(
   );
   return new Enricher(
     enrichModel,
-    undefined,
+    sdkQuery,
     fallbacks,
     undefined,
     config.enrich.backupModel,
@@ -110,6 +111,23 @@ async function buildEnricher(
     undefined,
     notifySwitch,
   );
+}
+
+export function buildTranscriber(cfg: {
+  groqApiKey: string;
+  parakeetUrl: string;
+}): FallbackTranscriber {
+  const backends = [];
+  if (cfg.groqApiKey)
+    backends.push({
+      name: "groq",
+      transcriber: new GroqTranscriber(cfg.groqApiKey),
+    });
+  backends.push({
+    name: "parakeet",
+    transcriber: new ParakeetTranscriber(cfg.parakeetUrl),
+  });
+  return new FallbackTranscriber(backends);
 }
 
 const RETRY_EVERY_MS = 5 * 60_000;
@@ -157,8 +175,7 @@ export async function createScriba(
       }
     }));
   const media = new MediaService({
-    api: bot.api,
-    token: config.telegram.token,
+    files: new TelegramFiles(bot.api, config.telegram.token),
   });
   const voice = new VoiceService({ media, transcriber });
   const links =
@@ -220,7 +237,12 @@ export async function createScriba(
   // /command: an agent session scoped to the vault. It gets no built-in tool that could
   // reach the host; services/agent.ts holds the allow list.
   const command = new CommandService({
-    service: new AgentService(links, new WebService(), config.command),
+    service: new AgentService(
+      links,
+      new WebService(),
+      config.command,
+      sdkQuery,
+    ),
     notifier: chat,
     modes,
   });
