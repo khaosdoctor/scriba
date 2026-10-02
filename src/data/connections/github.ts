@@ -3,6 +3,11 @@ import { logger } from "../../libs/log.ts";
 
 const log = logger("github");
 
+const HEADERS = {
+  Accept: "application/vnd.github+json",
+  "User-Agent": "scriba",
+};
+
 /** The fields we read from a GitHub release. */
 export const ReleaseSchema = z.object({
   tag_name: z.string(),
@@ -30,10 +35,6 @@ export interface ReleaseNote {
 export class GithubReleases {
   constructor(private repo = "khaosdoctor/scriba") {}
 
-  private headers(): Record<string, string> {
-    return { Accept: "application/vnd.github+json", "User-Agent": "scriba" };
-  }
-
   private toNote(r: Release): ReleaseNote {
     return {
       tag: r.tag_name,
@@ -52,7 +53,7 @@ export class GithubReleases {
     schema: S,
   ): Promise<z.infer<S> | null> {
     const res = await fetch(url, {
-      headers: this.headers(),
+      headers: HEADERS,
       signal: AbortSignal.timeout(15_000),
     });
     if (res.ok) return schema.parse(await res.json());

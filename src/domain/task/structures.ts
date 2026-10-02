@@ -1,9 +1,9 @@
-/** A task the entry says the author still has to do. The dates are the author's own words
- *  ("next friday", "by the 15th"), resolved against the jot's day by chrono: the model is
- *  never asked what today is, and never asked to do date arithmetic. */
-export interface DetectedTask {
-  description: string;
-  start?: string;
-  due?: string;
-  type?: string;
-}
+import { z } from "zod";
+
+export const DetectedTaskSchema = z.object({
+  description: z.string(),
+  start: z.string().optional(),
+  due: z.string().optional(),
+  type: z.string().optional(),
+});
+export type DetectedTask = z.infer<typeof DetectedTaskSchema>;

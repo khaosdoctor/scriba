@@ -46,7 +46,6 @@ export type AnswerOutcome =
   | "nothing"
   | "badDate"
   | "needsDue";
-export type ClaimOutcome = "claimed" | "noDue" | "lost";
 
 type Row = [text: string, callbackData: string][];
 export type Keyboard = {
@@ -330,7 +329,7 @@ export class TaskService {
 
   /** Claim the draft before anything is written: two fast taps both see a pending one, and
    *  only the winner of the compare-and-swap may put a line in the note. */
-  async claim(row: TaskDraftRow): Promise<ClaimOutcome> {
+  async claim(row: TaskDraftRow): Promise<"claimed" | "noDue" | "lost"> {
     if (!row.due) {
       log.warn({ draft: row.id }, "task: create refused — no deadline");
       return "noDue";

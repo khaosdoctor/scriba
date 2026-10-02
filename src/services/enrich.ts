@@ -6,7 +6,10 @@ import {
   type GroqMessage,
   groqChat,
 } from "../data/connections/groq.ts";
-import type { DetectedTask } from "../domain/task/structures.ts";
+import {
+  type DetectedTask,
+  DetectedTaskSchema,
+} from "../domain/task/structures.ts";
 import { isRecoverable } from "../libs/jot.ts";
 import type { Candidate } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
@@ -91,13 +94,6 @@ export interface EnrichResult {
   usage: { input: number; output: number };
 }
 
-const detectedTaskSchema = z.object({
-  description: z.string(),
-  start: z.string().optional(),
-  due: z.string().optional(),
-  type: z.string().optional(),
-});
-
 const TaskOutputStrict = z.strictObject({
   description: z.string(),
   start: z.string().optional(),
@@ -108,7 +104,7 @@ const TaskOutputStrict = z.strictObject({
 const ambiguousSchema = z.array(
   z.object({ surface: z.string(), note: z.string() }),
 );
-const tasksSchema = z.array(detectedTaskSchema);
+const tasksSchema = z.array(DetectedTaskSchema);
 /** Validates the agent's structured_output payload (the SDK's outputFormat already
  *  constrains the shape server-side; this guards against schema drift and the
  *  Groq fallback, which has no native structured-output support). */
@@ -344,8 +340,8 @@ export class Enricher {
 
   private parseTask(raw: string, structuredOutput: unknown): DetectedTask {
     const parsed =
-      detectedTaskSchema.safeParse(structuredOutput).data ??
-      detectedTaskSchema.safeParse(parseModelJson(raw)).data;
+      DetectedTaskSchema.safeParse(structuredOutput).data ??
+      DetectedTaskSchema.safeParse(parseModelJson(raw)).data;
     if (!parsed?.description)
       throw new Error(
         `task extraction returned no usable JSON: ${raw.slice(0, 200)}`,

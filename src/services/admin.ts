@@ -16,7 +16,7 @@ import { clipUpdate } from "../libs/feed.ts";
 import { formatJotDetail, reprocessTargets } from "../libs/jot.ts";
 import { distinctSurfaces } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
-import type { PageView } from "../libs/page.ts";
+import { type PageView, paginate } from "../libs/page.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { formatDuration, pluralize } from "../libs/text.ts";
 import { dayBounds, plainDate, startOfToday } from "../libs/time.ts";
@@ -90,12 +90,6 @@ const WINDOWS: Record<
 
 const isStatsRange = (range: string): range is StatsRange =>
   Object.hasOwn(WINDOWS, range);
-
-/** The words an unreject picker offers: at most `UNREJECT_ROWS` of `total`. */
-export interface UnrejectPicker {
-  surfaces: string[];
-  total: number;
-}
 
 /** A rejected word and the notes it was rejected for. */
 export interface RejectedWord {
@@ -304,7 +298,9 @@ export class AdminService {
 
   /** `/unreject <word> <note>` answers with text. With no arguments it answers with the
    *  rejected words to pick from, or "(no rejections)". */
-  async unreject(args: string): Promise<string | UnrejectPicker> {
+  async unreject(
+    args: string,
+  ): Promise<string | { surfaces: string[]; total: number }> {
     const { linkRules } = this.d;
     const arg = args.trim();
     // The note is the last token, the surface is everything before it.
@@ -513,12 +509,10 @@ export function formatListPage(
   cmd: string,
   sep = "\n",
 ): string {
-  const pages = Math.max(1, Math.ceil(items.length / size));
-  const p = Math.min(Math.max(page, 0), pages - 1);
-  const shown = items.slice(p * size, p * size + size);
+  const { items: shown, page: p, pages, offset } = paginate(items, page, size);
   const body = shown.join(sep);
   if (pages === 1) return body;
-  const from = p * size + 1;
+  const from = offset + 1;
   const nav =
     p + 1 < pages ? `next: ${cmd} ${p + 2}` : `back to the start: ${cmd} 1`;
   return `${body}\n\nShowing ${from}–${from + shown.length - 1} of ${items.length} · page ${p + 1}/${pages} · ${nav}`;

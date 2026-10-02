@@ -1,11 +1,6 @@
 /** Which task note a task belongs to. Personal is the default for anything not clearly
  *  work. */
 export type TaskType = "work" | "personal";
-/** Where a draft came from: typed in task mode, or spotted in a journal entry. */
-export type TaskDraftSource = "mode" | "jot";
-/** `pending` until you decide: `created` once it's in the note, `cancelled` when you drop
- *  one you typed, `dismissed` when you tell scriba a detected one wasn't a task. */
-export type TaskDraftStatus = "pending" | "created" | "cancelled" | "dismissed";
 
 /** A task being composed, in task mode or proposed from a jot, before it's written. */
 export interface TaskDraft {
@@ -19,14 +14,14 @@ export interface TaskDraft {
  *  are the source of truth for those. */
 export interface TaskDraftRow {
   id: string;
-  source: TaskDraftSource;
+  source: "mode" | "jot";
   jot_id: string | null;
   type: TaskType;
   description: string;
   start: string | null;
   due: string | null;
   source_date: string;
-  status: TaskDraftStatus;
+  status: "pending" | "created" | "cancelled" | "dismissed";
   chat_id: number;
   message_id: number | null;
   created_at: number;

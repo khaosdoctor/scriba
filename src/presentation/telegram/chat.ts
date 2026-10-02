@@ -108,12 +108,6 @@ export class Responder {
   }
 }
 
-export const closeMessage = (
-  ctx: Context,
-  fallbackText: string,
-  onClosed?: () => void,
-): Promise<void> => new Responder(ctx).closeMessage(fallbackText, onClosed);
-
 /** The owner's chat: everything the bot says on its own initiative goes through here. */
 export class Chat implements Notifier {
   constructor(

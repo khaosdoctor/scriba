@@ -201,7 +201,7 @@ export class ProcessingService {
           `squash: enriching ${followers.length + 1} jots as one line`,
         );
 
-      const maxChars = await this.maxChars();
+      const maxChars = await this.deps.settings.getSetting("entryMaxChars");
       let textPart = source;
       let detected: TaskDraft[] = [];
       let tilCard = false;
@@ -294,7 +294,7 @@ export class ProcessingService {
       // Too long for one entry? The tail becomes jots of its own: this one keeps the
       // first piece, and each of the rest gets its own line, id and status message, so
       // it can be edited or deleted on its own.
-      const pieces = splitEntry(this.linkDates(jot, textPart), maxChars);
+      const pieces = splitEntry(linkDateWords(textPart, jotDay(jot)), maxChars);
       const linked = pieces[0] ?? "";
       const spillover = pieces
         .slice(1)
@@ -460,7 +460,7 @@ export class ProcessingService {
       // note at all, and a jot that never enriched has no topic seams to split on.
       await this.writeLine(
         jot,
-        this.composeLine(jot, this.linkDates(jot, source)),
+        this.composeLine(jot, linkDateWords(source, jotDay(jot))),
       );
     } catch {
       /* the note write itself is failing: nothing more we can do */
@@ -633,11 +633,6 @@ export class ProcessingService {
     return true;
   }
 
-  /** Resolve relative-date phrases against the jot's own day, once, for reuse in both the journal line and the Telegram preview. */
-  private linkDates(jot: Jot, textPart: string): string {
-    return linkDateWords(textPart, jotDay(jot));
-  }
-
   /** A jot for one spillover piece of an over-long entry: a plain text jot, already done
    *  (the text is enriched: it came out of this jot's own enrichment), with an id and
    *  anchor of its own so it edits, undoes and reprocesses independently. Its `received_at`
@@ -661,11 +656,6 @@ export class ProcessingService {
       received_at: jot.received_at + i,
       updated_at: Date.now(),
     };
-  }
-
-  /** Current entry-size limit: the runtime setting, or the default when unset. */
-  private async maxChars(): Promise<number> {
-    return this.deps.settings.getSetting("entryMaxChars");
   }
 
   private composeLine(jot: Jot, textPart: string): string {

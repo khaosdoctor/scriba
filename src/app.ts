@@ -44,11 +44,6 @@ import { VoiceService } from "./services/voice.ts";
 const log = logger("main");
 const botLog = logger("bot");
 
-export interface Build {
-  version: string;
-  sha: string;
-}
-
 /** Collaborators a test can replace; each defaults to the real one. */
 export interface ExternalServices {
   repo?: Repository;
@@ -125,7 +120,7 @@ const RETRY_EVERY_MS = 5 * 60_000;
  *  update is polled before it. */
 export async function createScriba(
   config: Config,
-  { version, sha }: Build,
+  { version, sha }: { version: string; sha: string },
   externalServices: ExternalServices = {},
 ): Promise<Scriba> {
   const startedAt = Date.now();

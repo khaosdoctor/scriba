@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { Api, Context, InlineKeyboard } from "grammy";
 import type { Update } from "grammy/types";
 import { BOT_INFO, recordingApi } from "../../test/fakes.ts";
-import { Chat, closeMessage, Responder } from "./chat.ts";
+import { Chat, Responder } from "./chat.ts";
 
 const OWNER = 1;
 const chat = { id: OWNER, type: "private" as const, first_name: "me" };
@@ -173,7 +173,7 @@ test("an update's responder replies in its chat or removes its message", async (
 
 test("closeMessage deletes the message and leaves it at that", async () => {
   const { ctx, rec } = harness();
-  await closeMessage(ctx(TAP), "Closed.");
+  await new Responder(ctx(TAP)).closeMessage("Closed.");
   assert.deepEqual(
     rec.calls.map((c) => [c.method, wire(c)]),
     [["deleteMessage", { chat_id: OWNER, message_id: 50 }]],
@@ -183,7 +183,7 @@ test("closeMessage deletes the message and leaves it at that", async () => {
 test("closeMessage clears the buttons with the fallback text when the delete is refused", async () => {
   const { ctx, rec } = harness();
   rec.fail.add("deleteMessage");
-  await closeMessage(ctx(TAP), "Closed.");
+  await new Responder(ctx(TAP)).closeMessage("Closed.");
   assert.deepEqual(
     rec.calls.map((c) => [c.method, wire(c)]),
     [
@@ -204,7 +204,7 @@ test("closeMessage clears the buttons with the fallback text when the delete is 
 test("closeMessage rejects when the message can be neither deleted nor edited", async () => {
   const { ctx, rec } = harness();
   rec.fail.add("deleteMessage").add("editMessageText");
-  await assert.rejects(closeMessage(ctx(TAP), "Closed."));
+  await assert.rejects(new Responder(ctx(TAP)).closeMessage("Closed."));
   assert.deepEqual(
     rec.calls.map((c) => c.method),
     ["deleteMessage", "editMessageText"],
@@ -214,7 +214,7 @@ test("closeMessage rejects when the message can be neither deleted nor edited", 
 test("closeMessage runs onClosed before touching the message", async () => {
   const { ctx, rec } = harness();
   const order: string[] = [];
-  await closeMessage(ctx(TAP), "Closed.", () => {
+  await new Responder(ctx(TAP)).closeMessage("Closed.", () => {
     order.push(`onClosed after ${rec.calls.length} calls`);
   });
   assert.deepEqual(order, ["onClosed after 0 calls"]);

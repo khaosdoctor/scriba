@@ -56,10 +56,13 @@ export type EmbedOutcome =
  *  resolves to the confirmation text. */
 export type Removal = { now: () => Promise<string> };
 
-export type LinkVerdict = "rejected" | "linked" | "unchanged";
 export type LinkOutcome =
   | "expired"
-  | { verdict: LinkVerdict; surface: string; note: string };
+  | {
+      verdict: "rejected" | "linked" | "unchanged";
+      surface: string;
+      note: string;
+    };
 
 type QueuedEdit = {
   edit: string;

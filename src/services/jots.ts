@@ -42,7 +42,6 @@ const OUTCOME_EMOJI: Record<JotOutcome, string> = {
 
 export type JotOutcome = "done" | "failed" | "retrying";
 export type VoiceFixChoice = "original" | "proposed";
-export type RetryOutcome = "queued" | "in-flight";
 
 export interface JotDeps {
   repo: JotRepository;
@@ -349,7 +348,7 @@ export class JotService {
   /** Put a jot back in the queue by hand: a squashed follower through its leader, whose
    *  line it shares. The reset skips a jot being processed right now, so a second tap, or
    *  a tap racing the retry pass, cannot queue it twice. */
-  async retry(jot: Jot): Promise<RetryOutcome> {
+  async retry(jot: Jot): Promise<"queued" | "in-flight"> {
     const target = await this.leaderOf(jot);
     if (!(await this.deps.repo.resetForRetry(target.id))) {
       log.warn(

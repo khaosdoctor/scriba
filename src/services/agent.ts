@@ -185,9 +185,8 @@ export class AgentService {
   /** The tropes.fyi file, cached for a day and fetched through the same sandboxed fetcher
    *  the agent uses. A failure degrades to the short list rather than failing the run. */
   private async tropes(): Promise<string> {
-    const fresh =
-      this.tropeCache && Date.now() - this.tropeCache.at < TROPES_TTL_MS;
-    if (fresh) return this.tropeCache!.text;
+    const cached = this.tropeCache;
+    if (cached && Date.now() - cached.at < TROPES_TTL_MS) return cached.text;
     try {
       const page = await this.web.fetchPage(TROPES_URL);
       const start = page.indexOf(TROPES_START);

@@ -480,10 +480,6 @@ export function effectiveStart(t: Task): string | null {
   return t.start ?? t.due;
 }
 
-export function isOpen(t: Task): boolean {
-  return t.state === "open";
-}
-
 /** Sunday-first bounds of the week containing `date`, as [start, end] ISO days: the same
  *  week the /reprocess calendar draws and what the Tasks plugin's "this week" means. */
 export function weekBounds(date: string): [string, string] {
@@ -533,7 +529,7 @@ export function filterTasks(
   const [weekStart, weekEnd] = weekBounds(today);
   const inWeek = (d: string | null) => !!d && d >= weekStart && d <= weekEnd;
   const twoWeeks = shiftDate(today, 14);
-  const open = tasks.filter(isOpen);
+  const open = tasks.filter((task) => task.state === "open");
   const picked = open.filter((t) => {
     switch (view) {
       // What is actually on the plate right now: due today, still due from before, or
