@@ -1,4 +1,3 @@
-import { Composer, type Context } from "grammy";
 import { logger } from "../../../libs/log.ts";
 import { fitTelegram } from "../../../libs/text.ts";
 import type { CommandView } from "../commands.ts";
@@ -12,23 +11,19 @@ export function help(all: CommandView[]): CommandView {
     command: "help",
     description: "list admin commands",
     admin: true,
-    view() {
-      const view = new Composer<Context>();
-      view.command("help", (ctx) => {
-        const commands = all.filter((entry) => entry.admin);
-        log.info({ count: commands.length }, "/help command");
-        return ctx.reply(
-          fitTelegram(
-            [
-              "🛠 commands:",
-              ...commands.map(
-                (entry) => `/${entry.command} — ${entry.description}`,
-              ),
-            ].join("\n"),
-          ),
-        );
-      });
-      return view;
+    run(ctx) {
+      const commands = all.filter((entry) => entry.admin);
+      log.info({ count: commands.length }, "/help command");
+      return ctx.reply(
+        fitTelegram(
+          [
+            "🛠 commands:",
+            ...commands.map(
+              (entry) => `/${entry.command} — ${entry.description}`,
+            ),
+          ].join("\n"),
+        ),
+      );
     },
   };
 }

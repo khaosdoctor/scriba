@@ -1,4 +1,3 @@
-import { Composer, type Context } from "grammy";
 import { fitTelegram } from "../../../libs/text.ts";
 import type { AdminService } from "../../../services/admin.ts";
 import type { CommandView } from "../commands.ts";
@@ -14,13 +13,9 @@ export function textCommand(
     command,
     description,
     admin: true,
-    view({ admin }) {
-      const view = new Composer<Context>();
-      view.command(command, async (ctx) => {
-        const text = await answer(admin, String(ctx.match ?? ""));
-        await ctx.reply(fitTelegram(text));
-      });
-      return view;
+    async run(ctx, { admin }) {
+      const text = await answer(admin, String(ctx.match ?? ""));
+      await ctx.reply(fitTelegram(text));
     },
   };
 }

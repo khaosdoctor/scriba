@@ -1,4 +1,4 @@
-import { Composer, type Context } from "grammy";
+import type { Context } from "grammy";
 import type { TaskService } from "../../../services/tasks.ts";
 import type { CommandView } from "../commands.ts";
 
@@ -41,9 +41,7 @@ export async function taskMessage(
 export const taskCommand: CommandView = {
   command: "task",
   description: "Turn every message into a task (/done to close)",
-  view({ tasks }) {
-    const view = new Composer<Context>();
-    view.command("task", (ctx) => openTaskMode(ctx, tasks));
-    return view;
+  run(ctx, { tasks }) {
+    return openTaskMode(ctx, tasks);
   },
 };

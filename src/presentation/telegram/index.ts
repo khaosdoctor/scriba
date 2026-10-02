@@ -53,16 +53,16 @@ export function registerViews(bot: Bot, deps: ViewDeps): void {
     log.debug(describe(ctx), "update received");
     await next();
   });
-  for (const command of COMMANDS) bot.use(command.view(deps));
-  bot.use(
-    textView(deps),
-    voiceView(deps),
-    photoView(deps),
-    videoView(deps),
-    editedView(deps),
-  );
+  for (const command of COMMANDS)
+    bot.command(command.command, (ctx) => command.run(ctx, deps));
+  textView(bot, deps);
+  voiceView(bot, deps);
+  photoView(bot, deps);
+  videoView(bot, deps);
+  editedView(bot, deps);
   for (const view of callbackViews(deps)) bot.use(view);
-  bot.use(reactionView(deps), fallbackView());
+  reactionView(bot, deps);
+  fallbackView(bot);
 }
 
 /** Populate the `/` command menu Telegram shows in the compose box. */

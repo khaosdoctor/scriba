@@ -1,4 +1,3 @@
-import { Composer, type Context } from "grammy";
 import type { CommandOpen } from "../../../services/command.ts";
 import type { CommandView } from "../commands.ts";
 
@@ -21,13 +20,9 @@ const REFUSALS: Record<Exclude<CommandOpen, "opened" | "already">, string> = {
 export const commandMode: CommandView = {
   command: "command",
   description: "Open a vault assistant session (/done to close)",
-  view({ command }) {
-    const view = new Composer<Context>();
-    view.command("command", async (ctx) => {
-      const outcome = command.open();
-      if (outcome === "already") return;
-      await ctx.reply(outcome === "opened" ? INTRO : REFUSALS[outcome]);
-    });
-    return view;
+  async run(ctx, { command }) {
+    const outcome = command.open();
+    if (outcome === "already") return;
+    await ctx.reply(outcome === "opened" ? INTRO : REFUSALS[outcome]);
   },
 };

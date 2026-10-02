@@ -1,4 +1,4 @@
-import type { Composer, Context } from "grammy";
+import type { CommandContext, Context } from "grammy";
 import { changelog } from "./admin/changelog.ts";
 import { failed } from "./admin/failed.ts";
 import { flush } from "./admin/flush.ts";
@@ -32,7 +32,7 @@ export type CommandView = {
   description: string;
   /** Listed by /help. The owner allowlist is the only auth either way. */
   admin?: true;
-  view(deps: ViewDeps): Composer<Context>;
+  run(ctx: CommandContext<Context>, deps: ViewDeps): unknown;
 };
 
 /** Every slash command, in the order Telegram's `/` menu and /help list them. */
