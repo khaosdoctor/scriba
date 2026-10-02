@@ -269,6 +269,19 @@ test("run passes the model to the SDK only when one is set", async () => {
   assert.equal("model" in noModel.calls[0]!.options, false);
 });
 
+test("the model is the caller's alone: AGENT_MODEL in the environment is never read here", async () => {
+  const saved = process.env.AGENT_MODEL;
+  process.env.AGENT_MODEL = "claude-from-env";
+  try {
+    const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
+    await new Enricher(undefined, fn).enrich({ text: "x", candidates: [] });
+    assert.equal("model" in calls[0]!.options, false);
+  } finally {
+    delete process.env.AGENT_MODEL;
+    if (saved !== undefined) process.env.AGENT_MODEL = saved;
+  }
+});
+
 test("describeImage returns a trimmed caption", async () => {
   const { fn } = fakeQuery([assistantText("  a cat on a couch  ")]);
   const out = await new Enricher(undefined, fn).describeImage(

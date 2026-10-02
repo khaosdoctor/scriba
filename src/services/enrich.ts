@@ -161,7 +161,7 @@ export class Enricher {
   private breakers = new Map<string, CircuitBreaker>();
 
   constructor(
-    private model = process.env.AGENT_MODEL,
+    private model: string | undefined,
     private query: QueryFn = sdkQuery,
     private fallbacks: EnrichFallback[] = [],
     private groqChatFn: GroqChatFn = groqChat,
