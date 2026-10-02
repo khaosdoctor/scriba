@@ -150,8 +150,18 @@ export class TaskService {
   /** One message in task mode, parsed token-free. False when it holds no task. */
   async handle(text: string): Promise<boolean> {
     this.deps.modes.touch();
+    const draft = parseTaskDraft(text, plainDate());
+    log.info(
+      {
+        chars: text.length,
+        type: draft.type,
+        start: draft.start,
+        due: draft.due,
+      },
+      "task mode: message parsed",
+    );
     return this.propose(
-      parseTaskDraft(text, plainDate()),
+      draft,
       text,
       "task mode: nothing to do in that message",
     );
@@ -173,6 +183,15 @@ export class TaskService {
       draft = draftFromDetection(
         await this.deps.enricher.extractTask(text),
         today,
+      );
+      log.info(
+        {
+          chars: text.length,
+          due: draft.due,
+          start: draft.start,
+          type: draft.type,
+        },
+        "/taskadd: read by the enricher",
       );
     } catch (err) {
       draft = parseTaskDraft(text, today);
@@ -196,6 +215,10 @@ export class TaskService {
     jotDate: string,
   ): Promise<void> {
     const row = await this.save(draft, jotDate, jotId);
+    log.info(
+      { draft: row.id, jotId, due: row.due },
+      "task suggested from a jot",
+    );
     await this.sendCard(row);
     if (!row.due) await this.ask(row, "u");
   }
@@ -299,6 +322,7 @@ export class TaskService {
 
   async setType(row: TaskDraftRow, type: TaskType): Promise<void> {
     await this.deps.repo.updateTaskDraft(row.id, { type });
+    log.info({ draft: row.id, type }, "task: type toggled");
     await this.redraw({ ...row, type });
   }
 
@@ -320,6 +344,10 @@ export class TaskService {
   async create(row: TaskDraftRow): Promise<void> {
     try {
       const line = await this.deps.notes.add(row, row.source_date);
+      log.info(
+        { draft: row.id, type: row.type, due: row.due },
+        "task created from a card",
+      );
       await this.clearPrompts(row.id);
       await this.settle(
         row,
@@ -341,6 +369,7 @@ export class TaskService {
     await this.deps.repo.updateTaskDraft(row.id, {
       status: dismissed ? "dismissed" : "cancelled",
     });
+    log.info({ draft: row.id, source: row.source }, "task draft dropped");
     await this.clearPrompts(row.id);
     await this.settle(
       row,
@@ -357,6 +386,7 @@ export class TaskService {
     field: TaskField,
     fromTap = false,
   ): Promise<void> {
+    log.info({ draft: row.id, field }, "task: prompting for a field");
     const id = await this.deps.notifier
       .send(
         `${PROMPTS[field]} (tk:${field}:${row.id})`,
@@ -370,18 +400,18 @@ export class TaskService {
   }
 
   /** Best-effort: a message older than 48 hours, or already gone, can't be deleted. */
-  private async dropPrompt(messageId: number): Promise<void> {
+  private async dropPrompt(messageId: number, draft: string): Promise<void> {
     this.prompts.delete(messageId);
     await this.deps.notifier
       .delete(messageId)
       .catch((err) =>
-        log.debug({ err, messageId }, "task: prompt already gone"),
+        log.debug({ err, draft, messageId }, "task: prompt already gone"),
       );
   }
 
   private async clearPrompts(draft: string): Promise<void> {
     for (const [id, owner] of this.prompts)
-      if (owner === draft) await this.dropPrompt(id);
+      if (owner === draft) await this.dropPrompt(id, draft);
   }
 
   /** The reply to a prompt. A prompt leaves the chat only once its answer is taken: one that
@@ -407,7 +437,18 @@ export class TaskService {
     const patch = patchFor(ref.field, body, row.id);
     if (typeof patch === "string") return patch;
     await this.deps.repo.updateTaskDraft(row.id, patch);
-    await this.dropPrompt(prompt);
+    if (ref.field === "d")
+      log.info({ draft: row.id }, "task: description changed");
+    if (ref.field !== "d")
+      log.info(
+        {
+          draft: row.id,
+          field: ref.field,
+          date: ref.field === "s" ? patch.start : patch.due,
+        },
+        "task: date changed",
+      );
+    await this.dropPrompt(prompt, row.id);
     await this.redraw({ ...row, ...patch });
     return "ok";
   }
@@ -423,6 +464,15 @@ export class TaskService {
     const today = plainDate();
     const tasks = filterTasks(await this.deps.notes.list(), view, today);
     const shown = paginate(tasks, page, PAGE);
+    log.info(
+      {
+        view,
+        page: shown.page,
+        shown: shown.items.length,
+        total: tasks.length,
+      },
+      "tasks: list rendered",
+    );
     const to = (p: number) => `${TASKS_NS}:v:${view}:${p}`;
     const nav: Row = [];
     if (shown.page > 0) nav.push(["‹ Prev", to(shown.page - 1)]);
@@ -472,11 +522,15 @@ export class TaskService {
         return null;
       });
     if (!task)
-      await this.deps.notifier
+      return void (await this.deps.notifier
         .notify(
           "⚠️ That task moved or changed in Obsidian since this list was drawn — here it is again.",
         )
-        .catch(() => {});
+        .catch(() => {}));
+    log.info(
+      { type, index, done, text: task.text },
+      done ? "task ticked from a list" : "task reopened from a list",
+    );
   }
 
   async menu(): Promise<Screen> {
@@ -500,12 +554,22 @@ export class TaskService {
   /** The task menu as a fresh message: /menu's entry point, which can't edit its own
    *  message into this one. */
   async promptRoot(): Promise<void> {
+    log.info("tasks menu opened (via /menu)");
     const { text, keyboard } = await this.menu();
     await this.deps.notifier.send(text, { keyboard });
   }
 
-  toggle(key: Extract<SwitchKey, "taskDetection" | "tilDetection">) {
-    return this.deps.repo.toggleSetting(key);
+  async toggle(
+    key: Extract<SwitchKey, "taskDetection" | "tilDetection">,
+  ): Promise<boolean> {
+    const enabled = await this.deps.repo.toggleSetting(key);
+    log.info(
+      { enabled },
+      key === "taskDetection"
+        ? "tasks: jot detection toggled"
+        : "tasks: TIL detection toggled",
+    );
+    return enabled;
   }
 
   /** The morning summary: what's due today plus whatever is still hanging over. A day with
@@ -514,6 +578,7 @@ export class TaskService {
   async dailySummary(): Promise<void> {
     const today = plainDate();
     const { notifier } = this.deps;
+    log.info({ date: today }, "tasks: sending the daily summary");
     try {
       const { text, keyboard, count } = await this.list(
         "day",
@@ -524,12 +589,15 @@ export class TaskService {
         log.info({ date: today }, "tasks: nothing due today — staying quiet");
         return;
       }
-      await notifier.send(text, { html: true, keyboard });
+      await notifier.send(text, { html: true, keyboard, silent: false });
+      log.info({ date: today, tasks: count }, "tasks: daily summary sent");
     } catch (err) {
       log.error({ err }, "tasks: daily summary failed");
       const why = err instanceof Error ? err.message : String(err);
       await notifier
-        .notify(`⚠️ Couldn't put together your task summary: ${why}`)
+        .send(`⚠️ Couldn't put together your task summary: ${why}`, {
+          silent: false,
+        })
         .catch(() => {});
     }
   }

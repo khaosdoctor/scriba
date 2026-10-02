@@ -105,15 +105,26 @@ export class SettingsService {
 
   async toggle(key: SwitchKey): Promise<boolean> {
     const next = await this.d.repo.toggleSetting(key);
-    log.info({ key, next }, "menu: switch toggled");
+    const state = next ? "on" : "off";
+    if (key === "fixVoiceTranscript")
+      log.info({ next: state }, "menu: voice fix toggled");
+    if (key !== "fixVoiceTranscript")
+      log.info({ key, next: state }, "menu: switch toggled");
     return next;
   }
 
   /** The enricher reads its model once per boot, so a change is handed to it as well. */
-  async setModel(key: ModelKey, model: string): Promise<void> {
+  async setModel(
+    key: ModelKey,
+    model: string,
+    message = "menu: model changed",
+  ): Promise<void> {
     await this.d.repo.setSetting(key, model);
     if (key === "enrichModel") this.d.enricher.setModel(model);
-    log.info({ key, model }, "menu: model changed");
+    log.info(
+      { which: key === "enrichModel" ? "enrich" : "voiceFix", model },
+      message,
+    );
   }
 
   async setEntrySize(size: number): Promise<void> {

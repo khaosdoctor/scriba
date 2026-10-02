@@ -110,15 +110,21 @@ async function calendar(
   });
 }
 
-function rejectDate(ctx: Tap, ...dates: string[]): void {
-  log.warn({ dates }, "reprocess: tap rejected: bad date");
+function rejectDate(ctx: Tap, fields: object, message: string): void {
+  log.warn(fields, message);
   return void ack(ctx, "bad date");
 }
 
-const rangeEnd = (ctx: Tap, start: string, lead: string, ym: string[]) =>
+const rangeEnd = (
+  ctx: Tap,
+  start: string,
+  lead: string,
+  ym: string[],
+  rejected: string,
+) =>
   isDate(start)
     ? calendar(ctx, rp("rangeend", start), `📆 Start: ${start}. ${lead}`, ym)
-    : rejectDate(ctx, start);
+    : rejectDate(ctx, { start }, rejected);
 
 /** The confirm prompt for the inclusive day range a..b; `day` keeps the one-day wording
  *  and its `go:d` button. */
@@ -130,7 +136,18 @@ async function confirmRange(
   day: boolean,
 ): Promise<void> {
   const range = span(a, b);
-  if (!range) return rejectDate(ctx, a, b);
+  if (!range && day)
+    return rejectDate(
+      ctx,
+      { date: a },
+      "reprocess: day tap rejected: bad date",
+    );
+  if (!range)
+    return rejectDate(
+      ctx,
+      { start: a, end: b },
+      "reprocess: range-end tap rejected: bad date",
+    );
   await ack(ctx);
   const { lo, hi } = range;
   const count = await admin.reprocessCount(lo, hi);
@@ -230,7 +247,12 @@ async function execute(
   const day = mode === "d";
   const end = day ? a : b;
   const range = span(a, end);
-  if (!range) return rejectDate(ctx, a, end);
+  if (!range)
+    return rejectDate(
+      ctx,
+      day ? { date: a } : { start: a, end },
+      "reprocess: execute rejected: bad date",
+    );
   return run({ ...range, day });
 }
 
@@ -251,13 +273,25 @@ export function reprocessView(admin: AdminService): Composer<Context> {
       }
       case "range":
         return args.length >= 3
-          ? rangeEnd(ctx, ymd(args), "Now pick the range end", args)
+          ? rangeEnd(
+              ctx,
+              ymd(args),
+              "Now pick the range end",
+              args,
+              "reprocess: range-start tap rejected: bad date",
+            )
           : calendar(ctx, rp("range"), "📆 Pick the range start", args);
       case "rangeend": {
         const [start = "", ...ym] = args;
         return args.length >= 4
           ? confirmRange(ctx, admin, start, ymd(ym), false)
-          : rangeEnd(ctx, start, "Pick the range end", ym);
+          : rangeEnd(
+              ctx,
+              start,
+              "Pick the range end",
+              ym,
+              "reprocess: range-end calendar rejected: bad start date",
+            );
       }
       case "jot":
         // A crafted or stale button can carry a negative page.

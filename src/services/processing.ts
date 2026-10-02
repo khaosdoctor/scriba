@@ -232,7 +232,6 @@ export class ProcessingService {
           {
             id,
             indexSize: index.length,
-            chars: source.length,
             count: cands.length,
             forced: forced.length,
             stopwords: stopwords.size,
@@ -243,6 +242,10 @@ export class ProcessingService {
             ),
           },
           `enricher: ${cands.length} link candidate(s) (${forced.length} registered) from local index of ${index.length} aliases`,
+        );
+        log.info(
+          { id, chars: source.length, candidates: cands.length },
+          "enricher: calling agent",
         );
         const res = await this.deps.enricher.enrich({
           text: source,

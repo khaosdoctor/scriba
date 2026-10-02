@@ -86,7 +86,7 @@ export class TaskNotesService {
       if (!task || task.fingerprint !== fingerprint) {
         log.warn(
           { type, index, fingerprint, found: task?.fingerprint ?? null },
-          "task tap ignored, the note changed underneath",
+          "task tap ignored — the note changed underneath",
         );
         return null;
       }

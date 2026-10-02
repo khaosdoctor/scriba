@@ -196,7 +196,7 @@ export class AgentService {
       log.info({ chars: text.length }, "agent: tropes.fyi list refreshed");
       return text;
     } catch (err) {
-      log.warn({ err }, "agent: tropes.fyi unreachable, using the short list");
+      log.warn({ err }, "agent: tropes.fyi unreachable — using the short list");
       return TROPES_FALLBACK;
     }
   }

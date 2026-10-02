@@ -9,6 +9,7 @@ export interface MessageOptions {
   /** Thread this message under the owner's message with this id, even once that one is
    *  gone: losing the thread beats losing the message. */
   replyTo?: number;
+  silent?: boolean;
 }
 
 /** The owner's chat as a controller sees it: messages it starts on its own, outside any

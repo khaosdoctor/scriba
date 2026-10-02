@@ -1,6 +1,9 @@
 import { Composer, type Context } from "grammy";
+import { logger } from "../../../libs/log.ts";
 import type { CommandView } from "../commands.ts";
 import { MENU_TEXT, rootKeyboard } from "./menu.ts";
+
+const log = logger("menu");
 
 /** `/menu` sends a fresh root menu and retires the chat's previous one. Later taps edit
  *  that message in place. */
@@ -10,6 +13,7 @@ export const menuCommand: CommandView = {
   view({ settings, menus }) {
     const view = new Composer<Context>();
     view.command("menu", async (ctx) => {
+      log.info("menu opened");
       await menus.retire(ctx.chat.id);
       const sent = await ctx.reply(MENU_TEXT, {
         reply_markup: rootKeyboard(await settings.root()),

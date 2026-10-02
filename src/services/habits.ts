@@ -40,6 +40,7 @@ export class HabitService {
     const say = async (text: string) => {
       if (announceEmpty) await notifier.notify(text);
     };
+    log.info({ date, announceEmpty }, "prompting for habit review");
     const daily = await obsidian.readDailyNote(date);
     if (daily && isHabitsReviewed(daily.content)) {
       log.info({ date }, `habits already reviewed — skipping`);
@@ -87,8 +88,13 @@ export class HabitService {
     if (!habit) {
       log.info({ date }, `habit review complete — stamping frontmatter`);
       await obsidian.setFrontmatter(daily.path, "habitsReviewed", "true");
+      log.info({ date, path: daily.path }, "habitsReviewed frontmatter set");
       return this.cleanup(date);
     }
+    log.debug(
+      { date, index: habit.index, kind: habit.field ? "value" : "yes/no" },
+      "asking habit",
+    );
     const msgId = this.activeMsg.get(date);
     if (!msgId) {
       log.warn({ date }, `no active flow message — cannot continue`);
@@ -126,6 +132,7 @@ export class HabitService {
   }
 
   async fill(date: string, index: number, value: string): Promise<FillOutcome> {
+    log.info({ date, index, value }, "habit value reply");
     if (!isNumericValue(value)) {
       log.warn({ date, value }, "habit value rejected: not a number");
       return "notNumber";

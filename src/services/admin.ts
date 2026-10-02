@@ -326,11 +326,14 @@ export class AdminService {
   /** The `si`th rejected word and the notes rejected for it. Indices are positions in the
    *  ordered rejection list, re-derived on every tap so nothing is held between messages;
    *  undefined when the list changed under the tap. */
-  async rejectedWord(si: number): Promise<RejectedWord | undefined> {
+  async rejectedWord(
+    step: string | undefined,
+    idx: string[],
+  ): Promise<RejectedWord | undefined> {
     const list = await this.d.repo.rejectionList();
-    const surface = distinctSurfaces(list)[si];
+    const surface = distinctSurfaces(list)[Number(idx[0])];
     if (surface === undefined) {
-      log.unreject.warn({ si }, "unreject: surface index out of range");
+      log.unreject.warn({ step, idx }, "unreject: surface index out of range");
       return undefined;
     }
     return {
@@ -343,12 +346,12 @@ export class AdminService {
    *  longer exists, so a shifted list never undoes the wrong pair. */
   async unrejectNote(
     word: RejectedWord,
-    ni: number,
+    idx: string[],
   ): Promise<{ note: string; removed: number } | undefined> {
     const { surface } = word;
-    const note = word.notes[ni];
+    const note = word.notes[Number(idx[1])];
     if (note === undefined) {
-      log.unreject.warn({ surface, ni }, "unreject: note index out of range");
+      log.unreject.warn({ surface, idx }, "unreject: note index out of range");
       return undefined;
     }
     const removed = await this.d.repo.unreject(surface, note);
@@ -459,7 +462,10 @@ export class AdminService {
     const deployId = `${build.version}@${build.sha}`;
     const lastDeployId = await repo.getSetting("deployId");
     if (lastDeployId === deployId) return;
-    log.main.info({ deployId, lastDeployId }, "new deploy detected, notifying");
+    log.main.info(
+      { deployId, lastDeployId },
+      "new deploy detected — notifying",
+    );
     // The notice still goes out without "what's new" when the GitHub lookup fails.
     const releaseNote = await github.byVersion(build.version).catch((err) => {
       log.main.warn(
@@ -477,7 +483,7 @@ export class AdminService {
     } catch (err) {
       log.main.warn(
         { err },
-        "deploy notice failed to send, will retry next boot",
+        "deploy notice failed to send — will retry next boot",
       );
     }
   }

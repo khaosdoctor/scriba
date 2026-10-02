@@ -34,6 +34,7 @@ function sendParams(opts: SendOptions = {}) {
           },
         }
       : {}),
+    ...(opts.silent === undefined ? {} : { disable_notification: opts.silent }),
   };
 }
 

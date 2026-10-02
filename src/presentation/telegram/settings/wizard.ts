@@ -37,7 +37,7 @@ const model = (
   async apply(settings, body) {
     const id = body.trim();
     if (!id) return null;
-    await settings.setModel(key, id);
+    await settings.setModel(key, id, "menu: model changed via text");
     return `🧠 ${label} model: ${id}`;
   },
 });

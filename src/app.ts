@@ -105,7 +105,7 @@ async function buildEnricher(
     },
     fallbacks.length
       ? `enricher ready with ${fallbacks.length} chat fallback(s)`
-      : "enricher ready, no chat fallbacks: jots post un-enriched when both Claude models are unavailable",
+      : "enricher ready — no chat fallbacks, jots post un-enriched when both Claude models are unavailable",
   );
   return new Enricher(
     enrichModel,

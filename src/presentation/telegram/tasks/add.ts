@@ -1,6 +1,9 @@
 import { Composer, type Context } from "grammy";
+import { logger } from "../../../libs/log.ts";
 import { TASK_ADD_REF } from "../../../services/tasks.ts";
 import type { CommandView } from "../commands.ts";
+
+const log = logger("tasks-flow");
 
 export const TASKADD_EMPTY =
   "I couldn't find anything to do in that — try “/taskadd buy cat sand next week”.";
@@ -15,6 +18,7 @@ export const taskAddCommand: CommandView = {
     view.command("taskadd", async (ctx) => {
       const text = ctx.match.trim();
       if (!text) {
+        log.info("/taskadd with no text — asking for it");
         await ctx.reply(
           `📝 Reply to this message with the task — say when it's due in your own words. ${TASK_ADD_REF}`,
         );

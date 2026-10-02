@@ -17,6 +17,7 @@ const Payload = z.tuple([z.string().regex(DATE_RE), RatingSchema]);
 export function ratingView(rating: RatingService): Composer<Context> {
   return namespace(RATING_NS, async (ctx, [date, n]) => {
     const responder = new Responder(ctx);
+    log.debug({ date, n }, "rating button tapped");
     const payload = Payload.safeParse([date, n]);
     if (!payload.success) {
       log.warn({ date, n }, "rating tap rejected: bad payload");

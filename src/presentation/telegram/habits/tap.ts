@@ -12,6 +12,7 @@ const log = logger("habits");
 export function habitsView(habits: HabitService): Composer<Context> {
   return namespace(HABITS_NS, async (ctx, [date, action, verd]) => {
     const responder = new Responder(ctx);
+    log.debug({ date, action, verd }, "habit button tapped");
     if (!date || !DATE_RE.test(date)) {
       log.warn({ date, action, verd }, "habit tap rejected: bad payload");
       return responder.ack("bad habit");

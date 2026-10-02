@@ -265,7 +265,7 @@ export class JotService {
       } catch (err) {
         log.warn(
           { jotId, messageId: existing, err },
-          "status edit failed, sending a fresh one",
+          "status edit failed — sending a fresh one",
         );
       }
     }

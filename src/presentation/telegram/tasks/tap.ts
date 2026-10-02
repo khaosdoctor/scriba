@@ -141,6 +141,7 @@ export function tasksView(tasks: TaskService): Composer<Context> {
       }
       case "close":
         await responder.ack();
+        log.info("tasks: screen closed");
         return responder.closeMessage("🗂 Closed.").catch(() => {});
       default:
         log.warn({ action }, "tasks: unknown callback action");

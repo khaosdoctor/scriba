@@ -215,7 +215,7 @@ export class VaultService {
   startIndex(periodicMs = 30 * 60_000): void {
     if (!this.root) {
       log.warn(
-        "no SCRIBA_VAULT_HOST_PATH, link index disabled, no wikilinks will be suggested",
+        "no SCRIBA_VAULT_HOST_PATH — link index disabled, no wikilinks will be suggested",
       );
       return;
     }

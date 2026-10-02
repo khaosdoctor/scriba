@@ -32,7 +32,7 @@ async function main(): Promise<void> {
   log.info(
     {
       dbPath: config.dbPath,
-      vaultIndex: config.vaultPath ?? "(none, REST fallback)",
+      vaultIndex: config.vaultPath ?? "(none — REST fallback)",
       port: config.telegram.port,
       logLevel: process.env.LOG_LEVEL ?? "debug",
     },

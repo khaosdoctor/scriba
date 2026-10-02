@@ -13,6 +13,7 @@ export const habitsCommand: CommandView = {
     const view = new Composer<Context>();
     view.command("habits", async (ctx) => {
       const arg = ctx.match.trim();
+      log.info({ arg: arg || "(yesterday)" }, "/habits command");
       if (arg && !DATE_RE.test(arg)) {
         log.warn({ arg }, "/habits rejected: bad date");
         await ctx.reply("Usage: /habits or /habits YYYY-MM-DD");

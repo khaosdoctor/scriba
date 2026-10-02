@@ -24,6 +24,7 @@ import { openTaskMode } from "../tasks/mode.ts";
 import { linkRulesTap } from "./links.ts";
 
 const log = logger("menu");
+const reprocessLog = logger("reprocess");
 
 export const MENU_TEXT = "🗂 scriba control menu";
 const CLOSE = "menu:close";
@@ -114,6 +115,10 @@ async function modelPicker(
 ): Promise<void> {
   const [key, title, , pick, custom] = MODELS[which];
   const current = await settings.get(key);
+  log.info(
+    { which: key === "enrichModel" ? "enrich" : "voiceFix", current },
+    "menu: model picker",
+  );
   await ctx.editMessageText(`${title}\n\nCurrent: ${current ?? "not set"}`, {
     reply_markup: picker(
       MODEL_PRESETS.map((p) => [
@@ -131,6 +136,7 @@ async function entrySizeScreen(
   settings: SettingsService,
 ): Promise<void> {
   const current = await settings.get("entryMaxChars");
+  log.info({ current }, "menu: entry size");
   await ctx.editMessageText(
     [
       "✂️ Entry size",
@@ -237,6 +243,13 @@ export function menuView(deps: ViewDeps): Composer<Context> {
     };
     const ask = async (kind: SettingsPrompt) => {
       await responder.ack("Answer the prompt below ↓");
+      if (kind === "rt") log.info("menu: prompting for the rating time");
+      if (kind === "es") log.info("menu: prompting for a custom entry size");
+      if (kind === "em" || kind === "vfm")
+        log.info(
+          { which: kind === "em" ? "enrich" : "voiceFix" },
+          "menu: prompting for a custom model",
+        );
       return settings.ask(kind);
     };
     const pickModel = async (which: "em" | "vfm") => {
@@ -248,7 +261,12 @@ export function menuView(deps: ViewDeps): Composer<Context> {
     };
     // Answered before the command runs (a flush or a retry pass can be slow): the edited
     // message carries the result.
-    const maintenance = async (run: () => Promise<string>) => {
+    const maintenance = async (
+      cmd: string,
+      cmdArg: string,
+      run: () => Promise<string>,
+    ) => {
+      log.info({ cmd, arg: cmdArg }, "menu: maintenance action");
       await responder.ack();
       const out = fitTelegram(await run());
       return ctx.editMessageText(out || "done", {
@@ -273,6 +291,7 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         return openTaskMode(ctx, tasks);
       case "reprocess":
         await responder.ack("Opening reprocess menu below ↓");
+        reprocessLog.info("reprocess menu opened (via /menu)");
         await ctx.api.sendMessage(deps.ownerId, REPROCESS_TEXT, {
           reply_markup: reprocessKeyboard(),
         });
@@ -350,6 +369,7 @@ export function menuView(deps: ViewDeps): Composer<Context> {
           reply_markup: maintenanceKeyboard(),
         });
       case "retryall": {
+        log.info("menu: retry-all confirm");
         await responder.ack();
         const kb = new InlineKeyboard()
           .text("✅ Yes, retry all", "menu:retryally")
@@ -360,14 +380,15 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         });
       }
       case "flush":
-        return maintenance(() => admin.flush());
+        return maintenance("flush", "", () => admin.flush());
       case "sweep":
-        return maintenance(() => admin.retryPass());
+        return maintenance("sweep", "", () => admin.retryPass());
       case "unstick":
-        return maintenance(() => admin.unstick());
+        return maintenance("unstick", "", () => admin.unstick());
       case "retryally":
-        return maintenance(() => admin.retry("all"));
+        return maintenance("retry", "all", () => admin.retry("all"));
       case "close":
+        log.info("menu closed");
         await responder.ack();
         return responder.closeMessage("🗂 Menu closed.", () => {
           if (tapped) menus.closed(tapped.chat.id, tapped.message_id);

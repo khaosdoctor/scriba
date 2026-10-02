@@ -13,6 +13,7 @@ export const rate: CommandView = {
     const view = new Composer<Context>();
     view.command("rate", async (ctx) => {
       const arg = ctx.match.trim();
+      log.info({ arg: arg || "(today)" }, "/rate command");
       if (arg && !DATE_RE.test(arg)) {
         log.warn({ arg }, "/rate rejected: bad date");
         await ctx.reply("Usage: /rate or /rate YYYY-MM-DD");

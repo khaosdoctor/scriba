@@ -28,8 +28,9 @@ export const tasksCommand: CommandView = {
     const view = new Composer<Context>();
     view.command("tasks", async (ctx) => {
       const arg = ctx.match.trim().toLowerCase();
-      if (!arg) return showTaskList(ctx, tasks, "future", 0, "send");
       const screen = VIEW_ALIASES[arg];
+      log.info({ arg: arg || "(menu)", view: screen }, "/tasks command");
+      if (!arg) return showTaskList(ctx, tasks, "future", 0, "send");
       if (!screen) {
         log.warn({ arg }, "/tasks: unknown view");
         await ctx.reply(

@@ -71,6 +71,19 @@ test("a message can ask for a forced reply or hang off an earlier message, and o
   ]);
 });
 
+test("a message that must interrupt says so to Telegram explicitly", async () => {
+  const { chat, rec } = harness();
+  await chat.send("<b>tasks</b>", { html: true, silent: false });
+  assert.deepEqual(rec.calls.map(wire), [
+    {
+      chat_id: OWNER,
+      text: "<b>tasks</b>",
+      parse_mode: "HTML",
+      disable_notification: false,
+    },
+  ]);
+});
+
 test("the chat edits, deletes and reacts to a message by id, and rejects only on edit and delete", async () => {
   const { chat, rec } = harness();
   await chat.edit(7, "later", { keyboard: new InlineKeyboard() });

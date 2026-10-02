@@ -487,6 +487,7 @@ test("the morning summary is dated, and its rows tick straight through", async (
   assert.match(sent.text, /Buy cat sand/);
   assert.doesNotMatch(sent.text, /Something far off/);
   assert.doesNotMatch(sent.text, /finish the book/);
+  assert.equal(sent.opts.silent, false);
 
   // The rows are the same tickable buttons the lists use.
   const [first] = h.buttons(sent.opts);
@@ -511,12 +512,15 @@ test("a day with nothing due sends nothing at all", async () => {
   assert.deepEqual(h.notices, []);
 });
 
-test("a summary that can't read the notes still says so", async () => {
+test("a summary that can't read the notes still says so, loudly", async () => {
   const h = setup();
   h.breakReads();
   await h.tasks.dailySummary();
-  assert.deepEqual(h.notices, [
-    "⚠️ Couldn't put together your task summary: obsidian is down",
+  assert.deepEqual(h.sent, [
+    {
+      text: "⚠️ Couldn't put together your task summary: obsidian is down",
+      opts: { silent: false },
+    },
   ]);
 });
 
