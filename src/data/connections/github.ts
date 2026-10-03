@@ -9,26 +9,26 @@ const HEADERS = {
   "User-Agent": "scriba",
 };
 
-export const ReleaseSchema = z.object({
+const ReleaseSchema = z.object({
   tag_name: z.string(),
   name: z.string().nullable(),
   body: z.string().nullable(),
   html_url: z.string(),
   published_at: z.string(),
 });
-export type Release = z.infer<typeof ReleaseSchema>;
+type Release = z.infer<typeof ReleaseSchema>;
 
 export class GithubReleases {
   constructor(private repo = "khaosdoctor/scriba") {}
 
-  private toNote(r: Release): ReleaseNote {
+  private toNote(release: Release): ReleaseNote {
     return {
-      tag: r.tag_name,
-      version: r.tag_name.replace(/^v/, ""),
-      name: r.name || r.tag_name,
-      body: r.body ?? "",
-      url: r.html_url,
-      publishedAt: r.published_at,
+      tag: release.tag_name,
+      version: release.tag_name.replace(/^v/, ""),
+      name: release.name || release.tag_name,
+      body: release.body ?? "",
+      url: release.html_url,
+      publishedAt: release.published_at,
     };
   }
 
@@ -75,6 +75,6 @@ export class GithubReleases {
       {},
       z.array(ReleaseSchema),
     );
-    return data ? data.map((r) => this.toNote(r)) : [];
+    return data ? data.map((release) => this.toNote(release)) : [];
   }
 }

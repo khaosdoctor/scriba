@@ -120,7 +120,7 @@ export function anchorLine(note: string, anchor: string): string | null {
   return note.match(anchorRe(anchor))?.[0] ?? null;
 }
 
-export type MoveResult = { note: string } | { missing: "line" | "heading" };
+type MoveResult = { note: string } | { missing: "line" | "heading" };
 
 export function moveAnchorLine(
   note: string,

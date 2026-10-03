@@ -1,6 +1,6 @@
 type Entry<T> = { settle: (value: T) => void; timer?: NodeJS.Timeout };
 
-export type PendingOptions = { clearAndUnref: boolean };
+type PendingOptions = { clearAndUnref: boolean };
 
 export class PendingDecisions<T> {
   private entries = new Map<string, Entry<T>>();

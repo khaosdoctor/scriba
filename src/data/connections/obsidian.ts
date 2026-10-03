@@ -6,7 +6,7 @@ const log = logger("obsidian");
 // Obsidian is on the LAN: a request slower than this is a hung plugin, not a slow link.
 const REQUEST_TIMEOUT_MS = 15_000;
 
-export interface ObsidianConnectionConfig {
+interface ObsidianConnectionConfig {
   url: string;
   key: string;
   insecureTls: boolean;

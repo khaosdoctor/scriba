@@ -5,7 +5,7 @@ import pretty from "pino-pretty";
 // the worker doesn't inherit the tsx loader and dies silently, so no logs appear.
 // `sync: true` writes straight to fd 1 like console.log, async SonicBoom buffering
 // gets swallowed in containers (Coolify/docker) and the logs never appear.
-const level = process.env.LOG_LEVEL ?? "debug";
+export const level = process.env.LOG_LEVEL ?? "debug";
 // Secrets stripped in pino core so they never reach any stream, any call site. Wildcards
 // match the config secrets (telegram.token, obsidian.key, transcription.groqApiKey).
 const redact = {

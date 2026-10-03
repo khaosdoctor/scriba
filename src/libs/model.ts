@@ -83,7 +83,7 @@ export function parseModelJson(raw: string): Record<string, unknown> | null {
   return null;
 }
 
-export interface ModelPayload {
+interface ModelPayload {
   text: string;
   ambiguous?: unknown;
   tasks?: unknown;

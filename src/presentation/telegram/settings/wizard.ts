@@ -76,7 +76,7 @@ export function parseSettingsRef(prompt: string): SettingsPrompt | null {
     : null;
 }
 
-export type LinkRef = Exclude<WizardPrompt, { kind: SettingsPrompt }>;
+type LinkRef = Exclude<WizardPrompt, { kind: SettingsPrompt }>;
 
 export function parseLinkRef(prompt: string): LinkRef | null {
   const ref = parseWizardRef(prompt);

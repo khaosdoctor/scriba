@@ -20,7 +20,7 @@ import type { ObsidianClient } from "./notes.ts";
 
 const log = logger("tasks");
 
-export interface TaskNoteConfig {
+interface TaskNoteConfig {
   path: string;
   heading: string;
   tag: string;

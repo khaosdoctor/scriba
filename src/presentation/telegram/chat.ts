@@ -5,7 +5,7 @@ import type { MessageOptions, Notifier } from "../../services/notifier.ts";
 
 const log = logger("chat");
 
-export type SendOptions = Omit<MessageOptions, "keyboard"> & {
+type SendOptions = Omit<MessageOptions, "keyboard"> & {
   keyboard?: InlineKeyboardMarkup;
 };
 
