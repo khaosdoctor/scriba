@@ -92,23 +92,23 @@ test("unwrapModelPayload leaves ordinary text alone, braces included", () => {
 });
 
 test("CircuitBreaker opens after the threshold, lets one trial through after the cooldown", () => {
-  const t = { now: 0 };
-  const b = new CircuitBreaker(2, 100, () => t.now);
-  b.failure(new Error("a"));
-  assert.equal(b.allows(), true);
-  b.failure(new Error("b"));
-  assert.equal(b.allows(), false);
-  assert.equal((b.lastError as Error).message, "b");
-  t.now = 100;
-  assert.equal(b.allows(), true);
+  const clock = { now: 0 };
+  const breaker = new CircuitBreaker(2, 100, () => clock.now);
+  breaker.failure(new Error("a"));
+  assert.equal(breaker.allows(), true);
+  breaker.failure(new Error("b"));
+  assert.equal(breaker.allows(), false);
+  assert.equal((breaker.lastError as Error).message, "b");
+  clock.now = 100;
+  assert.equal(breaker.allows(), true);
   // the trial fails: straight back open, no second run-up to the threshold
-  b.failure(new Error("c"));
-  assert.equal(b.allows(), false);
-  t.now = 200;
-  b.success();
-  assert.equal(b.allows(), true);
-  b.failure(new Error("d"));
-  assert.equal(b.allows(), true);
+  breaker.failure(new Error("c"));
+  assert.equal(breaker.allows(), false);
+  clock.now = 200;
+  breaker.success();
+  assert.equal(breaker.allows(), true);
+  breaker.failure(new Error("d"));
+  assert.equal(breaker.allows(), true);
 });
 
 test("isRecoverable flags transient infra errors, not terminal ones", () => {

@@ -444,16 +444,17 @@ export class TaskService {
       },
       "tasks: list rendered",
     );
-    const to = (p: number) => `${TASKS_NS}:v:${view}:${p}`;
+    const pageCallback = (target: number) => `${TASKS_NS}:v:${view}:${target}`;
     const nav: Row = [];
-    if (shown.page > 0) nav.push(["‹ Prev", to(shown.page - 1)]);
-    if (shown.page < shown.pages - 1) nav.push(["Next ›", to(shown.page + 1)]);
-    const n = tasks.length;
-    const summary = n
-      ? `${n} task${n === 1 ? "" : "s"}${shown.pages > 1 ? ` · page ${shown.page + 1}/${shown.pages}` : ""} · tap one to ${view === "done" ? "reopen it" : "tick it off"}`
+    if (shown.page > 0) nav.push(["‹ Prev", pageCallback(shown.page - 1)]);
+    if (shown.page < shown.pages - 1)
+      nav.push(["Next ›", pageCallback(shown.page + 1)]);
+    const total = tasks.length;
+    const summary = total
+      ? `${total} task${total === 1 ? "" : "s"}${shown.pages > 1 ? ` · page ${shown.page + 1}/${shown.pages}` : ""} · tap one to ${view === "done" ? "reopen it" : "tick it off"}`
       : "Nothing here.";
-    const lines = shown.items.map((t, i) =>
-      taskListLine(t, shown.offset + i + 1, today),
+    const lines = shown.items.map((task, position) =>
+      taskListLine(task, shown.offset + position + 1, today),
     );
     return {
       text: fitTelegram(
@@ -463,10 +464,10 @@ export class TaskService {
       ),
       keyboard: keyboard([
         ...shown.items.map(
-          (t, i): Row => [
+          (task, position): Row => [
             [
-              taskButtonLabel(t, shown.offset + i + 1),
-              `${TASKS_NS}:${t.state === "done" ? "r" : "k"}:${t.type}:${t.index}:${t.fingerprint}:${view}:${shown.page}`,
+              taskButtonLabel(task, shown.offset + position + 1),
+              `${TASKS_NS}:${task.state === "done" ? "r" : "k"}:${task.type}:${task.index}:${task.fingerprint}:${view}:${shown.page}`,
             ],
           ],
         ),
@@ -474,7 +475,7 @@ export class TaskService {
         [["‹ Tasks", `${TASKS_NS}:m`]],
         [CLOSE],
       ]),
-      count: n,
+      count: total,
     };
   }
 
@@ -506,12 +507,14 @@ export class TaskService {
     const { settings } = this.deps;
     const tasks = await settings.getSetting("taskDetection");
     const til = await settings.getSetting("tilDetection");
-    const screens = Object.keys(VIEW_LABEL).filter((v) => v !== "future");
+    const screens = Object.keys(VIEW_LABEL).filter((view) => view !== "future");
     return {
       text: MENU_TEXT,
       keyboard: keyboard([
         ...screens.map(
-          (v): Row => [[VIEW_LABEL[v as TaskView], `${TASKS_NS}:v:${v}:0`]],
+          (view): Row => [
+            [VIEW_LABEL[view as TaskView], `${TASKS_NS}:v:${view}:0`],
+          ],
         ),
         [[`🔎 Spot tasks in jots: ${tasks ? "on" : "off"}`, `${TASKS_NS}:det`]],
         [[`💡 Spot TILs in jots: ${til ? "on" : "off"}`, `${TASKS_NS}:til`]],

@@ -40,17 +40,20 @@ const confirmKeyboard = (yes: string, go: string) =>
 
 const ack = (ctx: Tap, text?: string) => new Responder(ctx).ack(text);
 
-const pad = (n = "") => n.padStart(2, "0");
-const ymd = ([y, m, d]: string[]) => `${y}-${pad(m)}-${pad(d)}`;
-const isDate = (s: string) => IsoDateSchema.safeParse(s).success;
+const pad = (value = "") => value.padStart(2, "0");
+const ymd = ([year, month, day]: string[]) =>
+  `${year}-${pad(month)}-${pad(day)}`;
+const isDate = (value: string) => IsoDateSchema.safeParse(value).success;
 
-function span(a: string, b: string) {
-  if (!isDate(a) || !isDate(b)) return undefined;
-  return a <= b ? { lo: a, hi: b } : { lo: b, hi: a };
+function span(first: string, second: string) {
+  if (!isDate(first) || !isDate(second)) return undefined;
+  return first <= second
+    ? { lo: first, hi: second }
+    : { lo: second, hi: first };
 }
 
-const within = (n: number, lo: number, hi: number, fallback: number) =>
-  Number.isInteger(n) && n >= lo && n <= hi ? n : fallback;
+const within = (value: number, lo: number, hi: number, fallback: number) =>
+  Number.isInteger(value) && value >= lo && value <= hi ? value : fallback;
 
 /** Month calendar for the year and month args, the current month for anything missing or
  *  out of range (a NaN month would make monthGrid throw, and a 0-99 year hits Date's
@@ -60,15 +63,15 @@ async function calendar(
   ctx: Tap,
   prefix: string,
   lead: string,
-  [y, m]: string[],
+  [yearArg, monthArg]: string[],
 ): Promise<void> {
   await ack(ctx);
   const now = new Date();
-  const year = within(Number(y), 1000, 9999, now.getFullYear());
-  const month = within(Number(m), 1, 12, now.getMonth() + 1);
+  const year = within(Number(yearArg), 1000, 9999, now.getFullYear());
+  const month = within(Number(monthArg), 1, 12, now.getMonth() + 1);
   const nav = (monthIndex: number) => {
-    const d = new Date(year, monthIndex, 1);
-    return `${prefix}:${d.getFullYear()}:${d.getMonth() + 1}`;
+    const target = new Date(year, monthIndex, 1);
+    return `${prefix}:${target.getFullYear()}:${target.getMonth() + 1}`;
   };
   const kb = new InlineKeyboard();
   for (const label of ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"])
@@ -113,21 +116,21 @@ const rangeEnd = (
 async function confirmRange(
   ctx: Tap,
   admin: AdminService,
-  a: string,
-  b: string,
+  first: string,
+  second: string,
   day: boolean,
 ): Promise<void> {
-  const range = span(a, b);
+  const range = span(first, second);
   if (!range && day)
     return rejectDate(
       ctx,
-      { date: a },
+      { date: first },
       "reprocess: day tap rejected: bad date",
     );
   if (!range)
     return rejectDate(
       ctx,
-      { start: a, end: b },
+      { start: first, end: second },
       "reprocess: range-end tap rejected: bad date",
     );
   await ack(ctx);
@@ -170,15 +173,15 @@ async function showJotPage(
     view,
     title: () =>
       `✉️ Pick a jot to reprocess${page ? ` (page ${page + 1})` : ""}:`,
-    row: (kb, j) =>
+    row: (kb, jot) =>
       kb.text(
-        `${STATUS_ICON[j.status]} ${plainDate(j.received_at)} ${j.time} ${jotPreview(j)}`.slice(
+        `${STATUS_ICON[jot.status]} ${plainDate(jot.received_at)} ${jot.time} ${jotPreview(jot)}`.slice(
           0,
           64,
         ),
-        rp("jotpick", j.id),
+        rp("jotpick", jot.id),
       ),
-    nav: (p) => rp("jot", p),
+    nav: (target) => rp("jot", target),
     back: { text: "‹ Back", data: ROOT },
   });
   await ctx.editMessageText(screen.text, {
@@ -209,7 +212,7 @@ async function confirmJot(
 async function execute(
   ctx: Tap,
   admin: AdminService,
-  [mode, a = "", b = ""]: string[],
+  [mode, first = "", second = ""]: string[],
 ): Promise<void> {
   const run = async (scope: ReprocessScope) => {
     await ack(ctx);
@@ -218,18 +221,18 @@ async function execute(
     await ctx.editMessageText(text);
   };
   if (mode === "j") {
-    if (a) return run({ jot: a });
+    if (first) return run({ jot: first });
     log.warn("reprocess: execute rejected: missing jot id");
     return void ack(ctx, "bad jot id");
   }
   if (mode !== "d" && mode !== "r") return ack(ctx);
   const day = mode === "d";
-  const end = day ? a : b;
-  const range = span(a, end);
+  const end = day ? first : second;
+  const range = span(first, end);
   if (!range)
     return rejectDate(
       ctx,
-      day ? { date: a } : { start: a, end },
+      day ? { date: first } : { start: first, end },
       "reprocess: execute rejected: bad date",
     );
   return run({ ...range, day });

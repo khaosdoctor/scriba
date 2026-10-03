@@ -115,8 +115,8 @@ export class CommandService {
     this.active = undefined;
     if (running)
       this.settle(running, "🧭 Command mode closed — this one stopped.");
-    for (const t of stranded)
-      this.settle(t, "🧭 Command mode closed — this one never ran.");
+    for (const turn of stranded)
+      this.settle(turn, "🧭 Command mode closed — this one never ran.");
     this.teardown();
   }
 
@@ -135,9 +135,9 @@ export class CommandService {
   }
 
   private denyPending(): void {
-    for (const [, p] of this.pending) {
-      clearTimeout(p.timer);
-      p.decide(false);
+    for (const [, confirmation] of this.pending) {
+      clearTimeout(confirmation.timer);
+      confirmation.decide(false);
     }
     this.pending.clear();
   }
@@ -278,7 +278,7 @@ export class CommandService {
   }
 
   private async consume(stream: PromptStream): Promise<void> {
-    const q = await this.deps.service.startQuery({
+    const query = await this.deps.service.startQuery({
       prompt: stream,
       resume: this.sessionId,
       confirm: ({ kind, path, content }) =>
@@ -287,8 +287,8 @@ export class CommandService {
           content,
         ),
     });
-    this.agent = q;
-    for await (const msg of q as AsyncIterable<any>) this.onMessage(msg);
+    this.agent = query;
+    for await (const msg of query as AsyncIterable<any>) this.onMessage(msg);
   }
 
   private onMessage(msg: any): void {
@@ -296,30 +296,30 @@ export class CommandService {
     if (this.isOpen()) this.deps.modes.touch();
     if (this.active) this.armWatchdog(this.active); // …and it's visibly still working
     if (msg.type === "assistant") {
-      for (const b of msg.message?.content ?? []) {
-        if (b.type === "text") {
-          this.text += b.text;
+      for (const block of msg.message?.content ?? []) {
+        if (block.type === "text") {
+          this.text += block.text;
           continue;
         }
-        if (b.type === "thinking" || b.type === "redacted_thinking") {
+        if (block.type === "thinking" || block.type === "redacted_thinking") {
           this.flushText();
-          const thought = b.thinking ?? "(thinking)";
+          const thought = block.thinking ?? "(thinking)";
           this.update(`${thoughtIcon(thought)} ${thought}`);
           continue;
         }
-        if (b.type === "tool_use") {
+        if (block.type === "tool_use") {
           this.flushText();
           this.update(
-            `${toolIcon(b.name)} ${formatToolCall(b.name, b.input ?? {})}`,
+            `${toolIcon(block.name)} ${formatToolCall(block.name, block.input ?? {})}`,
           );
         }
       }
       return;
     }
     if (msg.type === "user") {
-      for (const b of msg.message?.content ?? [])
-        if (b.type === "tool_result" && b.is_error)
-          this.update(`⚠️ ${blockText(b.content)}`);
+      for (const block of msg.message?.content ?? [])
+        if (block.type === "tool_result" && block.is_error)
+          this.update(`⚠️ ${blockText(block.content)}`);
       return;
     }
     if (msg.type === "result") this.onResult(msg);
@@ -482,7 +482,7 @@ export class CommandService {
       return void ack("nothing to stop");
     }
     if (turn !== this.active) {
-      this.queue = this.queue.filter((t) => t !== turn);
+      this.queue = this.queue.filter((queued) => queued !== turn);
       log.info({ turn: turn.id }, "command: queued prompt dropped");
       await ack("dropped");
       return this.settle(turn, "⏹ Dropped before it started.");
@@ -512,7 +512,7 @@ function blockText(content: unknown): string {
   if (!Array.isArray(content)) return "tool failed";
   return (
     content
-      .map((b: any) => (typeof b?.text === "string" ? b.text : ""))
+      .map((block: any) => (typeof block?.text === "string" ? block.text : ""))
       .filter(Boolean)
       .join(" ") || "tool failed"
   );

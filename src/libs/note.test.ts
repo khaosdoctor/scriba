@@ -391,11 +391,11 @@ test("moveAnchorLine touches one line of a realistic note and is idempotent", ()
   const before = note.split("\n");
   const after = first.note.split("\n");
   assert.deepEqual(
-    before.filter((l) => !after.includes(l)),
+    before.filter((line) => !after.includes(line)),
     ["- "],
   );
   assert.deepEqual(
-    after.filter((l) => !before.includes(l)),
+    after.filter((line) => !before.includes(line)),
     [],
   );
   assert.equal(after.length, before.length - 1);
