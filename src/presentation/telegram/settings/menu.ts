@@ -4,7 +4,7 @@ import { formatJotDetail, jotPreview, STATUS_ICON } from "../../../libs/jot.ts";
 import { logger } from "../../../libs/log.ts";
 import { paginate } from "../../../libs/page.ts";
 import { fitTelegram } from "../../../libs/text.ts";
-import { plainDate } from "../../../libs/time.ts";
+import { plainDate, previousDate } from "../../../libs/time.ts";
 import type { JotService } from "../../../services/jots.ts";
 import type {
   ModelKey,
@@ -274,7 +274,7 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         return rating.prompt(plainDate());
       case "habits":
         await responder.ack("Opening habits review below ↓");
-        return habits.prompt(plainDate(Date.now() - 86_400_000));
+        return habits.prompt(previousDate());
       case "tasks":
         await responder.ack("Opening tasks below ↓");
         return tasks.promptRoot();

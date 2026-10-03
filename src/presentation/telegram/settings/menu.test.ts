@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import type { Jot } from "../../../domain/jot/entity.ts";
 import { parseWizardRef } from "../../../libs/wizard.ts";
 import {
@@ -478,4 +478,28 @@ test("retry and delete on a squashed follower act on its leader", async () => {
     id === "leader01" ? [follower] : [];
   await harness.tap("menu:jdy:follow01");
   assert.deepEqual(marked, ["leader01", "follow01"]);
+});
+
+test("the menu habit review opens for the calendar day before, on the evening after a clock change", async () => {
+  const savedZone = process.env.TZ;
+  process.env.TZ = "Europe/Stockholm";
+  mock.timers.enable({
+    apis: ["Date"],
+    now: new Date(2026, 9, 25, 23, 30).getTime(),
+  });
+  try {
+    const harness = await botHarness();
+    harness.obsidian.readDailyNote = {
+      path: "p.md",
+      content: "## Habits\n- [ ] Practiced music\n",
+    };
+    const run = await harness.tap("menu:habits");
+    assert.deepEqual(run.texts("sendMessage"), [
+      "🌱 Time to review habits for 2026-10-24 — 1 to go.",
+    ]);
+  } finally {
+    mock.timers.reset();
+    delete process.env.TZ;
+    if (savedZone !== undefined) process.env.TZ = savedZone;
+  }
 });
