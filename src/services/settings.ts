@@ -28,7 +28,10 @@ import type { Notifier } from "./notifier.ts";
 const log = logger("menu");
 
 export interface SettingsDeps {
-  settings: SettingsRepository;
+  settings: Pick<
+    SettingsRepository,
+    "getSetting" | "setSetting" | "toggleSetting" | "ratingTime"
+  >;
   linkRules: LinkRuleRepository;
   links: Pick<VaultRepository, "list" | "stats">;
   enricher: Pick<Enricher, "setModel">;
