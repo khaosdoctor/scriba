@@ -73,15 +73,18 @@ type Closable =
 export async function openNative<Handle extends Closable>(
   testContext: Skippable,
   open: (dbPath: string) => Promise<Handle>,
+  { ignoreCloseErrors = false } = {},
 ) {
   const dbPath = tempDbPath();
   try {
     const handle = await open(dbPath);
     const close = async () => {
-      await ("close" in handle ? handle.close() : handle.destroy()).catch(
-        () => {},
-      );
-      await removeDb(dbPath);
+      try {
+        const closing = "close" in handle ? handle.close() : handle.destroy();
+        await (ignoreCloseErrors ? closing.catch(() => {}) : closing);
+      } finally {
+        await removeDb(dbPath);
+      }
     };
     return { handle, dbPath, close };
   } catch (error) {
@@ -97,8 +100,9 @@ export async function withNative<Handle extends Closable>(
   testContext: Skippable,
   open: (dbPath: string) => Promise<Handle>,
   fn: (handle: Handle, dbPath: string) => Promise<void>,
+  options?: { ignoreCloseErrors?: boolean },
 ): Promise<void> {
-  const native = await openNative(testContext, open);
+  const native = await openNative(testContext, open, options);
   if (!native) return;
   try {
     await fn(native.handle, native.dbPath);

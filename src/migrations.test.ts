@@ -45,7 +45,7 @@ async function open(dbPath: string): Promise<Knex> {
 const withDb = (
   testContext: { skip: (why: string) => void },
   fn: (knex: Knex, dbPath: string) => Promise<void>,
-) => withNative(testContext, open, fn);
+) => withNative(testContext, open, fn, { ignoreCloseErrors: true });
 
 async function migrateTo(knex: Knex, version: string) {
   while ((await knex.migrate.currentVersion()) !== version)
