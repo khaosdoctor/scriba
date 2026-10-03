@@ -2,6 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { botHarness } from "../../../test/bot-harness.ts";
 
+test("/rate refuses an impossible date with the same usage line", async () => {
+  const harness = await botHarness();
+  const run = await harness.say("/rate 2026-02-31");
+  assert.deepEqual(run.texts("sendMessage"), [
+    "Usage: /rate or /rate YYYY-MM-DD",
+  ]);
+});
+
 test("/rate prompts for the day given, and refuses a malformed date with the usage line", async () => {
   const h = await botHarness();
 

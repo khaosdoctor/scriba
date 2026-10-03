@@ -12,6 +12,15 @@ test("/habits refuses a malformed date with the usage line and reads nothing", a
   assert.equal(run.rendered, "tg.sendMessage");
 });
 
+test("/habits refuses an impossible date with the same usage line", async () => {
+  const harness = await botHarness();
+  const run = await harness.say("/habits 2026-02-31");
+  assert.deepEqual(run.texts("sendMessage"), [
+    "Usage: /habits or /habits YYYY-MM-DD",
+  ]);
+  assert.equal(run.rendered, "tg.sendMessage");
+});
+
 test("/habits with no argument reviews yesterday and says so when there is no note", async () => {
   const harness = await botHarness();
   const run = await harness.say("/habits");
