@@ -5,6 +5,7 @@ import {
   type GroqMessage,
   groqChat,
 } from "../data/connections/groq.ts";
+import { TASK_TYPES } from "../domain/task/entity.ts";
 import {
   type DetectedTask,
   DetectedTaskSchema,
@@ -81,7 +82,7 @@ const TaskOutputStrict = z.strictObject({
   description: z.string(),
   start: z.string().optional(),
   due: z.string().optional(),
-  type: z.enum(["work", "personal"]),
+  type: z.enum(TASK_TYPES),
 });
 
 const ambiguousSchema = z.array(

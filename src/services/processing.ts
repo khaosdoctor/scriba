@@ -14,6 +14,7 @@ import {
   journalLine,
   sourceField,
 } from "../domain/jot/rules.ts";
+import { draftFromDetection } from "../domain/task/draft.ts";
 import type { TaskDraft } from "../domain/task/entity.ts";
 import type { DetectedTask } from "../domain/task/structures.ts";
 import {
@@ -26,7 +27,6 @@ import {
 import { candidates, forcedCandidates, linkDateWords } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import { isRecoverable } from "../libs/model.ts";
-import { draftFromDetection } from "../libs/tasks.ts";
 import { escapeHtml, shortId, splitEntry } from "../libs/text.ts";
 import type { EditService } from "./edits.ts";
 import { type Enricher, ModelsDownError } from "./enrich.ts";

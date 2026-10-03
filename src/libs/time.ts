@@ -4,19 +4,19 @@ import { z } from "zod";
  *  maps them to 1900-1999 and would reprocess the wrong day. */
 export const IsoDateSchema = z.iso
   .date()
-  .refine((d) => Number(d.slice(0, 4)) >= 100);
+  .refine((date) => Number(date.slice(0, 4)) >= 100);
 
 const ClockTimeSchema = z
   .string()
   .trim()
   .regex(/^([01]?\d|2[0-3]):[0-5]\d$/)
-  .transform((t) => t.padStart(5, "0"));
+  .transform((time) => time.padStart(5, "0"));
 
 export function parseClockTime(text: string): string | null {
   return ClockTimeSchema.safeParse(text).data ?? null;
 }
 
-const pad2 = (n: number) => String(n).padStart(2, "0");
+const pad2 = (value: number) => String(value).padStart(2, "0");
 
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,13 +24,13 @@ export const isIsoDate = (date: string): boolean =>
   IsoDateSchema.safeParse(date).success;
 
 export function plainTime(epochMs: number = Date.now()): string {
-  const d = new Date(epochMs);
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+  const date = new Date(epochMs);
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
 }
 
 export function plainDate(epochMs: number = Date.now()): string {
-  const d = new Date(epochMs);
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  const date = new Date(epochMs);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
 /** Local midnight Date for a "YYYY-MM-DD" string, the inverse of plainDate. Throws on
@@ -39,20 +39,20 @@ export function plainDate(epochMs: number = Date.now()): string {
 export function dateFromIso(date: string): Date {
   if (!DATE_RE.test(date))
     throw new Error(`dateFromIso: not a YYYY-MM-DD date: ${date}`);
-  const [y, m, d] = date.split("-").map(Number);
-  return new Date(y!, m! - 1, d!);
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year!, month! - 1, day!);
 }
 
 export function startOfToday(epochMs: number = Date.now()): number {
-  const d = new Date(epochMs);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+  const date = new Date(epochMs);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
 }
 
 export function previousDate(epochMs: number = Date.now()): string {
-  const d = new Date(startOfToday(epochMs));
-  d.setDate(d.getDate() - 1);
-  return plainDate(d.getTime());
+  const date = new Date(startOfToday(epochMs));
+  date.setDate(date.getDate() - 1);
+  return plainDate(date.getTime());
 }
 
 /** [start, end) epoch-ms bounds of the local calendar day for a "YYYY-MM-DD" string:
@@ -69,6 +69,28 @@ export function dayBounds(date: string): [number, number] {
     start.getDate() + 1,
   );
   return [start.getTime(), end.getTime()];
+}
+
+export function weekBounds(date: string): [string, string] {
+  const day = dateFromIso(date);
+  const start = new Date(
+    day.getFullYear(),
+    day.getMonth(),
+    day.getDate() - day.getDay(),
+  );
+  const end = new Date(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate() + 6,
+  );
+  return [plainDate(start.getTime()), plainDate(end.getTime())];
+}
+
+export function shiftDate(date: string, days: number): string {
+  const day = dateFromIso(date);
+  return plainDate(
+    new Date(day.getFullYear(), day.getMonth(), day.getDate() + days).getTime(),
+  );
 }
 
 export function msUntilNext(hhmm: string): number {

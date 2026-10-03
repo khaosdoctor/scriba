@@ -1,11 +1,16 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 export function shortId(): string {
   return randomBytes(4).toString("hex");
 }
 
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
-export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+export const escapeRe = (text: string) =>
+  text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+export function fingerprint(line: string): string {
+  return createHash("sha1").update(line).digest("hex").slice(0, 8);
+}
 
 /** Reduce a fetched page to readable text. A string transform, never a browser: script and
  *  style bodies are dropped rather than run, and nothing here can execute JS. */
@@ -23,20 +28,22 @@ export function htmlToText(html: string): string {
     .replace(/&gt;/gi, ">")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&#(\d+);/g, (_m, d: string) => String.fromCodePoint(Number(d)))
-    .replace(/&#x([0-9a-f]+);/gi, (_m, h: string) =>
-      String.fromCodePoint(Number.parseInt(h, 16)),
+    .replace(/&#(\d+);/g, (_all, digits: string) =>
+      String.fromCodePoint(Number(digits)),
+    )
+    .replace(/&#x([0-9a-f]+);/gi, (_all, hex: string) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
     );
   return text
     .split("\n")
-    .map((l) => l.replace(/[ \t]+/g, " ").trim())
-    .filter((l, i, all) => l !== "" || all[i - 1] !== "") // collapse blank runs
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter((line, at, all) => line !== "" || all[at - 1] !== "") // collapse blank runs
     .join("\n")
     .trim();
 }
 
-export function escapeHtml(s: string): string {
-  return s
+export function escapeHtml(text: string): string {
+  return text
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
@@ -49,7 +56,7 @@ export function escapeHtml(s: string): string {
 // real sentence ends split. Zero-width, so `split` keeps every character.
 const SENTENCE_BOUNDARY = /(?<=[.!?…]["')\]]*)\s+(?=[^\p{Ll}\s])/u;
 
-const collapse = (s: string): string => s.replace(/\s+/g, " ").trim();
+const collapse = (text: string): string => text.replace(/\s+/g, " ").trim();
 
 export function splitEntry(text: string, maxChars: number): string[] {
   const clean = collapse(text);
@@ -83,30 +90,30 @@ export function fitTelegram(text: string, limit = TELEGRAM_LIMIT): string {
   return `${text.slice(0, limit - notice.length)}${notice}`;
 }
 
-export function pluralize(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? "" : "s"}`;
+export function pluralize(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
 }
 
 export function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const d = Math.floor(s / 86400);
-  const h = Math.floor((s % 86400) / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  if (d) return `${d}d ${h}h`;
-  if (h) return `${h}h ${m}m`;
-  if (m) return `${m}m ${sec}s`;
-  return `${sec}s`;
+  const total = Math.floor(ms / 1000);
+  const days = Math.floor(total / 86400);
+  const hours = Math.floor((total % 86400) / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  if (days) return `${days}d ${hours}h`;
+  if (hours) return `${hours}h ${minutes}m`;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
 }
 
 /** A typed entry-size reply: a whole number of characters, or "off" to stop splitting.
  *  Null when it isn't usable: under 40 characters no sentence would ever fit. */
 export function parseEntrySize(text: string): number | null {
-  const s = text.trim().toLowerCase();
-  if (s === "off" || s === "none" || s === "0") return 0;
-  if (!/^\d{1,4}$/.test(s)) return null;
-  const n = Number(s);
-  return n >= 40 && n <= 4000 ? n : null;
+  const typed = text.trim().toLowerCase();
+  if (typed === "off" || typed === "none" || typed === "0") return 0;
+  if (!/^\d{1,4}$/.test(typed)) return null;
+  const size = Number(typed);
+  return size >= 40 && size <= 4000 ? size : null;
 }
 
 export function previewList(items: string[], max: number): string {

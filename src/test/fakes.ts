@@ -4,7 +4,21 @@ import {
   type SettingValue,
   type SwitchKey,
 } from "../domain/setting/entity.ts";
+import type { Task } from "../domain/task/entity.ts";
 import { parseClockTime } from "../libs/time.ts";
+
+export const sampleTask = (over: Partial<Task>): Task => ({
+  index: 0,
+  line: "",
+  fingerprint: "0",
+  type: "personal",
+  state: "open",
+  text: "t",
+  start: null,
+  due: null,
+  completion: null,
+  ...over,
+});
 
 /** The settings half of a fake Repository: typed reads and string writes over a plain map,
  *  the way SettingsRepository behaves over the table. Members are arrow properties so the
@@ -94,18 +108,18 @@ export function recordingApi(
       };
     return { ok: true, result: true };
   };
-  const of = (method: string) => calls.filter((c) => c.method === method);
+  const of = (method: string) => calls.filter((call) => call.method === method);
   return {
     calls,
     fail,
     results,
     transformer,
-    texts: (method) => of(method).map((c) => c.payload.text),
-    answers: () => of("answerCallbackQuery").map((c) => c.payload.text),
+    texts: (method) => of(method).map((call) => call.payload.text),
+    answers: () => of("answerCallbackQuery").map((call) => call.payload.text),
     buttons: (call) =>
       (call?.payload.reply_markup?.inline_keyboard ?? [])
         .flat()
-        .map((b: any) => [b.text, b.callback_data]),
+        .map((button: any) => [button.text, button.callback_data]),
   };
 }
 

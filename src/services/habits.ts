@@ -7,7 +7,7 @@ import {
   parseHabits,
 } from "../libs/habits.ts";
 import { logger } from "../libs/log.ts";
-import { fingerprint } from "../libs/tasks.ts";
+import { fingerprint } from "../libs/text.ts";
 import type { Notifier } from "./notifier.ts";
 
 const log = logger("habits");
@@ -39,7 +39,7 @@ export class HabitService {
       return say(`✅ Habits already reviewed for ${date}.`);
     }
     const pending = daily
-      ? parseHabits(daily.content, heading).filter((h) => !h.done)
+      ? parseHabits(daily.content, heading).filter((habit) => !habit.done)
       : [];
     if (!pending.length) {
       log.info({ date, hasNote: !!daily }, "no pending habits to review");
@@ -72,7 +72,7 @@ export class HabitService {
       return this.cleanup(date);
     }
     const habit = parseHabits(daily.content, heading).find(
-      (h) => h.index >= fromIndex && !h.done,
+      (candidate) => candidate.index >= fromIndex && !candidate.done,
     );
     if (!habit) {
       log.info({ date }, `habit review complete — stamping frontmatter`);

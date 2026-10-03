@@ -291,7 +291,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   `[completion:: date]` stamped on done. Paths, headings, tags and which end a new task
   goes on (work runs newest-first, personal is appended to) are all config. Only the two
   notes are the truth: created tasks are never mirrored into sqlite, so a task edited in
-  Obsidian is still the task scriba lists and ticks. `libs/tasks.ts` is the pure
+  Obsidian is still the task scriba lists and ticks. `domain/task/line.ts` is the pure
   half and is deliberately tolerant of what is really in those notes: the older
   `✅ 2026-03-02` done marker beside `[completion:: ]`, cancelled `- [-]` rows, a typo'd
   `[start::6-03-01]`, an empty description, and `[id:: ]`/`[dependsOn:: ]` fields it must

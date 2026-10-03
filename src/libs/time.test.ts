@@ -12,7 +12,13 @@ import {
   previousDate,
   ratingDay,
   startOfToday,
+  weekBounds,
 } from "./time.ts";
+
+test("weekBounds is the Sunday-first week around a day", () => {
+  assert.deepEqual(weekBounds("2026-08-29"), ["2026-08-23", "2026-08-29"]);
+  assert.deepEqual(weekBounds("2026-08-30"), ["2026-08-30", "2026-09-05"]);
+});
 
 test("plainDate/plainTime return well-formed strings", () => {
   assert.match(plainDate(0), /^\d{4}-\d{2}-\d{2}$/);
@@ -98,8 +104,8 @@ test("dayBounds spans a short/long day across a DST transition, not a fixed 24h"
 });
 
 test("ratingDay rolls back across month, year and leap-day boundaries", () => {
-  const at = (y: number, m: number, d: number) =>
-    new Date(y, m, d, 0, 0).getTime();
+  const at = (year: number, month: number, day: number) =>
+    new Date(year, month, day, 0, 0).getTime();
   assert.equal(ratingDay("00:00", at(2026, 0, 1)), "2025-12-31");
   assert.equal(ratingDay("00:00", at(2026, 2, 1)), "2026-02-28");
   assert.equal(ratingDay("00:00", at(2028, 2, 1)), "2028-02-29");
@@ -136,7 +142,7 @@ test("ratingDay reads an unpadded hour", () => {
 });
 
 test("IsoDateSchema rejects malformed shapes, sub-100 years, and out-of-range month/day", () => {
-  const ok = (d: string) => IsoDateSchema.safeParse(d).success;
+  const ok = (date: string) => IsoDateSchema.safeParse(date).success;
   assert.equal(ok("2026-07-10"), true);
   assert.equal(ok("2024-02-29"), true); // 2024 is a leap year
   assert.equal(ok("0500-01-01"), true); // outside Date's 0-99 special case
