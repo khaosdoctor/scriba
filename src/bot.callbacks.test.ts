@@ -3,15 +3,14 @@ import { test } from "node:test";
 import { createScriba } from "./app.ts";
 import type { Jot } from "./domain/jot/entity.ts";
 import { journalLine } from "./libs/note.ts";
+import { chat, user as from, JOT_ID as ID, NOW } from "./test/bot-harness.ts";
 import { testConfig } from "./test/config.ts";
 import { BOT_INFO, recordingApi } from "./test/fakes.ts";
 import { noteOps } from "./test/note-ops.ts";
 import { sampleJot } from "./test/sqlite.ts";
 
-const NOW = Date.UTC(2026, 7, 16, 10, 0, 0);
 const SEC = NOW / 1000;
 const NOTE = "notes/daily notes/2026-08-16.md";
-const ID = "aaaaaaaa";
 const YT = "https://youtu.be/dQw4w9WgXcQ";
 
 const jot = (over: Partial<Jot> = {}): Jot =>
@@ -151,8 +150,6 @@ async function harness(over: Opts = {}) {
   bot.bot.botInfo = BOT_INFO;
   bot.bot.api.config.use(rec.transformer as never);
 
-  const from = { id: 1, is_bot: false, first_name: "me" };
-  const chat = { id: 1, type: "private" as const };
   let updateId = 0;
   // Long polling routes a handler's BotError to bot.catch; handleUpdate alone rethrows it.
   const update = (payload: object) =>

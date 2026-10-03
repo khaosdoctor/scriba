@@ -108,8 +108,8 @@ export function renderTimeline(events: string[]): string {
   return out.join(" > ");
 }
 
-const user = { id: OWNER, is_bot: false, first_name: "Lucas" };
-const chat = { id: CHAT, type: "private" as const };
+export const user = { id: OWNER, is_bot: false, first_name: "Lucas" };
+export const chat = { id: CHAT, type: "private" as const };
 
 export async function botHarness() {
   const timeline: string[] = [];
