@@ -1,4 +1,3 @@
-import { basename } from "node:path";
 import type { JotRepository } from "../data/repositories/jots.ts";
 import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
@@ -6,25 +5,29 @@ import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { TaskDraftRepository } from "../data/repositories/task-drafts.ts";
 import type { VaultService } from "../data/repositories/vault.ts";
 import { type Jot, MAX_ATTEMPTS } from "../domain/jot/entity.ts";
+import {
+  combineEnrichSource,
+  enrichableSource,
+  entryContent,
+  isFollower,
+  jotDay,
+  journalLine,
+  sourceField,
+} from "../domain/jot/rules.ts";
 import type { TaskDraft } from "../domain/task/entity.ts";
 import type { DetectedTask } from "../domain/task/structures.ts";
 import {
-  assetEmbed,
-  combineEnrichSource,
   doneMessage,
   embedOffer,
-  enrichableSource,
   gaveUpMessage,
   heldNotice,
-  isRecoverable,
-  makeJotId,
   retryNotice,
 } from "../libs/jot.ts";
 import { candidates, forcedCandidates, linkDateWords } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
-import { journalLine } from "../libs/note.ts";
+import { isRecoverable } from "../libs/model.ts";
 import { draftFromDetection } from "../libs/tasks.ts";
-import { escapeHtml, splitEntry } from "../libs/text.ts";
+import { escapeHtml, shortId, splitEntry } from "../libs/text.ts";
 import type { EditService } from "./edits.ts";
 import { type Enricher, ModelsDownError } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
@@ -37,9 +40,6 @@ const log = logger("processor");
 const botLog = logger("bot");
 
 export const HELD = "held: every enrichment model is down";
-
-/** The daily note's date, which is the note file's name. */
-const jotDay = (jot: Jot): string => basename(jot.note_path, ".md");
 
 const WEAVING = "✨ Weaving it into your journal…";
 
@@ -84,7 +84,7 @@ export class ProcessingService {
     const pending = await this.deps.repo.pendingJots();
     if (!pending.length) return log.debug("retry sweep: nothing pending");
     log.info(
-      { count: pending.length, ids: pending.map((j) => j.id) },
+      { count: pending.length, ids: pending.map((jot) => jot.id) },
       "retry sweep",
     );
     for (const jot of pending) await this.processJot(jot.id);
@@ -96,7 +96,7 @@ export class ProcessingService {
     // A squashed follower shares its leader's anchor and is folded into the leader's
     // line, so the leader processes it. Defer: unless the leader is gone (deleted), in
     // which case fall through and process this jot standalone (its write appends).
-    if (loaded.anchor !== loaded.id) {
+    if (isFollower(loaded)) {
       const leader = await this.deps.repo.getJot(loaded.anchor);
       if (leader && leader.status !== "deleted") {
         // Group already finished but this follower lingered (e.g. a crash between the
@@ -173,15 +173,15 @@ export class ProcessingService {
         await this.deps.jots.status(id, voiceStatus(jot.transcript!, WEAVING));
       }
       const followers: Jot[] = [];
-      for (const f of await this.deps.repo.groupFollowers(jot.id))
-        followers.push(await this.ensureMedia(f));
+      for (const follower of await this.deps.repo.groupFollowers(jot.id))
+        followers.push(await this.ensureMedia(follower));
       const merged = followers.length > 0;
       const source = combineEnrichSource(
-        [jot, ...followers].map((j) => enrichableSource(j)),
+        [jot, ...followers].map((member) => enrichableSource(member)),
       ); // video is attach-only, so it contributes nothing here
       if (merged)
         log.info(
-          { id, followers: followers.map((f) => f.id) },
+          { id, followers: followers.map((follower) => follower.id) },
           `squash: enriching ${followers.length + 1} jots as one line`,
         );
 
@@ -205,14 +205,14 @@ export class ProcessingService {
         // suggest for the same surface+note, so it isn't listed (and judged) twice.
         // JSON-encoded so a surface/note containing a space can't collide with a
         // different pair (plain `${surface} ${note}` concatenation could).
-        const pairKey = (c: { surface: string; note: string }) =>
-          JSON.stringify([c.surface.toLowerCase(), c.note]);
+        const pairKey = (link: { surface: string; note: string }) =>
+          JSON.stringify([link.surface.toLowerCase(), link.note]);
         const forced = forcedCandidates(source, registered);
         const forcedKeys = new Set(forced.map(pairKey));
         const cands = [
           ...forced,
           ...candidates(source, index, stopwords, rejections).filter(
-            (c) => !forcedKeys.has(pairKey(c)),
+            (candidate) => !forcedKeys.has(pairKey(candidate)),
           ),
         ];
         log.info(
@@ -224,8 +224,8 @@ export class ProcessingService {
             stopwords: stopwords.size,
             rejections: rejections.size,
             candidates: cands.map(
-              (c) =>
-                `"${c.surface}" -> [[${c.note}]]${c.forced ? " (registered)" : ""}`,
+              (candidate) =>
+                `"${candidate.surface}" -> [[${candidate.note}]]${candidate.forced ? " (registered)" : ""}`,
             ),
           },
           `enricher: ${cands.length} link candidate(s) (${forced.length} registered) from local index of ${index.length} aliases`,
@@ -246,7 +246,7 @@ export class ProcessingService {
             id,
             ambiguous: res.ambiguous.length,
             ambiguousLinks: res.ambiguous.map(
-              (a) => `"${a.surface}" -> [[${a.note}]]`,
+              (link) => `"${link.surface}" -> [[${link.note}]]`,
             ),
             usage: res.usage,
           },
@@ -254,17 +254,17 @@ export class ProcessingService {
         );
         detected = await this.tasksFrom(res.tasks, jot);
         tilCard = await this.tilWanted(res.til, jot);
-        for (const a of res.ambiguous) {
-          const pid = makeJotId();
+        for (const link of res.ambiguous) {
+          const pid = shortId();
           await this.deps.linkRules.addPendingLink(
             pid,
             jot.id,
-            a.surface,
-            a.note,
+            link.surface,
+            link.note,
           );
-          await this.askLink(pid, a.surface, a.note);
+          await this.askLink(pid, link.surface, link.note);
           log.debug(
-            { id, pid, surface: a.surface, note: a.note },
+            { id, pid, surface: link.surface, note: link.note },
             "asked to confirm link",
           );
         }
@@ -279,18 +279,18 @@ export class ProcessingService {
       const linked = pieces[0] ?? "";
       const spillover = pieces
         .slice(1)
-        .map((text, i) => this.pieceJot(jot, text, i + 1));
+        .map((text, index) => this.pieceJot(jot, text, index + 1));
       if (spillover.length)
         log.info(
-          { id, maxChars, pieces: spillover.map((p) => p.id) },
+          { id, maxChars, pieces: spillover.map((piece) => piece.id) },
           `entry over ${maxChars} chars — split into ${pieces.length} jots`,
         );
       await this.writeLine(
         jot,
         [
           this.composeLine(jot, linked),
-          ...spillover.map((p) =>
-            journalLine(p.time, p.raw_text ?? "", p.anchor),
+          ...spillover.map((piece) =>
+            journalLine(piece.time, piece.raw_text ?? "", piece.anchor),
           ),
         ].join("\n"),
       );
@@ -298,14 +298,17 @@ export class ProcessingService {
       // written first would be duplicated by that retry.
       // ponytail: a crash between the write and these inserts leaves the spillover lines
       // in the note with no jot row (uneditable). Sub-millisecond window, local sqlite.
-      for (const p of spillover) await this.deps.repo.insertJot(p);
+      for (const piece of spillover) await this.deps.repo.insertJot(piece);
       if (spillover.length && !merged)
         await this.deps.repo.updateJot(jot.id, {
-          [jot.kind === "audio" ? "transcript" : "raw_text"]: linked,
+          [sourceField(jot.kind)]: linked,
         });
       await this.deps.repo.updateJot(jot.id, { status: "done", error: null });
-      for (const f of followers)
-        await this.deps.repo.updateJot(f.id, { status: "done", error: null });
+      for (const follower of followers)
+        await this.deps.repo.updateJot(follower.id, {
+          status: "done",
+          error: null,
+        });
       // Post-`done` steps are best-effort UI + the queued-edit drain. A transient throw
       // here must NOT route to fail(): that would demote an already-committed `done` jot
       // to `failed`, causing wasted re-enrichment and duplicate link prompts on retry.
@@ -324,14 +327,21 @@ export class ProcessingService {
           ),
           { undo: true, embed: embedOffer(linked) },
         );
-        for (const [i, p] of spillover.entries())
+        for (const [index, piece] of spillover.entries())
           await this.deps.jots.status(
-            p.id,
-            doneMessage(p.time, p.kind, p.raw_text ?? "", p.id, 0, {
-              i: i + 2,
-              of,
-            }),
-            { undo: true, embed: embedOffer(p.raw_text ?? "") },
+            piece.id,
+            doneMessage(
+              piece.time,
+              piece.kind,
+              piece.raw_text ?? "",
+              piece.id,
+              0,
+              {
+                i: index + 2,
+                of,
+              },
+            ),
+            { undo: true, embed: embedOffer(piece.raw_text ?? "") },
           );
         // Tasks come after the entry is safely in the note: a card is a question about
         // something already journalled, never a step on the way to journalling it.
@@ -339,10 +349,10 @@ export class ProcessingService {
           await this.deps.tasks.suggest(draft, jot.id, jotDay(jot));
         if (tilCard) await this.deps.jots.askTil(jot.id, linked);
         await this.deps.edits.drainQueued(jot.id); // apply anything queued while we were working
-        for (const f of followers) {
-          await this.deps.jots.react(f.id, "done");
-          await this.deps.jots.deleteStatus(f.id);
-          await this.deps.edits.drainQueued(f.id);
+        for (const follower of followers) {
+          await this.deps.jots.react(follower.id, "done");
+          await this.deps.jots.deleteStatus(follower.id);
+          await this.deps.edits.drainQueued(follower.id);
         }
       } catch (err) {
         log.error({ id, err }, "post-done side effect failed — jot stays done");
@@ -406,8 +416,8 @@ export class ProcessingService {
     );
     const followers = await this.deps.repo.groupFollowers(jot.id);
     const source = combineEnrichSource(
-      [jot, ...followers].map((j) =>
-        enrichableSource(j, "🎤 (voice note — transcription failed)"),
+      [jot, ...followers].map((member) =>
+        enrichableSource(member, "🎤 (voice note — transcription failed)"),
       ),
     );
     try {
@@ -418,15 +428,15 @@ export class ProcessingService {
     } catch {
       /* the note write itself is failing: nothing more we can do */
     }
-    for (const j of [jot, ...followers]) {
-      await this.deps.repo.updateJot(j.id, {
+    for (const member of [jot, ...followers]) {
+      await this.deps.repo.updateJot(member.id, {
         status: "abandoned",
         attempts,
         error: msg,
       });
-      await this.deps.jots.react(j.id, "failed");
-      if (j.id !== jot.id) await this.deps.jots.deleteStatus(j.id);
-      await this.deps.edits.drainQueued(j.id); // apply edits queued while it was failing
+      await this.deps.jots.react(member.id, "failed");
+      if (member.id !== jot.id) await this.deps.jots.deleteStatus(member.id);
+      await this.deps.edits.drainQueued(member.id); // apply edits queued while it was failing
     }
     await this.say(
       jot.id,
@@ -534,13 +544,15 @@ export class ProcessingService {
     }
     const day = jotDay(jot);
     const drafts = detected
-      .map((d) => draftFromDetection(d, day))
-      .filter((d) => d.description.trim());
+      .map((task) => draftFromDetection(task, day))
+      .filter((draft) => draft.description.trim());
     log.info(
       {
         id: jot.id,
         count: drafts.length,
-        tasks: drafts.map((d) => `${d.description} (due ${d.due ?? "?"})`),
+        tasks: drafts.map(
+          (draft) => `${draft.description} (due ${draft.due ?? "?"})`,
+        ),
       },
       `task detection: ${drafts.length} task(s) found in this jot`,
     );
@@ -573,8 +585,8 @@ export class ProcessingService {
    *  anchor of its own so it edits, undoes and reprocesses independently. Its `received_at`
    *  is nudged past the parent's so the intake order (and any later squash query) still
    *  reads left to right. */
-  private pieceJot(jot: Jot, text: string, i: number): Jot {
-    const id = makeJotId();
+  private pieceJot(jot: Jot, text: string, offset: number): Jot {
+    const id = shortId();
     return {
       ...jot,
       id,
@@ -588,15 +600,17 @@ export class ProcessingService {
       status: "done",
       attempts: 0,
       error: null,
-      received_at: jot.received_at + i,
+      received_at: jot.received_at + offset,
       updated_at: Date.now(),
     };
   }
 
   private composeLine(jot: Jot, textPart: string): string {
-    const content =
-      [textPart, assetEmbed(jot)].filter(Boolean).join(" ") || "…";
-    return journalLine(jot.time, content, jot.anchor);
+    return journalLine(
+      jot.time,
+      entryContent(jot, textPart) || "…",
+      jot.anchor,
+    );
   }
 
   private async writeLine(jot: Jot, line: string): Promise<void> {

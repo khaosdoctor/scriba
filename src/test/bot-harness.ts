@@ -4,6 +4,7 @@
 
 import { createScriba } from "../app.ts";
 import type { Jot } from "../domain/jot/entity.ts";
+import { emptyStatusCounts } from "../domain/jot/rules.ts";
 import type { TaskDraftRow } from "../domain/task/entity.ts";
 import { testConfig } from "./config.ts";
 import { type ApiCall, BOT_INFO, FakeSettings, recordingApi } from "./fakes.ts";
@@ -62,14 +63,6 @@ const ZERO_STATS = {
   failed: 0,
   abandoned: 0,
   inflight: 0,
-};
-const ZERO_COUNTS = {
-  pending: 0,
-  processing: 0,
-  done: 0,
-  failed: 0,
-  abandoned: 0,
-  deleted: 0,
 };
 
 function recorder(
@@ -146,7 +139,7 @@ export async function botHarness() {
     groupFollowers: [],
     queuedEdits: [],
     windowStats: ZERO_STATS,
-    statusCounts: ZERO_COUNTS,
+    statusCounts: emptyStatusCounts(),
     resetProcessing: 0,
     resetFailed: 0,
     resetForRetry: true,

@@ -1,5 +1,10 @@
 export type JotKind = "text" | "audio" | "image" | "video";
 export type JotSection = "journal" | "til";
+
+export const SQUASHABLE_KINDS = [
+  "text",
+  "audio",
+] as const satisfies readonly JotKind[];
 export const JOT_STATUSES = [
   "pending", // placeholder written, awaiting processing
   "processing", // claimed by a worker (atomic), in flight

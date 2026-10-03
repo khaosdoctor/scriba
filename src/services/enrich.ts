@@ -9,11 +9,11 @@ import {
   type DetectedTask,
   DetectedTaskSchema,
 } from "../domain/task/structures.ts";
-import { isRecoverable } from "../libs/jot.ts";
 import type { Candidate } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import {
   CircuitBreaker,
+  isRecoverable,
   parseModelJson,
   unwrapModelPayload,
 } from "../libs/model.ts";
@@ -121,7 +121,7 @@ export const userMessage = (content: unknown) => ({
 });
 
 /** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
-const fence = (s: string): string => s.replaceAll('"""', "");
+const fence = (value: string): string => value.replaceAll('"""', "");
 
 export class Enricher {
   private tier = 0;
@@ -186,8 +186,8 @@ export class Enricher {
     const cands = input.candidates.length
       ? input.candidates
           .map(
-            (c) =>
-              `- "${c.surface}" -> [[${c.note}]]${c.forced ? " (REGISTERED)" : ""}`,
+            (candidate) =>
+              `- "${candidate.surface}" -> [[${candidate.note}]]${candidate.forced ? " (REGISTERED)" : ""}`,
           )
           .join("\n")
       : "(none)";
@@ -528,12 +528,12 @@ export class Enricher {
     });
     for await (const msg of stream as AsyncIterable<any>) {
       if (msg.type === "assistant") {
-        for (const b of msg.message?.content ?? [])
-          if (b.type === "text") text += b.text;
-        const u = msg.message?.usage;
-        if (u) {
-          usage.input += u.input_tokens ?? 0;
-          usage.output += u.output_tokens ?? 0;
+        for (const block of msg.message?.content ?? [])
+          if (block.type === "text") text += block.text;
+        const messageUsage = msg.message?.usage;
+        if (messageUsage) {
+          usage.input += messageUsage.input_tokens ?? 0;
+          usage.output += messageUsage.output_tokens ?? 0;
         }
       } else if (msg.type === "result") {
         // A named error subtype (e.g. error_max_structured_output_retries) means

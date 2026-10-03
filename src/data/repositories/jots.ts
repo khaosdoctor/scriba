@@ -1,29 +1,33 @@
 import type { Knex } from "knex";
 import {
-  JOT_STATUSES,
   type Jot,
   type JotSection,
   type JotStatus,
   MAX_ATTEMPTS,
   REPROCESSABLE_STATUSES,
+  SQUASHABLE_KINDS,
 } from "../../domain/jot/entity.ts";
+import { emptyStatusCounts } from "../../domain/jot/rules.ts";
 import type { Stats, StatusCounts } from "../../domain/jot/structures.ts";
 import { logger } from "../../libs/log.ts";
 
 const log = logger("db");
 
 export class JotRepository {
-  constructor(private k: Knex) {}
+  constructor(private knex: Knex) {}
 
-  async insertJot(j: Jot): Promise<void> {
-    await this.k("jots").insert(j);
-    log.debug({ id: j.id, kind: j.kind, note: j.note_path }, "jot inserted");
+  async insertJot(jot: Jot): Promise<void> {
+    await this.knex("jots").insert(jot);
+    log.debug(
+      { id: jot.id, kind: jot.kind, note: jot.note_path },
+      "jot inserted",
+    );
   }
   async getJot(id: string): Promise<Jot | undefined> {
-    return this.k<Jot>("jots").where({ id }).first();
+    return this.knex<Jot>("jots").where({ id }).first();
   }
   async updateJot(id: string, patch: Partial<Jot>): Promise<void> {
-    await this.k("jots")
+    await this.knex("jots")
       .where({ id })
       .update({ ...patch, updated_at: Date.now() });
     log.debug({ id, ...patch }, "jot updated");
@@ -34,17 +38,17 @@ export class JotRepository {
    * double-process the same jot.
    */
   async claim(id: string): Promise<boolean> {
-    const n = await this.k("jots")
+    const changed = await this.knex("jots")
       .where({ id })
       .whereIn("status", ["pending", "failed"])
       .update({ status: "processing", updated_at: Date.now() });
-    const won = n > 0;
+    const won = changed > 0;
     log.debug({ id, won }, "claim attempt");
     return won;
   }
   /** Crash recovery: any jot stuck in `processing` from a previous run goes back to pending. */
   async resetProcessing(): Promise<number> {
-    return this.k("jots")
+    return this.knex("jots")
       .where({ status: "processing" })
       .update({ status: "pending", updated_at: Date.now() });
   }
@@ -56,9 +60,9 @@ export class JotRepository {
     notePath: string,
     section: JotSection,
   ): Promise<Jot | undefined> {
-    return this.k<Jot>("jots")
+    return this.knex<Jot>("jots")
       .where({ note_path: notePath, status: "pending", section })
-      .whereIn("kind", ["text", "audio"])
+      .whereIn("kind", [...SQUASHABLE_KINDS])
       .orderBy("received_at", "desc")
       .first();
   }
@@ -68,52 +72,54 @@ export class JotRepository {
    *  folded it in (or it was never a follower), so the caller knows not to write a
    *  placeholder for a jot that's already merged into another line. */
   async unsquash(id: string): Promise<boolean> {
-    const n = await this.k("jots")
+    const changed = await this.knex("jots")
       .where({ id, status: "pending" })
       .whereNot("anchor", id)
       .update({ anchor: id, updated_at: Date.now() });
-    const won = n > 0;
+    const won = changed > 0;
     log.debug({ id, won }, "unsquash attempt");
     return won;
   }
   async groupFollowers(leaderId: string): Promise<Jot[]> {
-    return this.k<Jot>("jots")
+    return this.knex<Jot>("jots")
       .where({ anchor: leaderId })
       .whereNot({ id: leaderId })
       .whereNot({ status: "deleted" })
       .orderBy("received_at");
   }
   async pendingJots(): Promise<Jot[]> {
-    return this.k<Jot>("jots")
+    return this.knex<Jot>("jots")
       .where({ status: "pending" })
-      .orWhere((q) =>
-        q.where({ status: "failed" }).andWhere("attempts", "<", MAX_ATTEMPTS),
+      .orWhere((builder) =>
+        builder
+          .where({ status: "failed" })
+          .andWhere("attempts", "<", MAX_ATTEMPTS),
       )
       .orderBy("received_at");
   }
 
   async mapMessage(tgMessageId: number, jotId: string): Promise<void> {
-    await this.k("msg_map")
+    await this.knex("msg_map")
       .insert({ tg_message_id: tgMessageId, jot_id: jotId })
       .onConflict("tg_message_id")
       .merge();
   }
   async jotForMessage(tgMessageId: number): Promise<string | undefined> {
-    const r = await this.k("msg_map")
+    const row = await this.knex("msg_map")
       .where({ tg_message_id: tgMessageId })
       .first();
-    return r?.jot_id;
+    return row?.jot_id;
   }
   async messageForJot(jotId: string): Promise<number | undefined> {
-    const r = await this.k("msg_map").where({ jot_id: jotId }).first();
-    return r?.tg_message_id;
+    const row = await this.knex("msg_map").where({ jot_id: jotId }).first();
+    return row?.tg_message_id;
   }
   async unmapMessage(tgMessageId: number): Promise<void> {
-    await this.k("msg_map").where({ tg_message_id: tgMessageId }).delete();
+    await this.knex("msg_map").where({ tg_message_id: tgMessageId }).delete();
   }
 
   async queueEdit(jotId: string, instruction: string): Promise<void> {
-    await this.k("queued_edits").insert({
+    await this.knex("queued_edits").insert({
       jot_id: jotId,
       instruction,
       created_at: Date.now(),
@@ -122,68 +128,71 @@ export class JotRepository {
   /** Peek at queued edits without removing them, oldest first. The caller applies them
    *  and then calls clearQueuedEdits, so a failed apply doesn't lose the edits. */
   async queuedEdits(jotId: string): Promise<string[]> {
-    const rows = await this.k("queued_edits")
+    const rows = await this.knex("queued_edits")
       .where({ jot_id: jotId })
       .orderBy("created_at");
-    return rows.map((r) => r.instruction as string);
+    return rows.map((row) => row.instruction as string);
   }
   async clearQueuedEdits(jotId: string): Promise<void> {
-    await this.k("queued_edits").where({ jot_id: jotId }).del();
+    await this.knex("queued_edits").where({ jot_id: jotId }).del();
   }
 
   async windowStats(from: number, to: number): Promise<Stats> {
-    const row = await this.k("jots")
+    const row = await this.knex("jots")
       .where("received_at", ">=", from)
       .andWhere("received_at", "<", to)
       .select(
-        this.k.raw("COUNT(*) as total"),
-        this.k.raw("SUM(CASE WHEN kind='text' THEN 1 ELSE 0 END) as text"),
-        this.k.raw("SUM(CASE WHEN kind='audio' THEN 1 ELSE 0 END) as audio"),
-        this.k.raw("SUM(CASE WHEN kind='image' THEN 1 ELSE 0 END) as image"),
-        this.k.raw("SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) as video"),
-        ...REPROCESSABLE_STATUSES.map((s) =>
-          this.k.raw(`SUM(CASE WHEN status='${s}' THEN 1 ELSE 0 END) as ${s}`),
+        this.knex.raw("COUNT(*) as total"),
+        this.knex.raw("SUM(CASE WHEN kind='text' THEN 1 ELSE 0 END) as text"),
+        this.knex.raw("SUM(CASE WHEN kind='audio' THEN 1 ELSE 0 END) as audio"),
+        this.knex.raw("SUM(CASE WHEN kind='image' THEN 1 ELSE 0 END) as image"),
+        this.knex.raw("SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) as video"),
+        ...REPROCESSABLE_STATUSES.map((status) =>
+          this.knex.raw(
+            `SUM(CASE WHEN status='${status}' THEN 1 ELSE 0 END) as ${status}`,
+          ),
         ),
-        this.k.raw(
+        this.knex.raw(
           "SUM(CASE WHEN status IN ('pending','processing') THEN 1 ELSE 0 END) as inflight",
         ),
       )
       .first();
-    const n = (v: unknown) => Number(v ?? 0);
+    const toNumber = (value: unknown) => Number(value ?? 0);
     return {
-      total: n(row?.total),
-      text: n(row?.text),
-      audio: n(row?.audio),
-      image: n(row?.image),
-      video: n(row?.video),
+      total: toNumber(row?.total),
+      text: toNumber(row?.text),
+      audio: toNumber(row?.audio),
+      image: toNumber(row?.image),
+      video: toNumber(row?.video),
       ...(Object.fromEntries(
-        REPROCESSABLE_STATUSES.map((s) => [s, n(row?.[s])]),
+        REPROCESSABLE_STATUSES.map((status) => [
+          status,
+          toNumber(row?.[status]),
+        ]),
       ) as Pick<Stats, (typeof REPROCESSABLE_STATUSES)[number]>),
-      inflight: n(row?.inflight),
+      inflight: toNumber(row?.inflight),
     };
   }
 
   async statusCounts(): Promise<StatusCounts> {
-    const rows = await this.k("jots")
+    const rows = await this.knex("jots")
       .select("status")
       .count("* as n")
       .groupBy("status");
-    const out = Object.fromEntries(
-      JOT_STATUSES.map((s) => [s, 0]),
-    ) as StatusCounts;
-    for (const r of rows) out[r.status as JotStatus] = Number(r.n);
+    const out = emptyStatusCounts();
+    for (const row of rows) out[row.status as JotStatus] = Number(row.n);
     return out;
   }
 
   async failedJots(limit = 10): Promise<Jot[]> {
-    return this.k<Jot>("jots")
+    return this.knex<Jot>("jots")
       .whereIn("status", ["failed", "abandoned"])
       .orderBy("updated_at", "desc")
       .limit(limit);
   }
 
   async recentJots(limit = 10): Promise<Jot[]> {
-    return this.k<Jot>("jots")
+    return this.knex<Jot>("jots")
       .whereNot({ status: "deleted" })
       .orderBy("received_at", "desc")
       .limit(limit);
@@ -193,7 +202,7 @@ export class JotRepository {
     from: number,
     to: number,
   ): Promise<Pick<Jot, "id" | "anchor">[]> {
-    return this.k<Jot>("jots")
+    return this.knex<Jot>("jots")
       .select("id", "anchor")
       .where("received_at", ">=", from)
       .andWhere("received_at", "<", to)
@@ -202,7 +211,7 @@ export class JotRepository {
   }
 
   async jotsPage(offset: number, limit: number): Promise<Jot[]> {
-    return this.k<Jot>("jots")
+    return this.knex<Jot>("jots")
       .whereIn("status", [...REPROCESSABLE_STATUSES])
       .orderBy("received_at", "desc")
       .limit(limit)
@@ -225,9 +234,9 @@ export class JotRepository {
    *  from a stale/crafted callback. */
   async resetForReprocess(ids: string[]): Promise<string[]> {
     const reset: string[] = [];
-    for (let i = 0; i < ids.length; i += JotRepository.ID_CHUNK) {
-      const chunk = ids.slice(i, i + JotRepository.ID_CHUNK);
-      const rows: { id: string }[] = await this.k("jots")
+    for (let start = 0; start < ids.length; start += JotRepository.ID_CHUNK) {
+      const chunk = ids.slice(start, start + JotRepository.ID_CHUNK);
+      const rows: { id: string }[] = await this.knex("jots")
         .whereIn("id", chunk)
         .whereIn("status", [...REPROCESSABLE_STATUSES])
         .update({
@@ -237,14 +246,14 @@ export class JotRepository {
           updated_at: Date.now(),
         })
         .returning("id");
-      reset.push(...rows.map((r) => r.id));
+      reset.push(...rows.map((row) => row.id));
     }
     return reset;
   }
 
   async resetFailed(includeAbandoned: boolean): Promise<number> {
     const statuses = includeAbandoned ? ["failed", "abandoned"] : ["failed"];
-    return this.k("jots").whereIn("status", statuses).update({
+    return this.knex("jots").whereIn("status", statuses).update({
       status: "pending",
       attempts: 0,
       error: null,
@@ -258,7 +267,7 @@ export class JotRepository {
    *  jot back to pending. True when the row was reset. The caller re-queues it (the queue
    *  lives outside the persistence boundary). */
   async resetForRetry(id: string): Promise<boolean> {
-    const changed = await this.k("jots")
+    const changed = await this.knex("jots")
       .where({ id })
       .whereNotIn("status", ["processing", "deleted"])
       .update({
@@ -279,12 +288,14 @@ export class JotRepository {
   }
 
   async tilOffered(jotId: string): Promise<boolean> {
-    const row = await this.k("jots").where({ id: jotId }).first("til_offered");
+    const row = await this.knex("jots")
+      .where({ id: jotId })
+      .first("til_offered");
     return Boolean(row?.til_offered);
   }
 
   async markTilOffered(jotId: string): Promise<void> {
-    await this.k("jots").where({ id: jotId }).update({ til_offered: true });
+    await this.knex("jots").where({ id: jotId }).update({ til_offered: true });
     log.debug({ id: jotId }, "til offered");
   }
 }

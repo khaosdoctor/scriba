@@ -22,9 +22,9 @@ src/
   services/                business logic, one class per feature plus the shared ones
   data/connections/        clients for external sources, with no operations of their own
   data/repositories/       operations over those clients: SQL tables and the vault
-  domain/<entity>/         entity types and the rules that belong to them:
+  domain/<entity>/         an entity's types and the pure rules of that one entity:
                            habit/ jot/ link-rule/ rating/ setting/ task/
-  libs/                    helpers any layer may use
+  libs/                    helpers shared across entities, any layer may use
   test/                    shared fakes and harnesses for the tests
 ```
 
@@ -68,9 +68,13 @@ Layers call downward only: presentation calls services, services call data. `dom
   anchor replacement, candidate filtering, edit parsing) live in `libs/<topic>.ts`, each with
   its `<topic>.test.ts`. No network, vault or database access there; the only side effects
   are infrastructure: the logger (`log.ts`) and the timers of `Scheduler` (`scheduler.ts`)
-  and `FlushQueue` (`queue.ts`). `domain/<entity>/entity.ts` holds the entity types and the
-  constants that belong to them (`JOT_STATUSES`, `MAX_ATTEMPTS`, the `SETTINGS` table), and
-  `structures.ts` the shapes passed between layers (`IntakeInput`, `DetectedTask`).
+  and `FlushQueue` (`queue.ts`). `domain/<entity>/entity.ts` holds the entity types, the
+  constants that belong to them (`JOT_STATUSES`, `MAX_ATTEMPTS`, the `SETTINGS` table) and
+  the pure rules of that one entity (`followupQuestions` in `domain/rating/entity.ts`), in a
+  sibling `rules.ts` when they would make `entity.ts` long (`domain/jot/rules.ts`:
+  `isFollower`, `sourceField`, the journal line format, the TIL prefix). `structures.ts`
+  holds the shapes passed between layers (`IntakeInput`, `DetectedTask`). A rule that spans
+  entities, or has no entity, goes in `libs/`.
 - **Wiring happens only in `src/app.ts`.** Each system block is a class, with its
   collaborators injected through the constructor (usually one `deps` object typed with
   `Pick<...>`). `createScriba` builds and wires all of them and registers the scheduled
@@ -151,13 +155,13 @@ Layers call downward only: presentation calls services, services call data. `dom
   rolling gap from the previous still-pending text/voice jot in the same note) folds into
   that jot's line: it reuses the leader's `anchor`, writes no placeholder of its own, and
   the processor enriches the whole run into one line (leader + followers share an anchor).
-  The rolling-gap decision is token-free (`withinSquashWindow` in `libs/jot.ts`). Attach-only
+  The rolling-gap decision is token-free (`withinSquashWindow` in `domain/jot/rules.ts`). Attach-only
   kinds (image/video) never squash. `SQUASH_WINDOW_MS=0` disables it. A squashed follower's
   message gets a 🤝 reaction in place of ✍ (Telegram bots can only set one reaction per
   message), marking it for merge; reacting with 🤝 yourself is the opt-out — it pulls that
   jot back into its own line (`JotRepository.unsquash`, a claim()-style compare-and-swap).
   Too late once the batch has already flushed and folded it into the leader.
-- **TIL section.** A text jot starting with `TIL` (`stripTilPrefix` in `libs/note.ts`, token-free)
+- **TIL section.** A text jot starting with `TIL` (`stripTilPrefix` in `domain/jot/rules.ts`, token-free)
   is stored with the prefix removed and `section = "til"` (`jots.section`, default
   `"journal"`). Every write that has to append a line (placeholder, unsquash, anchor-missing
   fallback) passes `jot.section` to `ObsidianClient.appendJournalLine`, which picks

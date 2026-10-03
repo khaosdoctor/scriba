@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Jot } from "../domain/jot/entity.ts";
+import { journalLine, stripJournalLine } from "../domain/jot/rules.ts";
 import { editConfirmation, type StatusButtons } from "../libs/jot.ts";
-import { anchorLine, journalLine, stripJournalLine } from "../libs/note.ts";
+import { anchorLine } from "../libs/note.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { sampleJot } from "../test/sqlite.ts";
 import { EditService } from "./edits.ts";
@@ -65,46 +66,46 @@ function setup(over: { jot?: Jot | null; mapped?: boolean } = {}) {
 const edited = (text: string) => ({ messageId: 77, text });
 
 test("a blank edit whose last status can't be shown fails the update instead of going unhandled", async () => {
-  const h = setup();
-  h.jots.status = async (_id: string, html: string) => {
+  const harness = setup();
+  harness.jots.status = async (_id: string, html: string) => {
     if (html.startsWith("🗑️ removed")) throw new Error("telegram is down");
   };
   await assert.rejects(
-    h.edits.editByMessageEdit(edited("")),
+    harness.edits.editByMessageEdit(edited("")),
     /telegram is down/,
   );
-  assert.equal(h.line(), null);
+  assert.equal(harness.line(), null);
 });
 
 test("an edited TIL message loses a re-typed marker before it is applied", async () => {
-  const h = setup({ jot: tilJot() });
+  const harness = setup({ jot: tilJot() });
   assert.equal(
-    await h.edits.editByMessageEdit(edited("TIL: sqlite WAL")),
+    await harness.edits.editByMessageEdit(edited("TIL: sqlite WAL")),
     "applied",
   );
-  assert.equal(h.line(), "sqlite WAL");
+  assert.equal(harness.line(), "sqlite WAL");
   assert.deepEqual(
-    h.statuses.map(([html]) => html),
+    harness.statuses.map(([html]) => html),
     ["✍️ got your edit — applying…", editConfirmation(TIME, "sqlite WAL")],
   );
 });
 
 test("an edited journal message keeps a leading TIL as typed", async () => {
-  const h = setup();
-  await h.edits.editByMessageEdit(edited("TIL: foo"));
-  assert.equal(h.line(), "TIL: foo");
+  const harness = setup();
+  await harness.edits.editByMessageEdit(edited("TIL: foo"));
+  assert.equal(harness.line(), "TIL: foo");
 });
 
 test("an edit of a TIL jot still processing is queued without the marker", async () => {
   for (const status of ["pending", "processing"] as const) {
-    const h = setup({ jot: tilJot({ status }) });
+    const harness = setup({ jot: tilJot({ status }) });
     assert.equal(
-      await h.edits.editByMessageEdit(edited("TIL: new")),
+      await harness.edits.editByMessageEdit(edited("TIL: new")),
       "queued",
       status,
     );
-    assert.deepEqual(h.queued, [[ID, "new"]], status);
-    assert.equal(h.line(), "earlier", status);
+    assert.deepEqual(harness.queued, [[ID, "new"]], status);
+    assert.equal(harness.line(), "earlier", status);
   }
 });
 
@@ -127,10 +128,10 @@ test("blanking a TIL message deletes it, and a bare marker is kept as text", asy
     );
   }
   for (const bare of ["TIL", "TIL:", "TIL   "]) {
-    const h = setup({ jot: tilJot() });
-    await h.edits.editByMessageEdit(edited(bare));
-    assert.equal(h.line(), bare.trim());
-    assert.deepEqual(h.deleted, []);
+    const harness = setup({ jot: tilJot() });
+    await harness.edits.editByMessageEdit(edited(bare));
+    assert.equal(harness.line(), bare.trim());
+    assert.deepEqual(harness.deleted, []);
   }
 });
 
@@ -145,14 +146,20 @@ test("an edit with no mapped message or no jot does nothing", async () => {
     await gone.edits.editByMessageEdit(edited("TIL: x y")),
     "missing",
   );
-  for (const h of [unmapped, gone]) {
-    assert.deepEqual([h.queued, h.statuses, h.deleted], [[], [], []]);
-    assert.equal(h.line(), "earlier");
+  for (const harness of [unmapped, gone]) {
+    assert.deepEqual(
+      [harness.queued, harness.statuses, harness.deleted],
+      [[], [], []],
+    );
+    assert.equal(harness.line(), "earlier");
   }
 });
 
 test("a reply instruction to a TIL jot still processing is queued verbatim", async () => {
-  const h = setup({ jot: tilJot({ status: "processing" }) });
-  assert.equal(await h.edits.editByReply(77, "TIL: make it shorter"), "queued");
-  assert.deepEqual(h.queued, [[ID, "TIL: make it shorter"]]);
+  const harness = setup({ jot: tilJot({ status: "processing" }) });
+  assert.equal(
+    await harness.edits.editByReply(77, "TIL: make it shorter"),
+    "queued",
+  );
+  assert.deepEqual(harness.queued, [[ID, "TIL: make it shorter"]]);
 });

@@ -1,3 +1,9 @@
+import { randomBytes } from "node:crypto";
+
+export function shortId(): string {
+  return randomBytes(4).toString("hex");
+}
+
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 export const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 

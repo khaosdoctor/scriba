@@ -1,18 +1,23 @@
 import type { JotRepository } from "../data/repositories/jots.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
-import type { Jot, JotSection } from "../domain/jot/entity.ts";
+import {
+  type Jot,
+  type JotKind,
+  type JotSection,
+  SQUASHABLE_KINDS,
+} from "../domain/jot/entity.ts";
+import {
+  isFollower,
+  placeholderLine,
+  stripTilPrefix,
+  withinSquashWindow,
+} from "../domain/jot/rules.ts";
 import type { IntakeInput } from "../domain/jot/structures.ts";
 import { clipUpdate } from "../libs/feed.ts";
-import {
-  makeJotId,
-  type StatusButtons,
-  statusKeyboard,
-  withinSquashWindow,
-} from "../libs/jot.ts";
+import { type StatusButtons, statusKeyboard } from "../libs/jot.ts";
 import { logger } from "../libs/log.ts";
-import { placeholderLine, stripTilPrefix } from "../libs/note.ts";
 import type { FlushQueue } from "../libs/queue.ts";
-import { escapeHtml } from "../libs/text.ts";
+import { escapeHtml, shortId } from "../libs/text.ts";
 import { dayBounds, plainDate, plainTime } from "../libs/time.ts";
 import type { Notifier } from "./notifier.ts";
 
@@ -73,7 +78,7 @@ export class JotService {
   }
 
   async leaderOf(jot: Jot): Promise<Jot> {
-    if (jot.anchor === jot.id) return jot;
+    if (!isFollower(jot)) return jot;
     const leader = await this.deps.repo.getJot(jot.anchor);
     return leader && leader.status !== "deleted" ? leader : jot;
   }
@@ -89,7 +94,7 @@ export class JotService {
       input.day && input.day !== plainDate(input.sentAt)
         ? dayBounds(input.day)[1] - 1000
         : input.sentAt;
-    const id = makeJotId();
+    const id = shortId();
     const date = plainDate(epochMs);
     const time = plainTime(epochMs);
     // dailyPath is pure (no REST call), so the row can be persisted even when Obsidian is
@@ -105,7 +110,10 @@ export class JotService {
     let squashed = false;
     // A follow-up answer (`day`) is stamped with the day's last second, so two of them would
     // always look like one burst: they are deliberate entries and never squash.
-    if (!input.day && (input.kind === "text" || input.kind === "audio")) {
+    if (
+      !input.day &&
+      (SQUASHABLE_KINDS as readonly JotKind[]).includes(input.kind)
+    ) {
       const prev = await repo.lastPendingEnrichableJot(notePath, section);
       if (
         prev &&
@@ -184,7 +192,7 @@ export class JotService {
   async optOutOfSquash(messageId: number): Promise<void> {
     const { repo, obsidian, notifier } = this.deps;
     const jot = await this.byMessage(messageId);
-    if (!jot || jot.anchor === jot.id) return; // not a squashed follower, nothing to opt out of
+    if (!jot || !isFollower(jot)) return; // not a squashed follower, nothing to opt out of
     if (!(await repo.unsquash(jot.id))) {
       log.info(
         { jotId: jot.id },
@@ -404,8 +412,8 @@ export class JotService {
     // The section decides which heading a re-written line goes back under, so it follows
     // the line: the leader's, and every squashed follower sharing it.
     const followers = await repo.groupFollowers(jot.id);
-    for (const j of [jot, ...followers])
-      await repo.updateJot(j.id, { section: "til" });
+    for (const member of [jot, ...followers])
+      await repo.updateJot(member.id, { section: "til" });
     tilLog.info({ jotId }, "til accepted, line moved");
     return "moved";
   }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createScriba } from "./app.ts";
 import type { Jot } from "./domain/jot/entity.ts";
-import { journalLine } from "./libs/note.ts";
+import { journalLine } from "./domain/jot/rules.ts";
 import { chat, user as from, JOT_ID as ID, NOW } from "./test/bot-harness.ts";
 import { testConfig } from "./test/config.ts";
 import { BOT_INFO, recordingApi } from "./test/fakes.ts";

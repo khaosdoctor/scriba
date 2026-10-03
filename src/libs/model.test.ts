@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CircuitBreaker, parseModelJson, unwrapModelPayload } from "./model.ts";
+import {
+  CircuitBreaker,
+  isRecoverable,
+  parseModelJson,
+  unwrapModelPayload,
+} from "./model.ts";
 
 test("parseModelJson reads clean, fenced, prose-wrapped and line-broken JSON", () => {
   assert.deepEqual(parseModelJson('{"text":"a"}'), { text: "a" });
@@ -87,21 +92,43 @@ test("unwrapModelPayload leaves ordinary text alone, braces included", () => {
 });
 
 test("CircuitBreaker opens after the threshold, lets one trial through after the cooldown", () => {
-  const t = { now: 0 };
-  const b = new CircuitBreaker(2, 100, () => t.now);
-  b.failure(new Error("a"));
-  assert.equal(b.allows(), true);
-  b.failure(new Error("b"));
-  assert.equal(b.allows(), false);
-  assert.equal((b.lastError as Error).message, "b");
-  t.now = 100;
-  assert.equal(b.allows(), true);
+  const clock = { now: 0 };
+  const breaker = new CircuitBreaker(2, 100, () => clock.now);
+  breaker.failure(new Error("a"));
+  assert.equal(breaker.allows(), true);
+  breaker.failure(new Error("b"));
+  assert.equal(breaker.allows(), false);
+  assert.equal((breaker.lastError as Error).message, "b");
+  clock.now = 100;
+  assert.equal(breaker.allows(), true);
   // the trial fails: straight back open, no second run-up to the threshold
-  b.failure(new Error("c"));
-  assert.equal(b.allows(), false);
-  t.now = 200;
-  b.success();
-  assert.equal(b.allows(), true);
-  b.failure(new Error("d"));
-  assert.equal(b.allows(), true);
+  breaker.failure(new Error("c"));
+  assert.equal(breaker.allows(), false);
+  clock.now = 200;
+  breaker.success();
+  assert.equal(breaker.allows(), true);
+  breaker.failure(new Error("d"));
+  assert.equal(breaker.allows(), true);
+});
+
+test("isRecoverable flags transient infra errors, not terminal ones", () => {
+  assert.equal(
+    isRecoverable(new Error("connect ETIMEDOUT 10.0.0.1:443")),
+    true,
+  );
+  assert.equal(
+    isRecoverable(new Error("Request failed with status 503")),
+    true,
+  );
+  assert.equal(isRecoverable(new Error("429 Too Many Requests")), true);
+  assert.equal(isRecoverable(new Error("invalid path")), false);
+});
+
+test("isRecoverable covers the OpenAI-shaped SDKs' network errors", () => {
+  assert.equal(isRecoverable(new Error("Connection error.")), true);
+  assert.equal(isRecoverable(new Error("Request timed out.")), true);
+  assert.equal(
+    isRecoverable(new Error("timeout after 15s (claude-haiku-4-5)")),
+    true,
+  );
 });
