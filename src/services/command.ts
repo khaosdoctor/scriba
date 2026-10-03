@@ -9,11 +9,12 @@ import {
   thoughtIcon,
   toolIcon,
 } from "../libs/feed.ts";
+import { type Keyboard, keyboard, NO_BUTTONS } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import { escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
 import { type AgentService, PromptStream } from "./agent.ts";
 import type { Modes } from "./modes.ts";
-import type { MessageOptions, Notifier } from "./notifier.ts";
+import type { Notifier } from "./notifier.ts";
 
 const log = logger("command");
 
@@ -33,7 +34,6 @@ const FEED_EDIT_MS = 1_200;
 const TURN_SILENCE_MS = 5 * 60_000;
 
 const WORKING = "🧭 Working…";
-const NO_BUTTONS: MessageOptions["keyboard"] = { inline_keyboard: [] };
 
 export type CommandOpen = "opened" | "already" | "busy" | "noVault";
 export type Decision = (allow: boolean) => void;
@@ -416,26 +416,20 @@ export class CommandService {
     );
   }
 
-  private stopKeyboard(turn: Turn): MessageOptions["keyboard"] {
-    return {
-      inline_keyboard: [
-        [{ text: "⏹ Stop", callback_data: `${COMMAND_NS}:s:${turn.id}` }],
-      ],
-    };
+  private stopKeyboard(turn: Turn): Keyboard {
+    return keyboard([[["⏹ Stop", `${COMMAND_NS}:s:${turn.id}`]]]);
   }
 
   private confirm(question: string, preview: string): Promise<boolean> {
     const turn = this.active;
     return new Promise<boolean>((resolvePromise) => {
       const id = shortId();
-      const keyboard: MessageOptions["keyboard"] = {
-        inline_keyboard: [
-          [
-            { text: "✅ Do it", callback_data: `${COMMAND_NS}:y:${id}` },
-            { text: "❌ No", callback_data: `${COMMAND_NS}:n:${id}` },
-          ],
+      const buttons = keyboard([
+        [
+          ["✅ Do it", `${COMMAND_NS}:y:${id}`],
+          ["❌ No", `${COMMAND_NS}:n:${id}`],
         ],
-      };
+      ]);
       const body = preview
         ? `${question}\n<blockquote>${escapeHtml(preview.slice(0, 600))}${preview.length > 600 ? "\n…" : ""}</blockquote>`
         : question;
@@ -449,7 +443,7 @@ export class CommandService {
       void this.deps.notifier
         .send(fitTelegram(body), {
           html: true,
-          keyboard,
+          keyboard: buttons,
           replyTo: turn?.sourceId,
         })
         .catch((err) => {

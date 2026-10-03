@@ -1,6 +1,8 @@
+import type { Keyboard } from "../libs/keyboard.ts";
+
 export interface MessageOptions {
   html?: boolean;
-  keyboard?: { inline_keyboard: readonly (readonly object[])[] };
+  keyboard?: Keyboard;
   forceReply?: boolean;
   replyTo?: number;
   silent?: boolean;

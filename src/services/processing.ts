@@ -24,6 +24,7 @@ import {
   heldNotice,
   retryNotice,
 } from "../libs/jot.ts";
+import { keyboard } from "../libs/keyboard.ts";
 import { candidates, forcedCandidates, linkDateWords } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import { isRecoverable } from "../libs/model.ts";
@@ -370,14 +371,12 @@ export class ProcessingService {
   ): Promise<void> {
     botLog.debug({ pendingId, surface, note }, "asking user to confirm link");
     await this.deps.notifier.send(`Link "${surface}" → [[${note}]]?`, {
-      keyboard: {
-        inline_keyboard: [
-          [
-            { text: "Yes", callback_data: `lk:y:${pendingId}` },
-            { text: "No", callback_data: `lk:n:${pendingId}` },
-          ],
+      keyboard: keyboard([
+        [
+          ["Yes", `lk:y:${pendingId}`],
+          ["No", `lk:n:${pendingId}`],
         ],
-      },
+      ]),
     });
   }
 

@@ -15,6 +15,7 @@ import {
 import type { IntakeInput } from "../domain/jot/structures.ts";
 import { clipUpdate } from "../libs/feed.ts";
 import { type StatusButtons, statusKeyboard } from "../libs/jot.ts";
+import { type Keyboard, keyboard } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { escapeHtml, shortId } from "../libs/text.ts";
@@ -225,7 +226,7 @@ export class JotService {
   private async showStatus(
     jotId: string,
     html: string,
-    keyboard: { inline_keyboard: readonly (readonly object[])[] },
+    keyboard: Keyboard,
   ): Promise<void> {
     const { repo, notifier } = this.deps;
     const existing = this.statusMsgs.get(jotId);
@@ -283,14 +284,16 @@ export class JotService {
       "<b>Proposed fix:</b>",
       `<i>${escapeHtml(proposed)}</i>`,
     ].join("\n");
-    await this.showStatus(jotId, html, {
-      inline_keyboard: [
+    await this.showStatus(
+      jotId,
+      html,
+      keyboard([
         [
-          { text: "📝 Use original", callback_data: `vf:o:${jotId}` },
-          { text: "✨ Use fixed", callback_data: `vf:p:${jotId}` },
+          ["📝 Use original", `vf:o:${jotId}`],
+          ["✨ Use fixed", `vf:p:${jotId}`],
         ],
-      ],
-    });
+      ]),
+    );
     return new Promise<VoiceFixChoice>((resolve) => {
       this.voiceFixPending.set(jotId, resolve);
       setTimeout(
@@ -349,20 +352,12 @@ export class JotService {
         `💡 That sounds like a TIL. Move this to TIL?\n<blockquote>${escapeHtml(clipUpdate(text, QUOTE_CHARS))}</blockquote>`,
         {
           html: true,
-          keyboard: {
-            inline_keyboard: [
-              [
-                {
-                  text: "✅ Move to TIL",
-                  callback_data: `${TIL_NS}:y:${jotId}`,
-                },
-                {
-                  text: "🚫 Keep in Journal",
-                  callback_data: `${TIL_NS}:n:${jotId}`,
-                },
-              ],
+          keyboard: keyboard([
+            [
+              ["✅ Move to TIL", `${TIL_NS}:y:${jotId}`],
+              ["🚫 Keep in Journal", `${TIL_NS}:n:${jotId}`],
             ],
-          },
+          ]),
         },
       );
     } catch (err) {

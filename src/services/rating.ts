@@ -7,6 +7,7 @@ import {
   followupQuestions,
   ratingDay,
 } from "../domain/rating/entity.ts";
+import { keyboard, type Row } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import type { Notifier } from "./notifier.ts";
 
@@ -76,17 +77,15 @@ export class RatingService {
 
   async prompt(date: string): Promise<void> {
     log.rating.info({ date }, "prompting for daily rating");
-    const button = (score: number) => ({
-      text: String(score),
-      callback_data: `${RATING_NS}:${date}:${score}`,
-    });
+    const button = (score: number): Row[number] => [
+      String(score),
+      `${RATING_NS}:${date}:${score}`,
+    ];
     await this.deps.notifier.send(`📊 How was ${date}? Rate it 1–10:`, {
-      keyboard: {
-        inline_keyboard: [
-          [1, 2, 3, 4, 5].map(button),
-          [6, 7, 8, 9, 10].map(button),
-        ],
-      },
+      keyboard: keyboard([
+        [1, 2, 3, 4, 5].map(button),
+        [6, 7, 8, 9, 10].map(button),
+      ]),
     });
   }
 
@@ -182,16 +181,9 @@ export class RatingService {
     await notifier.send(
       `${PROMPTS[question]} Reply to this message, or skip.\n${followupRef(question, date)}`,
       {
-        keyboard: {
-          inline_keyboard: [
-            [
-              {
-                text: "⏭ Skip",
-                callback_data: `${FOLLOWUP_NS}:${FOLLOWUP_CODES[question]}:${date}`,
-              },
-            ],
-          ],
-        },
+        keyboard: keyboard([
+          [["⏭ Skip", `${FOLLOWUP_NS}:${FOLLOWUP_CODES[question]}:${date}`]],
+        ]),
       },
     );
   }

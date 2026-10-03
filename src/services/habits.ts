@@ -6,6 +6,7 @@ import {
   isNumericValue,
   parseHabits,
 } from "../domain/habit/rules.ts";
+import { keyboard, type Row } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import { fingerprint } from "../libs/text.ts";
 import type { Notifier } from "./notifier.ts";
@@ -53,11 +54,7 @@ export class HabitService {
     const id = await notifier.send(
       `🌱 Time to review habits for ${date} — ${pending.length} to go.`,
       {
-        keyboard: {
-          inline_keyboard: [
-            [{ text: "🌱 Begin", callback_data: `${HABITS_NS}:${date}:begin` }],
-          ],
-        },
+        keyboard: keyboard([[["🌱 Begin", `${HABITS_NS}:${date}:begin`]]]),
       },
     );
     this.activeMsg.set(date, id);
@@ -95,14 +92,12 @@ export class HabitService {
         msgId,
         `🌱 ${habit.label}? Reply to this message with a number.\n(hb:${date}:${habit.index}:${digest})`,
       );
-    const button = (text: string, verdict: string) => ({
+    const button = (text: string, verdict: string): Row[number] => [
       text,
-      callback_data: `${HABITS_NS}:${date}:${habit.index}:${digest}:${verdict}`,
-    });
+      `${HABITS_NS}:${date}:${habit.index}:${digest}:${verdict}`,
+    ];
     await notifier.edit(msgId, `🌱 ${habit.label}?`, {
-      keyboard: {
-        inline_keyboard: [[button("✅ Yes", "y"), button("❌ No", "n")]],
-      },
+      keyboard: keyboard([[button("✅ Yes", "y"), button("❌ No", "n")]]),
     });
   }
 

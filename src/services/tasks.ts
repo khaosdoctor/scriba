@@ -14,6 +14,12 @@ import {
   type TaskType,
   type TaskView,
 } from "../domain/task/entity.ts";
+import {
+  type Keyboard,
+  keyboard,
+  NO_BUTTONS,
+  type Row,
+} from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import { paginate } from "../libs/page.ts";
 import {
@@ -47,10 +53,6 @@ export type AnswerOutcome =
   | "badDate"
   | "needsDue";
 
-type Row = [text: string, callbackData: string][];
-export type Keyboard = {
-  inline_keyboard: { text: string; callback_data: string }[][];
-};
 export type Screen = { text: string; keyboard: Keyboard };
 
 export interface TaskDeps {
@@ -76,12 +78,6 @@ const PROMPTS: Record<TaskField, string> = {
   s: "📅 Reply to this message with the start date — a date, “next monday”, or “none” to leave it to the deadline.",
   u: "🏁 Reply to this message with the due date — a date, or something like “next friday”. This one it needs.",
 };
-
-const keyboard = (rows: Row[]): Keyboard => ({
-  inline_keyboard: rows.map((row) =>
-    row.map(([text, callback_data]) => ({ text, callback_data })),
-  ),
-});
 
 const cardKeyboard = (row: TaskDraftRow) => {
   const at = (action: string) => `${TASKS_NS}:${action}:${row.id}`;
@@ -279,7 +275,7 @@ export class TaskService {
     await notifier
       .edit(row.message_id, text, {
         html: true,
-        keyboard: { inline_keyboard: [] },
+        keyboard: NO_BUTTONS,
       })
       .catch((err) =>
         log.warn({ err, draft: row.id }, "task card settle failed"),
