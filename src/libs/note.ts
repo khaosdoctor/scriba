@@ -1,5 +1,8 @@
 import { escapeRe } from "./text.ts";
 
+export const frontmatterBlock = (text: string): string | undefined =>
+  text.match(/^---\n([\s\S]*?)\n---/)?.[1];
+
 export function findSection(
   lines: string[],
   heading: string,

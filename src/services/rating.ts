@@ -104,13 +104,13 @@ export class RatingService {
     log.rating.info({ date, rating }, "recorded rating, writing frontmatter");
     try {
       await obsidian.setDailyRating(date, rating);
-    } catch (e) {
+    } catch (err) {
       log.rating.error(
-        { err: e, date, rating },
+        { err, date, rating },
         "frontmatter write failed, releasing rating for retry",
       );
       await ratings.clearRating(date);
-      throw e;
+      throw err;
     }
     log.rating.info({ date, rating }, "daily rating saved");
     return { kind: "saved", rating };

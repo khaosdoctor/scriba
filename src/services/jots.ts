@@ -13,13 +13,12 @@ import {
   withinSquashWindow,
 } from "../domain/jot/rules.ts";
 import type { IntakeInput } from "../domain/jot/structures.ts";
-import { clipUpdate } from "../libs/feed.ts";
 import { type StatusButtons, statusKeyboard } from "../libs/jot.ts";
 import { type Keyboard, keyboard } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import { PendingDecisions } from "../libs/pending.ts";
 import type { FlushQueue } from "../libs/queue.ts";
-import { escapeHtml, shortId } from "../libs/text.ts";
+import { clipUpdate, escapeHtml, shortId } from "../libs/text.ts";
 import { dayBounds, plainDate, plainTime } from "../libs/time.ts";
 import type { Notifier } from "./notifier.ts";
 

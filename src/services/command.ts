@@ -1,6 +1,5 @@
 import type { Query } from "../data/connections/anthropic.ts";
 import {
-  clipUpdate,
   feedMessage,
   fitFeed,
   formatToolCall,
@@ -12,7 +11,13 @@ import {
 import { type Keyboard, keyboard, NO_BUTTONS } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import { PendingDecisions } from "../libs/pending.ts";
-import { errorText, escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
+import {
+  clipUpdate,
+  errorText,
+  escapeHtml,
+  fitTelegram,
+  shortId,
+} from "../libs/text.ts";
 import { type AgentService, PromptStream } from "./agent.ts";
 import type { Modes } from "./modes.ts";
 import type { Notifier } from "./notifier.ts";

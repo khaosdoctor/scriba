@@ -1,3 +1,4 @@
+import { basename } from "node:path";
 import * as chrono from "chrono-node";
 import {
   type AliasEntry,
@@ -5,6 +6,8 @@ import {
   type LinkRule,
   linkRuleKey,
 } from "../domain/link-rule/entity.ts";
+import { frontmatterBlock } from "./note.ts";
+import { collapse } from "./text.ts";
 import { dateFromIso, plainDate } from "./time.ts";
 
 /** URLs Obsidian renders inline when written as `![](url)`: YouTube videos, tweets and
@@ -134,7 +137,7 @@ export function forcedCandidates(
 export function parseRuleWords(text: string, limit = 20): string[] {
   const out = new Set<string>();
   for (const part of text.split(/[\n,]/)) {
-    const word = part.trim().replace(/\s+/g, " ").toLowerCase();
+    const word = collapse(part).toLowerCase();
     if (word && word.length <= 60) out.add(word);
     if (out.size >= limit) break;
   }
@@ -142,12 +145,28 @@ export function parseRuleWords(text: string, limit = 20): string[] {
 }
 
 export function cleanNoteTitle(text: string): string {
-  return text
-    .trim()
-    .replace(/^\[\[|\]\]$/g, "")
-    .replace(/^["']|["']$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return collapse(
+    text
+      .trim()
+      .replace(/^\[\[|\]\]$/g, "")
+      .replace(/^["']|["']$/g, ""),
+  );
+}
+
+const unquote = (text: string) => text.trim().replace(/^["']|["']$/g, "");
+
+export function parseAliasEntries(path: string, text: string): AliasEntry[] {
+  const note = basename(path, ".md");
+  const out: AliasEntry[] = [{ note, alias: note }]; // the title is always an alias
+  const front = frontmatterBlock(text) ?? "";
+  const inline = front.match(/^aliases:\s*\[(.*?)\]/m)?.[1];
+  const block = front.match(/^aliases:\s*\n((?:\s*-\s*.+\n?)+)/m)?.[1];
+  const items = inline?.trim()
+    ? inline.split(",")
+    : (block?.split("\n").map((line) => line.replace(/^\s*-\s*/, "")) ?? []);
+  for (const alias of items.map(unquote).filter(Boolean))
+    out.push({ note, alias });
+  return out;
 }
 
 export function noteSuggestions(

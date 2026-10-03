@@ -5,7 +5,7 @@ import type {
   TaskType,
   TaskView,
 } from "../domain/task/entity.ts";
-import { escapeHtml } from "./text.ts";
+import { clip, escapeHtml } from "./text.ts";
 import { plainDate } from "./time.ts";
 
 const STATE_ICON: Record<TaskState, string> = {
@@ -50,8 +50,7 @@ export function taskListLine(
     task.state === "open" && task.start && task.start !== task.due
       ? ` · starts ${task.start}`
       : "";
-  const full = task.text || "(no description)";
-  const text = full.length > max ? `${full.slice(0, max - 1)}…` : full;
+  const text = clip(task.text || "(no description)", max);
   return `${position}. ${STATE_ICON[task.state]} ${escapeHtml(text)}${dates}${started} <i>${task.type}</i>`;
 }
 
@@ -61,8 +60,10 @@ export function taskButtonLabel(
   position: number,
   max = 34,
 ): string {
-  const text = (task.text || "(no description)").replace(/\s+/g, " ");
-  const body = text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  const body = clip(
+    (task.text || "(no description)").replace(/\s+/g, " "),
+    max,
+  );
   return `${STATE_ICON[task.state]} ${position}. ${body}`;
 }
 

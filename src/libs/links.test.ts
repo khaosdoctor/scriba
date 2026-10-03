@@ -8,6 +8,7 @@ import {
   isEmbeddableUrl,
   linkDateWords,
   noteSuggestions,
+  parseAliasEntries,
   parseRuleWords,
   tokenize,
 } from "./links.ts";
@@ -186,6 +187,38 @@ test("cleanNoteTitle strips wikilink brackets, quotes and stray whitespace", () 
   );
   assert.equal(cleanNoteTitle('"POE"'), "POE");
   assert.equal(cleanNoteTitle("   "), "");
+});
+
+test("parseAliasEntries always yields the title, then inline or block aliases unquoted", () => {
+  assert.deepEqual(parseAliasEntries("/v/Plain.md", "no frontmatter"), [
+    { note: "Plain", alias: "Plain" },
+  ]);
+  assert.deepEqual(
+    parseAliasEntries(
+      "/v/Norway.md",
+      "---\naliases: [no, 'Noruega']\n---\nbody",
+    ),
+    [
+      { note: "Norway", alias: "Norway" },
+      { note: "Norway", alias: "no" },
+      { note: "Norway", alias: "Noruega" },
+    ],
+  );
+  assert.deepEqual(
+    parseAliasEntries(
+      "/v/Fume.md",
+      '---\naliases:\n  - Extractor\n  - "Hood"\n---\n',
+    ),
+    [
+      { note: "Fume", alias: "Fume" },
+      { note: "Fume", alias: "Extractor" },
+      { note: "Fume", alias: "Hood" },
+    ],
+  );
+  assert.deepEqual(
+    parseAliasEntries("/v/Empty.md", "---\naliases: []\n---\n"),
+    [{ note: "Empty", alias: "Empty" }],
+  );
 });
 
 test("noteSuggestions ranks exact over prefix over substring, one row per note", () => {

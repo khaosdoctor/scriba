@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  AGENT_UPDATE_CHARS,
-  clipUpdate,
   feedMessage,
   fitFeed,
   formatToolCall,
@@ -57,18 +55,6 @@ test("thoughtIcon reflects what the line is about", () => {
   // Nothing recognisable is still a thought.
   assert.equal(thoughtIcon("hmm"), "💭");
   assert.equal(thoughtIcon(""), "💭");
-});
-
-test("clipUpdate flattens to one line and caps the length", () => {
-  assert.equal(clipUpdate("  one\n\ttwo   three "), "one two three");
-  const long = `${"word ".repeat(200)}end`;
-  const out = clipUpdate(long);
-  assert.ok(out.length <= AGENT_UPDATE_CHARS);
-  // The cut falls on a word boundary, so the last word isn't left half-written.
-  assert.match(out, /^(word )+word…$/);
-  // A single unbroken run still gets cut, boundary or not.
-  assert.equal(clipUpdate("x".repeat(500)).length, AGENT_UPDATE_CHARS);
-  assert.equal(clipUpdate("short", 10), "short");
 });
 
 test("formatToolCall names the tool and what it is acting on", () => {

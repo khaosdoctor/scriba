@@ -253,7 +253,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   while it works goes into that turn's status message: reasoning
   (`COMMAND_THINKING_TOKENS`, default 4000; `0` turns thinking and those lines off), tool
   calls, ⚠️ failed tool results, and prose it writes before doing something else. Each line
-  is flattened and cut to 330 chars (`clipUpdate`), then the message is re-rendered as
+  is flattened and cut to 330 chars (`clipUpdate` in `libs/text.ts`), then the message is re-rendered as
   `feedMessage(header, turn.feed)`. **Every line is prefixed with an emoji for what it is**
   — `toolIcon` per tool (📖 read, 🔍 search, ✍️ write, 🗑 delete, 🌐 fetch, 🔧 unknown) and
   `thoughtIcon` for the agent's own words, a keyword lookup so a glance says which part of
