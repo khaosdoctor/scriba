@@ -31,6 +31,8 @@ const QUOTE_CHARS = 600;
 
 export const TIL_NS = "ti";
 
+export const VOICEFIX_NS = "vf";
+
 /** Set (in place of ✍) on a squashed follower's message, marking it as slated to merge
  *  into the previous jot's line. Telegram bots can set at most one reaction per message
  *  (non-Premium), so this replaces rather than joins the receipt ack. The owner reacting
@@ -291,8 +293,8 @@ export class JotService {
       html,
       keyboard([
         [
-          ["📝 Use original", `vf:o:${jotId}`],
-          ["✨ Use fixed", `vf:p:${jotId}`],
+          ["📝 Use original", `${VOICEFIX_NS}:o:${jotId}`],
+          ["✨ Use fixed", `${VOICEFIX_NS}:p:${jotId}`],
         ],
       ]),
     );

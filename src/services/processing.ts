@@ -40,6 +40,8 @@ import type { Transcriber } from "./transcriber.ts";
 const log = logger("processor");
 const botLog = logger("bot");
 
+export const LINK_NS = "lk";
+
 export const HELD = "held: every enrichment model is down";
 
 const WEAVING = "✨ Weaving it into your journal…";
@@ -373,8 +375,8 @@ export class ProcessingService {
     await this.deps.notifier.send(`Link "${surface}" → [[${note}]]?`, {
       keyboard: keyboard([
         [
-          ["Yes", `lk:y:${pendingId}`],
-          ["No", `lk:n:${pendingId}`],
+          ["Yes", `${LINK_NS}:y:${pendingId}`],
+          ["No", `${LINK_NS}:n:${pendingId}`],
         ],
       ]),
     });

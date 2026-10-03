@@ -1,6 +1,11 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
 import { SETTINGS, type SwitchKey } from "../../../domain/setting/entity.ts";
-import { formatJotDetail, jotPreview, STATUS_ICON } from "../../../libs/jot.ts";
+import {
+  formatJotDetail,
+  jotPreview,
+  RETRY_NS,
+  STATUS_ICON,
+} from "../../../libs/jot.ts";
 import { logger } from "../../../libs/log.ts";
 import { paginate } from "../../../libs/page.ts";
 import { fitTelegram } from "../../../libs/text.ts";
@@ -40,10 +45,10 @@ const MODELS: Record<"em" | "vfm", [ModelKey, string, string, string, string]> =
   };
 
 const onOff = (on: boolean) => (on ? "on" : "off");
-const shortModel = (m: string) =>
-  m.replace("claude-", "").replace("-4-5", " 4.5").replace("-5", " 5");
+const shortModel = (model: string) =>
+  model.replace("claude-", "").replace("-4-5", " 4.5").replace("-5", " 5");
 
-export function rootKeyboard(s: RootState): InlineKeyboard {
+export function rootKeyboard(state: RootState): InlineKeyboard {
   return new InlineKeyboard()
     .text("📊 Rate today", "menu:rate")
     .text("🌱 Review habits", "menu:habits")
@@ -61,19 +66,19 @@ export function rootKeyboard(s: RootState): InlineKeyboard {
     .text("⚠️ Failed queue", "menu:failed")
     .row()
     .text(
-      `✂️ Entry size: ${s.entrySize ? `${s.entrySize} chars` : "off"}`,
+      `✂️ Entry size: ${state.entrySize ? `${state.entrySize} chars` : "off"}`,
       "menu:esz",
     )
     .row()
-    .text(`🔧 Voice fix: ${onOff(s.voiceFix)}`, "menu:vfix")
+    .text(`🔧 Voice fix: ${onOff(state.voiceFix)}`, "menu:vfix")
     .row()
-    .text(`🌙 Nightly rating: ${onOff(s.nightlyRating)}`, "menu:rtsw")
-    .text(`💬 Follow-up: ${onOff(s.nightlyFollowup)}`, "menu:fusw")
+    .text(`🌙 Nightly rating: ${onOff(state.nightlyRating)}`, "menu:rtsw")
+    .text(`💬 Follow-up: ${onOff(state.nightlyFollowup)}`, "menu:fusw")
     .row()
-    .text(`🕛 Rating time: ${s.ratingTime}`, "menu:rtt")
+    .text(`🕛 Rating time: ${state.ratingTime}`, "menu:rtt")
     .row()
-    .text(`🧠 Enrich: ${shortModel(s.enrichModel ?? "?")}`, "menu:em")
-    .text(`🎤 VF model: ${shortModel(s.voiceFixModel ?? "?")}`, "menu:vfm")
+    .text(`🧠 Enrich: ${shortModel(state.enrichModel ?? "?")}`, "menu:em")
+    .text(`🎤 VF model: ${shortModel(state.voiceFixModel ?? "?")}`, "menu:vfm")
     .row()
     .text("🔗 Link rules", "menu:links")
     .text("🛠 Maintenance", "menu:maint")
@@ -119,10 +124,10 @@ async function modelPicker(
   );
   await ctx.editMessageText(`${title}\n\nCurrent: ${current ?? "not set"}`, {
     reply_markup: picker(
-      MODEL_PRESETS.map((p) => [
-        shortModel(p),
-        `menu:${pick}:${p}`,
-        p === current,
+      MODEL_PRESETS.map((preset) => [
+        shortModel(preset),
+        `menu:${pick}:${preset}`,
+        preset === current,
       ]),
       ["✍️ Type a model", `menu:${custom}`],
     ),
@@ -147,10 +152,10 @@ async function entrySizeScreen(
     ].join("\n"),
     {
       reply_markup: picker(
-        ENTRY_SIZES.map((n) => [
-          n ? `${n} chars` : "Don't split",
-          `menu:ess:${n}`,
-          n === current,
+        ENTRY_SIZES.map((size) => [
+          size ? `${size} chars` : "Don't split",
+          `menu:ess:${size}`,
+          size === current,
         ]),
         ["✍️ Type a size", "menu:esc"],
       ),
@@ -167,10 +172,10 @@ async function jotsList(ctx: Tap, jots: JotService): Promise<unknown> {
   const screen = pagedScreen({
     view: paginate(recent, 0, recent.length),
     title: () => "🗒 Recent jots:",
-    row: (kb, j) =>
+    row: (kb, jot) =>
       kb.text(
-        `${STATUS_ICON[j.status]} ${j.time} ${jotPreview(j)}`,
-        `menu:jot:${j.id}`,
+        `${STATUS_ICON[jot.status]} ${jot.time} ${jotPreview(jot)}`,
+        `menu:jot:${jot.id}`,
       ),
     back: { text: "‹ Back", data: "menu:root" },
   });
@@ -314,7 +319,7 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         await responder.ack();
         const { text, ids } = await admin.failed();
         const kb = new InlineKeyboard();
-        for (const id of ids) kb.text(`🔄 ${id}`, `rt:${id}`).row();
+        for (const id of ids) kb.text(`🔄 ${id}`, `${RETRY_NS}:${id}`).row();
         kb.text("‹ Back", "menu:root");
         return ctx.editMessageText(text, {
           reply_markup: withClose(kb, CLOSE),
@@ -346,13 +351,13 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         await responder.ack();
         return entrySizeScreen(ctx, settings);
       case "ess": {
-        const n = arg === undefined ? Number.NaN : Number(arg);
-        if (!Number.isInteger(n) || n < 0) {
+        const size = arg === undefined ? Number.NaN : Number(arg);
+        if (!Number.isInteger(size) || size < 0) {
           log.warn({ arg }, "menu: bad entry size");
           return responder.ack("expired");
         }
-        await responder.ack(n ? `${n} chars` : "splitting off");
-        await settings.setEntrySize(n);
+        await responder.ack(size ? `${size} chars` : "splitting off");
+        await settings.setEntrySize(size);
         return entrySizeScreen(ctx, settings);
       }
       case "maint":
