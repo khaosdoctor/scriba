@@ -457,34 +457,17 @@ export class ProcessingService {
     try {
       await this.deps.jots.react(jot.id, "done");
       const of = spillover.length + 1;
-      await this.deps.jots.status(
-        jot.id,
-        doneMessage(
-          jot.time,
-          jot.kind,
-          linked,
-          jot.id,
-          merged ? followers.length + 1 : 0,
-          of > 1 ? { i: 1, of } : undefined,
-        ),
-        { undo: true, embed: embedOffer(linked) },
+      await this.doneStatus(
+        jot,
+        linked,
+        merged ? followers.length + 1 : 0,
+        of > 1 ? { i: 1, of } : undefined,
       );
       for (const [index, piece] of spillover.entries())
-        await this.deps.jots.status(
-          piece.id,
-          doneMessage(
-            piece.time,
-            piece.kind,
-            piece.raw_text ?? "",
-            piece.id,
-            0,
-            {
-              i: index + 2,
-              of,
-            },
-          ),
-          { undo: true, embed: embedOffer(piece.raw_text ?? "") },
-        );
+        await this.doneStatus(piece, piece.raw_text ?? "", 0, {
+          i: index + 2,
+          of,
+        });
       // Tasks come after the entry is safely in the note: a card is a question about
       // something already journalled, never a step on the way to journalling it.
       for (const draft of tasks)
@@ -502,6 +485,19 @@ export class ProcessingService {
         "post-done side effect failed — jot stays done",
       );
     }
+  }
+
+  private async doneStatus(
+    jot: Jot,
+    text: string,
+    squashed: number,
+    part?: { i: number; of: number },
+  ): Promise<void> {
+    await this.deps.jots.status(
+      jot.id,
+      doneMessage(jot.time, jot.kind, text, jot.id, squashed, part),
+      { undo: true, embed: embedOffer(text) },
+    );
   }
 
   private async fail(jot: Jot, err: unknown): Promise<void> {

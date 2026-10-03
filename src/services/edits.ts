@@ -31,6 +31,8 @@ const log = logger("bot");
 
 export const LINK_NS = "lk";
 
+const LINE_NOT_FOUND = "Couldn't find that line in the note.";
+
 export interface EditDeps {
   repo: JotRepository;
   linkRules: LinkRuleRepository;
@@ -75,7 +77,7 @@ export class EditService {
     messageId: number,
     instruction: string,
   ): Promise<EditOutcome> {
-    const { repo, jots } = this.deps;
+    const { repo } = this.deps;
     const jot = await this.editOrQueue(messageId, () => ({
       edit: instruction,
       outcome: "queued",
@@ -88,10 +90,7 @@ export class EditService {
     // entry is actually still in the journal.
     const after = await repo.getJot(jotId);
     const done = after?.status === "done";
-    await jots.status(jotId, applied, {
-      undo: done,
-      embed: done ? await this.embedFor(jot) : undefined,
-    });
+    await this.showFinished(jot, applied, done);
     return "applied";
   }
 
@@ -128,10 +127,7 @@ export class EditService {
     }
     log.info({ jotId, text: markdown }, "applying edit to processed jot");
     await jots.status(jotId, "✍️ got your edit — applying…");
-    await jots.status(jotId, await this.replaceJotText(jot, markdown), {
-      undo: true,
-      embed: await this.embedFor(jot),
-    });
+    await this.showFinished(jot, await this.replaceJotText(jot, markdown));
     return "applied";
   }
 
@@ -258,7 +254,7 @@ export class EditService {
   }
 
   async drainQueued(jotId: string): Promise<void> {
-    const { repo, jots } = this.deps;
+    const { repo } = this.deps;
     const edits = await repo.queuedEdits(jotId);
     if (!edits.length) return;
     const jot = await repo.getJot(jotId);
@@ -269,10 +265,9 @@ export class EditService {
     );
     const confirmation = await this.applyEdits(jot, edits);
     await repo.clearQueuedEdits(jotId); // clear only after apply succeeds, so a throw doesn't lose them
-    await jots.status(
-      jotId,
+    await this.showFinished(
+      jot,
       `${confirmation}\n(applied ${edits.length} queued edit${edits.length > 1 ? "s" : ""})`,
-      { undo: true, embed: await this.embedFor(jot) },
     );
   }
 
@@ -326,6 +321,17 @@ export class EditService {
     return outcome;
   }
 
+  private async showFinished(
+    jot: Jot,
+    text: string,
+    undo = true,
+  ): Promise<void> {
+    await this.deps.jots.status(jot.id, text, {
+      undo,
+      embed: undo ? await this.embedFor(jot) : undefined,
+    });
+  }
+
   private async embedFor(jot: Jot): Promise<StatusButtons["embed"]> {
     const note = await this.deps.obsidian.readNote(jot.note_path);
     const line = anchorLine(note, jot.anchor);
@@ -359,7 +365,7 @@ export class EditService {
         return text;
       },
     );
-    if (result === null) return "Couldn't find that line in the note.";
+    if (result === null) return LINE_NOT_FOUND;
     await this.syncEditedSource(jot, result);
     return editConfirmation(jot.time, result);
   }
@@ -377,7 +383,7 @@ export class EditService {
         return true;
       },
     );
-    if (!found) return "Couldn't find that line in the note.";
+    if (!found) return LINE_NOT_FOUND;
     await this.syncEditedSource(jot, newText);
     return editConfirmation(jot.time, newText);
   }
