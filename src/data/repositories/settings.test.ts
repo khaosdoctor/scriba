@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { withDb } from "../../test/sqlite.ts";
 import { SettingsRepository } from "./settings.ts";
 
-test("settings: a write replaces the stored value and reads back typed", async (t) => {
-  await withDb(t, async (k) => {
-    const settings = new SettingsRepository(k);
+test("settings: a write replaces the stored value and reads back typed", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const settings = new SettingsRepository(knex);
     assert.equal(await settings.getSetting("entryMaxChars"), 280);
     await settings.setSetting("entryMaxChars", "140");
     assert.equal(await settings.getSetting("entryMaxChars"), 140);
@@ -14,24 +14,24 @@ test("settings: a write replaces the stored value and reads back typed", async (
   });
 });
 
-test("settings: toggle turns a switch on or off from its default and persists the string", async (t) => {
-  await withDb(t, async (k) => {
-    const settings = new SettingsRepository(k);
+test("settings: toggle turns a switch on or off from its default and persists the string", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const settings = new SettingsRepository(knex);
     assert.equal(await settings.toggleSetting("nightlyRating"), false);
     assert.equal(await settings.getSetting("nightlyRating"), false);
     assert.equal(await settings.toggleSetting("nightlyRating"), true);
     assert.equal(await settings.getSetting("nightlyRating"), true);
     assert.equal(await settings.toggleSetting("fixVoiceTranscript"), true);
-    const stored = await k("settings")
+    const stored = await knex("settings")
       .where({ key: "fixVoiceTranscript" })
       .first();
     assert.equal(stored.value, "on");
   });
 });
 
-test("settings: seeding writes only unset or blank keys", async (t) => {
-  await withDb(t, async (k) => {
-    const settings = new SettingsRepository(k);
+test("settings: seeding writes only unset or blank keys", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const settings = new SettingsRepository(knex);
     await settings.setSetting("voiceFixModel", "");
     await settings.setSetting("enrichModel", "chosen-in-menu");
     await settings.seedSettings({
@@ -46,9 +46,9 @@ test("settings: seeding writes only unset or blank keys", async (t) => {
   });
 });
 
-test("settings: the rating time is the stored time when valid, else the normalised default", async (t) => {
-  await withDb(t, async (k) => {
-    const settings = new SettingsRepository(k);
+test("settings: the rating time is the stored time when valid, else the normalised default", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const settings = new SettingsRepository(knex);
     assert.equal(await settings.ratingTime("00:00"), "00:00");
     assert.equal(await settings.ratingTime("9:30"), "09:30");
     await settings.setSetting("ratingTime", "8:05");

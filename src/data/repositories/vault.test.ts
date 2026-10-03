@@ -38,11 +38,11 @@ async function fixture() {
 }
 
 test("vault tools read inside the vault and refuse every way out of it", async () => {
-  const f = await fixture();
+  const vaultFixture = await fixture();
   try {
-    assert.match(await f.tools.read("notes/a.md"), /hello vault/);
-    assert.match(await f.tools.listNotes(), /notes\/a\.md/);
-    assert.match(await f.tools.searchNotes("hello"), /notes\/a\.md/);
+    assert.match(await vaultFixture.tools.read("notes/a.md"), /hello vault/);
+    assert.match(await vaultFixture.tools.listNotes(), /notes\/a\.md/);
+    assert.match(await vaultFixture.tools.searchNotes("hello"), /notes\/a\.md/);
 
     // None of the refusals leaks the file's contents in the error.
     for (const bad of [
@@ -52,7 +52,7 @@ test("vault tools read inside the vault and refuse every way out of it", async (
       "escape.md", // symlink pointing outside the vault
     ]) {
       await assert.rejects(
-        () => f.tools.read(bad),
+        () => vaultFixture.tools.read(bad),
         (err: Error) => {
           assert.doesNotMatch(err.message, /hunter2/);
           return /escapes the vault|ENOENT|no such file/i.test(err.message);
@@ -63,119 +63,159 @@ test("vault tools read inside the vault and refuse every way out of it", async (
 
     // Writes are path-checked the same way, and go through the REST client (the mount is
     // read-only), with .md added when it's missing.
-    await f.tools.write("notes/new", "body");
-    assert.deepEqual(f.written, [{ path: "notes/new.md", content: "body" }]);
+    await vaultFixture.tools.write("notes/new", "body");
+    assert.deepEqual(vaultFixture.written, [
+      { path: "notes/new.md", content: "body" },
+    ]);
     await assert.rejects(
-      () => f.tools.write("../evil", "x"),
+      () => vaultFixture.tools.write("../evil", "x"),
       /escapes the vault/,
     );
   } finally {
-    await f.cleanup();
+    await vaultFixture.cleanup();
   }
 });
 
 test("a path that is blank, holds a NUL or goes through a symlinked folder is refused", async () => {
-  const f = await fixture();
+  const vaultFixture = await fixture();
   try {
-    await symlink(f.base, join(f.root, "out")).catch(() => {});
-    await assert.rejects(() => f.tools.read("  "), /path is required/);
-    await assert.rejects(() => f.tools.read("a\0b.md"), /invalid path/);
+    await symlink(vaultFixture.base, join(vaultFixture.root, "out")).catch(
+      () => {},
+    );
     await assert.rejects(
-      () => f.tools.write("out/new.md", "x"),
+      () => vaultFixture.tools.read("  "),
+      /path is required/,
+    );
+    await assert.rejects(
+      () => vaultFixture.tools.read("a\0b.md"),
+      /invalid path/,
+    );
+    await assert.rejects(
+      () => vaultFixture.tools.write("out/new.md", "x"),
       /escapes the vault via a symlink/,
     );
-    assert.deepEqual(f.written, []);
+    assert.deepEqual(vaultFixture.written, []);
   } finally {
-    await f.cleanup();
+    await vaultFixture.cleanup();
   }
 });
 
 test("write keeps an explicit extension and delete goes through Obsidian", async () => {
-  const f = await fixture();
+  const vaultFixture = await fixture();
   try {
     assert.equal(
-      await f.tools.write("notes/x.md", "abc"),
+      await vaultFixture.tools.write("notes/x.md", "abc"),
       "wrote notes/x.md (3 characters)",
     );
-    assert.equal(await f.tools.delete("notes/old"), "deleted notes/old.md");
-    assert.deepEqual(f.deleted, ["notes/old.md"]);
-    await assert.rejects(() => f.tools.delete("../a"), /escapes the vault/);
-    assert.deepEqual(f.deleted, ["notes/old.md"]);
+    assert.equal(
+      await vaultFixture.tools.delete("notes/old"),
+      "deleted notes/old.md",
+    );
+    assert.deepEqual(vaultFixture.deleted, ["notes/old.md"]);
+    await assert.rejects(
+      () => vaultFixture.tools.delete("../a"),
+      /escapes the vault/,
+    );
+    assert.deepEqual(vaultFixture.deleted, ["notes/old.md"]);
   } finally {
-    await f.cleanup();
+    await vaultFixture.cleanup();
   }
 });
 
 test("listing skips dot folders and symlinks, takes one note path and reports an empty folder", async () => {
-  const f = await fixture();
+  const vaultFixture = await fixture();
   try {
-    await mkdir(join(f.root, ".obsidian"));
-    await writeFile(join(f.root, ".obsidian", "hidden.md"), "hidden");
-    await mkdir(join(f.root, "empty"));
-    assert.equal(await f.tools.listNotes(), "notes/a.md");
-    assert.equal(await f.tools.listNotes("notes/a.md"), "notes/a.md");
-    assert.equal(await f.tools.listNotes("empty"), "(no notes here)");
+    await mkdir(join(vaultFixture.root, ".obsidian"));
+    await writeFile(
+      join(vaultFixture.root, ".obsidian", "hidden.md"),
+      "hidden",
+    );
+    await mkdir(join(vaultFixture.root, "empty"));
+    assert.equal(await vaultFixture.tools.listNotes(), "notes/a.md");
+    assert.equal(
+      await vaultFixture.tools.listNotes("notes/a.md"),
+      "notes/a.md",
+    );
+    assert.equal(
+      await vaultFixture.tools.listNotes("empty"),
+      "(no notes here)",
+    );
   } finally {
-    await f.cleanup();
+    await vaultFixture.cleanup();
   }
 });
 
 test("a long listing is cut at 400 notes and says how many are hidden", async () => {
-  const f = await fixture();
+  const vaultFixture = await fixture();
   try {
-    await mkdir(join(f.root, "many"));
-    for (let i = 0; i < 405; i++)
-      await writeFile(join(f.root, "many", `n${i}.md`), "x");
-    const out = await f.tools.listNotes("many");
+    await mkdir(join(vaultFixture.root, "many"));
+    for (let index = 0; index < 405; index++)
+      await writeFile(join(vaultFixture.root, "many", `n${index}.md`), "x");
+    const out = await vaultFixture.tools.listNotes("many");
     assert.equal(out.split("\n").length, 401);
     assert.match(out, /… 5 more not shown; narrow the directory/);
   } finally {
-    await f.cleanup();
+    await vaultFixture.cleanup();
   }
 });
 
 test("read truncates a note over 200000 characters", async () => {
-  const f = await fixture();
+  const vaultFixture = await fixture();
   try {
-    await writeFile(join(f.root, "notes", "big.md"), "a".repeat(200_050));
-    const out = await f.tools.read("notes/big.md");
+    await writeFile(
+      join(vaultFixture.root, "notes", "big.md"),
+      "a".repeat(200_050),
+    );
+    const out = await vaultFixture.tools.read("notes/big.md");
     assert.equal(
       out,
       `${"a".repeat(200_000)}\n… (truncated at 200000 characters)`,
     );
   } finally {
-    await f.cleanup();
+    await vaultFixture.cleanup();
   }
 });
 
 test("search needs a query, reports no match and stops at 60 hits", async () => {
-  const f = await fixture();
+  const vaultFixture = await fixture();
   try {
-    await assert.rejects(() => f.tools.searchNotes("  "), /query is required/);
-    assert.equal(await f.tools.searchNotes("zzz"), 'no note matches "zzz"');
-    await mkdir(join(f.root, "hits"));
-    for (let i = 0; i < 65; i++)
-      await writeFile(join(f.root, "hits", `h${i}.md`), "first\nNeedle here\n");
-    const out = await f.tools.searchNotes("needle", "hits");
+    await assert.rejects(
+      () => vaultFixture.tools.searchNotes("  "),
+      /query is required/,
+    );
+    assert.equal(
+      await vaultFixture.tools.searchNotes("zzz"),
+      'no note matches "zzz"',
+    );
+    await mkdir(join(vaultFixture.root, "hits"));
+    for (let index = 0; index < 65; index++)
+      await writeFile(
+        join(vaultFixture.root, "hits", `h${index}.md`),
+        "first\nNeedle here\n",
+      );
+    const out = await vaultFixture.tools.searchNotes("needle", "hits");
     const lines = out.split("\n");
     assert.equal(lines.length, 60);
     assert.match(lines[0]!, /^hits\/h\d+\.md: Needle here$/);
   } finally {
-    await f.cleanup();
+    await vaultFixture.cleanup();
   }
 });
 
 test("the agent lists a folder named internal that the link index skips", async () => {
-  const f = await fixture();
+  const vaultFixture = await fixture();
   try {
-    await mkdir(join(f.root, "internal"));
-    await writeFile(join(f.root, "internal", "tpl.md"), "template");
-    assert.match(await f.tools.listNotes("internal"), /internal\/tpl\.md/);
-    await f.tools.rebuild();
-    assert.ok(!f.tools.list().some((e) => e.note === "tpl"));
-    assert.ok(f.tools.list().some((e) => e.note === "a"));
+    await mkdir(join(vaultFixture.root, "internal"));
+    await writeFile(join(vaultFixture.root, "internal", "tpl.md"), "template");
+    assert.match(
+      await vaultFixture.tools.listNotes("internal"),
+      /internal\/tpl\.md/,
+    );
+    await vaultFixture.tools.rebuild();
+    assert.ok(!vaultFixture.tools.list().some((entry) => entry.note === "tpl"));
+    assert.ok(vaultFixture.tools.list().some((entry) => entry.note === "a"));
   } finally {
-    await f.cleanup();
+    await vaultFixture.cleanup();
   }
 });
 
@@ -196,8 +236,8 @@ test("a vault path that isn't configured disables the tools", async () => {
 
 test("ids used for confirmations are unguessable enough", () => {
   // Sanity: the confirm ids come from shortId (4 random bytes), not a counter.
-  const a = randomBytes(4).toString("hex");
-  assert.match(a, /^[0-9a-f]{8}$/);
+  const confirmId = randomBytes(4).toString("hex");
+  assert.match(confirmId, /^[0-9a-f]{8}$/);
 });
 
 test("empty vault path yields no candidates", async () => {
@@ -233,7 +273,7 @@ test("rebuild indexes titles + inline and block aliases, skips non-md/dotfiles",
 
     const entries = idx.list();
     const has = (note: string, alias: string) =>
-      entries.some((e) => e.note === note && e.alias === alias);
+      entries.some((entry) => entry.note === note && entry.alias === alias);
     assert.ok(has("Norway", "Norway")); // title is always an alias
     assert.ok(has("Norway", "no")); // inline
     assert.ok(has("Norway", "Noruega"));
@@ -247,9 +287,9 @@ test("rebuild indexes titles + inline and block aliases, skips non-md/dotfiles",
 });
 
 const poll = async (cond: () => boolean, tries = 40, ms = 100) => {
-  for (let i = 0; i < tries; i++) {
+  for (let attempt = 0; attempt < tries; attempt++) {
     if (cond()) return;
-    await new Promise((r) => setTimeout(r, ms));
+    await new Promise((resolve) => setTimeout(resolve, ms));
   }
 };
 
@@ -259,12 +299,12 @@ test("startIndex() scans initially and reflects later changes", async () => {
   try {
     await writeFile(join(dir, "Seed.md"), "seed");
     idx.startIndex(300); // short periodic backstop → deterministic regardless of watch timing
-    await poll(() => idx.list().some((e) => e.note === "Seed"));
-    assert.ok(idx.list().some((e) => e.note === "Seed"));
+    await poll(() => idx.list().some((entry) => entry.note === "Seed"));
+    assert.ok(idx.list().some((entry) => entry.note === "Seed"));
 
     await writeFile(join(dir, "New.md"), "new");
-    await poll(() => idx.list().some((e) => e.note === "New"));
-    assert.ok(idx.list().some((e) => e.note === "New"));
+    await poll(() => idx.list().some((entry) => entry.note === "New"));
+    assert.ok(idx.list().some((entry) => entry.note === "New"));
   } finally {
     idx.stopIndex();
     await rm(dir, { recursive: true, force: true });
@@ -288,20 +328,20 @@ test("rebuild is incremental: reflects adds, edits, and deletes", async () => {
     await writeFile(join(dir, "A.md"), "---\naliases: [aa]\n---\n");
     const idx = new VaultRepository(dir, {} as ObsidianClient);
     assert.equal(await idx.rebuild(), 1);
-    assert.ok(idx.list().some((e) => e.alias === "aa"));
+    assert.ok(idx.list().some((entry) => entry.alias === "aa"));
 
     await writeFile(join(dir, "B.md"), "body"); // add
     assert.equal(await idx.rebuild(), 2);
-    assert.ok(idx.list().some((e) => e.note === "B"));
+    assert.ok(idx.list().some((entry) => entry.note === "B"));
 
     await writeFile(join(dir, "A.md"), "---\naliases: [bb]\n---\n"); // edit
     await idx.rebuild();
-    assert.ok(idx.list().some((e) => e.alias === "bb"));
-    assert.ok(!idx.list().some((e) => e.alias === "aa"));
+    assert.ok(idx.list().some((entry) => entry.alias === "bb"));
+    assert.ok(!idx.list().some((entry) => entry.alias === "aa"));
 
     await rm(join(dir, "B.md")); // delete
     assert.equal(await idx.rebuild(), 1);
-    assert.ok(!idx.list().some((e) => e.note === "B"));
+    assert.ok(!idx.list().some((entry) => entry.note === "B"));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

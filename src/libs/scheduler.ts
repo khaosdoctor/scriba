@@ -50,8 +50,10 @@ export class Scheduler {
     for (const job of this.intervals) this.tick(job);
     log.info(
       {
-        daily: Object.fromEntries(dailies.map((j) => [j.name, j.at])),
-        every: Object.fromEntries(this.intervals.map((j) => [j.name, j.ms])),
+        daily: Object.fromEntries(dailies.map((job) => [job.name, job.at])),
+        every: Object.fromEntries(
+          this.intervals.map((job) => [job.name, job.ms]),
+        ),
       },
       "scheduler started",
     );
@@ -98,8 +100,8 @@ export class Scheduler {
   private async guarded(job: Daily | Interval): Promise<void> {
     try {
       await job.run();
-    } catch (e) {
-      log.error({ err: e, job: job.name }, "scheduled job failed");
+    } catch (error) {
+      log.error({ err: error, job: job.name }, "scheduled job failed");
     }
   }
 }

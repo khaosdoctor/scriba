@@ -28,12 +28,12 @@ export function parseWizardRef(text: string): WizardPrompt | null {
   if (text.includes(WIZARD_VOICEFIX_MODEL_REF)) return { kind: "vfm" };
   if (text.includes(WIZARD_RATING_TIME_REF)) return { kind: "rt" };
   // `rgn`/`rgw`/`rgm` before `rg`: alternation is first-match, and `rg` prefixes them all.
-  const m = text.match(/\(lw:(sw|rgn|rgw|rgm|rg)(?::(\d+))?\)/);
-  if (!m) return null;
-  if (m[1] === "sw") return { kind: "sw" };
-  if (m[1] === "rg") return { kind: "rg" };
-  if (m[1] === "rgn") return { kind: "rgn" };
-  if (m[1] === "rgm") return { kind: "rgm" };
-  const index = Number(m[2]);
+  const match = text.match(/\(lw:(sw|rgn|rgw|rgm|rg)(?::(\d+))?\)/);
+  if (!match) return null;
+  if (match[1] === "sw") return { kind: "sw" };
+  if (match[1] === "rg") return { kind: "rg" };
+  if (match[1] === "rgn") return { kind: "rgn" };
+  if (match[1] === "rgm") return { kind: "rgm" };
+  const index = Number(match[2]);
   return Number.isInteger(index) ? { kind: "rgw", index } : null;
 }

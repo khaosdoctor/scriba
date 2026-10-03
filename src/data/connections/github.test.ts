@@ -14,9 +14,9 @@ const RAW = {
   published_at: "2026-07-15T12:00:00Z",
 };
 
-test("latest fetches the latest-release endpoint and maps the payload", async (t) => {
+test("latest fetches the latest-release endpoint and maps the payload", async (testContext) => {
   let calledUrl = "";
-  t.mock.method(globalThis, "fetch", async (url: string) => {
+  testContext.mock.method(globalThis, "fetch", async (url: string) => {
     calledUrl = url;
     return fakeResponse(RAW);
   });
@@ -32,9 +32,9 @@ test("latest fetches the latest-release endpoint and maps the payload", async (t
   });
 });
 
-test("byVersion adds a leading v to the tag when missing", async (t) => {
+test("byVersion adds a leading v to the tag when missing", async (testContext) => {
   let calledUrl = "";
-  t.mock.method(globalThis, "fetch", async (url: string) => {
+  testContext.mock.method(globalThis, "fetch", async (url: string) => {
     calledUrl = url;
     return fakeResponse(RAW);
   });
@@ -45,35 +45,41 @@ test("byVersion adds a leading v to the tag when missing", async (t) => {
   assert.match(calledUrl, /releases\/tags\/v1\.2\.3$/);
 });
 
-test("byVersion returns null on a non-ok response instead of throwing", async (t) => {
-  t.mock.method(globalThis, "fetch", async () => fakeResponse(null, false));
+test("byVersion returns null on a non-ok response instead of throwing", async (testContext) => {
+  testContext.mock.method(globalThis, "fetch", async () =>
+    fakeResponse(null, false),
+  );
   const note = await new GithubReleases("owner/repo").byVersion("9.9.9");
   assert.equal(note, null);
 });
 
-test("recent returns the mapped list, and [] on a non-ok response", async (t) => {
-  t.mock.method(globalThis, "fetch", async () =>
+test("recent returns the mapped list, and [] on a non-ok response", async (testContext) => {
+  testContext.mock.method(globalThis, "fetch", async () =>
     fakeResponse([RAW, { ...RAW, tag_name: "v1.2.2" }]),
   );
   const notes = await new GithubReleases("owner/repo").recent(2);
   assert.equal(notes.length, 2);
   assert.equal(notes[1]!.tag, "v1.2.2");
 
-  t.mock.method(globalThis, "fetch", async () => fakeResponse(null, false));
+  testContext.mock.method(globalThis, "fetch", async () =>
+    fakeResponse(null, false),
+  );
   assert.deepEqual(await new GithubReleases("owner/repo").recent(2), []);
 });
 
-test("a release payload missing its tag rejects instead of mapping undefined fields", async (t) => {
+test("a release payload missing its tag rejects instead of mapping undefined fields", async (testContext) => {
   const { tag_name: _tag, ...noTag } = RAW;
-  t.mock.method(globalThis, "fetch", async () => fakeResponse(noTag));
+  testContext.mock.method(globalThis, "fetch", async () => fakeResponse(noTag));
   await assert.rejects(new GithubReleases("owner/repo").latest());
 
-  t.mock.method(globalThis, "fetch", async () => fakeResponse([noTag]));
+  testContext.mock.method(globalThis, "fetch", async () =>
+    fakeResponse([noTag]),
+  );
   await assert.rejects(new GithubReleases("owner/repo").recent(1));
 });
 
-test("falls back to the tag name when the release has no name", async (t) => {
-  t.mock.method(globalThis, "fetch", async () =>
+test("falls back to the tag name when the release has no name", async (testContext) => {
+  testContext.mock.method(globalThis, "fetch", async () =>
     fakeResponse({ ...RAW, name: null }),
   );
   const note = await new GithubReleases("owner/repo").latest();

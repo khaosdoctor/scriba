@@ -213,9 +213,9 @@ const STOPWORDS = [
 ];
 
 export async function up(knex) {
-  const rows = [...new Set(STOPWORDS.map((w) => w.toLowerCase()))].map(
-    (word) => ({ word }),
-  );
+  const rows = [
+    ...new Set(STOPWORDS.map((stopword) => stopword.toLowerCase())),
+  ].map((word) => ({ word }));
   await knex("stopwords").insert(rows).onConflict("word").ignore();
 }
 

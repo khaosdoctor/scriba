@@ -10,7 +10,7 @@ function make(
   }> = {},
 ) {
   const flushed: string[][] = [];
-  const q = new FlushQueue({
+  const queue = new FlushQueue({
     idleMs: 100,
     maxBatch: 3,
     maxWaitMs: 500,
@@ -19,55 +19,59 @@ function make(
     },
     ...overrides,
   });
-  return { q, flushed };
+  return { queue, flushed };
 }
 
-test("flushes immediately when the batch-size cap is hit", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { q, flushed } = make({ maxBatch: 3 });
-  q.add(["a"]);
-  q.add(["b"]);
+test("flushes immediately when the batch-size cap is hit", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const { queue, flushed } = make({ maxBatch: 3 });
+  queue.add(["a"]);
+  queue.add(["b"]);
   assert.equal(flushed.length, 0);
-  q.add(["c"]); // hits cap → synchronous flush
+  queue.add(["c"]); // hits cap → synchronous flush
   assert.deepEqual(flushed, [["a", "b", "c"]]);
 });
 
-test("flushes after the idle gap", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { q, flushed } = make({ idleMs: 100 });
-  q.add(["a"]);
-  t.mock.timers.tick(99);
+test("flushes after the idle gap", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const { queue, flushed } = make({ idleMs: 100 });
+  queue.add(["a"]);
+  testContext.mock.timers.tick(99);
   assert.equal(flushed.length, 0);
-  t.mock.timers.tick(1);
+  testContext.mock.timers.tick(1);
   assert.deepEqual(flushed, [["a"]]);
 });
 
-test("idle timer resets on each new message", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { q, flushed } = make({ idleMs: 100, maxWaitMs: 10_000 });
-  q.add(["a"]);
-  t.mock.timers.tick(80);
-  q.add(["b"]); // resets idle
-  t.mock.timers.tick(80);
+test("idle timer resets on each new message", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const { queue, flushed } = make({ idleMs: 100, maxWaitMs: 10_000 });
+  queue.add(["a"]);
+  testContext.mock.timers.tick(80);
+  queue.add(["b"]); // resets idle
+  testContext.mock.timers.tick(80);
   assert.equal(flushed.length, 0); // 80 < 100 since last add
-  t.mock.timers.tick(20);
+  testContext.mock.timers.tick(20);
   assert.deepEqual(flushed, [["a", "b"]]);
 });
 
-test("hard max-wait fires even under a steady trickle", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { q, flushed } = make({ idleMs: 1000, maxBatch: 99, maxWaitMs: 200 });
-  q.add(["a"]);
-  t.mock.timers.tick(150);
-  q.add(["b"]); // resets idle (1000) but not the max-wait
-  t.mock.timers.tick(50); // 200 total since first item
+test("hard max-wait fires even under a steady trickle", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const { queue, flushed } = make({
+    idleMs: 1000,
+    maxBatch: 99,
+    maxWaitMs: 200,
+  });
+  queue.add(["a"]);
+  testContext.mock.timers.tick(150);
+  queue.add(["b"]); // resets idle (1000) but not the max-wait
+  testContext.mock.timers.tick(50); // 200 total since first item
   assert.deepEqual(flushed, [["a", "b"]]);
 });
 
-test("add(ids) pushes the whole batch and arms once, flushing at the cap", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { q, flushed } = make({ maxBatch: 3 });
-  q.add(["a", "b", "c"]); // hits cap in one call → synchronous flush
+test("add(ids) pushes the whole batch and arms once, flushing at the cap", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const { queue, flushed } = make({ maxBatch: 3 });
+  queue.add(["a", "b", "c"]); // hits cap in one call → synchronous flush
   assert.deepEqual(flushed, [["a", "b", "c"]]);
 });
 
@@ -75,12 +79,12 @@ test("add(ids) chunks a batch larger than maxBatch into multiple flushes", async
   // Real timers here: the cap-triggered flushes chain through arm() -> flush() ->
   // arm() via promise microtasks, not the mocked setTimeout, so wait for those to
   // settle instead of enabling t.mock.timers.
-  const { q, flushed } = make({
+  const { queue, flushed } = make({
     maxBatch: 2,
     idleMs: 100_000,
     maxWaitMs: 100_000,
   });
-  q.add(["a", "b", "c", "d"]);
+  queue.add(["a", "b", "c", "d"]);
   await new Promise((resolve) => setTimeout(resolve, 0));
   assert.deepEqual(flushed, [
     ["a", "b"],
@@ -88,33 +92,33 @@ test("add(ids) chunks a batch larger than maxBatch into multiple flushes", async
   ]);
 });
 
-test("add(ids) below the cap arms the idle timer", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { q, flushed } = make({ idleMs: 100, maxBatch: 99 });
-  q.add(["a", "b"]);
+test("add(ids) below the cap arms the idle timer", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const { queue, flushed } = make({ idleMs: 100, maxBatch: 99 });
+  queue.add(["a", "b"]);
   assert.equal(flushed.length, 0);
-  t.mock.timers.tick(100);
+  testContext.mock.timers.tick(100);
   assert.deepEqual(flushed, [["a", "b"]]);
 });
 
-test("add(ids) with an empty array is a no-op", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { q, flushed } = make();
-  q.add([]);
-  assert.equal(q.depth, 0);
-  t.mock.timers.tick(1000);
+test("add(ids) with an empty array is a no-op", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const { queue, flushed } = make();
+  queue.add([]);
+  assert.equal(queue.depth, 0);
+  testContext.mock.timers.tick(1000);
   assert.equal(flushed.length, 0);
 });
 
-test("add(ids) doesn't blow the call stack on a very large batch", (t) => {
+test("add(ids) doesn't blow the call stack on a very large batch", (testContext) => {
   // push(...ids) would spread every element as an individual argument: fine normally,
   // but a RangeError for a batch this size (a wide /reprocess date range). Regression
   // guard for that; the cap-triggered flush chain isn't what's under test here.
-  t.mock.timers.enable({ apis: ["setTimeout"] });
-  const { q } = make({ maxBatch: 1_000_000 });
-  const huge = Array.from({ length: 200_000 }, (_, i) => String(i));
-  assert.doesNotThrow(() => q.add(huge));
-  assert.equal(q.depth, 200_000);
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
+  const { queue } = make({ maxBatch: 1_000_000 });
+  const huge = Array.from({ length: 200_000 }, (_, index) => String(index));
+  assert.doesNotThrow(() => queue.add(huge));
+  assert.equal(queue.depth, 200_000);
 });
 
 test("a /flush while a batch is draining, or with nothing queued, does nothing", async () => {

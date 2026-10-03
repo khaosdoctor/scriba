@@ -38,26 +38,26 @@ test("the two modes refuse to open over each other", () => {
   modes.close();
 });
 
-test("an idle mode closes itself and tells the owner, and a message restarts the countdown", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("an idle mode closes itself and tells the owner, and a message restarts the countdown", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
   const { modes, notices } = setup();
   modes.open("task");
-  t.mock.timers.tick(IDLE - 1);
+  testContext.mock.timers.tick(IDLE - 1);
   modes.touch();
-  t.mock.timers.tick(IDLE - 1);
+  testContext.mock.timers.tick(IDLE - 1);
   assert.equal(modes.isOpen("task"), true);
   assert.deepEqual(notices, []);
-  t.mock.timers.tick(1);
+  testContext.mock.timers.tick(1);
   assert.equal(modes.isOpen("task"), false);
   assert.deepEqual(notices, ["📝 Task mode timed out — back to journaling."]);
 });
 
-test("command mode idles out with its own notice, after its close hook has run", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("command mode idles out with its own notice, after its close hook has run", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
   const { modes, notices } = setup();
   const hook: string[] = [];
   modes.open("command", () => hook.push(`closed, ${notices.length} notices`));
-  t.mock.timers.tick(IDLE);
+  testContext.mock.timers.tick(IDLE);
   assert.equal(modes.isOpen("command"), false);
   assert.deepEqual(hook, ["closed, 0 notices"]);
   assert.deepEqual(notices, [
@@ -65,21 +65,21 @@ test("command mode idles out with its own notice, after its close hook has run",
   ]);
 });
 
-test("closing a mode runs its hook once and cancels its timeout notice, and touching a closed one arms nothing", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("closing a mode runs its hook once and cancels its timeout notice, and touching a closed one arms nothing", (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
   const { modes, notices } = setup();
   const closes: number[] = [];
   modes.open("task", () => closes.push(1));
   modes.close();
   modes.close();
   modes.touch();
-  t.mock.timers.tick(IDLE * 2);
+  testContext.mock.timers.tick(IDLE * 2);
   assert.deepEqual(closes, [1]);
   assert.deepEqual(notices, []);
 });
 
-test("a timeout notice that cannot be sent does not stop the mode from closing", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("a timeout notice that cannot be sent does not stop the mode from closing", async (testContext) => {
+  testContext.mock.timers.enable({ apis: ["setTimeout"] });
   const modes = new Modes(
     {
       notify: async () => {
@@ -89,7 +89,7 @@ test("a timeout notice that cannot be sent does not stop the mode from closing",
     IDLE,
   );
   modes.open("task");
-  t.mock.timers.tick(IDLE);
+  testContext.mock.timers.tick(IDLE);
   await Promise.resolve();
   assert.equal(modes.isOpen("task"), false);
 });

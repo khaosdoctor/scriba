@@ -12,7 +12,7 @@ export class FallbackTranscriber implements Transcriber {
   }
 
   get chain(): string {
-    return this.backends.map((b) => b.name).join(" → ");
+    return this.backends.map((backend) => backend.name).join(" → ");
   }
 
   async transcribe(bytes: Uint8Array, ext: string): Promise<string> {

@@ -1,9 +1,9 @@
 export async function up(knex) {
-  await knex.schema.createTable("registered_links", (t) => {
-    t.text("surface").notNullable();
-    t.text("note").notNullable();
-    t.bigInteger("created_at").notNullable();
-    t.primary(["surface", "note"]);
+  await knex.schema.createTable("registered_links", (table) => {
+    table.text("surface").notNullable();
+    table.text("note").notNullable();
+    table.bigInteger("created_at").notNullable();
+    table.primary(["surface", "note"]);
   });
 }
 

@@ -208,7 +208,7 @@ test("formatStatus shows a disabled link index", () => {
 });
 
 test("formatListPage clamps the page and footers what is off screen", () => {
-  const items = Array.from({ length: 5 }, (_, i) => `item${i + 1}`);
+  const items = Array.from({ length: 5 }, (_, index) => `item${index + 1}`);
   // One page fits: no footer at all.
   assert.equal(formatListPage(items, 0, 10, "/x"), items.join("\n"));
 
