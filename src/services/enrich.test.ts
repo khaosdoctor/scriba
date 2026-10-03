@@ -26,7 +26,7 @@ function fakeQuery(msgs: Msg[]) {
   const fn: QueryFn = ((args: any) => {
     calls.push({ prompt: args.prompt, options: args.options });
     return (async function* () {
-      for (const m of msgs) yield m as any;
+      for (const message of msgs) yield message as any;
     })();
   }) as any;
   return { fn, calls };
@@ -48,7 +48,7 @@ test("enrich returns parsed text, ambiguous, and usage from clean JSON", async (
   const { fn } = fakeQuery([
     assistantText(body, { input_tokens: 10, output_tokens: 3 }),
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "Ran with John today",
     candidates: [{ surface: "John", note: "John" }],
   });
@@ -59,7 +59,7 @@ test("enrich returns parsed text, ambiguous, and usage from clean JSON", async (
 
 test("enrich defaults ambiguous to [] when the model omits it", async () => {
   const { fn } = fakeQuery([assistantText(JSON.stringify({ text: "hi" }))]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "hi",
     candidates: [],
   });
@@ -68,7 +68,7 @@ test("enrich defaults ambiguous to [] when the model omits it", async () => {
 
 test("enrich parses JSON wrapped in a ```json fence", async () => {
   const { fn } = fakeQuery([assistantText('```json\n{"text":"fenced"}\n```')]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -79,7 +79,7 @@ test("enrich extracts JSON from surrounding prose via the outermost braces", asy
   const { fn } = fakeQuery([
     assistantText('Sure! Here it is: {"text":"embedded"} hope that helps'),
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -89,14 +89,14 @@ test("enrich extracts JSON from surrounding prose via the outermost braces", asy
 test("enrich throws when the response has no usable JSON", async () => {
   const { fn } = fakeQuery([assistantText("totally not json")]);
   await assert.rejects(
-    new Enricher(undefined, fn).enrich({ text: "x", candidates: [] }),
+    new Enricher({ query: fn }).enrich({ text: "x", candidates: [] }),
     /no usable JSON/,
   );
 });
 
 test("enrich lists candidates in the prompt, or '(none)' when empty", async () => {
   const withCands = fakeQuery([assistantText('{"text":"ok"}')]);
-  await new Enricher(undefined, withCands.fn).enrich({
+  await new Enricher({ query: withCands.fn }).enrich({
     text: "hey",
     candidates: [{ surface: "John", note: "John Doe" }],
   });
@@ -106,7 +106,7 @@ test("enrich lists candidates in the prompt, or '(none)' when empty", async () =
   );
 
   const noCands = fakeQuery([assistantText('{"text":"ok"}')]);
-  await new Enricher(undefined, noCands.fn).enrich({
+  await new Enricher({ query: noCands.fn }).enrich({
     text: "hey",
     candidates: [],
   });
@@ -116,9 +116,31 @@ test("enrich lists candidates in the prompt, or '(none)' when empty", async () =
   );
 });
 
+test("enrich tells the model about a merged burst and about the split point only when they apply", async () => {
+  const plain = fakeQuery([assistantText('{"text":"ok"}')]);
+  await new Enricher({ query: plain.fn }).enrich({
+    text: "short",
+    candidates: [],
+    splitAt: 280,
+  });
+  const promptOf = (calls: { prompt: unknown }[]) => calls[0]!.prompt as string;
+  assert.doesNotMatch(promptOf(plain.calls), /several quick messages/);
+  assert.doesNotMatch(promptOf(plain.calls), /will be split/);
+
+  const both = fakeQuery([assistantText('{"text":"ok"}')]);
+  await new Enricher({ query: both.fn }).enrich({
+    text: "a long entry",
+    candidates: [],
+    merge: true,
+    splitAt: 5,
+  });
+  assert.match(promptOf(both.calls), /several quick messages/);
+  assert.match(promptOf(both.calls), /longer than 5 characters/);
+});
+
 test("enrich marks forced (registered) candidates in the prompt", async () => {
   const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
-  await new Enricher(undefined, fn).enrich({
+  await new Enricher({ query: fn }).enrich({
     text: "hey",
     candidates: [
       { surface: "gym", note: "Fitness", forced: true },
@@ -134,7 +156,7 @@ test("enrich marks forced (registered) candidates in the prompt", async () => {
 
 test("enrich strips the triple-quote fence from user text so it can't break out", async () => {
   const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
-  await new Enricher(undefined, fn).enrich({
+  await new Enricher({ query: fn }).enrich({
     text: 'say """hi""" now',
     candidates: [],
   });
@@ -149,7 +171,7 @@ test("run aggregates usage across multiple assistant messages", async () => {
     assistantText('{"text":', { input_tokens: 5, output_tokens: 1 }),
     assistantText('"joined"}', { input_tokens: 2, output_tokens: 4 }),
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -161,7 +183,7 @@ test("run falls back to the result string when no assistant text is emitted", as
   const { fn } = fakeQuery([
     { type: "result", result: '{"text":"from-result"}' },
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -173,7 +195,7 @@ test("run ignores the result string when assistant text was already collected", 
     assistantText('{"text":"from-assistant"}'),
     { type: "result", result: '{"text":"IGNORED"}' },
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -192,7 +214,7 @@ test("run skips non-text content blocks", async () => {
       },
     },
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -204,7 +226,7 @@ test("run tolerates an assistant message with no content array", async () => {
     { type: "assistant", message: {} } as any,
     assistantText('{"text":"recovered"}'),
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -216,7 +238,7 @@ test("run tolerates an assistant message with no message payload at all", async 
     { type: "assistant" } as any,
     assistantText('{"text":"still-ok"}'),
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -225,7 +247,7 @@ test("run tolerates an assistant message with no message payload at all", async 
 
 test("run treats missing token fields in a usage object as zero", async () => {
   const { fn } = fakeQuery([assistantText('{"text":"ok"}', {})]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -237,7 +259,7 @@ test("run ignores a result message whose result is not a string", async () => {
     { type: "result", result: 123 } as any,
     assistantText('{"text":"text-wins"}'),
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -247,14 +269,14 @@ test("run ignores a result message whose result is not a string", async () => {
 test("enrich throws when braces are present but the span is not valid JSON", async () => {
   const { fn } = fakeQuery([assistantText("here: {nope, not json} end")]);
   await assert.rejects(
-    new Enricher(undefined, fn).enrich({ text: "x", candidates: [] }),
+    new Enricher({ query: fn }).enrich({ text: "x", candidates: [] }),
     /no usable JSON/,
   );
 });
 
 test("run passes the model to the SDK only when one is set", async () => {
   const withModel = fakeQuery([assistantText('{"text":"ok"}')]);
-  await new Enricher("claude-x", withModel.fn).enrich({
+  await new Enricher({ model: "claude-x", query: withModel.fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -263,7 +285,7 @@ test("run passes the model to the SDK only when one is set", async () => {
   assert.equal(withModel.calls[0]!.options.maxTurns, 3);
 
   const noModel = fakeQuery([assistantText('{"text":"ok"}')]);
-  await new Enricher(undefined, noModel.fn).enrich({
+  await new Enricher({ query: noModel.fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -275,7 +297,7 @@ test("the model is the caller's alone: AGENT_MODEL in the environment is never r
   process.env.AGENT_MODEL = "claude-from-env";
   try {
     const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
-    await new Enricher(undefined, fn).enrich({ text: "x", candidates: [] });
+    await new Enricher({ query: fn }).enrich({ text: "x", candidates: [] });
     assert.equal("model" in calls[0]!.options, false);
   } finally {
     delete process.env.AGENT_MODEL;
@@ -285,7 +307,7 @@ test("the model is the caller's alone: AGENT_MODEL in the environment is never r
 
 test("describeImage returns a trimmed caption", async () => {
   const { fn } = fakeQuery([assistantText("  a cat on a couch  ")]);
-  const out = await new Enricher(undefined, fn).describeImage(
+  const out = await new Enricher({ query: fn }).describeImage(
     new Uint8Array([1, 2]),
     "image/png",
   );
@@ -294,13 +316,13 @@ test("describeImage returns a trimmed caption", async () => {
 
 test("editText returns the trimmed edit", async () => {
   const { fn } = fakeQuery([assistantText("  fixed line  ")]);
-  const out = await new Enricher(undefined, fn).editText("old line", "fix it");
+  const out = await new Enricher({ query: fn }).editText("old line", "fix it");
   assert.equal(out, "fixed line");
 });
 
 test("editText keeps the current text when the edit comes back empty", async () => {
   const { fn } = fakeQuery([assistantText("   ")]);
-  const out = await new Enricher(undefined, fn).editText(
+  const out = await new Enricher({ query: fn }).editText(
     "keep me",
     "do nothing",
   );
@@ -329,12 +351,12 @@ function fakeGroq(text: string) {
 
 test("enrich falls back to Groq when the subscription SDK is out of usage", async () => {
   const groq = fakeGroq('{"text":"linked via [[Foo]]","ambiguous":[]}');
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    failQuery(),
-    [{ apiKey: "gsk_test", model: "llama-3.3-70b-versatile" }],
-    groq.fn,
-  );
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "gsk_test", model: "llama-3.3-70b-versatile" }],
+    groqChat: groq.fn,
+  });
   const res = await enricher.enrich({ text: "hi Foo", candidates: [] });
   assert.equal(res.text, "linked via [[Foo]]");
   assert.equal(res.usage.output, 2);
@@ -344,7 +366,10 @@ test("enrich falls back to Groq when the subscription SDK is out of usage", asyn
 });
 
 test("enrich rethrows when the SDK fails and no Groq fallback is configured", async () => {
-  const enricher = new Enricher("claude-haiku-4-5", failQuery("boom"));
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery("boom"),
+  });
   await assert.rejects(
     () => enricher.enrich({ text: "hi", candidates: [] }),
     /boom/,
@@ -353,12 +378,12 @@ test("enrich rethrows when the SDK fails and no Groq fallback is configured", as
 
 test("editText falls back to Groq when the SDK is out of usage", async () => {
   const groq = fakeGroq("edited on the free model");
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    failQuery(),
-    [{ apiKey: "gsk_test", model: "openai/gpt-oss-120b" }],
-    groq.fn,
-  );
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "gsk_test", model: "openai/gpt-oss-120b" }],
+    groqChat: groq.fn,
+  });
   const out = await enricher.editText("original", "make it better");
   assert.equal(out, "edited on the free model");
   assert.equal(groq.calls.length, 1);
@@ -366,10 +391,10 @@ test("editText falls back to Groq when the SDK is out of usage", async () => {
 
 /** A query fn that throws its first `failFirst` calls, then streams `text`. */
 function flakyQuery(failFirst: number, text: string): QueryFn {
-  let n = 0;
+  let calls = 0;
   return (() => {
-    const fail = n < failFirst;
-    n++;
+    const fail = calls < failFirst;
+    calls++;
     async function* gen() {
       if (fail) throw new Error("usage out");
       yield {
@@ -384,23 +409,20 @@ function flakyQuery(failFirst: number, text: string): QueryFn {
 test("warns once when switching to the fallback and once when usage recovers", async () => {
   const groq = fakeGroq('{"text":"free","ambiguous":[]}');
   const switches: { to: string; model: string; err?: unknown }[] = [];
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    flakyQuery(2, '{"text":"ok","ambiguous":[]}'),
-    [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
-    groq.fn,
-    undefined,
-    undefined,
-    undefined,
-    (to, model, err) => {
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: flakyQuery(2, '{"text":"ok","ambiguous":[]}'),
+    fallbacks: [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
+    groqChat: groq.fn,
+    notifySwitch: (to, model, err) => {
       switches.push({ to, model, err });
     },
-  );
+  });
   await enricher.enrich({ text: "a", candidates: [] }); // fail → switch to fallback
   await enricher.enrich({ text: "b", candidates: [] }); // fail → already on fallback, no switch
   await enricher.enrich({ text: "c", candidates: [] }); // SDK ok → switch back to primary
   assert.deepEqual(
-    switches.map((s) => s.to),
+    switches.map((entry) => entry.to),
     ["fallback", "primary"],
   );
   assert.equal(switches[0]!.model, "openai/gpt-oss-120b");
@@ -431,38 +453,36 @@ function modelQuery(downModels: Set<string>, text: string) {
 
 test("chain runs haiku → sonnet → groq, each only when the one before fails", async () => {
   const down = new Set(["claude-haiku-4-5"]);
-  const q = modelQuery(down, '{"text":"from claude","ambiguous":[]}');
+  const fake = modelQuery(down, '{"text":"from claude","ambiguous":[]}');
   const groq = fakeGroq('{"text":"from groq","ambiguous":[]}');
   const switches: string[] = [];
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    q.fn,
-    [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
-    groq.fn,
-    "claude-sonnet-5",
-    undefined,
-    undefined,
-    (to, model) => {
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: fake.fn,
+    fallbacks: [{ apiKey: "k", model: "openai/gpt-oss-120b" }],
+    groqChat: groq.fn,
+    backupModel: "claude-sonnet-5",
+    notifySwitch: (to, model) => {
       switches.push(`${to}:${model}`);
     },
-  );
+  });
 
   // haiku down → sonnet answers
-  const a = await enricher.enrich({ text: "a", candidates: [] });
-  assert.equal(a.text, "from claude");
-  assert.deepEqual(q.models, ["claude-haiku-4-5", "claude-sonnet-5"]);
+  const first = await enricher.enrich({ text: "a", candidates: [] });
+  assert.equal(first.text, "from claude");
+  assert.deepEqual(fake.models, ["claude-haiku-4-5", "claude-sonnet-5"]);
 
   // both Claude models down → groq answers
   down.add("claude-sonnet-5");
-  const b = await enricher.enrich({ text: "b", candidates: [] });
-  assert.equal(b.text, "from groq");
+  const second = await enricher.enrich({ text: "b", candidates: [] });
+  assert.equal(second.text, "from groq");
   assert.equal(groq.calls.length, 1);
 
   // everything back → haiku answers, no backup call
   down.clear();
-  q.models.length = 0;
+  fake.models.length = 0;
   await enricher.enrich({ text: "c", candidates: [] });
-  assert.deepEqual(q.models, ["claude-haiku-4-5"]);
+  assert.deepEqual(fake.models, ["claude-haiku-4-5"]);
 
   assert.deepEqual(switches, [
     "fallback:claude-sonnet-5",
@@ -472,16 +492,14 @@ test("chain runs haiku → sonnet → groq, each only when the one before fails"
 });
 
 test("backup model equal to the chosen one is not tried twice", async () => {
-  const q = modelQuery(new Set(["claude-sonnet-5"]), "x");
-  const enricher = new Enricher(
-    "claude-sonnet-5",
-    q.fn,
-    undefined,
-    undefined,
-    "claude-sonnet-5",
-  );
+  const fake = modelQuery(new Set(["claude-sonnet-5"]), "x");
+  const enricher = new Enricher({
+    model: "claude-sonnet-5",
+    query: fake.fn,
+    backupModel: "claude-sonnet-5",
+  });
   await assert.rejects(() => enricher.editText("old", "fix"), /sonnet-5 down/);
-  assert.deepEqual(q.models, ["claude-sonnet-5"]);
+  assert.deepEqual(fake.models, ["claude-sonnet-5"]);
 });
 
 test("an unusable answer moves down the chain like a failed call", async () => {
@@ -501,13 +519,11 @@ test("an unusable answer moves down the chain like a failed call", async () => {
     }
     return gen();
   }) as unknown as QueryFn;
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    fn,
-    undefined,
-    undefined,
-    "claude-sonnet-5",
-  );
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: fn,
+    backupModel: "claude-sonnet-5",
+  });
   const res = await enricher.enrich({ text: "a", candidates: [] });
   assert.equal(res.text, "from sonnet");
   assert.deepEqual(models, ["claude-haiku-4-5", "claude-sonnet-5"]);
@@ -525,7 +541,7 @@ test("enrich requests structured output and uses it directly, skipping text pars
       },
     },
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "Ran with John today",
     candidates: [{ surface: "John", note: "John" }],
   });
@@ -558,7 +574,7 @@ test("enrich reports the tasks the entry says are still to do", async () => {
       },
     },
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "Long day. I need to call the vet tomorrow.",
     candidates: [],
   });
@@ -572,7 +588,7 @@ test("a response with no tasks field is a response with no tasks", async () => {
   const { fn } = fakeQuery([
     assistantText('{"text":"plain day","ambiguous":[]}'),
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "plain day",
     candidates: [],
   });
@@ -592,7 +608,7 @@ test("extractTask reads a line into a task, timing left as the author's words", 
       },
     },
   ]);
-  const out = await new Enricher(undefined, fn).extractTask(
+  const out = await new Enricher({ query: fn }).extractTask(
     "gotta answer pavlo re hive by next friday",
   );
   assert.deepEqual(out, {
@@ -609,20 +625,20 @@ test("extractTask reads a line into a task, timing left as the author's words", 
 test("extractTask fails loudly when nothing usable comes back", async () => {
   const { fn } = fakeQuery([assistantText("sorry, I can't do that")]);
   await assert.rejects(
-    () => new Enricher(undefined, fn).extractTask("buy milk"),
+    () => new Enricher({ query: fn }).extractTask("buy milk"),
     /no usable JSON/,
   );
 });
 
 test("editText and describeImage don't request structured output", async () => {
   const { fn: editFn, calls: editCalls } = fakeQuery([assistantText("edited")]);
-  await new Enricher(undefined, editFn).editText("old", "fix it");
+  await new Enricher({ query: editFn }).editText("old", "fix it");
   assert.equal("outputFormat" in editCalls[0]!.options, false);
 
   const { fn: visionFn, calls: visionCalls } = fakeQuery([
     assistantText("a cat"),
   ]);
-  await new Enricher(undefined, visionFn).describeImage(
+  await new Enricher({ query: visionFn }).describeImage(
     new Uint8Array([1]),
     "image/png",
   );
@@ -638,7 +654,7 @@ test("enrich falls back to text parsing when structured_output fails schema vali
       structured_output: { text: 42 }, // wrong type, and missing "ambiguous"
     },
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -650,7 +666,7 @@ test("enrich throws when the SDK gives up on structured output (error subtype)",
     { type: "result", subtype: "error_max_structured_output_retries" },
   ]);
   await assert.rejects(
-    new Enricher(undefined, fn).enrich({ text: "x", candidates: [] }),
+    new Enricher({ query: fn }).enrich({ text: "x", candidates: [] }),
     /agent gave up producing a usable result/,
   );
 });
@@ -666,10 +682,10 @@ test("chain tries the second chat fallback when the first one fails", async () =
     };
   };
   const switches: string[] = [];
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    failQuery(),
-    [
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [
       { apiKey: "gsk", model: "groq-model", name: "Groq" },
       {
         apiKey: "oc",
@@ -678,14 +694,11 @@ test("chain tries the second chat fallback when the first one fails", async () =
         name: "OpenCode",
       },
     ],
-    chatFn,
-    undefined,
-    undefined,
-    undefined,
-    (to, model) => {
+    groqChat: chatFn,
+    notifySwitch: (to, model) => {
       switches.push(`${to}:${model}`);
     },
-  );
+  });
   const out = await enricher.enrich({ text: "a", candidates: [] });
   assert.equal(out.text, "from opencode");
   assert.equal(calls.length, 2);
@@ -698,14 +711,14 @@ test("chain tries the second chat fallback when the first one fails", async () =
 
 test("enrich falls back to Groq text-parsing when structured output is exhausted", async () => {
   const groq = fakeGroq('{"text":"rescued by groq","ambiguous":[]}');
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    fakeQuery([
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: fakeQuery([
       { type: "result", subtype: "error_max_structured_output_retries" },
     ]).fn,
-    [{ apiKey: "gsk_test", model: "llama-3.3-70b-versatile" }],
-    groq.fn,
-  );
+    fallbacks: [{ apiKey: "gsk_test", model: "llama-3.3-70b-versatile" }],
+    groqChat: groq.fn,
+  });
   const out = await enricher.enrich({ text: "x", candidates: [] });
   assert.equal(out.text, "rescued by groq");
   assert.equal(groq.calls.length, 1);
@@ -720,12 +733,12 @@ test("a fallback answer nested inside its own text field is unwrapped, not journ
   const groq = fakeGroq(
     JSON.stringify({ text: inner, ambiguous: [], tasks: [] }),
   );
-  const res = await new Enricher(
-    "claude-haiku-4-5",
-    failQuery(),
-    [{ apiKey: "k", model: "m" }],
-    groq.fn,
-  ).enrich({ text: "x", candidates: [] });
+  const res = await new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "k", model: "m" }],
+    groqChat: groq.fn,
+  }).enrich({ text: "x", candidates: [] });
   assert.equal(res.text, "I enrolled in an electronics course in Portuguese");
   assert.deepEqual(res.ambiguous, [
     { surface: "Portuguese", note: "Portugal" },
@@ -742,7 +755,7 @@ const structuredTil = async (structured_output: object) => {
       structured_output,
     },
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -772,24 +785,25 @@ test("structured output without til, or with til false, is a valid answer that i
 });
 
 test("a fenced fallback answer still yields til", async () => {
-  const res = await new Enricher(
-    "claude-haiku-4-5",
-    failQuery(),
-    [{ apiKey: "k", model: "m" }],
-    fakeGroq('```json\n{"text":"a","ambiguous":[],"tasks":[],"til":true}\n```')
-      .fn,
-  ).enrich({ text: "x", candidates: [] });
+  const res = await new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "k", model: "m" }],
+    groqChat: fakeGroq(
+      '```json\n{"text":"a","ambiguous":[],"tasks":[],"til":true}\n```',
+    ).fn,
+  }).enrich({ text: "x", candidates: [] });
   assert.equal(res.til, true);
 });
 
 test("only a literal true counts as til on the fallback path", async () => {
   for (const til of [null, 0, 1, "true", "TRUE", [], {}, "false", false]) {
-    const res = await new Enricher(
-      "claude-haiku-4-5",
-      failQuery(),
-      [{ apiKey: "k", model: "m" }],
-      fakeGroq(JSON.stringify({ text: "a", ambiguous: [], til })).fn,
-    ).enrich({ text: "x", candidates: [] });
+    const res = await new Enricher({
+      model: "claude-haiku-4-5",
+      query: failQuery(),
+      fallbacks: [{ apiKey: "k", model: "m" }],
+      groqChat: fakeGroq(JSON.stringify({ text: "a", ambiguous: [], til })).fn,
+    }).enrich({ text: "x", candidates: [] });
     assert.equal(res.til, false, JSON.stringify(til));
   }
 });
@@ -797,12 +811,12 @@ test("only a literal true counts as til on the fallback path", async () => {
 test("the til field is read when it is true and defaults to false when absent or malformed", async () => {
   const ask = async (answer: object) =>
     (
-      await new Enricher(
-        "claude-haiku-4-5",
-        failQuery(),
-        [{ apiKey: "k", model: "m" }],
-        fakeGroq(JSON.stringify(answer)).fn,
-      ).enrich({ text: "x", candidates: [] })
+      await new Enricher({
+        model: "claude-haiku-4-5",
+        query: failQuery(),
+        fallbacks: [{ apiKey: "k", model: "m" }],
+        groqChat: fakeGroq(JSON.stringify(answer)).fn,
+      }).enrich({ text: "x", candidates: [] })
     ).til;
   assert.equal(await ask({ text: "a", ambiguous: [], til: true }), true);
   assert.equal(await ask({ text: "a", ambiguous: [] }), false);
@@ -813,12 +827,12 @@ test("a fallback answer with raw line breaks inside the text still parses", asyn
   const groq = fakeGroq(
     '{"text": "I made a list.\n\nI still want to write again.", "ambiguous": [], "tasks": []}',
   );
-  const res = await new Enricher(
-    "claude-haiku-4-5",
-    failQuery(),
-    [{ apiKey: "k", model: "m" }],
-    groq.fn,
-  ).enrich({ text: "x", candidates: [] });
+  const res = await new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "k", model: "m" }],
+    groqChat: groq.fn,
+  }).enrich({ text: "x", candidates: [] });
   assert.equal(res.text, "I made a list.\n\nI still want to write again.");
 });
 
@@ -826,12 +840,12 @@ test("the prompt's triple-quote fence echoed around the text is stripped", async
   const groq = fakeGroq(
     JSON.stringify({ text: '"""Like I have to go out,"""', ambiguous: [] }),
   );
-  const res = await new Enricher(
-    "claude-haiku-4-5",
-    failQuery(),
-    [{ apiKey: "k", model: "m" }],
-    groq.fn,
-  ).enrich({ text: "x", candidates: [] });
+  const res = await new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "k", model: "m" }],
+    groqChat: groq.fn,
+  }).enrich({ text: "x", candidates: [] });
   assert.equal(res.text, "Like I have to go out,");
 });
 
@@ -847,7 +861,7 @@ test("structured output whose text holds the whole JSON answer is unwrapped", as
       },
     },
   ]);
-  const out = await new Enricher(undefined, fn).enrich({
+  const out = await new Enricher({ query: fn }).enrich({
     text: "x",
     candidates: [],
   });
@@ -862,20 +876,22 @@ const hangingQuery = (() =>
 
 test("a Claude call that hangs times out and the chain moves on", async () => {
   const groq = fakeGroq('{"text":"rescued","ambiguous":[]}');
-  const out = await new Enricher(
-    "claude-haiku-4-5",
-    hangingQuery,
-    [{ apiKey: "k", model: "m" }],
-    groq.fn,
-    undefined,
-    20,
-  ).enrich({ text: "x", candidates: [] });
+  const out = await new Enricher({
+    model: "claude-haiku-4-5",
+    query: hangingQuery,
+    fallbacks: [{ apiKey: "k", model: "m" }],
+    groqChat: groq.fn,
+    timeoutMs: 20,
+  }).enrich({ text: "x", candidates: [] });
   assert.equal(out.text, "rescued");
 });
 
 test("the SDK gets an abort controller and the chat fallbacks get the timeout", async () => {
   const { fn, calls } = fakeQuery([assistantText('{"text":"ok"}')]);
-  await new Enricher("m", fn).enrich({ text: "x", candidates: [] });
+  await new Enricher({ model: "m", query: fn }).enrich({
+    text: "x",
+    candidates: [],
+  });
   assert.ok(calls[0]!.options.abortController instanceof AbortController);
   // no extended thinking: it was most of haiku's time on every jot
   assert.deepEqual(calls[0]!.options.thinking, { type: "disabled" });
@@ -885,14 +901,13 @@ test("the SDK gets an abort controller and the chat fallbacks get the timeout", 
     seen.push(timeoutMs);
     return { text: '{"text":"ok"}', usage: { input: 0, output: 0 } };
   };
-  await new Enricher(
-    "m",
-    failQuery(),
-    [{ apiKey: "k", model: "g" }],
-    groqFn,
-    undefined,
-    1234,
-  ).enrich({ text: "x", candidates: [] });
+  await new Enricher({
+    model: "m",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "k", model: "g" }],
+    groqChat: groqFn,
+    timeoutMs: 1234,
+  }).enrich({ text: "x", candidates: [] });
   assert.deepEqual(seen, [1234]);
 });
 
@@ -903,13 +918,13 @@ test("a step that keeps failing is skipped once its circuit opens", async () => 
     return failQuery("overloaded 529")(args);
   }) as unknown as QueryFn;
   const groq = fakeGroq('{"text":"ok","ambiguous":[]}');
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
     query,
-    [{ apiKey: "k", model: "g", name: "Groq" }],
-    groq.fn,
-  );
-  for (let i = 0; i < 5; i++)
+    fallbacks: [{ apiKey: "k", model: "g", name: "Groq" }],
+    groqChat: groq.fn,
+  });
+  for (let attempt = 0; attempt < 5; attempt++)
     await enricher.enrich({ text: "x", candidates: [] });
   // three failures open haiku's circuit; jots four and five go straight to Groq
   assert.equal(claudeCalls.length, 3);
@@ -917,24 +932,23 @@ test("a step that keeps failing is skipped once its circuit opens", async () => 
 });
 
 test("every step down: the chain throws ModelsDownError once and says so once", async () => {
-  const t = { now: 0 };
+  const clock = { now: 0 };
   const notices: string[] = [];
   const failGroq: GroqChatFn = async () => {
     throw new Error("Connection error.");
   };
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    failQuery("overloaded 529"),
-    [{ apiKey: "k", model: "g", name: "Groq" }],
-    failGroq,
-    undefined,
-    15_000,
-    () => t.now,
-    (to) => {
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery("overloaded 529"),
+    fallbacks: [{ apiKey: "k", model: "g", name: "Groq" }],
+    groqChat: failGroq,
+    timeoutMs: 15_000,
+    now: () => clock.now,
+    notifySwitch: (to) => {
       notices.push(to);
     },
-  );
-  for (let i = 0; i < 2; i++)
+  });
+  for (let attempt = 0; attempt < 2; attempt++)
     await assert.rejects(enricher.enrich({ text: "x", candidates: [] }));
   assert.equal(enricher.available(), true);
   await assert.rejects(
@@ -949,7 +963,7 @@ test("every step down: the chain throws ModelsDownError once and says so once", 
   );
   assert.deepEqual(notices, ["down"]);
   // the cooldown runs out: a trial call goes through again
-  t.now = 120_000;
+  clock.now = 120_000;
   assert.equal(enricher.available(), true);
 });
 
@@ -960,28 +974,25 @@ test("the switch notice carries the error that moved it down the chain", async (
     args.options.model === "claude-haiku-4-5"
       ? failQuery("usage limit reached")(args)
       : fn(args)) as unknown as QueryFn;
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
     query,
-    [],
-    undefined,
-    "claude-sonnet-5",
-    undefined,
-    undefined,
-    (_to, _model, err) => {
+    fallbacks: [],
+    backupModel: "claude-sonnet-5",
+    notifySwitch: (_to, _model, err) => {
       errs.push(err);
     },
-  );
+  });
   await enricher.enrich({ text: "x", candidates: [] });
   assert.equal((errs[0] as Error).message, "usage limit reached");
 });
 
 test("a failure no cooldown can fix never opens a circuit, so jots aren't held on it", async () => {
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    failQuery("invalid x-api-key (401)"),
-  );
-  for (let i = 0; i < 5; i++)
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery("invalid x-api-key (401)"),
+  });
+  for (let attempt = 0; attempt < 5; attempt++)
     await assert.rejects(enricher.enrich({ text: "x", candidates: [] }), {
       message: "invalid x-api-key (401)",
     });
@@ -991,13 +1002,13 @@ test("a failure no cooldown can fix never opens a circuit, so jots aren't held o
 test("an unusable answer never trips the breaker, even when it reads like an outage", async () => {
   // the rejection quotes the answer, and "500" in it would match isRecoverable's 5xx
   const groq = fakeGroq("I walked 500 metres on a network of trails today");
-  const enricher = new Enricher(
-    "claude-haiku-4-5",
-    failQuery("invalid x-api-key (401)"),
-    [{ apiKey: "k", model: "g", name: "Groq" }],
-    groq.fn,
-  );
-  for (let i = 0; i < 4; i++)
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery("invalid x-api-key (401)"),
+    fallbacks: [{ apiKey: "k", model: "g", name: "Groq" }],
+    groqChat: groq.fn,
+  });
+  for (let attempt = 0; attempt < 4; attempt++)
     await assert.rejects(enricher.enrich({ text: "x", candidates: [] }));
   assert.equal(groq.calls.length, 4);
   assert.equal(enricher.available(), true);
@@ -1005,12 +1016,12 @@ test("an unusable answer never trips the breaker, even when it reads like an out
 
 test("a fallback's malformed lists are dropped instead of trusted", async () => {
   const groq = fakeGroq('{"text":"x","ambiguous":"none","tasks":{}}');
-  const out = await new Enricher(
-    "claude-haiku-4-5",
-    failQuery(),
-    [{ apiKey: "k", model: "m" }],
-    groq.fn,
-  ).enrich({ text: "x", candidates: [] });
+  const out = await new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "k", model: "m" }],
+    groqChat: groq.fn,
+  }).enrich({ text: "x", candidates: [] });
   assert.equal(out.text, "x");
   assert.deepEqual(out.ambiguous, []);
   assert.deepEqual(out.tasks, []);
@@ -1026,12 +1037,12 @@ test("an API error reported as a success result moves down the chain", async () 
     } as Msg,
   ]);
   const groq = fakeGroq('{"text":"rescued","ambiguous":[]}');
-  const out = await new Enricher(
-    "claude-haiku-4-5",
-    fn,
-    [{ apiKey: "k", model: "m" }],
-    groq.fn,
-  ).enrich({ text: "x", candidates: [] });
+  const out = await new Enricher({
+    model: "claude-haiku-4-5",
+    query: fn,
+    fallbacks: [{ apiKey: "k", model: "m" }],
+    groqChat: groq.fn,
+  }).enrich({ text: "x", candidates: [] });
   assert.equal(out.text, "rescued");
 });
 
@@ -1050,7 +1061,7 @@ test("the SDK receives these exact output schemas for enrichment and task extrac
       structured_output: { text: "a", ambiguous: [], tasks: [], til: false },
     },
   ]);
-  await new Enricher(undefined, enrich.fn).enrich({
+  await new Enricher({ query: enrich.fn }).enrich({
     text: "a",
     candidates: [],
   });
@@ -1095,7 +1106,7 @@ test("the SDK receives these exact output schemas for enrichment and task extrac
       structured_output: { description: "d", type: "personal" },
     },
   ]);
-  await new Enricher(undefined, task.fn).extractTask("d");
+  await new Enricher({ query: task.fn }).extractTask("d");
   assert.deepEqual(task.calls[0]!.options.outputFormat, {
     type: "json_schema",
     schema: {

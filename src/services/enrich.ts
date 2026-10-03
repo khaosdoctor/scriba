@@ -124,39 +124,52 @@ export const userMessage = (content: unknown) => ({
 /** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
 const fence = (value: string): string => value.replaceAll('"""', "");
 
+export interface EnricherDeps {
+  query: QueryFn;
+  model?: string;
+  fallbacks?: EnrichFallback[];
+  groqChat?: GroqChatFn;
+  backupModel?: string;
+  timeoutMs?: number;
+  now?: () => number;
+  notifySwitch?: SwitchNotifier;
+}
+
 export class Enricher {
   private tier = 0;
   private breakers = new Map<string, CircuitBreaker>();
+  private model: string | undefined;
 
-  constructor(
-    private model: string | undefined,
-    private query: QueryFn,
-    private fallbacks: EnrichFallback[] = [],
-    private groqChatFn: GroqChatFn = groqChat,
-    private backupModel?: string,
-    private timeoutMs = 15_000,
-    private now: () => number = Date.now,
-    private notifySwitch?: SwitchNotifier,
-  ) {}
+  constructor(private deps: EnricherDeps) {
+    this.model = deps.model;
+  }
+
+  private get fallbacks(): EnrichFallback[] {
+    return this.deps.fallbacks ?? [];
+  }
+
+  private get timeoutMs(): number {
+    return this.deps.timeoutMs ?? 15_000;
+  }
 
   private breaker(name: string): CircuitBreaker {
     const found = this.breakers.get(name);
     if (found) return found;
-    const created = new CircuitBreaker(3, 120_000, this.now);
+    const created = new CircuitBreaker(3, 120_000, this.deps.now ?? Date.now);
     this.breakers.set(name, created);
     return created;
   }
 
   private models(first = this.model): (string | undefined)[] {
-    if (this.backupModel && this.backupModel !== first)
-      return [first, this.backupModel];
+    const { backupModel } = this.deps;
+    if (backupModel && backupModel !== first) return [first, backupModel];
     return [first];
   }
 
   private chain(): string[] {
     return [
       ...this.models().map((model) => model ?? "default"),
-      ...this.fallbacks.map((fb) => fb.name ?? fb.model),
+      ...this.fallbacks.map((fallback) => fallback.name ?? fallback.model),
     ];
   }
 
@@ -174,7 +187,7 @@ export class Enricher {
     err?: unknown,
   ): Promise<void> {
     try {
-      await this.notifySwitch?.(to, model, err);
+      await this.deps.notifySwitch?.(to, model, err);
     } catch (notifyErr) {
       log.warn(
         { err: notifyErr, to },
@@ -391,7 +404,7 @@ export class Enricher {
         ? this.fallbacks.map((fb) => ({
             name: fb.name ?? fb.model,
             call: () =>
-              this.groqChatFn(
+              (this.deps.groqChat ?? groqChat)(
                 fb.apiKey,
                 fb.model,
                 groqMessages,
@@ -511,7 +524,7 @@ export class Enricher {
     let text = "";
     let structuredOutput: unknown;
     const usage = { input: 0, output: 0 };
-    const stream = this.query({
+    const stream = this.deps.query({
       prompt: prompt as any,
       options: {
         // The StructuredOutput tool call is a turn of its own, plus one for the SDK to

@@ -102,16 +102,14 @@ async function buildEnricher(
       ? `enricher ready with ${fallbacks.length} chat fallback(s)`
       : "enricher ready — no chat fallbacks, jots post un-enriched when both Claude models are unavailable",
   );
-  return new Enricher(
-    enrichModel,
-    sdkQuery,
+  return new Enricher({
+    model: enrichModel,
+    query: sdkQuery,
     fallbacks,
-    undefined,
-    config.enrich.backupModel,
-    config.enrich.timeoutMs,
-    undefined,
+    backupModel: config.enrich.backupModel,
+    timeoutMs: config.enrich.timeoutMs,
     notifySwitch,
-  );
+  });
 }
 
 export function buildTranscriber(cfg: {
