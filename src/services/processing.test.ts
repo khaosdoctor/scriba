@@ -6,7 +6,7 @@ import type { SettingKey } from "../domain/setting/entity.ts";
 import { insertJournalLine } from "../libs/note.ts";
 import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";
-import { removeDb, sampleJot, tempDbPath } from "../test/sqlite.ts";
+import { openNative, sampleJot } from "../test/sqlite.ts";
 import { ModelsDownError } from "./enrich.ts";
 import { HELD as HELD_MARKER, ProcessingService } from "./processing.ts";
 
@@ -521,20 +521,12 @@ interface WorldOptions {
 }
 
 async function world(testContext: TestContext, options: WorldOptions = {}) {
-  const dbPath = tempDbPath();
-  let repo: Repository;
-  try {
-    repo = await Repository.open(dbPath);
-  } catch (error) {
-    testContext.skip(
-      `native sqlite unavailable: ${(error as Error).message.slice(0, 80)}`,
-    );
-    return null;
-  }
-  testContext.after(async () => {
-    await repo.close();
-    await removeDb(dbPath);
-  });
+  const native = await openNative(testContext, (dbPath) =>
+    Repository.open(dbPath),
+  );
+  if (!native) return null;
+  const repo = native.handle;
+  testContext.after(native.close);
   await repo.settings.seedSettings(options.settings ?? {});
 
   const statuses: Seen[] = [];

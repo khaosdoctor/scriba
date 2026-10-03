@@ -9,7 +9,7 @@ import {
   EM,
   type Harness,
   JOT_ID,
-  NOW,
+  sampleDraft,
   sampleJot,
 } from "./test/bot-harness.ts";
 
@@ -710,26 +710,10 @@ const TASK_FINGERPRINT = parseTasks(
   "personal",
 )[0]!.fingerprint;
 
-const draft = (over: Partial<TaskDraftRow> = {}): TaskDraftRow => ({
-  id: "d1d1d1d1",
-  source: "mode",
-  jot_id: null,
-  type: "personal",
-  description: "Buy cat sand",
-  start: null,
-  due: "2026-09-02",
-  source_date: "2026-08-16",
-  status: "pending",
-  chat_id: 1,
-  message_id: 50,
-  created_at: NOW,
-  updated_at: NOW,
-  ...over,
-});
 const withDraft =
   (over: Partial<TaskDraftRow> = {}) =>
   (harness: Harness) => {
-    harness.repo.getTaskDraft = draft(over);
+    harness.repo.getTaskDraft = sampleDraft(over);
   };
 const withTaskNote = (harness: Harness) => {
   harness.obsidian.readNote = TASK_NOTE;
