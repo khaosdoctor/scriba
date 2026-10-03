@@ -1,6 +1,8 @@
 import type { Knex } from "knex";
 import {
+  JOT_KINDS,
   type Jot,
+  type JotKind,
   type JotSection,
   type JotStatus,
   MAX_ATTEMPTS,
@@ -143,10 +145,11 @@ export class JotRepository {
       .andWhere("received_at", "<", to)
       .select(
         this.knex.raw("COUNT(*) as total"),
-        this.knex.raw("SUM(CASE WHEN kind='text' THEN 1 ELSE 0 END) as text"),
-        this.knex.raw("SUM(CASE WHEN kind='audio' THEN 1 ELSE 0 END) as audio"),
-        this.knex.raw("SUM(CASE WHEN kind='image' THEN 1 ELSE 0 END) as image"),
-        this.knex.raw("SUM(CASE WHEN kind='video' THEN 1 ELSE 0 END) as video"),
+        ...JOT_KINDS.map((kind) =>
+          this.knex.raw(
+            `SUM(CASE WHEN kind='${kind}' THEN 1 ELSE 0 END) as ${kind}`,
+          ),
+        ),
         ...REPROCESSABLE_STATUSES.map((status) =>
           this.knex.raw(
             `SUM(CASE WHEN status='${status}' THEN 1 ELSE 0 END) as ${status}`,
@@ -160,10 +163,9 @@ export class JotRepository {
     const toNumber = (value: unknown) => Number(value ?? 0);
     return {
       total: toNumber(row?.total),
-      text: toNumber(row?.text),
-      audio: toNumber(row?.audio),
-      image: toNumber(row?.image),
-      video: toNumber(row?.video),
+      ...(Object.fromEntries(
+        JOT_KINDS.map((kind) => [kind, toNumber(row?.[kind])]),
+      ) as Pick<Stats, JotKind>),
       ...(Object.fromEntries(
         REPROCESSABLE_STATUSES.map((status) => [
           status,
@@ -239,12 +241,7 @@ export class JotRepository {
       const rows: { id: string }[] = await this.knex("jots")
         .whereIn("id", chunk)
         .whereIn("status", [...REPROCESSABLE_STATUSES])
-        .update({
-          status: "pending",
-          attempts: 0,
-          error: null,
-          updated_at: Date.now(),
-        })
+        .update(this.pendingReset())
         .returning("id");
       reset.push(...rows.map((row) => row.id));
     }
@@ -253,12 +250,18 @@ export class JotRepository {
 
   async resetFailed(includeAbandoned: boolean): Promise<number> {
     const statuses = includeAbandoned ? ["failed", "abandoned"] : ["failed"];
-    return this.knex("jots").whereIn("status", statuses).update({
+    return this.knex("jots")
+      .whereIn("status", statuses)
+      .update(this.pendingReset());
+  }
+
+  private pendingReset() {
+    return {
       status: "pending",
       attempts: 0,
       error: null,
       updated_at: Date.now(),
-    });
+    };
   }
 
   /** Reset one jot to be retried from scratch (clears attempts + error), by the same
@@ -270,12 +273,7 @@ export class JotRepository {
     const changed = await this.knex("jots")
       .where({ id })
       .whereNotIn("status", ["processing", "deleted"])
-      .update({
-        status: "pending",
-        attempts: 0,
-        error: null,
-        updated_at: Date.now(),
-      });
+      .update(this.pendingReset());
     const won = changed > 0;
     log.debug({ id, won }, "retry reset attempt");
     return won;

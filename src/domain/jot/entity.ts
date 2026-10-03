@@ -1,6 +1,12 @@
 export type JotKind = "text" | "audio" | "image" | "video";
 export type JotSection = "journal" | "til";
 
+export const JOT_KINDS = [
+  "text",
+  "audio",
+  "image",
+  "video",
+] as const satisfies readonly JotKind[];
 export const SQUASHABLE_KINDS = [
   "text",
   "audio",

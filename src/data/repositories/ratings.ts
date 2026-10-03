@@ -1,7 +1,7 @@
 import type { Knex } from "knex";
 
 export class RatingRepository {
-  constructor(private k: Knex) {}
+  constructor(private knex: Knex) {}
 
   /** Atomically claim a day's rating. Returns `recorded: false` with the existing value
    *  if the day is already rated, so a double-tap or a second prompt can't overwrite it. */
@@ -9,7 +9,7 @@ export class RatingRepository {
     date: string,
     rating: number,
   ): Promise<{ recorded: boolean; current: number }> {
-    return this.k.transaction(async (trx) => {
+    return this.knex.transaction(async (trx) => {
       const row = await trx("ratings").where({ date }).first();
       if (row) return { recorded: false, current: Number(row.rating) };
       await trx("ratings").insert({ date, rating, created_at: Date.now() });
@@ -18,6 +18,6 @@ export class RatingRepository {
   }
   /** Release a claimed rating so it can be retried (used when the vault write fails). */
   async clearRating(date: string): Promise<void> {
-    await this.k("ratings").where({ date }).del();
+    await this.knex("ratings").where({ date }).del();
   }
 }
