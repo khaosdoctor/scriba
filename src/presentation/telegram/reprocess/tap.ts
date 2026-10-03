@@ -195,10 +195,9 @@ async function showJotPage(
       ),
     nav: (target) => rp("jot", target),
     back: { text: "‹ Back", data: ROOT },
+    close: CLOSE,
   });
-  await ctx.editMessageText(screen.text, {
-    reply_markup: withClose(screen.kb, CLOSE),
-  });
+  await ctx.editMessageText(screen.text, { reply_markup: screen.kb });
 }
 
 async function confirmJot(

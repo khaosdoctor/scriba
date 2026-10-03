@@ -10,14 +10,16 @@ import type {
 } from "../../../services/settings.ts";
 import type { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
-import { backTo, pagedScreen, withClose } from "../keyboard.ts";
+import { backTo, pagedScreen, pageSuffix, withClose } from "../keyboard.ts";
 import type { Tap } from "../namespace.ts";
+import { MENU_CLOSE, menu } from "./menu-data.ts";
 
 const log = logger("menu");
 
-const CLOSE = "menu:close";
 const PAGE = 8;
 const STOPWORD_PREVIEW = 40;
+
+const pageOf = (index: number) => Math.floor(index / PAGE);
 
 export type LinkDeps = Pick<ViewDeps, "settings" | "menus" | "ownerId">;
 
@@ -61,7 +63,7 @@ export function linkRulesTap(deps: LinkDeps) {
         // callback-query window: the re-rendered page carries the result.
         await responder.ack();
         await settings.removeStopword(word);
-        return stopwordPage(ctx, settings, Math.floor(gi / PAGE));
+        return stopwordPage(ctx, settings, pageOf(gi));
       }
       case "lrj":
         await responder.ack();
@@ -89,8 +91,8 @@ export function linkRulesTap(deps: LinkDeps) {
         // there rather than re-rendering an empty note list.
         const left = await settings.unreject(surface, note);
         return left
-          ? rejectedNotes(ctx, settings, si, Math.floor(Number(arg2) / PAGE))
-          : rejectedWords(ctx, settings, Math.floor(si / PAGE));
+          ? rejectedNotes(ctx, settings, si, pageOf(Number(arg2)))
+          : rejectedWords(ctx, settings, pageOf(si));
       }
       case "lrg":
         await responder.ack();
@@ -111,7 +113,7 @@ export function linkRulesTap(deps: LinkDeps) {
         // callback-query window: the re-rendered page carries the result.
         await responder.ack(`dropped ${pair.surface}`);
         await settings.removePair(pair);
-        return pairsPage(ctx, settings, Math.floor(gi / PAGE));
+        return pairsPage(ctx, settings, pageOf(gi));
       }
       case "lrgw":
         return prompt(responder, "rgw", Number(arg));
@@ -159,13 +161,13 @@ export function linkRulesTap(deps: LinkDeps) {
 async function home(ctx: Tap, settings: SettingsService): Promise<void> {
   const { stopwords, rejections, pairs, index } = await settings.linkRules();
   const kb = new InlineKeyboard()
-    .text(`🔗 Always link · ${pairs.length}`, "menu:lrg")
+    .text(`🔗 Always link · ${pairs.length}`, menu("lrg"))
     .row()
-    .text(`🔇 Never link · ${stopwords.length}`, "menu:lsw")
+    .text(`🔇 Never link · ${stopwords.length}`, menu("lsw"))
     .row()
-    .text(`🚫 Rejected pairs · ${rejections.length}`, "menu:lrj:0")
+    .text(`🚫 Rejected pairs · ${rejections.length}`, menu("lrj", 0))
     .row()
-    .text("‹ Back", "menu:root");
+    .text("‹ Back", menu("root"));
   await ctx.editMessageText(
     [
       "🔗 Link rules — step 1 of 3",
@@ -179,7 +181,7 @@ async function home(ctx: Tap, settings: SettingsService): Promise<void> {
         ? `📇 vault index: ${index.aliases} alias(es) across ${index.files} note(s).`
         : "📇 vault index disabled — nothing is being linked.",
     ].join("\n"),
-    { reply_markup: withClose(kb, CLOSE) },
+    { reply_markup: withClose(kb, MENU_CLOSE) },
   );
 }
 
@@ -190,9 +192,9 @@ async function stopwordsStep(
   const stops = await settings.stopwords();
   const hidden = Math.max(0, stops.length - STOPWORD_PREVIEW);
   log.info({ stopwords: stops.length, hidden }, "link wizard: never-link step");
-  const kb = new InlineKeyboard().text("➕ Add a word", "menu:lswa").row();
-  if (stops.length) kb.text("🗑 Remove a word", "menu:lswl:0").row();
-  kb.text("‹ Back", "menu:links");
+  const kb = new InlineKeyboard().text("➕ Add a word", menu("lswa")).row();
+  if (stops.length) kb.text("🗑 Remove a word", menu("lswl", 0)).row();
+  kb.text("‹ Back", menu("links"));
   const lines = [
     "🔗 Link rules › 🔇 Never link — step 2 of 3",
     "",
@@ -204,7 +206,7 @@ async function stopwordsStep(
   if (hidden)
     lines.push("", 'Tap "🗑 Remove a word" to page through all of them.');
   await ctx.editMessageText(fitTelegram(lines.join("\n")), {
-    reply_markup: withClose(kb, CLOSE),
+    reply_markup: withClose(kb, MENU_CLOSE),
   });
 }
 
@@ -216,7 +218,7 @@ async function stopwordPage(
   const stops = await settings.stopwords();
   if (!stops.length) {
     await ctx.editMessageText("🔇 No never-link words left.", {
-      reply_markup: backTo("menu:lsw", CLOSE),
+      reply_markup: backTo(menu("lsw"), MENU_CLOSE),
     });
     return;
   }
@@ -226,16 +228,15 @@ async function stopwordPage(
       [
         "🔗 Link rules › 🔇 Never link › 🗑 Remove — step 3 of 3",
         "",
-        `Tap a word to let it be linked again.${view.pages > 1 ? ` (page ${view.page + 1}/${view.pages})` : ""}`,
+        `Tap a word to let it be linked again.${pageSuffix(view)}`,
       ].join("\n"),
     row: (kb, word, idx) =>
-      kb.text(`🗑 ${word}`.slice(0, 60), `menu:lswd:${idx}`),
-    nav: (target) => `menu:lswl:${target}`,
-    back: { text: "‹ Back", data: "menu:lsw" },
+      kb.text(`🗑 ${word}`.slice(0, 60), menu("lswd", idx)),
+    nav: (target) => menu("lswl", target),
+    back: { text: "‹ Back", data: menu("lsw") },
+    close: MENU_CLOSE,
   });
-  await ctx.editMessageText(screen.text, {
-    reply_markup: withClose(screen.kb, CLOSE),
-  });
+  await ctx.editMessageText(screen.text, { reply_markup: screen.kb });
 }
 
 async function rejectedWords(
@@ -246,7 +247,7 @@ async function rejectedWords(
   const list = await settings.rejections();
   if (!list.length) {
     await ctx.editMessageText("🚫 No rejected links.", {
-      reply_markup: backTo("menu:links", CLOSE),
+      reply_markup: backTo(menu("links"), MENU_CLOSE),
     });
     return;
   }
@@ -256,21 +257,20 @@ async function rejectedWords(
       [
         "🔗 Link rules › 🚫 Rejected pairs — step 2 of 3",
         "",
-        `Pick the word whose rejection you want to undo.${view.pages > 1 ? ` (page ${view.page + 1}/${view.pages})` : ""}`,
+        `Pick the word whose rejection you want to undo.${pageSuffix(view)}`,
       ].join("\n"),
     row: (kb, surface, idx) => {
       const count = notesFor(list, surface).length;
       kb.text(
         `🚫 ${surface} · ${count} note(s)`.slice(0, 60),
-        `menu:lrjs:${idx}`,
+        menu("lrjs", idx),
       );
     },
-    nav: (target) => `menu:lrj:${target}`,
-    back: { text: "‹ Back", data: "menu:links" },
+    nav: (target) => menu("lrj", target),
+    back: { text: "‹ Back", data: menu("links") },
+    close: MENU_CLOSE,
   });
-  await ctx.editMessageText(screen.text, {
-    reply_markup: withClose(screen.kb, CLOSE),
-  });
+  await ctx.editMessageText(screen.text, { reply_markup: screen.kb });
 }
 
 async function rejectedNotes(
@@ -293,16 +293,15 @@ async function rejectedNotes(
       [
         `🔗 Link rules › 🚫 ${surface} — step 3 of 3`,
         "",
-        `${notes.length} note(s) rejected. Tap one to let "${surface}" link to it again.${view.pages > 1 ? ` (page ${view.page + 1}/${view.pages})` : ""}`,
+        `${notes.length} note(s) rejected. Tap one to let "${surface}" link to it again.${pageSuffix(view)}`,
       ].join("\n"),
     row: (kb, note, idx) =>
-      kb.text(`↩️ ${note}`.slice(0, 60), `menu:lrju:${si}:${idx}`),
-    nav: (target) => `menu:lrjs:${si}:${target}`,
-    back: { text: "‹ Back", data: `menu:lrj:${Math.floor(si / PAGE)}` },
+      kb.text(`↩️ ${note}`.slice(0, 60), menu("lrju", si, idx)),
+    nav: (target) => menu("lrjs", si, target),
+    back: { text: "‹ Back", data: menu("lrj", pageOf(si)) },
+    close: MENU_CLOSE,
   });
-  await ctx.editMessageText(screen.text, {
-    reply_markup: withClose(screen.kb, CLOSE),
-  });
+  await ctx.editMessageText(screen.text, { reply_markup: screen.kb });
 }
 
 async function pairsPage(
@@ -313,27 +312,23 @@ async function pairsPage(
   const forced = await settings.pairs();
   log.info({ forced: forced.length, page }, "link wizard: always-link step");
   const screen = pagedScreen({
-    kb: new InlineKeyboard().text("➕ Add word(s)", "menu:lrga").row(),
+    kb: new InlineKeyboard().text("➕ Add word(s)", menu("lrga")).row(),
     view: paginate(forced, page, PAGE),
     title: (view) =>
       [
         "🔗 Link rules › 🔗 Always link — step 2 of 3",
         "",
         forced.length
-          ? `${forced.length} pair(s) linked with no judgment call. Tap one to change it.${view.pages > 1 ? ` (page ${view.page + 1}/${view.pages})` : ""}`
+          ? `${forced.length} pair(s) linked with no judgment call. Tap one to change it.${pageSuffix(view)}`
           : "No always-link pairs yet.",
       ].join("\n"),
     row: (kb, pair, idx) =>
-      kb.text(
-        `${pair.surface} → ${pair.note}`.slice(0, 60),
-        `menu:lrgv:${idx}`,
-      ),
-    nav: (target) => `menu:lrg:${target}`,
-    back: { text: "‹ Back", data: "menu:links" },
+      kb.text(`${pair.surface} → ${pair.note}`.slice(0, 60), menu("lrgv", idx)),
+    nav: (target) => menu("lrg", target),
+    back: { text: "‹ Back", data: menu("links") },
+    close: MENU_CLOSE,
   });
-  await ctx.editMessageText(screen.text, {
-    reply_markup: withClose(screen.kb, CLOSE),
-  });
+  await ctx.editMessageText(screen.text, { reply_markup: screen.kb });
 }
 
 async function pairDetail(
@@ -347,20 +342,20 @@ async function pairDetail(
     return pairsPage(ctx, settings, 0);
   }
   const kb = new InlineKeyboard()
-    .text("🔁 Change note", `menu:lrgt:${gi}`)
+    .text("🔁 Change note", menu("lrgt", gi))
     .row()
-    .text("✏️ Rename word", `menu:lrgw:${gi}`)
+    .text("✏️ Rename word", menu("lrgw", gi))
     .row()
-    .text("🗑 Delete pair", `menu:lrgd:${gi}`)
+    .text("🗑 Delete pair", menu("lrgd", gi))
     .row()
-    .text("‹ Back", `menu:lrg:${Math.floor(gi / PAGE)}`);
+    .text("‹ Back", menu("lrg", pageOf(gi)));
   await ctx.editMessageText(
     [
       `🔗 Link rules › 🔗 Always link › ${pair.surface} — step 3 of 3`,
       "",
       `"${pair.surface}" always links to [[${pair.note}]].`,
     ].join("\n"),
-    { reply_markup: withClose(kb, CLOSE) },
+    { reply_markup: withClose(kb, MENU_CLOSE) },
   );
 }
 
@@ -389,17 +384,19 @@ export async function notePicker(
     // A pick resolves against the remembered page, so the callback carries the index
     // within the page.
     row: (kb, note, idx) =>
-      kb.text(`📝 ${note}`.slice(0, 60), `menu:lrgp:${idx - view.offset}`),
-    nav: (target) => `menu:lrgn:${target}`,
+      kb.text(`📝 ${note}`.slice(0, 60), menu("lrgp", idx - view.offset)),
+    nav: (target) => menu("lrgn", target),
     extraRows: (kb) => {
-      kb.text("🔎 Search by another name", "menu:lrgq").row();
-      kb.text("✍️ Type a note that doesn't exist yet", "menu:lrgm").row();
-      if (of > 1) kb.text("⏭ Skip this word", "menu:lrgs");
-      kb.text("✖ Cancel", "menu:lrgc");
+      kb.text("🔎 Search by another name", menu("lrgq")).row();
+      kb.text("✍️ Type a note that doesn't exist yet", menu("lrgm")).row();
+      if (of > 1) kb.text("⏭ Skip this word", menu("lrgs"));
+      kb.text("✖ Cancel", menu("lrgc"));
     },
   });
   if (mode === "edit") {
-    await ctx.editMessageText(text, { reply_markup: withClose(kb, CLOSE) });
+    await ctx.editMessageText(text, {
+      reply_markup: withClose(kb, MENU_CLOSE),
+    });
     return;
   }
   return sendMenu(ctx, deps, text, kb);
@@ -425,7 +422,7 @@ async function finished(
     ctx,
     deps,
     "🔗 Always-link rules updated.",
-    new InlineKeyboard().text("🔗 Link rules", "menu:links"),
+    new InlineKeyboard().text("🔗 Link rules", menu("links")),
   );
 }
 
@@ -436,7 +433,7 @@ async function sendMenu(
   kb: InlineKeyboard,
 ): Promise<void> {
   const sent = await ctx.api.sendMessage(deps.ownerId, text, {
-    reply_markup: withClose(kb, CLOSE),
+    reply_markup: withClose(kb, MENU_CLOSE),
   });
   deps.menus.touch(sent.chat.id, sent.message_id);
 }
@@ -447,6 +444,8 @@ export async function replyMenu(
   text: string,
   kb: InlineKeyboard,
 ): Promise<void> {
-  const sent = await ctx.reply(text, { reply_markup: withClose(kb, CLOSE) });
+  const sent = await ctx.reply(text, {
+    reply_markup: withClose(kb, MENU_CLOSE),
+  });
   deps.menus.touch(sent.chat.id, sent.message_id);
 }

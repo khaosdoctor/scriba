@@ -35,6 +35,7 @@ export function pagedScreen<T>(opts: {
   back?: { text: string; data: string };
   kb?: InlineKeyboard;
   extraRows?: (kb: InlineKeyboard) => void;
+  close?: string;
 }): { text: string; kb: InlineKeyboard } {
   const { view, kb = new InlineKeyboard() } = opts;
   for (const [j, item] of view.items.entries()) {
@@ -44,5 +45,12 @@ export function pagedScreen<T>(opts: {
   if (opts.nav) navRow(kb, view.page, view.pages, opts.nav);
   opts.extraRows?.(kb);
   if (opts.back) kb.text(opts.back.text, opts.back.data);
-  return { text: opts.title(view), kb };
+  return {
+    text: opts.title(view),
+    kb: opts.close ? withClose(kb, opts.close) : kb,
+  };
+}
+
+export function pageSuffix(view: PageView<unknown>): string {
+  return view.pages > 1 ? ` (page ${view.page + 1}/${view.pages})` : "";
 }

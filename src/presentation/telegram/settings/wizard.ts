@@ -5,14 +5,13 @@ import { logger } from "../../../libs/log.ts";
 import { parseClockTime } from "../../../libs/time.ts";
 import { parseWizardRef, type WizardPrompt } from "../../../libs/wizard.ts";
 import type {
-  ModelKey,
   SettingsPrompt,
   SettingsService,
 } from "../../../services/settings.ts";
 import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
-import { withClose } from "../keyboard.ts";
 import { advance, type LinkDeps, notePicker, replyMenu } from "./links.ts";
+import { MODELS, menu } from "./menu-data.ts";
 
 const log = logger("menu");
 
@@ -23,27 +22,26 @@ interface Reply {
   apply(settings: SettingsService, body: string): Promise<string | null>;
 }
 
-const model = (
-  key: ModelKey,
-  label: string,
-  button: Reply["button"],
-): Reply => ({
-  warn: "menu: empty model reply",
-  invalid: "Send a model ID (e.g. claude-sonnet-5).",
-  button,
-  async apply(settings, body) {
-    const id = body.trim();
-    if (!id) return null;
-    await settings.setModel(key, id, "menu: model changed via text");
-    return `🧠 ${label} model: ${id}`;
-  },
-});
+const model = (which: "em" | "vfm"): Reply => {
+  const { key, label, button } = MODELS[which];
+  return {
+    warn: "menu: empty model reply",
+    invalid: "Send a model ID (e.g. claude-sonnet-5).",
+    button,
+    async apply(settings, body) {
+      const id = body.trim();
+      if (!id) return null;
+      await settings.setModel(key, id, "menu: model changed via text");
+      return `🧠 ${label} model: ${id}`;
+    },
+  };
+};
 
 const REPLIES: Record<SettingsPrompt, Reply> = {
   es: {
     warn: "menu: unusable entry size reply",
     invalid: 'Give me a whole number between 40 and 4000, or "off".',
-    button: ["✂️ Entry size", "menu:esz"],
+    button: ["✂️ Entry size", menu("esz")],
     async apply(settings, body) {
       const size = parseEntrySize(body);
       if (size === null) return null;
@@ -57,7 +55,7 @@ const REPLIES: Record<SettingsPrompt, Reply> = {
     warn: "menu: unusable rating time reply",
     invalid:
       "That isn't a time. Use HH:MM in 24-hour time, like 23:30 or 00:00.",
-    button: ["🗂 Menu", "menu:root"],
+    button: ["🗂 Menu", menu("root")],
     async apply(settings, body) {
       const time = parseClockTime(body);
       if (!time) return null;
@@ -65,8 +63,8 @@ const REPLIES: Record<SettingsPrompt, Reply> = {
       return `🕛 nightly rating at ${time}`;
     },
   },
-  em: model("enrichModel", "enrichment", ["🧠 Enrich model", "menu:em"]),
-  vfm: model("voiceFixModel", "voice fix", ["🎤 VF model", "menu:vfm"]),
+  em: model("em"),
+  vfm: model("vfm"),
 };
 
 export function parseSettingsRef(prompt: string): SettingsPrompt | null {
@@ -83,27 +81,27 @@ export function parseLinkRef(prompt: string): LinkRef | null {
   return ref !== null && !(ref.kind in REPLIES) ? (ref as LinkRef) : null;
 }
 
-export function wizardReply({ settings, menus }: ViewDeps) {
+export function wizardReply(deps: ViewDeps) {
   return async (ctx: Filter<Context, "message:text">, kind: SettingsPrompt) => {
     const reply = REPLIES[kind];
     const body = ctx.message.text;
-    const responder = new Responder(ctx);
-    const done = await reply.apply(settings, body);
+    const done = await reply.apply(deps.settings, body);
     if (done === null) {
       log.warn({ body }, reply.warn);
-      await responder.reply(reply.invalid);
+      await new Responder(ctx).reply(reply.invalid);
       return;
     }
-    const kb = new InlineKeyboard().text(...reply.button);
-    const id = await responder.reply(done, {
-      keyboard: withClose(kb, "menu:close"),
-    });
-    menus.touch(ctx.chat.id, id);
+    await replyMenu(
+      ctx,
+      deps,
+      done,
+      new InlineKeyboard().text(...reply.button),
+    );
   };
 }
 
 const LINK_RULES = () =>
-  new InlineKeyboard().text("🔗 Link rules", "menu:links");
+  new InlineKeyboard().text("🔗 Link rules", menu("links"));
 
 export function linkReply(deps: LinkDeps) {
   const { settings } = deps;

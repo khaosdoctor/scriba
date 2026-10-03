@@ -2,7 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { InlineKeyboard } from "grammy";
 import { paginate } from "../../libs/page.ts";
-import { backTo, navRow, pagedScreen, withClose } from "./keyboard.ts";
+import {
+  backTo,
+  navRow,
+  pagedScreen,
+  pageSuffix,
+  withClose,
+} from "./keyboard.ts";
 
 const rows = (kb: InlineKeyboard) =>
   kb.inline_keyboard
@@ -56,4 +62,20 @@ test("pagedScreen appends to a keyboard the caller started", () => {
     row: (kb, item, i) => kb.text(item, `pick:${i}`),
   });
   assert.deepEqual(rows(screen.kb), [["add"], ["pick:0"]]);
+});
+
+test("pagedScreen closes the keyboard when given a close action", () => {
+  const screen = pagedScreen({
+    view: paginate(["a"], 0, 8),
+    title: () => "t",
+    row: (kb, item, i) => kb.text(item, `pick:${i}`),
+    back: { text: "Back", data: "root" },
+    close: "x:close",
+  });
+  assert.deepEqual(rows(screen.kb), [["pick:0"], ["root"], ["x:close"]]);
+});
+
+test("pageSuffix names the page only when there is more than one", () => {
+  assert.equal(pageSuffix(paginate(["a"], 0, 8)), "");
+  assert.equal(pageSuffix(paginate(["a", "b", "c"], 1, 2)), " (page 2/2)");
 });
