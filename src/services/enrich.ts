@@ -9,11 +9,11 @@ import {
   type DetectedTask,
   DetectedTaskSchema,
 } from "../domain/task/structures.ts";
-import { isRecoverable } from "../libs/jot.ts";
 import type { Candidate } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import {
   CircuitBreaker,
+  isRecoverable,
   parseModelJson,
   unwrapModelPayload,
 } from "../libs/model.ts";

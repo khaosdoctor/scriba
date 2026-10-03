@@ -1,47 +1,16 @@
 import { escapeRe } from "./text.ts";
 
-export function journalLine(
-  time: string,
-  text: string,
-  anchor: string,
-): string {
-  return `- _${time} ::_ ${text} ^${anchor}`;
-}
-
-// "TIL", then a colon/dash or whitespace, then the actual text. "TIL" alone, or a word that
-// merely starts with it ("tilde"), is an ordinary jot.
-const TIL_PREFIX = /^til(?:\s*[:\-–—]+\s*|\s+)(?=[\s\S]*[\p{L}\p{N}])/iu;
-
-export function stripTilPrefix(text: string): string | null {
-  return TIL_PREFIX.test(text) ? text.replace(TIL_PREFIX, "") : null;
-}
-
-export function placeholderLine(time: string, anchor: string): string {
-  return journalLine(time, "⏳", anchor);
-}
-
-// An Obsidian block anchor is `^` plus letters/digits/dashes at the end of the line, and
-// journalLine always writes it after a space, so requiring that space keeps a trailing
-// "3^2" in the text itself from being read as one.
-const ANCHOR_SUFFIX = /\s+\^[A-Za-z0-9-]+[ \t\r]*$/;
-
-export function stripJournalLine(line: string, time: string): string {
-  return line
-    .replace(new RegExp(`^- _${escapeRe(time)} ::_ `), "")
-    .replace(ANCHOR_SUFFIX, "");
-}
-
 export function findSection(
   lines: string[],
   heading: string,
 ): { headingIdx: number; end: number } | null {
   const headingRe = new RegExp(`^#{1,6}\\s+${escapeRe(heading)}\\s*$`);
-  const headingIdx = lines.findIndex((l) => headingRe.test(l));
+  const headingIdx = lines.findIndex((line) => headingRe.test(line));
   if (headingIdx === -1) return null;
   let end = lines.length;
-  for (let i = headingIdx + 1; i < lines.length; i++) {
-    if (/^#{1,6}\s/.test(lines[i]!)) {
-      end = i;
+  for (let index = headingIdx + 1; index < lines.length; index++) {
+    if (/^#{1,6}\s/.test(lines[index]!)) {
+      end = index;
       break;
     }
   }
@@ -60,7 +29,8 @@ export function sectionHasContent(note: string, heading: string): boolean {
   return lines
     .slice(section.headingIdx + 1, section.end)
     .some(
-      (l) => !/^\s*(?:[-*+](?:\s+\[[ xX]\])?\s*|-{3,}|<!--.*-->)?\s*$/.test(l),
+      (line) =>
+        !/^\s*(?:[-*+](?:\s+\[[ xX]\])?\s*|-{3,}|<!--.*-->)?\s*$/.test(line),
     );
 }
 
@@ -76,9 +46,9 @@ export function insertJournalLine(
 
   let lastBullet = -1;
   const emptyBullets: number[] = [];
-  for (let i = headingIdx + 1; i < end; i++) {
-    if (/^\s*-\s*$/.test(lines[i]!)) emptyBullets.push(i);
-    else if (/^\s*-\s/.test(lines[i]!)) lastBullet = i;
+  for (let index = headingIdx + 1; index < end; index++) {
+    if (/^\s*-\s*$/.test(lines[index]!)) emptyBullets.push(index);
+    else if (/^\s*-\s/.test(lines[index]!)) lastBullet = index;
   }
 
   if (lastBullet !== -1) {
@@ -90,7 +60,7 @@ export function insertJournalLine(
     return lines.join("\n");
   }
   lines[emptyBullets[0]!] = line;
-  for (const i of emptyBullets.slice(1).reverse()) lines.splice(i, 1);
+  for (const index of emptyBullets.slice(1).reverse()) lines.splice(index, 1);
   return lines.join("\n");
 }
 
@@ -106,17 +76,17 @@ export function setFrontmatterValue(
   const lines = note.split("\n");
   if (lines[0] !== "---") return `---\n${key}: ${value}\n---\n\n${note}`;
   let close = -1;
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i] === "---") {
-      close = i;
+  for (let index = 1; index < lines.length; index++) {
+    if (lines[index] === "---") {
+      close = index;
       break;
     }
   }
   if (close === -1) return `---\n${key}: ${value}\n---\n\n${note}`; // no closing fence: wrap
   const keyRe = new RegExp(`^${escapeRe(key)}\\s*:`);
-  for (let i = 1; i < close; i++) {
-    if (keyRe.test(lines[i]!)) {
-      lines[i] = `${key}: ${value}`;
+  for (let index = 1; index < close; index++) {
+    if (keyRe.test(lines[index]!)) {
+      lines[index] = `${key}: ${value}`;
       return lines.join("\n");
     }
   }

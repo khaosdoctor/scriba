@@ -5,15 +5,11 @@ import {
   deleteAnchorLine,
   findSection,
   insertJournalLine,
-  journalLine,
   moveAnchorLine,
-  placeholderLine,
   replaceAnchorLine,
   sectionHasContent,
   setFrontmatterValue,
   stampCompletion,
-  stripJournalLine,
-  stripTilPrefix,
 } from "./note.ts";
 
 const DAILY_TEMPLATE = `---
@@ -120,91 +116,6 @@ test("setFrontmatterValue creates frontmatter when the note has none", () => {
     setFrontmatterValue("# hi\n", "overallRating", 3),
     "---\noverallRating: 3\n---\n\n# hi\n",
   );
-});
-
-test("journal + placeholder lines match the vault house style", () => {
-  assert.equal(
-    journalLine("23:13:18", "hi", "a1b2c3d4"),
-    "- _23:13:18 ::_ hi ^a1b2c3d4",
-  );
-  assert.equal(
-    placeholderLine("09:00:00", "deadbeef"),
-    "- _09:00:00 ::_ ⏳ ^deadbeef",
-  );
-});
-
-test("stripTilPrefix drops a leading TIL marker in its usual spellings", () => {
-  assert.equal(stripTilPrefix("TIL foo"), "foo");
-  assert.equal(stripTilPrefix("til foo"), "foo");
-  assert.equal(stripTilPrefix("TIL: foo"), "foo");
-  assert.equal(stripTilPrefix("TIL:foo"), "foo");
-  assert.equal(stripTilPrefix("TIL - foo"), "foo");
-  assert.equal(stripTilPrefix("Til – foo"), "foo");
-  assert.equal(stripTilPrefix("TIL:\nfoo\nbar"), "foo\nbar");
-});
-
-test("stripTilPrefix leaves everything else alone", () => {
-  assert.equal(stripTilPrefix("TIL"), null);
-  assert.equal(stripTilPrefix("TIL:"), null);
-  assert.equal(stripTilPrefix("tilde is a key"), null);
-  assert.equal(stripTilPrefix("until then"), null);
-  assert.equal(stripTilPrefix("today TIL foo"), null);
-  assert.equal(stripTilPrefix(""), null);
-});
-
-test("stripTilPrefix takes a dash run with or without spaces", () => {
-  assert.equal(stripTilPrefix("TIL-foo"), "foo");
-  assert.equal(stripTilPrefix("TIL--foo"), "foo");
-  assert.equal(stripTilPrefix("TIL—foo"), "foo");
-  assert.equal(stripTilPrefix("TIL –foo"), "foo");
-});
-
-test("stripTilPrefix needs text after the marker", () => {
-  for (const t of ["TIL ", "TIL   ", "TIL: ", "TIL\n", "TIL:\n\n"])
-    assert.equal(stripTilPrefix(t), null, JSON.stringify(t));
-});
-
-test("stripTilPrefix ignores a marker followed only by dashes or punctuation", () => {
-  for (const t of ["TIL -", "TIL —", "TIL - -", "TIL: ...", "TIL -\n"])
-    assert.equal(stripTilPrefix(t), null, JSON.stringify(t));
-  assert.equal(stripTilPrefix("TIL - 5 things"), "5 things");
-});
-
-test("stripTilPrefix takes any whitespace run between the marker and the text", () => {
-  assert.equal(stripTilPrefix("TIL\nfoo"), "foo");
-  assert.equal(stripTilPrefix("TIL\n\n\nfoo"), "foo");
-  assert.equal(stripTilPrefix("TIL:\r\nfoo\r\nbar"), "foo\r\nbar");
-  assert.equal(stripTilPrefix("TIL\tfoo"), "foo");
-});
-
-test("stripTilPrefix ignores the marker's case, keeps the rest, and strips only once", () => {
-  assert.equal(stripTilPrefix("tIl foo"), "foo");
-  assert.equal(stripTilPrefix("Til: foo"), "foo");
-  assert.equal(stripTilPrefix("TIL: Foo"), "Foo");
-  assert.equal(stripTilPrefix("TIL TIL foo"), "TIL foo");
-});
-
-test("stripTilPrefix rejects words that only start with til and other punctuation", () => {
-  for (const t of [
-    "tilt the camera",
-    "tills",
-    "TILL noon",
-    "till noon",
-    "til.e foo",
-    "TIL/foo",
-    "TIL, foo",
-    "TIL! foo",
-    "TIL; foo",
-    "TIL. foo",
-    "TIL… foo",
-  ])
-    assert.equal(stripTilPrefix(t), null, t);
-});
-
-test("known limitation: the English word 'til' is read as the marker", () => {
-  assert.equal(stripTilPrefix("til noon I slept"), "noon I slept");
-  assert.equal(stripTilPrefix("til 5pm"), "5pm");
-  assert.equal(stripTilPrefix("Til tomorrow: call mom"), "tomorrow: call mom");
 });
 
 test("insertJournalLine replaces the empty template bullet on the first jot", () => {
@@ -318,15 +229,6 @@ test("replaceAnchorLine takes `$&` in the new text literally", () => {
     replaceAnchorLine(note, "aaaaaaaa", "- _10:00:00 ::_ cost $& up ^aaaaaaaa"),
     "- _10:00:00 ::_ cost $& up ^aaaaaaaa",
   );
-});
-
-test("stripJournalLine strips the time prefix and anchor suffix", () => {
-  assert.equal(
-    stripJournalLine("- _23:13:18 ::_ hi ^a1b2c3d4", "23:13:18"),
-    "hi",
-  );
-  // A caret inside the text isn't an anchor: journalLine always writes " ^id" at the end.
-  assert.equal(stripJournalLine("- _23:13:18 ::_ 3^2", "23:13:18"), "3^2");
 });
 
 test("sectionHasContent treats every scaffolding shape as empty", () => {

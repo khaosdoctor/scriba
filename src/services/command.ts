@@ -9,9 +9,8 @@ import {
   thoughtIcon,
   toolIcon,
 } from "../libs/feed.ts";
-import { makeJotId } from "../libs/jot.ts";
 import { logger } from "../libs/log.ts";
-import { escapeHtml, fitTelegram } from "../libs/text.ts";
+import { escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
 import { type AgentService, PromptStream } from "./agent.ts";
 import type { Modes } from "./modes.ts";
 import type { MessageOptions, Notifier } from "./notifier.ts";
@@ -146,7 +145,7 @@ export class CommandService {
   async handle(prompt: string, sourceId?: number): Promise<void> {
     this.deps.modes.touch();
     const turn: Turn = {
-      id: makeJotId(),
+      id: shortId(),
       prompt,
       state: "queued",
       feed: [],
@@ -428,7 +427,7 @@ export class CommandService {
   private confirm(question: string, preview: string): Promise<boolean> {
     const turn = this.active;
     return new Promise<boolean>((resolvePromise) => {
-      const id = makeJotId();
+      const id = shortId();
       const keyboard: MessageOptions["keyboard"] = {
         inline_keyboard: [
           [

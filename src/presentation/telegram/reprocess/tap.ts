@@ -1,4 +1,5 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
+import { isFollower } from "../../../domain/jot/rules.ts";
 import { jotPreview, STATUS_ICON } from "../../../libs/jot.ts";
 import { logger } from "../../../libs/log.ts";
 import { pluralize } from "../../../libs/text.ts";
@@ -194,10 +195,9 @@ async function confirmJot(
   if (jot === "gone") return void ack(ctx, "gone");
   if (jot === "busy") return void ack(ctx, "not reprocessable anymore");
   await ack(ctx);
-  const note =
-    jot.anchor === jot.id
-      ? ""
-      : "\n(part of a squashed entry — this reprocesses the whole line)";
+  const note = isFollower(jot)
+    ? "\n(part of a squashed entry — this reprocesses the whole line)"
+    : "";
   await ctx.editMessageText(`Reprocess "${jotPreview(jot, 80)}"?${note}`, {
     reply_markup: confirmKeyboard(
       "🔁 Yes, reprocess",

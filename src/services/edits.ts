@@ -2,24 +2,25 @@ import type { JotRepository } from "../data/repositories/jots.ts";
 import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { Jot } from "../domain/jot/entity.ts";
+import {
+  editedJotText,
+  entryContent,
+  isEditableJot,
+  isFollower,
+  journalLine,
+  sourceField,
+  stripJournalLine,
+} from "../domain/jot/rules.ts";
 import type { EditInput } from "../domain/jot/structures.ts";
 import {
-  assetEmbed,
   editConfirmation,
-  editedJotText,
   embedOffer,
-  isEditableJot,
   parseLiteralEdit,
   type StatusButtons,
   setEmbeds,
 } from "../libs/jot.ts";
 import { logger } from "../libs/log.ts";
-import {
-  anchorLine,
-  deleteAnchorLine,
-  journalLine,
-  stripJournalLine,
-} from "../libs/note.ts";
+import { anchorLine, deleteAnchorLine } from "../libs/note.ts";
 import type { Enricher } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
 
@@ -274,8 +275,8 @@ export class EditService {
     await repo.markDeleted(jot.id);
     // A squashed line is several jots sharing one anchor, so removing it takes the
     // followers' text with it: mark them deleted too.
-    for (const f of await repo.groupFollowers(jot.id))
-      await repo.markDeleted(f.id);
+    for (const follower of await repo.groupFollowers(jot.id))
+      await repo.markDeleted(follower.id);
     if (out !== null) log.info({ jotId: jot.id }, "journal line deleted");
     return "🗑️ removed that from your journal.";
   }
@@ -315,7 +316,7 @@ export class EditService {
 
   private async applyEdits(jot: Jot, instructions: string[]): Promise<string> {
     // deleteJot takes the note lock itself, so it must run before the lock below.
-    if (instructions.some((i) => i.trim().toLowerCase() === "delete"))
+    if (instructions.some((item) => item.trim().toLowerCase() === "delete"))
       return this.deleteJot(jot);
     const result = await this.deps.obsidian.updateLine(
       jot.note_path,
@@ -349,7 +350,7 @@ export class EditService {
    *  only the message's text or caption, so a media jot's embed is re-appended: editing an
    *  image's caption must not drop the image out of the note. */
   private async replaceJotText(jot: Jot, newText: string): Promise<string> {
-    const content = [newText, assetEmbed(jot)].filter(Boolean).join(" ");
+    const content = entryContent(jot, newText);
     const found = await this.deps.obsidian.updateLine(
       jot.note_path,
       jot.anchor,
@@ -365,9 +366,9 @@ export class EditService {
 
   private async syncEditedSource(jot: Jot, text: string): Promise<void> {
     if (jot.kind !== "audio" && jot.kind !== "text") return;
-    if (jot.anchor !== jot.id) return;
+    if (isFollower(jot)) return;
     if ((await this.deps.repo.groupFollowers(jot.id)).length > 0) return;
-    const field = jot.kind === "audio" ? "transcript" : "raw_text";
+    const field = sourceField(jot.kind);
     await this.deps.repo.updateJot(jot.id, { [field]: text });
     log.info(
       { jotId: jot.id, field },

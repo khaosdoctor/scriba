@@ -195,7 +195,7 @@ test("a vault path that isn't configured disables the tools", async () => {
 });
 
 test("ids used for confirmations are unguessable enough", () => {
-  // Sanity: the confirm ids come from makeJotId (4 random bytes), not a counter.
+  // Sanity: the confirm ids come from shortId (4 random bytes), not a counter.
   const a = randomBytes(4).toString("hex");
   assert.match(a, /^[0-9a-f]{8}$/);
 });

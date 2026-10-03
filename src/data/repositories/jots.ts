@@ -1,12 +1,13 @@
 import type { Knex } from "knex";
 import {
-  JOT_STATUSES,
   type Jot,
   type JotSection,
   type JotStatus,
   MAX_ATTEMPTS,
   REPROCESSABLE_STATUSES,
+  SQUASHABLE_KINDS,
 } from "../../domain/jot/entity.ts";
+import { emptyStatusCounts } from "../../domain/jot/rules.ts";
 import type { Stats, StatusCounts } from "../../domain/jot/structures.ts";
 import { logger } from "../../libs/log.ts";
 
@@ -58,7 +59,7 @@ export class JotRepository {
   ): Promise<Jot | undefined> {
     return this.k<Jot>("jots")
       .where({ note_path: notePath, status: "pending", section })
-      .whereIn("kind", ["text", "audio"])
+      .whereIn("kind", [...SQUASHABLE_KINDS])
       .orderBy("received_at", "desc")
       .first();
   }
@@ -168,9 +169,7 @@ export class JotRepository {
       .select("status")
       .count("* as n")
       .groupBy("status");
-    const out = Object.fromEntries(
-      JOT_STATUSES.map((s) => [s, 0]),
-    ) as StatusCounts;
+    const out = emptyStatusCounts();
     for (const r of rows) out[r.status as JotStatus] = Number(r.n);
     return out;
   }

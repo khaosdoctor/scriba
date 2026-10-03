@@ -3,11 +3,8 @@ import type { JotRepository } from "../data/repositories/jots.ts";
 import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { VaultService } from "../data/repositories/vault.ts";
-import {
-  type Jot,
-  type JotStatus,
-  REPROCESSABLE_STATUSES,
-} from "../domain/jot/entity.ts";
+import type { Jot } from "../domain/jot/entity.ts";
+import { isReprocessable, reprocessTargets } from "../domain/jot/rules.ts";
 import {
   formatDeployNotice,
   formatHealth,
@@ -17,7 +14,7 @@ import {
   formatStats,
   formatStatus,
 } from "../libs/admin.ts";
-import { formatJotDetail, reprocessTargets } from "../libs/jot.ts";
+import { formatJotDetail } from "../libs/jot.ts";
 import { distinctSurfaces } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import type { PageView } from "../libs/page.ts";
@@ -386,9 +383,7 @@ export class AdminService {
     const jot = id ? await this.d.repo.getJot(id) : undefined;
     if (!jot) return "gone";
     // A stale button or a race with the retry job can leave the jot mid-processing.
-    if (
-      !(REPROCESSABLE_STATUSES as readonly JotStatus[]).includes(jot.status)
-    ) {
+    if (!isReprocessable(jot.status)) {
       log.reprocess.warn(
         { id, status: jot.status },
         "reprocess: jot pick rejected: no longer reprocessable",

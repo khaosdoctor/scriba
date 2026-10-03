@@ -8,9 +8,15 @@ import {
   parseEntrySize,
   pluralize,
   previewList,
+  shortId,
   splitEntry,
   TELEGRAM_LIMIT,
 } from "./text.ts";
+
+test("ids are fixed 8-char hex", () => {
+  const id = shortId();
+  assert.match(id, /^[0-9a-f]{8}$/);
+});
 
 test("splitEntry keeps short text whole and never cuts a sentence", () => {
   assert.deepEqual(splitEntry("short one", 280), ["short one"]);

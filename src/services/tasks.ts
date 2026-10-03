@@ -7,7 +7,6 @@ import type {
   TaskDraftRow,
   TaskType,
 } from "../domain/task/entity.ts";
-import { makeJotId } from "../libs/jot.ts";
 import { logger } from "../libs/log.ts";
 import { paginate } from "../libs/page.ts";
 import {
@@ -22,7 +21,7 @@ import {
   taskListLine,
   VIEW_LABEL,
 } from "../libs/tasks.ts";
-import { escapeHtml, fitTelegram } from "../libs/text.ts";
+import { escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
 import { plainDate } from "../libs/time.ts";
 import type { Enricher } from "./enrich.ts";
 import type { Modes, OpenOutcome } from "./modes.ts";
@@ -233,7 +232,7 @@ export class TaskService {
     const now = Date.now();
     const row: TaskDraftRow = {
       ...draft,
-      id: makeJotId(),
+      id: shortId(),
       source: jotId ? "jot" : "mode",
       jot_id: jotId,
       description: draft.description.trim(),

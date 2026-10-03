@@ -27,14 +27,25 @@ export class CircuitBreaker {
   }
 }
 
+export function isRecoverable(err: unknown): boolean {
+  const message = (
+    err instanceof Error ? err.message : String(err)
+  ).toLowerCase();
+  // "connection error" / "timed out" are the OpenAI-shaped SDKs' (Groq, OpenCode) words
+  // for the same network failures.
+  return /timeout|timed out|connection error|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
+    message,
+  );
+}
+
 /** Escape raw control characters (a literal newline, tab…) that appear inside JSON string
  *  literals. Weaker chat models write a multi-paragraph "text" with real line breaks,
  *  which JSON.parse rejects outright; outside a string they're whitespace and stay. */
-function escapeControlsInStrings(s: string): string {
+function escapeControlsInStrings(source: string): string {
   let out = "";
   let inString = false;
   let escaped = false;
-  for (const ch of s) {
+  for (const ch of source) {
     if (inString) {
       if (escaped) escaped = false;
       else if (ch === "\\") escaped = true;
@@ -49,21 +60,22 @@ function escapeControlsInStrings(s: string): string {
   return out;
 }
 
-export function parseModelJson(s: string): Record<string, unknown> | null {
-  const cleaned = s
+export function parseModelJson(raw: string): Record<string, unknown> | null {
+  const cleaned = raw
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/, "")
     .trim();
-  const a = cleaned.indexOf("{"),
-    b = cleaned.lastIndexOf("}");
+  const open = cleaned.indexOf("{"),
+    close = cleaned.lastIndexOf("}");
   const spans = [cleaned];
-  if (a >= 0 && b > a) spans.push(cleaned.slice(a, b + 1));
+  if (open >= 0 && close > open) spans.push(cleaned.slice(open, close + 1));
   for (const span of spans)
     for (const attempt of [span, escapeControlsInStrings(span)]) {
       try {
-        const v = JSON.parse(attempt);
-        if (v && typeof v === "object" && !Array.isArray(v)) return v;
+        const parsed = JSON.parse(attempt);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+          return parsed;
       } catch {
         /* next attempt */
       }
@@ -78,14 +90,15 @@ export interface ModelPayload {
   til?: unknown;
 }
 
-export function unwrapModelPayload(p: ModelPayload): ModelPayload {
-  let out = { ...p };
-  for (let i = 0; i < 3; i++) {
-    const t = out.text.trim();
-    if (!t.startsWith("{") && !t.startsWith("```")) break;
-    const inner = parseModelJson(t);
+export function unwrapModelPayload(payload: ModelPayload): ModelPayload {
+  let out = { ...payload };
+  for (let depth = 0; depth < 3; depth++) {
+    const trimmed = out.text.trim();
+    if (!trimmed.startsWith("{") && !trimmed.startsWith("```")) break;
+    const inner = parseModelJson(trimmed);
     if (!inner || typeof inner.text !== "string") break;
-    const empty = (v: unknown) => !Array.isArray(v) || v.length === 0;
+    const empty = (value: unknown) =>
+      !Array.isArray(value) || value.length === 0;
     out = {
       text: inner.text,
       ambiguous: empty(out.ambiguous)

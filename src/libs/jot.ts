@@ -1,51 +1,7 @@
-import { randomBytes } from "node:crypto";
-import type {
-  Jot,
-  JotKind,
-  JotSection,
-  JotStatus,
-} from "../domain/jot/entity.ts";
+import type { Jot, JotKind, JotStatus } from "../domain/jot/entity.ts";
 import { isEmbeddableUrl } from "./links.ts";
-import { stripTilPrefix } from "./note.ts";
 import { escapeHtml } from "./text.ts";
 import { plainDate } from "./time.ts";
-
-export function makeJotId(): string {
-  return randomBytes(4).toString("hex");
-}
-
-export function isRecoverable(err: unknown): boolean {
-  const m = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  // "connection error" / "timed out" are the OpenAI-shaped SDKs' (Groq, OpenCode) words
-  // for the same network failures.
-  return /timeout|timed out|connection error|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
-    m,
-  );
-}
-
-/** A jot's line can be edited/deleted only once it exists in the note: done, or abandoned
- *  (posted un-enriched). Anything earlier still needs processing, so edits are queued. */
-export function isEditableJot(status: JotStatus): boolean {
-  return status === "done" || status === "abandoned";
-}
-
-export function enrichableSource(jot: Jot, audioFallback = ""): string {
-  if (jot.kind === "audio") return jot.transcript ?? audioFallback;
-  if (jot.kind === "text" || jot.kind === "image") return jot.raw_text ?? "";
-  return "";
-}
-
-/** Obsidian embed for a jot's saved asset, or "" when it has none. An image's caption is
- *  the entry text (see enrichableSource), so its embed carries no alias: Telegram's Bot API
- *  exposes no alt-text field to copy one from, and repeating the entry text inside the embed
- *  would only duplicate the line. Video stays attach-only, so its caption is the display. */
-export function assetEmbed(jot: Jot): string {
-  if (!jot.asset_path) return "";
-  const alias = jot.kind === "video" && jot.raw_text;
-  return alias
-    ? `![[${jot.asset_path}|${jot.raw_text}]]`
-    : `![[${jot.asset_path}]]`;
-}
 
 // One matcher for every URL form in a line: `![alt](url)` (embedded), `[text](url)`
 // (markdown link), or a bare URL. Trailing punctuation belongs to the sentence.
@@ -54,9 +10,9 @@ const URL_FORMS =
 
 export function embedOffer(text: string): "embed" | "plain" | undefined {
   let embedded = false;
-  for (const m of text.matchAll(URL_FORMS)) {
-    if (!isEmbeddableUrl(m[3] ?? m[4] ?? "")) continue;
-    if (m[1] !== "!") return "embed";
+  for (const match of text.matchAll(URL_FORMS)) {
+    if (!isEmbeddableUrl(match[3] ?? match[4] ?? "")) continue;
+    if (match[1] !== "!") return "embed";
     embedded = true;
   }
   return embedded ? "plain" : undefined;
@@ -72,21 +28,6 @@ export function setEmbeds(text: string, embed: boolean): string {
   });
 }
 
-export function withinSquashWindow(
-  prevReceivedAt: number,
-  nowReceivedAt: number,
-  windowMs: number,
-): boolean {
-  return windowMs > 0 && nowReceivedAt - prevReceivedAt <= windowMs;
-}
-
-export function combineEnrichSource(parts: string[]): string {
-  return parts
-    .map((p) => p.trim())
-    .filter(Boolean)
-    .join("\n");
-}
-
 export function donePreview(kind: JotKind, textPart: string): string {
   const text = textPart.trim();
   if (text) return text;
@@ -94,35 +35,22 @@ export function donePreview(kind: JotKind, textPart: string): string {
   return "saved";
 }
 
-export function editedJotText(section: JotSection, text: string): string {
-  if (section !== "til") return text;
-  return stripTilPrefix(text) ?? text;
-}
-
 export function parseLiteralEdit(
   msg: string,
 ): { old: string; new: string } | null {
-  const s = msg.trim();
-  const sed = s.match(/^s\/((?:\\.|[^/])+)\/((?:\\.|[^/])*)\/?$/);
+  const trimmed = msg.trim();
+  const sed = trimmed.match(/^s\/((?:\\.|[^/])+)\/((?:\\.|[^/])*)\/?$/);
   if (sed && sed[1] !== undefined && sed[2] !== undefined) {
     return {
       old: sed[1].replace(/\\\//g, "/"),
       new: sed[2].replace(/\\\//g, "/"),
     };
   }
-  const repl = s.match(/^replace\s+"?(.+?)"?\s+with\s+"?(.+?)"?$/i);
+  const repl = trimmed.match(/^replace\s+"?(.+?)"?\s+with\s+"?(.+?)"?$/i);
   if (repl && repl[1] !== undefined && repl[2] !== undefined) {
     return { old: repl[1], new: repl[2] };
   }
   return null;
-}
-
-/** From a set of jots (e.g. a /reprocess date/range query), the distinct ids to actually
- *  reprocess: a squashed follower's line lives on its leader's anchor, so a follower
- *  resolves to that leader's id rather than being reprocessed standalone. Order of first
- *  appearance is preserved. */
-export function reprocessTargets(jots: Pick<Jot, "anchor">[]): string[] {
-  return [...new Set(jots.map((j) => j.anchor))];
 }
 
 export type StatusButtons = {
@@ -200,16 +128,16 @@ export function editConfirmation(time: string, text: string): string {
   return `✏️ Updated\n<blockquote>🕒 ${time} · ${escapeHtml(text.trim() || "…")}</blockquote>`;
 }
 
-export function formatJotDetail(j: Jot): string {
-  const text = j.transcript ?? j.raw_text ?? "(none)";
+export function formatJotDetail(jot: Jot): string {
+  const text = jot.transcript ?? jot.raw_text ?? "(none)";
   const lines = [
-    `🧾 ${j.id} [${j.kind}] — ${j.status}`,
-    `Received: ${plainDate(j.received_at)} ${j.time}`,
-    `Attempts: ${j.attempts}`,
-    `Note: ${j.note_path} ^${j.anchor}`,
+    `🧾 ${jot.id} [${jot.kind}] — ${jot.status}`,
+    `Received: ${plainDate(jot.received_at)} ${jot.time}`,
+    `Attempts: ${jot.attempts}`,
+    `Note: ${jot.note_path} ^${jot.anchor}`,
   ];
-  if (j.asset_path) lines.push(`Asset: ${j.asset_path}`);
-  if (j.error) lines.push(`Error: ${j.error}`);
+  if (jot.asset_path) lines.push(`Asset: ${jot.asset_path}`);
+  if (jot.error) lines.push(`Error: ${jot.error}`);
   lines.push(`Text: ${text}`);
   return lines.join("\n");
 }
@@ -223,8 +151,8 @@ export const STATUS_ICON: Record<JotStatus, string> = {
   deleted: "🗑",
 };
 
-export function jotPreview(j: Jot, maxLen = 40): string {
-  return (j.transcript ?? j.raw_text ?? `(${j.kind})`)
+export function jotPreview(jot: Jot, maxLen = 40): string {
+  return (jot.transcript ?? jot.raw_text ?? `(${jot.kind})`)
     .replace(/\s+/g, " ")
     .slice(0, maxLen);
 }
