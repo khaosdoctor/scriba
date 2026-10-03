@@ -57,10 +57,17 @@ export type AnswerOutcome =
 export type Screen = { text: string; keyboard: Keyboard };
 
 export interface TaskDeps {
-  repo: TaskDraftRepository;
-  settings: SettingsRepository;
+  repo: Pick<
+    TaskDraftRepository,
+    | "claimTaskDraft"
+    | "getTaskDraft"
+    | "insertTaskDraft"
+    | "taskDraftsForJot"
+    | "updateTaskDraft"
+  >;
+  settings: Pick<SettingsRepository, "getSetting" | "toggleSetting">;
   notes: TaskNoteRepository;
-  enricher: Enricher;
+  enricher: Pick<Enricher, "extractTask">;
   notifier: Pick<Notifier, "notify" | "send" | "edit" | "delete">;
   modes: Modes;
   ownerId: number;

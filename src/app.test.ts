@@ -236,7 +236,9 @@ dbTest(
     });
     await app.stop();
 
-    const owner = daily.mock.calls.find((c) => c.arguments[0] === "rating");
+    const owner = daily.mock.calls.find(
+      (call) => call.arguments[0] === "rating",
+    );
     assert.ok(owner?.this instanceof Scheduler, "daily('rating') registered");
     assert.deepEqual(
       rearm.mock.calls.map((call) => call.arguments),
@@ -244,7 +246,7 @@ dbTest(
     );
     assert.equal(rearm.mock.calls[0]?.this, owner.this);
     assert.equal(
-      calls.find((c) => c.method === "sendMessage")?.payload.text,
+      calls.find((call) => call.method === "sendMessage")?.payload.text,
       "🕛 nightly rating at 23:30",
     );
   },
@@ -263,7 +265,7 @@ dbTest(
     await app.stop();
 
     assert.deepEqual(
-      calls.find((c) => c.method === "setMyCommands")?.payload.commands,
+      calls.find((call) => call.method === "setMyCommands")?.payload.commands,
       COMMANDS,
     );
     assert.deepEqual(events, [
@@ -272,7 +274,7 @@ dbTest(
       "tg.sendMessage",
       "set deployId=9.9.9@abc",
     ]);
-    const notice = calls.find((c) => c.method === "sendMessage")?.payload;
+    const notice = calls.find((call) => call.method === "sendMessage")?.payload;
     assert.equal(notice?.chat_id, 1);
     assert.match(String(notice?.text), /9\.9\.9 \(abc\)/);
   },

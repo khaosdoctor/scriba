@@ -155,7 +155,6 @@ function pipeline(
   } = {},
 ) {
   const calls: string[] = [];
-  const sent: { text: string; opts: unknown }[] = [];
   const asked: { jotId: string; surface: string; note: string }[] = [];
   const tilAsks: [string, string][] = [];
   const enriched: string[] = [];
@@ -177,6 +176,7 @@ function pipeline(
     claim: async () => true,
     ...new FakeSettings(),
     updateJot: async () => {},
+    pendingJots: async () => [],
     groupFollowers: async () => over.followers ?? [],
     stopwords: async () => new Set<string>(),
     rejections: async () => new Set<string>(),
@@ -199,6 +199,8 @@ function pipeline(
   };
   const enricher = {
     available: () => true,
+    describeImage: async () => "",
+    fixTranscript: async (original: string) => original,
     enrich: async (input: { text: string }) => {
       enriched.push(input.text);
       return {
@@ -219,6 +221,7 @@ function pipeline(
       tilAsks.push([id, text]);
       calls.push("askTil");
     },
+    awaitVoiceFix: async () => "original" as const,
   };
   const processor: any = new ProcessingService({
     repo,
@@ -237,22 +240,29 @@ function pipeline(
       },
     },
     tasks: {
-      draftsFor: async (detectedTasks: unknown[]) => detectedTasks,
+      draftsFor: async (detectedTasks: { description: string }[]) =>
+        detectedTasks.map((task) => ({
+          description: task.description,
+          type: "personal" as const,
+          start: null,
+          due: null,
+        })),
       suggest: async (draft: { description: string }) =>
         void calls.push(`askTask:${draft.description}`),
     },
-    notifier: {
-      typing: async () => {},
-      send: async (text: string, opts: unknown) => {
-        sent.push({ text, opts });
-        calls.push("send");
-      },
+    notifier: { typing: async () => {} },
+    transcriber: { transcribe: async () => "" },
+    media: {
+      downloadFile: async () => ({
+        bytes: new Uint8Array(),
+        ext: "bin",
+        mime: "application/octet-stream",
+      }),
     },
-  } as any);
+  });
   return {
     processor,
     calls,
-    sent,
     asked,
     tilAsks,
     enriched,
@@ -552,7 +562,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
     edits: { drainQueued: async () => {}, askLink: async () => "pid00001" },
     tasks: { suggest: async () => {}, draftsFor: async () => [] },
     notifier: { typing: async () => {} },
-    files: {
+    media: {
       downloadFile: async (fileId: string) => {
         calls.push(`download:${fileId}`);
         if (fileId === "voice-file")
@@ -562,7 +572,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
         return { bytes: new Uint8Array(3), ext: "jpg", mime: "image/jpeg" };
       },
     },
-  } as any);
+  });
   return {
     repo: repo.jots,
     processor,

@@ -37,9 +37,9 @@ function setup(
     clearRating: async (date: string) => void events.push(`clear:${date}`),
   };
   const obsidian = {
-    setDailyRating: async (date: string, n: number) => {
+    setDailyRating: async (date: string, rating: number) => {
       if (over.setFails) throw new Error("vault 500");
-      events.push(`save:${date}:${n}`);
+      events.push(`save:${date}:${rating}`);
     },
     readDailyNote: async () => {
       const note = notes[Math.min(reads++, notes.length - 1)];
@@ -57,7 +57,7 @@ function setup(
     },
   };
   const rating = new RatingService({
-    repo,
+    settings: repo,
     ratings: repo,
     obsidian,
     notifier,
@@ -72,43 +72,46 @@ const promptFor = (date: string) => `📊 How was ${date}? Rate it 1–10:`;
 // --- rating ---
 
 test("a rating is written to the day's note and reported as saved", async () => {
-  const h = setup();
-  assert.deepEqual(await h.rating.rate(DATE, 7), { kind: "saved", rating: 7 });
-  assert.deepEqual(h.events, [`save:${DATE}:7`]);
+  const harness = setup();
+  assert.deepEqual(await harness.rating.rate(DATE, 7), {
+    kind: "saved",
+    rating: 7,
+  });
+  assert.deepEqual(harness.events, [`save:${DATE}:7`]);
 });
 
 test("a day that is already rated is reported with its rating and not written again", async () => {
-  const h = setup({ recorded: false });
-  assert.deepEqual(await h.rating.rate(DATE, 3), {
+  const harness = setup({ recorded: false });
+  assert.deepEqual(await harness.rating.rate(DATE, 3), {
     kind: "already",
     current: 8,
   });
-  assert.deepEqual(h.events, []);
+  assert.deepEqual(harness.events, []);
 });
 
 test("a rating that fails to save is released so the tap can be retried", async () => {
-  const h = setup({ setFails: true });
-  await assert.rejects(h.rating.rate(DATE, 7), /vault 500/);
-  assert.deepEqual(h.events, [`clear:${DATE}`]);
+  const harness = setup({ setFails: true });
+  await assert.rejects(harness.rating.rate(DATE, 7), /vault 500/);
+  assert.deepEqual(harness.events, [`clear:${DATE}`]);
 });
 
 /** The clock at a local time on 2026-03-10 (or the 11th), for the day a prompt is about. */
-function clockAt(t: TestContext, hour: number, minute = 0, day = 10) {
-  t.mock.timers.enable({
+function clockAt(context: TestContext, hour: number, minute = 0, day = 10) {
+  context.mock.timers.enable({
     apis: ["Date"],
     now: new Date(2026, 2, day, hour, minute).getTime(),
   });
 }
 
-test("the nightly rating is read at every firing, so its switch needs no restart", async (t) => {
-  clockAt(t, 12, 1);
+test("the nightly rating is read at every firing, so its switch needs no restart", async (context) => {
+  clockAt(context, 12, 1);
   const stored = new Map([
     ["nightlyRating", "off"],
     ["ratingTime", "12:00"],
   ]);
   const sent: string[] = [];
   const rating = new RatingService({
-    repo: new FakeSettings(stored),
+    settings: new FakeSettings(stored),
     notifier: { send: async (text: string) => void sent.push(text) },
     ratingTime: "22:00",
   } as never);
@@ -124,84 +127,84 @@ test("the nightly rating is read at every firing, so its switch needs no restart
   assert.equal(sent.length, 1);
 });
 
-test("a midnight rating is for the day that just ended, by exact date", async (t) => {
-  clockAt(t, 0, 0, 11);
-  const h = setup({ settings: { ratingTime: "00:00" } });
-  await h.rating.nightly();
+test("a midnight rating is for the day that just ended, by exact date", async (context) => {
+  clockAt(context, 0, 0, 11);
+  const harness = setup({ settings: { ratingTime: "00:00" } });
+  await harness.rating.nightly();
   assert.deepEqual(
-    h.sent.map((s) => s.text),
+    harness.sent.map((message) => message.text),
     [promptFor("2026-03-10")],
   );
 });
 
-test("the noon cutoff: 11:59 rates yesterday, 12:00 rates today, and the stored time decides", async (t) => {
+test("the noon cutoff: 11:59 rates yesterday, 12:00 rates today, and the stored time decides", async (context) => {
   for (const [time, day] of [
     ["11:59", "2026-03-09"],
     ["12:00", "2026-03-10"],
     ["22:00", "2026-03-10"],
   ] as const) {
-    clockAt(t, 12, 1);
-    const h = setup({ settings: { ratingTime: time } });
-    await h.rating.nightly();
+    clockAt(context, 12, 1);
+    const harness = setup({ settings: { ratingTime: time } });
+    await harness.rating.nightly();
     assert.deepEqual(
-      h.sent.map((s) => s.text),
+      harness.sent.map((message) => message.text),
       [promptFor(day)],
       time,
     );
-    t.mock.timers.reset();
+    context.mock.timers.reset();
   }
 });
 
 // --- asking ---
 
 test("start asks the journal question first on an empty note, with a Skip button", async () => {
-  const h = setup();
-  await h.rating.startFollowup(DATE);
-  assert.equal(h.sent.length, 1);
-  assert.match(h.sent[0]!.text, /One line for the day\?/);
-  assert.match(h.sent[0]!.text, /\(fu:j:2026-07-05\)/);
-  const button = h.sent[0]!.opts.keyboard.inline_keyboard[0][0];
+  const harness = setup();
+  await harness.rating.startFollowup(DATE);
+  assert.equal(harness.sent.length, 1);
+  assert.match(harness.sent[0]!.text, /One line for the day\?/);
+  assert.match(harness.sent[0]!.text, /\(fu:j:2026-07-05\)/);
+  const button = harness.sent[0]!.opts.keyboard.inline_keyboard[0][0];
   assert.match(button.text, /Skip/);
   assert.equal(button.callback_data, `fu:j:${DATE}`);
 });
 
 test("start asks only the TIL question when the journal has jots", async () => {
-  const h = setup({ notes: [JOTTED] });
-  await h.rating.startFollowup(DATE);
-  assert.equal(h.sent.length, 1);
-  assert.match(h.sent[0]!.text, /Learned anything today\?/);
+  const harness = setup({ notes: [JOTTED] });
+  await harness.rating.startFollowup(DATE);
+  assert.equal(harness.sent.length, 1);
+  assert.match(harness.sent[0]!.text, /Learned anything today\?/);
 });
 
 test("start asks nothing when both sections are filled", async () => {
-  const h = setup({ notes: ["## Journal\n- a\n## TIL\n- b\n"] });
-  await h.rating.startFollowup(DATE);
-  assert.deepEqual(h.sent, []);
+  const harness = setup({ notes: ["## Journal\n- a\n## TIL\n- b\n"] });
+  await harness.rating.startFollowup(DATE);
+  assert.deepEqual(harness.sent, []);
 });
 
 test("start asks both for a day with no note", async () => {
-  const h = setup({ notes: [null] });
-  await h.rating.startFollowup(DATE);
-  assert.match(h.sent[0]!.text, /One line for the day\?/);
+  const harness = setup({ notes: [null] });
+  await harness.rating.startFollowup(DATE);
+  assert.match(harness.sent[0]!.text, /One line for the day\?/);
 });
 
 test("start stays quiet while the follow-up switch is off", async () => {
-  const h = setup({ settings: { nightlyFollowup: "off" } });
-  await h.rating.startFollowup(DATE);
-  assert.deepEqual(h.sent, []);
+  const harness = setup({ settings: { nightlyFollowup: "off" } });
+  await harness.rating.startFollowup(DATE);
+  assert.deepEqual(harness.sent, []);
 });
 
 test("the rating switch does not stop a follow-up that follows a manual rating", async () => {
   // The rating switch governs the nightly prompt only, so a rating you asked for yourself
   // still leads into the follow-up.
-  const h = setup({ settings: { nightlyRating: "off" } });
-  await h.rating.startFollowup(DATE);
-  assert.equal(h.sent.length, 1);
+  const harness = setup({ settings: { nightlyRating: "off" } });
+  await harness.rating.startFollowup(DATE);
+  assert.equal(harness.sent.length, 1);
 });
 
 test("start reads the follow-up switch and never the rating's", async () => {
-  const h = setup();
-  await h.rating.startFollowup(DATE);
-  assert.deepEqual(h.reads, ["nightlyFollowup"]);
+  const harness = setup();
+  await harness.rating.startFollowup(DATE);
+  assert.deepEqual(harness.reads, ["nightlyFollowup"]);
 });
 
 test("a prompt's text and Skip payload route back to the same question and day", async () => {
@@ -209,9 +212,9 @@ test("a prompt's text and Skip payload route back to the same question and day",
     [[EMPTY], "j"],
     [[JOTTED], "t"],
   ] as const) {
-    const h = setup({ notes: [...notes] });
-    await h.rating.startFollowup(DATE);
-    const { text, opts } = h.sent[0]!;
+    const harness = setup({ notes: [...notes] });
+    await harness.rating.startFollowup(DATE);
+    const { text, opts } = harness.sent[0]!;
     const question = followupFromCode(code);
     assert.ok(question);
     assert.ok(text.length < 200);
@@ -236,43 +239,43 @@ function jotSink(fails = false) {
 }
 
 test("a journal answer becomes a jot for the rated day, drops the prompt and asks the TIL", async () => {
-  const h = setup();
+  const harness = setup();
   const sink = jotSink();
-  await h.rating.answerFollowup(
+  await harness.rating.answerFollowup(
     { question: "journal", date: DATE },
     "Quiet day, read a lot",
     5,
     sink.jot,
   );
   assert.deepEqual(sink.jots, [[DATE, "Quiet day, read a lot"]]);
-  assert.deepEqual(h.deleted, [5]);
-  assert.equal(h.sent.length, 1);
-  assert.match(h.sent[0]!.text, /Learned anything today\?/);
+  assert.deepEqual(harness.deleted, [5]);
+  assert.equal(harness.sent.length, 1);
+  assert.match(harness.sent[0]!.text, /Learned anything today\?/);
 });
 
 test("a TIL answer is sent as a TIL-prefixed jot and ends the flow", async () => {
-  const h = setup();
+  const harness = setup();
   const sink = jotSink();
-  await h.rating.answerFollowup(
+  await harness.rating.answerFollowup(
     { question: "til", date: DATE },
     "owls can't move their eyes",
     5,
     sink.jot,
   );
   assert.deepEqual(sink.jots, [[DATE, "TIL: owls can't move their eyes"]]);
-  assert.deepEqual(h.deleted, [5]);
-  assert.deepEqual(h.sent, []);
+  assert.deepEqual(harness.deleted, [5]);
+  assert.deepEqual(harness.sent, []);
 });
 
 test("a journal answer skips the TIL question when the TIL is already filled", async () => {
-  const h = setup({ notes: ["## Journal\n-\n## TIL\n- known\n"] });
-  await h.rating.answerFollowup(
+  const harness = setup({ notes: ["## Journal\n-\n## TIL\n- known\n"] });
+  await harness.rating.answerFollowup(
     { question: "journal", date: DATE },
     "ok",
     5,
     jotSink().jot,
   );
-  assert.deepEqual(h.sent, []);
+  assert.deepEqual(harness.sent, []);
 });
 
 test("the controller adds nothing to an answer beyond the TIL prefix", async () => {
@@ -285,9 +288,9 @@ test("the controller adds nothing to an answer beyond the TIL prefix", async () 
     ["journal", "til noon I slept", "til noon I slept"],
   ];
   for (const [question, text, filed] of cases) {
-    const h = setup({ notes: [JOTTED] });
+    const harness = setup({ notes: [JOTTED] });
     const sink = jotSink();
-    await h.rating.answerFollowup(
+    await harness.rating.answerFollowup(
       { question: question as "journal" | "til", date: DATE },
       text,
       5,
@@ -298,9 +301,9 @@ test("the controller adds nothing to an answer beyond the TIL prefix", async () 
 });
 
 test("a failed intake keeps the prompt and asks nothing more", async () => {
-  const h = setup();
+  const harness = setup();
   await assert.rejects(
-    h.rating.answerFollowup(
+    harness.rating.answerFollowup(
       { question: "journal", date: DATE },
       "ok",
       5,
@@ -308,21 +311,21 @@ test("a failed intake keeps the prompt and asks nothing more", async () => {
     ),
     /intake failed/,
   );
-  assert.deepEqual(h.deleted, []);
-  assert.deepEqual(h.sent, []);
+  assert.deepEqual(harness.deleted, []);
+  assert.deepEqual(harness.sent, []);
 });
 
 test("a prompt Telegram won't delete does not stop a reply from asking the next question", async () => {
-  const h = setup({ deleteFails: true });
+  const harness = setup({ deleteFails: true });
   const sink = jotSink();
-  await h.rating.answerFollowup(
+  await harness.rating.answerFollowup(
     { question: "journal", date: DATE },
     "ok",
     5,
     sink.jot,
   );
   assert.deepEqual(sink.jots, [[DATE, "ok"]]);
-  assert.match(h.sent[0]!.text, /Learned anything today\?/);
+  assert.match(harness.sent[0]!.text, /Learned anything today\?/);
 });
 
 test("the next question is read from the note after the answer, and only looks forward", async () => {

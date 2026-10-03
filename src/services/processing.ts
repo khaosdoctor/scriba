@@ -28,7 +28,7 @@ import { errorText, escapeHtml, shortId, splitEntry } from "../libs/text.ts";
 import type { EditService } from "./edits.ts";
 import { type Enricher, ModelsDownError } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
-import type { DownloadedFile } from "./media.ts";
+import type { MediaService } from "./media.ts";
 import type { Notifier } from "./notifier.ts";
 import type { TaskService } from "./tasks.ts";
 import type { Transcriber } from "./transcriber.ts";
@@ -50,18 +50,39 @@ const voiceStatus = (transcript: string, step: string): string =>
   `🎤 <i>${escapeHtml(transcript.trim())}</i>\n\n${step}`;
 
 export interface ProcessingDeps {
-  repo: JotRepository;
-  settings: SettingsRepository;
-  linkRules: LinkRuleRepository;
-  obsidian: ObsidianClient;
+  repo: Pick<
+    JotRepository,
+    | "claim"
+    | "getJot"
+    | "groupFollowers"
+    | "insertJot"
+    | "pendingJots"
+    | "tilOffered"
+    | "updateJot"
+  >;
+  settings: Pick<SettingsRepository, "getSetting">;
+  linkRules: Pick<
+    LinkRuleRepository,
+    "registeredLinks" | "rejections" | "stopwords"
+  >;
+  obsidian: Pick<
+    ObsidianClient,
+    "appendJournalLine" | "ensureDailyNote" | "saveAsset" | "updateLine"
+  >;
   transcriber: Transcriber;
-  enricher: Enricher;
-  links: VaultRepository;
-  jots: JotService;
+  enricher: Pick<
+    Enricher,
+    "available" | "describeImage" | "enrich" | "fixTranscript"
+  >;
+  links: Pick<VaultRepository, "list">;
+  jots: Pick<
+    JotService,
+    "askTil" | "awaitVoiceFix" | "deleteStatus" | "react" | "status"
+  >;
   edits: Pick<EditService, "drainQueued" | "askLink">;
   tasks: Pick<TaskService, "suggest" | "draftsFor">;
-  notifier: Pick<Notifier, "send" | "typing">;
-  files: { downloadFile(fileId: string): Promise<DownloadedFile> };
+  notifier: Pick<Notifier, "typing">;
+  media: Pick<MediaService, "downloadFile">;
 }
 
 export class ProcessingService {
@@ -465,7 +486,7 @@ export class ProcessingService {
       { id: jot.id, fileId: jot.file_id },
       "downloading media from telegram",
     );
-    const file = await this.deps.files.downloadFile(jot.file_id);
+    const file = await this.deps.media.downloadFile(jot.file_id);
     log.debug(
       { id: jot.id, ext: file.ext, mime: file.mime, bytes: file.bytes.length },
       "media downloaded",

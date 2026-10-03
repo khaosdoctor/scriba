@@ -179,7 +179,7 @@ export async function createScriba(
       onFlush: (ids) => processing.processBatch(ids),
     });
 
-  const jotController = new JotService({
+  const jots = new JotService({
     repo: repo.jots,
     obsidian,
     notifier: chat,
@@ -191,7 +191,7 @@ export async function createScriba(
     linkRules: repo.linkRules,
     obsidian,
     enricher,
-    jots: jotController,
+    jots,
     notifier: chat,
   });
   const tasks = new TaskService({
@@ -205,7 +205,7 @@ export async function createScriba(
     voice,
   });
   const rating = new RatingService({
-    repo: repo.settings,
+    settings: repo.settings,
     ratings: repo.ratings,
     obsidian,
     notifier: chat,
@@ -223,17 +223,12 @@ export async function createScriba(
   // /command: an agent session scoped to the vault. It gets no built-in tool that could
   // reach the host; services/agent.ts holds the allow list.
   const command = new CommandService({
-    service: new AgentService(
-      links,
-      new WebService(),
-      config.command,
-      sdkQuery,
-    ),
+    agent: new AgentService(links, new WebService(), config.command, sdkQuery),
     notifier: chat,
     modes,
   });
   const settings = new SettingsService({
-    repo: repo.settings,
+    settings: repo.settings,
     linkRules: repo.linkRules,
     links,
     enricher,
@@ -251,11 +246,11 @@ export async function createScriba(
       transcriber,
       enricher,
       links,
-      jots: jotController,
+      jots,
       edits,
       tasks,
       notifier: chat,
-      files: media,
+      media,
     });
 
   const health =
@@ -283,7 +278,7 @@ export async function createScriba(
     github,
     health,
     notifier: { notify },
-    jots: jotController,
+    jots,
     build: { version, sha },
     startedAt,
   });
@@ -296,7 +291,7 @@ export async function createScriba(
     modes,
     command,
     tasks,
-    jotController,
+    jotController: jots,
     edits,
     admin,
     errors: {
@@ -334,7 +329,7 @@ export async function createScriba(
     bot,
     enricher,
     media,
-    jotController,
+    jotController: jots,
     edits,
     tasks,
     command,

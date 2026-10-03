@@ -101,10 +101,10 @@ function setup(
   });
   const modes = new Modes(notifier);
   const tasks = new TaskService({
-    repo: repo as any,
-    settings: repo as any,
+    repo,
+    settings: repo,
     notes,
-    enricher: { extractTask: (text: string) => extract(text) } as any,
+    enricher: { extractTask: (text: string) => extract(text) },
     notifier,
     modes,
     ownerId: OWNER,
@@ -390,8 +390,8 @@ const detected = [
 
 test("detected tasks become drafts dated from the jot's own day", async () => {
   const harness = setup();
-  // 2026-08-16 is a Sunday, so "tomorrow" is the day after the entry, not the day it
-  // happens to be processed.
+  // The jot's note is 2026-08-16 (a Sunday), so "tomorrow" is the day after the entry,
+  // not the day it happens to be processed.
   assert.deepEqual(
     await harness.tasks.draftsFor(detected, "jot12345", "2026-08-16"),
     [
@@ -519,7 +519,7 @@ test("the done list reopens a task instead of ticking it", async () => {
 test("a list pages eight rows at a time, with Prev and Next only where a page exists, and exactly one Close", async () => {
   const rows = Array.from(
     { length: 10 },
-    (_, i) => `- [ ] Task ${i} #type/todo [due:: 2026-09-0${i}]`,
+    (_row, index) => `- [ ] Task ${index} #type/todo [due:: 2026-09-0${index}]`,
   );
   const harness = setup(["## Things to do", ...rows].join("\n"));
   const nav = async (page: number) =>

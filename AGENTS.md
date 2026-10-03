@@ -86,7 +86,10 @@ Layers call downward only: presentation calls services, services call data. `dom
   entities, or has no entity, goes in `libs/`.
 - **Wiring happens only in `src/app.ts`.** Each system block is a class, with its
   collaborators injected through the constructor (usually one `deps` object typed with
-  `Pick<...>`). `createScriba` builds and wires all of them and registers the scheduled
+  `Pick<...>` down to the methods the service calls, so a test fake only needs those).
+  A dependency has one name everywhere: `repo` is the service's own repository,
+  `settings` the `SettingsRepository`, `media` the `MediaService`, `agent` the
+  `AgentService`. `Enricher` takes its deps object like the rest. `createScriba` builds and wires all of them and registers the scheduled
   jobs; its `ExternalServices` argument lets a test swap any outside collaborator.
   `src/index.ts` only loads the config, calls `createScriba`, serves `/health` and handles
   shutdown signals.

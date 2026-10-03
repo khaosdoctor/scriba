@@ -7,7 +7,7 @@ function setup(stored: Record<string, string> = {}) {
   const events: string[] = [];
   const sent: { text: string; opts: any }[] = [];
   const settings = new SettingsService({
-    repo: new FakeSettings(stored, (key, value) =>
+    settings: new FakeSettings(stored, (key, value) =>
       events.push(`set ${key}=${value}`),
     ) as never,
     linkRules: {} as never,

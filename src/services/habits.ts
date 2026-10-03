@@ -16,7 +16,10 @@ const log = logger("habits");
 export const HABITS_NS = "hb";
 
 export interface HabitDeps {
-  obsidian: ObsidianClient;
+  obsidian: Pick<
+    ObsidianClient,
+    "readDailyNote" | "setFrontmatter" | "updateNote"
+  >;
   notifier: Pick<Notifier, "notify" | "send" | "edit" | "delete">;
   heading: string;
 }
