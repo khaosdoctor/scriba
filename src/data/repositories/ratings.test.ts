@@ -3,9 +3,9 @@ import { test } from "node:test";
 import { withDb } from "../../test/sqlite.ts";
 import { RatingRepository } from "./ratings.ts";
 
-test("a day's rating is write-once: the first record wins", async (t) => {
-  await withDb(t, async (k) => {
-    const ratings = new RatingRepository(k);
+test("a day's rating is write-once: the first record wins", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const ratings = new RatingRepository(knex);
     // write-once: first record wins, second is rejected with the existing value
     assert.deepEqual(await ratings.recordRating("2026-07-06", 8), {
       recorded: true,

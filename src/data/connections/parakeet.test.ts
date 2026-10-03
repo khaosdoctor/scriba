@@ -12,8 +12,8 @@ function fakeResponse(body: string, json: boolean, ok = true) {
   };
 }
 
-test("parakeet parses json {text} responses", async (t) => {
-  t.mock.method(
+test("parakeet parses json {text} responses", async (testContext) => {
+  testContext.mock.method(
     globalThis,
     "fetch",
     async () => fakeResponse(JSON.stringify({ text: " hi " }), true) as any,
@@ -25,8 +25,8 @@ test("parakeet parses json {text} responses", async (t) => {
   assert.equal(out, "hi");
 });
 
-test("parakeet rejects a json reply whose text is not a string", async (t) => {
-  t.mock.method(
+test("parakeet rejects a json reply whose text is not a string", async (testContext) => {
+  testContext.mock.method(
     globalThis,
     "fetch",
     async () => fakeResponse(JSON.stringify({ text: 42 }), true) as any,
@@ -36,8 +36,8 @@ test("parakeet rejects a json reply whose text is not a string", async (t) => {
   );
 });
 
-test("parakeet returns an empty transcript for json without text", async (t) => {
-  t.mock.method(
+test("parakeet returns an empty transcript for json without text", async (testContext) => {
+  testContext.mock.method(
     globalThis,
     "fetch",
     async () => fakeResponse(JSON.stringify({}), true) as any,
@@ -49,8 +49,8 @@ test("parakeet returns an empty transcript for json without text", async (t) => 
   assert.equal(out, "");
 });
 
-test("parakeet parses plain-text responses", async (t) => {
-  t.mock.method(
+test("parakeet parses plain-text responses", async (testContext) => {
+  testContext.mock.method(
     globalThis,
     "fetch",
     async () => fakeResponse("yo\n", false) as any,
@@ -62,8 +62,8 @@ test("parakeet parses plain-text responses", async (t) => {
   assert.equal(out, "yo");
 });
 
-test("parakeet throws on non-ok status", async (t) => {
-  t.mock.method(
+test("parakeet throws on non-ok status", async (testContext) => {
+  testContext.mock.method(
     globalThis,
     "fetch",
     async () => fakeResponse("boom", false, false) as any,

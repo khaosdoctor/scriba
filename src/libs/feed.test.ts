@@ -21,7 +21,7 @@ test("feedMessage puts the tail under the header", () => {
 test("fitFeed drops the oldest lines until the message fits", () => {
   const lines = Array.from(
     { length: 20 },
-    (_, i) => `line ${i} ${"x".repeat(300)}`,
+    (_, index) => `line ${index} ${"x".repeat(300)}`,
   );
   const kept = fitFeed("head", lines);
   assert.ok(feedMessage("head", kept).length <= TELEGRAM_LIMIT);

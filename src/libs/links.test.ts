@@ -26,7 +26,7 @@ test("candidates drop stopwords/short aliases and honour rejections", () => {
   const text =
     "I said no to visiting Norway but fixed the Fume Extractor for Lev";
   const got = candidates(text, index, STOP, new Set());
-  assert.deepEqual(got.map((c) => c.note).sort(), [
+  assert.deepEqual(got.map((candidate) => candidate.note).sort(), [
     "Fume Extractor",
     "Lev",
     "Norway",
@@ -34,7 +34,7 @@ test("candidates drop stopwords/short aliases and honour rejections", () => {
 
   const rejected = new Set(["lev Lev"]); // user previously said no to Lev
   const got2 = candidates(text, index, STOP, rejected);
-  assert.ok(!got2.some((c) => c.note === "Lev"));
+  assert.ok(!got2.some((candidate) => candidate.note === "Lev"));
 });
 
 test("forcedCandidates: matches registered surface->note pairs, ignoring length/stopword rules, marked forced", () => {
@@ -46,7 +46,9 @@ test("forcedCandidates: matches registered surface->note pairs, ignoring length/
   const text = "said no to visiting the Fume Extractor room";
   const got = forcedCandidates(text, registered);
   assert.deepEqual(
-    got.map((c) => [c.surface, c.note, c.forced]).sort(),
+    got
+      .map((candidate) => [candidate.surface, candidate.note, candidate.forced])
+      .sort(),
     [
       ["Fume Extractor", "Fume Extractor", true],
       ["no", "Norway", true],

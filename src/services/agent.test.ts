@@ -11,8 +11,8 @@ function fixture(fetchPage: (url: string) => Promise<string>) {
   const vaultCalls: unknown[][] = [];
   const call =
     (name: string, out: string) =>
-    async (...a: unknown[]) => {
-      vaultCalls.push([name, ...a]);
+    async (...args: unknown[]) => {
+      vaultCalls.push([name, ...args]);
       return out;
     };
   const vault = {
@@ -103,7 +103,7 @@ test("a zero thinking budget leaves extended thinking off", async () => {
 test("the vault tools reach the vault, and web_fetch reaches the web fetcher", async () => {
   const { service, vaultCalls, fetched } = fixture(async () => "page text");
   const tools = new Map(
-    (service as any).tools().map((t: any) => [t.name, t.handler]),
+    (service as any).tools().map((tool: any) => [tool.name, tool.handler]),
   ) as Map<string, (args: any) => Promise<any>>;
 
   const text = async (name: string, args: object) =>
@@ -136,7 +136,7 @@ test("a failing tool goes back to the model as text instead of throwing", async 
   });
   const fetch = (service as any)
     .tools()
-    .find((t: any) => t.name === "web_fetch");
+    .find((tool: any) => tool.name === "web_fetch");
 
   assert.deepEqual(await fetch.handler({ url: "http://localhost/" }), {
     content: [{ type: "text", text: "error: blocked: private address" }],
@@ -150,10 +150,11 @@ test("the prompt stream hands over queued prompts in order, waits for more, and 
   stream.push("two");
   const seen: string[] = [];
   const done = (async () => {
-    for await (const m of stream) seen.push((m as any).message.content[0].text);
+    for await (const message of stream)
+      seen.push((message as any).message.content[0].text);
   })();
 
-  await new Promise((r) => setTimeout(r, 5));
+  await new Promise((resolve) => setTimeout(resolve, 5));
   assert.deepEqual(seen, ["one", "two"]);
 
   stream.push("three");
@@ -167,7 +168,7 @@ test("a prompt goes to the CLI as a user message with one text block", async () 
   stream.push("hello");
   stream.end();
   const sent: unknown[] = [];
-  for await (const m of stream) sent.push(m);
+  for await (const message of stream) sent.push(message);
 
   assert.deepEqual(sent[0], {
     type: "user",
