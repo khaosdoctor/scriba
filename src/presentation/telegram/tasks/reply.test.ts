@@ -1,31 +1,17 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { botHarness, NOW } from "../../../test/bot-harness.ts";
+import { botHarness, sampleDraft } from "../../../test/bot-harness.ts";
 import { parseTaskRef } from "./reply.ts";
 
-const DRAFT = {
-  id: "d1d1d1d1",
-  source: "mode",
-  jot_id: null,
-  type: "personal",
-  description: "Buy cat sand",
-  start: null,
-  due: null,
-  source_date: "2026-08-16",
-  status: "pending",
-  chat_id: 1,
-  message_id: 50,
-  created_at: NOW,
-  updated_at: NOW,
-};
+const DRAFT = sampleDraft({ due: null });
 const DUE_PROMPT =
   "🏁 Reply to this message with the due date. (tk:u:d1d1d1d1)";
 const ADD_PROMPT = "📝 Reply to this message with the task. (tk:add)";
 
 const answer = async (text: string, draft: object | null = DRAFT) => {
-  const h = await botHarness();
-  h.repo.getTaskDraft = draft;
-  return h.say(text, { message_id: 7, text: DUE_PROMPT });
+  const harness = await botHarness();
+  harness.repo.getTaskDraft = draft;
+  return harness.say(text, { message_id: 7, text: DUE_PROMPT });
 };
 
 test("a prompt is recognized by its marker, and an ordinary message is not", () => {
@@ -46,7 +32,8 @@ test("a date that can be read is saved, the question leaves the chat and the car
     "repo.getTaskDraft > repo.updateTaskDraft > tg.deleteMessage > tg.editMessageText",
   );
   assert.equal(
-    run.calls.find((c) => c.method === "deleteMessage")?.payload.message_id,
+    run.calls.find((call) => call.method === "deleteMessage")?.payload
+      .message_id,
     7,
   );
   assert.match(run.texts("editMessageText")[0] ?? "", /Due: 2026-09-15/);
@@ -80,13 +67,13 @@ test("an answer for a card that is already settled gets a plain reply", async ()
 });
 
 test("the reply to a bare /taskadd is read as the task and its question leaves the chat", async () => {
-  const h = await botHarness();
-  h.enricher.extractTask = () => ({
+  const harness = await botHarness();
+  harness.enricher.extractTask = () => ({
     description: "Renew the passport",
     due: "next friday",
     type: "personal",
   });
-  const run = await h.say("renew the passport next friday", {
+  const run = await harness.say("renew the passport next friday", {
     message_id: 7,
     text: ADD_PROMPT,
   });
@@ -98,16 +85,16 @@ test("the reply to a bare /taskadd is read as the task and its question leaves t
 });
 
 test("a blank reply to a bare /taskadd asks again, and one with no task in it says how to phrase it", async () => {
-  const h = await botHarness();
+  const harness = await botHarness();
   assert.deepEqual(
-    (await h.say(" ", { message_id: 7, text: ADD_PROMPT })).texts(
+    (await harness.say(" ", { message_id: 7, text: ADD_PROMPT })).texts(
       "sendMessage",
     ),
     ["Send the task and I'll read it."],
   );
-  h.enricher.extractTask = () => ({ description: " ", type: "personal" });
+  harness.enricher.extractTask = () => ({ description: " ", type: "personal" });
   assert.match(
-    (await h.say("???", { message_id: 7, text: ADD_PROMPT })).texts(
+    (await harness.say("???", { message_id: 7, text: ADD_PROMPT })).texts(
       "sendMessage",
     )[0] ?? "",
     /try “\/taskadd buy cat sand next week”/,

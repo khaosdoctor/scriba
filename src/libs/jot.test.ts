@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Jot } from "../domain/jot/entity.ts";
+import { sampleJot } from "../test/sqlite.ts";
 import {
   assetEmbed,
   combineEnrichSource,
@@ -105,25 +106,16 @@ test("isEditableJot is true only for done/abandoned (a line exists to edit)", ()
   assert.equal(isEditableJot("deleted"), false);
 });
 
-const mediaJot = (over: Partial<Jot>): Jot => ({
-  id: "deadbeef",
-  kind: "image",
-  note_path: "notes/x.md",
-  anchor: "deadbeef",
-  time: "10:00:00",
-  raw_text: null,
-  transcript: null,
-  proposed_text: null,
-  section: "journal",
-  asset_path: null,
-  file_id: null,
-  status: "done",
-  attempts: 0,
-  error: null,
-  received_at: 0,
-  updated_at: 0,
-  ...over,
-});
+const mediaJot = (over: Partial<Jot>): Jot =>
+  sampleJot("deadbeef", {
+    kind: "image",
+    note_path: "notes/x.md",
+    raw_text: null,
+    status: "done",
+    received_at: 0,
+    updated_at: 0,
+    ...over,
+  });
 
 test("an image's caption is enrichable entry text; video's is not", () => {
   // What you type alongside a photo is the jot itself, so it goes through enrichment.

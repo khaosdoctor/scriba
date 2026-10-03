@@ -4,10 +4,14 @@
 
 import { createScriba } from "../app.ts";
 import type { Jot } from "../domain/jot/entity.ts";
+import type { TaskDraftRow } from "../domain/task/entity.ts";
 import { testConfig } from "./config.ts";
 import { type ApiCall, BOT_INFO, FakeSettings, recordingApi } from "./fakes.ts";
 import { noteOps } from "./note-ops.ts";
-import { sampleJot as baseJot } from "./sqlite.ts";
+import {
+  sampleTaskDraft as baseDraft,
+  sampleJot as baseJot,
+} from "./sqlite.ts";
 
 export const OWNER = 1;
 export const CHAT = 1;
@@ -26,6 +30,11 @@ export const sampleJot = (over: Partial<Jot> = {}): Jot =>
     updated_at: NOW - 2000,
     ...over,
   });
+
+export const DRAFT_ID = "d1d1d1d1";
+
+export const sampleDraft = (over: Partial<TaskDraftRow> = {}): TaskDraftRow =>
+  baseDraft(DRAFT_ID, { created_at: NOW, updated_at: NOW, ...over });
 
 /** Per-method behavior of a fake. A function is called with the arguments, anything else
  *  is returned as is. */

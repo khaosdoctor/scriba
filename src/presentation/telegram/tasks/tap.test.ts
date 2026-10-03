@@ -1,24 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import type { TaskDraftRow } from "../../../domain/task/entity.ts";
-import { botHarness, NOW } from "../../../test/bot-harness.ts";
-
-const draft = (over: Partial<TaskDraftRow> = {}): TaskDraftRow => ({
-  id: "d1d1d1d1",
-  source: "mode",
-  jot_id: null,
-  type: "personal",
-  description: "Buy cat sand",
-  start: null,
-  due: "2026-09-02",
-  source_date: "2026-08-16",
-  status: "pending",
-  chat_id: 1,
-  message_id: 50,
-  created_at: NOW,
-  updated_at: NOW,
-  ...over,
-});
+import { botHarness, sampleDraft } from "../../../test/bot-harness.ts";
 
 const NOTE = [
   "## Things to do",
@@ -26,31 +8,31 @@ const NOTE = [
 ].join("\n");
 
 const open = async () => {
-  const h = await botHarness();
-  h.obsidian.readNote = NOTE;
-  return h;
+  const harness = await botHarness();
+  harness.obsidian.readNote = NOTE;
+  return harness;
 };
 
 test("a list button redraws the tapped message with that screen, and an unknown screen falls back to the open list", async () => {
-  const h = await open();
+  const harness = await open();
   assert.match(
-    (await h.tap("tk:v:overdue:0")).texts("editMessageText")[0] ?? "",
+    (await harness.tap("tk:v:overdue:0")).texts("editMessageText")[0] ?? "",
     /⏰ Overdue[\s\S]*Nothing here\./,
   );
   assert.match(
-    (await h.tap("tk:v:bogus:0")).texts("editMessageText")[0] ?? "",
+    (await harness.tap("tk:v:bogus:0")).texts("editMessageText")[0] ?? "",
     /📋 All open tasks/,
   );
 });
 
 test("the Tasks button goes back to the menu with both detection switches", async () => {
   const run = await (await open()).tap("tk:m");
-  const edit = run.calls.find((c) => c.method === "editMessageText");
+  const edit = run.calls.find((call) => call.method === "editMessageText");
   assert.match(edit?.payload.text, /🗂 Tasks/);
   assert.deepEqual(
     edit?.payload.reply_markup.inline_keyboard
       .flat()
-      .map((b: { callback_data: string }) => b.callback_data)
+      .map((button: { callback_data: string }) => button.callback_data)
       .slice(-3),
     ["tk:det", "tk:til", "tk:close"],
   );
@@ -61,19 +43,19 @@ test("a question asked because of a tap is a force_reply, so the answer goes to 
     ["tk:u:d1d1d1d1", {}],
     ["tk:ok:d1d1d1d1", { due: null }],
   ] as const) {
-    const h = await open();
-    h.repo.getTaskDraft = draft(over);
-    const run = await h.tap(tap);
-    const sent = run.calls.find((c) => c.method === "sendMessage");
+    const harness = await open();
+    harness.repo.getTaskDraft = sampleDraft(over);
+    const run = await harness.tap(tap);
+    const sent = run.calls.find((call) => call.method === "sendMessage");
     assert.equal(sent?.payload.reply_markup?.force_reply, true, tap);
   }
 });
 
 test("a tick redraws the list it came from, on the page it was drawn on", async () => {
-  const h = await open();
-  const [row] = (await h.tap("tk:v:open:0")).calls
-    .find((c) => c.method === "editMessageText")!
+  const harness = await open();
+  const [row] = (await harness.tap("tk:v:open:0")).calls
+    .find((call) => call.method === "editMessageText")!
     .payload.reply_markup.inline_keyboard.flat();
-  const run = await h.tap(row.callback_data);
+  const run = await harness.tap(row.callback_data);
   assert.match(run.texts("editMessageText")[0] ?? "", /📋 All open tasks/);
 });

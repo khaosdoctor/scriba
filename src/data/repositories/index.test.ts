@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { sampleJot, withDb } from "../../test/sqlite.ts";
+import { sampleJot, sampleTaskDraft, withDb } from "../../test/sqlite.ts";
 import { Repository } from "./index.ts";
 import { JotRepository } from "./jots.ts";
 import { LinkRuleRepository } from "./link-rules.ts";
@@ -8,13 +8,13 @@ import { RatingRepository } from "./ratings.ts";
 import { SettingsRepository } from "./settings.ts";
 import { TaskDraftRepository } from "./task-drafts.ts";
 
-test("a jot's life through the Repository aggregate reaches the right table at every step", async (t) => {
+test("a jot's life through the Repository aggregate reaches the right table at every step", async (testContext) => {
   let repo: Repository;
   try {
     repo = await Repository.open(":memory:");
-  } catch (e) {
-    return t.skip(
-      `native sqlite unavailable: ${(e as Error).message.slice(0, 80)}`,
+  } catch (error) {
+    return testContext.skip(
+      `native sqlite unavailable: ${(error as Error).message.slice(0, 80)}`,
     );
   }
   try {
@@ -33,12 +33,12 @@ test("a jot's life through the Repository aggregate reaches the right table at e
       "bbbbbbbb",
     );
     assert.deepEqual(
-      (await repo.jots.groupFollowers("aaaaaaaa")).map((j) => j.id),
+      (await repo.jots.groupFollowers("aaaaaaaa")).map((jot) => jot.id),
       ["bbbbbbbb"],
     );
     assert.equal(await repo.jots.unsquash("bbbbbbbb"), true);
     assert.deepEqual(
-      (await repo.jots.pendingJots()).map((j) => j.id),
+      (await repo.jots.pendingJots()).map((jot) => jot.id),
       ["aaaaaaaa", "bbbbbbbb"],
     );
 
@@ -46,7 +46,7 @@ test("a jot's life through the Repository aggregate reaches the right table at e
     assert.equal(await repo.jots.resetProcessing(), 1);
     await repo.jots.updateJot("aaaaaaaa", { status: "failed", error: "503" });
     assert.deepEqual(
-      (await repo.jots.failedJots()).map((j) => j.id),
+      (await repo.jots.failedJots()).map((jot) => jot.id),
       ["aaaaaaaa"],
     );
     assert.equal(await repo.jots.resetFailed(false), 1);
@@ -69,7 +69,7 @@ test("a jot's life through the Repository aggregate reaches the right table at e
     assert.equal((await repo.jots.recentJots()).length, 2);
     assert.equal((await repo.jots.jotsInRange(0, Date.now() + 1000)).length, 1);
     assert.deepEqual(
-      (await repo.jots.jotsPage(0, 5)).map((j) => j.id),
+      (await repo.jots.jotsPage(0, 5)).map((jot) => jot.id),
       ["aaaaaaaa"],
     );
     assert.deepEqual(await repo.jots.resetForReprocess(["aaaaaaaa"]), [
@@ -104,21 +104,16 @@ test("a jot's life through the Repository aggregate reaches the right table at e
       "Lev",
     );
 
-    await repo.taskDrafts.insertTaskDraft({
-      id: "d0000001",
-      source: "jot",
-      jot_id: "aaaaaaaa",
-      type: "personal",
-      description: "Buy cat sand",
-      start: null,
-      due: null,
-      source_date: "2026-07-06",
-      status: "pending",
-      chat_id: 42,
-      message_id: null,
-      created_at: Date.now(),
-      updated_at: Date.now(),
-    });
+    await repo.taskDrafts.insertTaskDraft(
+      sampleTaskDraft("d0000001", {
+        source: "jot",
+        jot_id: "aaaaaaaa",
+        due: null,
+        source_date: "2026-07-06",
+        chat_id: 42,
+        message_id: null,
+      }),
+    );
     await repo.taskDrafts.updateTaskDraft("d0000001", { type: "work" });
     assert.equal(
       (await repo.taskDrafts.getTaskDraft("d0000001"))?.type,
@@ -151,11 +146,11 @@ test("a jot's life through the Repository aggregate reaches the right table at e
   }
 });
 
-test("a database first migrated by the original release reads back through every repository", async (t) => {
-  await withDb(t, async (k) => {
-    await k.migrate.rollback(undefined, true);
-    await k.migrate.up();
-    assert.equal(await k.migrate.currentVersion(), "20260706000000");
+test("a database first migrated by the original release reads back through every repository", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await knex.migrate.rollback(undefined, true);
+    await knex.migrate.up();
+    assert.equal(await knex.migrate.currentVersion(), "20260706000000");
 
     const NOTE = "notes/daily notes/2026-07-06.md";
     const legacy = (id: string, status: string, receivedAt: number) => ({
@@ -169,38 +164,38 @@ test("a database first migrated by the original release reads back through every
       received_at: receivedAt,
       updated_at: receivedAt,
     });
-    await k("jots").insert([
+    await knex("jots").insert([
       legacy("aaaaaaaa", "pending", 1000),
       legacy("bbbbbbbb", "done", 2000),
     ]);
-    await k("msg_map").insert({ tg_message_id: 9, jot_id: "aaaaaaaa" });
-    await k("queued_edits").insert({
+    await knex("msg_map").insert({ tg_message_id: 9, jot_id: "aaaaaaaa" });
+    await knex("queued_edits").insert({
       jot_id: "aaaaaaaa",
       instruction: "s/a/b/",
       created_at: 1,
     });
-    await k("pending_links").insert({
+    await knex("pending_links").insert({
       id: "pppppppp",
       jot_id: "aaaaaaaa",
       surface: "gym",
       note: "Fitness",
       created_at: 1,
     });
-    await k("rejections").insert({
+    await knex("rejections").insert({
       surface: "no",
       note: "Norway",
       created_at: 1,
     });
-    await k.migrate.latest();
+    await knex.migrate.latest();
 
-    const jots = new JotRepository(k);
+    const jots = new JotRepository(knex);
     assert.equal((await jots.getJot("aaaaaaaa"))?.section, "journal");
     assert.equal(await jots.tilOffered("aaaaaaaa"), false);
     await jots.markTilOffered("aaaaaaaa");
     assert.equal(await jots.tilOffered("aaaaaaaa"), true);
     assert.equal(await jots.tilOffered("bbbbbbbb"), false);
     assert.deepEqual(
-      (await jots.pendingJots()).map((j) => j.id),
+      (await jots.pendingJots()).map((jot) => jot.id),
       ["aaaaaaaa"],
     );
     assert.equal(
@@ -214,7 +209,7 @@ test("a database first migrated by the original release reads back through every
     assert.equal(counts.pending, 1);
     assert.equal(counts.done, 1);
 
-    const rules = new LinkRuleRepository(k);
+    const rules = new LinkRuleRepository(knex);
     assert.deepEqual(await rules.takePendingLink("pppppppp"), {
       jot_id: "aaaaaaaa",
       surface: "gym",
@@ -225,15 +220,15 @@ test("a database first migrated by the original release reads back through every
     assert.deepEqual(await rules.registeredLinks(), []);
 
     assert.equal(
-      (await new RatingRepository(k).recordRating("2026-07-06", 7)).recorded,
+      (await new RatingRepository(knex).recordRating("2026-07-06", 7)).recorded,
       true,
     );
     assert.equal(
-      await new SettingsRepository(k).getSetting("enrichModel"),
+      await new SettingsRepository(knex).getSetting("enrichModel"),
       undefined,
     );
     assert.equal(
-      await new TaskDraftRepository(k).taskDraftsForJot("aaaaaaaa"),
+      await new TaskDraftRepository(knex).taskDraftsForJot("aaaaaaaa"),
       0,
     );
   });
