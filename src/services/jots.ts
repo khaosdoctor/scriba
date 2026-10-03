@@ -124,27 +124,15 @@ export class JotService {
     const section: JotSection = tilText === null ? "journal" : "til";
     const rawText = tilText ?? input.rawText;
 
-    let anchor = id;
-    let squashed = false;
-    // A follow-up answer (`day`) is stamped with the day's last second, so two of them would
-    // always look like one burst: they are deliberate entries and never squash.
-    if (
-      !input.day &&
-      (SQUASHABLE_KINDS as readonly JotKind[]).includes(input.kind)
-    ) {
-      const prev = await repo.lastPendingEnrichableJot(notePath, section);
-      if (
-        prev &&
-        withinSquashWindow(prev.received_at, epochMs, this.deps.squashWindowMs)
-      ) {
-        anchor = prev.anchor;
-        squashed = true;
-        log.info(
-          { id, into: anchor, gapMs: epochMs - prev.received_at },
-          "jot squashed into open run",
-        );
-      }
-    }
+    const squashInto = await this.squashTarget(
+      input,
+      id,
+      notePath,
+      section,
+      epochMs,
+    );
+    const anchor = squashInto ?? id;
+    const squashed = squashInto !== undefined;
 
     await notifier.react(input.messageId, squashed ? MERGE_EMOJI : "✍");
     log.info(
@@ -191,16 +179,50 @@ export class JotService {
     if (squashed) {
       log.debug({ id, anchor }, "squashed — reusing leader placeholder");
     } else {
-      await obsidian.ensureDailyNote(date);
-      await obsidian.appendJournalLine(
-        date,
-        placeholderLine(time, id),
-        section,
-      );
+      await this.writePlaceholder(date, time, id, section);
       log.debug({ id, notePath }, "placeholder line written");
     }
     this.deps.queue.add([id]);
     log.debug({ id }, "jot queued for flush");
+  }
+
+  // A follow-up answer (`day`) is stamped with the day's last second, so two of them would
+  // always look like one burst: they are deliberate entries and never squash.
+  private async squashTarget(
+    input: IntakeInput,
+    id: string,
+    notePath: string,
+    section: JotSection,
+    epochMs: number,
+  ): Promise<string | undefined> {
+    if (input.day) return undefined;
+    if (!(SQUASHABLE_KINDS as readonly JotKind[]).includes(input.kind))
+      return undefined;
+    const prev = await this.deps.repo.lastPendingEnrichableJot(
+      notePath,
+      section,
+    );
+    if (
+      !prev ||
+      !withinSquashWindow(prev.received_at, epochMs, this.deps.squashWindowMs)
+    )
+      return undefined;
+    log.info(
+      { id, into: prev.anchor, gapMs: epochMs - prev.received_at },
+      "jot squashed into open run",
+    );
+    return prev.anchor;
+  }
+
+  private async writePlaceholder(
+    date: string,
+    time: string,
+    id: string,
+    section: JotSection,
+  ): Promise<void> {
+    const { obsidian } = this.deps;
+    await obsidian.ensureDailyNote(date);
+    await obsidian.appendJournalLine(date, placeholderLine(time, id), section);
   }
 
   /** The owner reacting 🤝 on a squashed follower's own message: opting it out of the
@@ -208,7 +230,7 @@ export class JotService {
    *  compare-and-swap that enforces that atomically, so a tap racing the leader's flush
    *  loses cleanly rather than double-posting the follower's text. */
   async optOutOfSquash(messageId: number): Promise<void> {
-    const { repo, obsidian, notifier } = this.deps;
+    const { repo, notifier } = this.deps;
     const jot = await this.byMessage(messageId);
     if (!jot || !isFollower(jot)) return; // not a squashed follower, nothing to opt out of
     if (!(await repo.unsquash(jot.id))) {
@@ -223,10 +245,10 @@ export class JotService {
       { jotId: jot.id, formerLeader: jot.anchor },
       "merge opt-out — jot pulled back into its own line",
     );
-    await obsidian.ensureDailyNote(plainDate(jot.received_at));
-    await obsidian.appendJournalLine(
+    await this.writePlaceholder(
       plainDate(jot.received_at),
-      placeholderLine(jot.time, jot.id),
+      jot.time,
+      jot.id,
       jot.section,
     );
     await notifier.react(messageId, "✍");
