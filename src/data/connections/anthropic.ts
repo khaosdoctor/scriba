@@ -10,3 +10,10 @@ export {
 
 export type QueryFn = typeof query;
 export const sdkQuery: QueryFn = query;
+
+export const userMessage = (content: unknown) => ({
+  type: "user" as const,
+  message: { role: "user" as const, content },
+  parent_tool_use_id: null,
+  session_id: "",
+});

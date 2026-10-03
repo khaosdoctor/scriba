@@ -30,7 +30,7 @@ export interface RatingDeps {
   headings: { journal: string; til: string };
 }
 
-export type RateOutcome =
+type RateOutcome =
   | { kind: "saved"; rating: number }
   | { kind: "already"; current: number };
 

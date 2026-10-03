@@ -93,7 +93,7 @@ const WINDOWS: Record<
 const isStatsRange = (range: string): range is StatsRange =>
   Object.hasOwn(WINDOWS, range);
 
-export interface RejectedWord {
+interface RejectedWord {
   surface: string;
   notes: string[];
 }

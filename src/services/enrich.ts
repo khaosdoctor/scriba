@@ -1,5 +1,9 @@
 import { z } from "zod";
-import type { OutputFormat, QueryFn } from "../data/connections/anthropic.ts";
+import {
+  type OutputFormat,
+  type QueryFn,
+  userMessage,
+} from "../data/connections/anthropic.ts";
 import {
   type GroqChatFn,
   type GroqMessage,
@@ -28,8 +32,6 @@ import {
   USE_OUTPUT_TOOL,
   VOICE_FIX_SYSTEM,
 } from "./enrich-prompts.ts";
-
-export const OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1";
 
 export interface EnrichFallback {
   apiKey: string;
@@ -63,13 +65,13 @@ export type SwitchNotifier = (
   err?: unknown,
 ) => void | Promise<void>;
 
-export interface EnrichInput {
+interface EnrichInput {
   text: string;
   candidates: Candidate[];
   merge?: boolean;
   splitAt?: number;
 }
-export interface EnrichResult {
+interface EnrichResult {
   text: string; // journal text with confident links applied inline
   ambiguous: Candidate[]; // links to confirm via Telegram buttons
   tasks: DetectedTask[]; // things to do, proposed for confirmation as tasks
@@ -112,13 +114,6 @@ const outputFormat = (schema: z.ZodType): OutputFormat => {
 
 const TASK_OUTPUT_FORMAT = outputFormat(TaskOutputStrict);
 const ENRICH_OUTPUT_FORMAT = outputFormat(EnrichOutputStrict);
-
-export const userMessage = (content: unknown) => ({
-  type: "user" as const,
-  message: { role: "user" as const, content },
-  parent_tool_use_id: null,
-  session_id: "",
-});
 
 /** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
 const fence = (value: string): string => value.replaceAll('"""', "");

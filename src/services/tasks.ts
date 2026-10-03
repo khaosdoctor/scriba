@@ -54,7 +54,7 @@ export type AnswerOutcome =
   | "badDate"
   | "needsDue";
 
-export type Screen = { text: string; keyboard: Keyboard };
+type Screen = { text: string; keyboard: Keyboard };
 
 export interface TaskDeps {
   repo: Pick<

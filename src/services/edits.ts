@@ -47,17 +47,14 @@ export type EditOutcome =
   | "removal-queued"
   | "applied";
 
-export type EmbedOutcome =
-  | "gone"
-  | "no-line"
-  | { confirm: () => Promise<void> };
+type EmbedOutcome = "gone" | "no-line" | { confirm: () => Promise<void> };
 
 /** A removal a tap may run: `now` is the teardown, handed back so the view can answer the
  *  tap before the vault write (the note lock can outlast Telegram's callback window), and
  *  resolves to the confirmation text. */
-export type Removal = { now: () => Promise<string> };
+type Removal = { now: () => Promise<string> };
 
-export type LinkOutcome =
+type LinkOutcome =
   | "expired"
   | {
       verdict: "rejected" | "linked" | "unchanged";

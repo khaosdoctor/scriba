@@ -36,6 +36,8 @@ export class GroqTranscriber {
  *  text turns, or a content-part array for the vision (image) turn. */
 export type GroqMessage = { role: "system" | "user"; content: unknown };
 
+export const OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1";
+
 export type GroqChatFn = (
   apiKey: string,
   model: string,

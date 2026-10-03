@@ -42,7 +42,7 @@ const TURN_SILENCE_MS = 5 * 60_000;
 const WORKING = "🧭 Working…";
 
 export type CommandOpen = "opened" | "already" | "busy" | "noVault";
-export type Decision = (allow: boolean) => void;
+type Decision = (allow: boolean) => void;
 
 export interface CommandDeps {
   agent: Pick<AgentService, "enabled" | "startQuery">;

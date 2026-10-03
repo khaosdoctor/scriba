@@ -5,12 +5,12 @@ import {
   type QueryFn,
   type SDKUserMessage,
   tool,
+  userMessage,
 } from "../data/connections/anthropic.ts";
 import type { WebService } from "../data/connections/web.ts";
 import type { VaultRepository } from "../data/repositories/vault.ts";
 import { logger } from "../libs/log.ts";
 import { errorText } from "../libs/text.ts";
-import { userMessage } from "./enrich.ts";
 
 const log = logger("agent");
 
@@ -66,7 +66,7 @@ const READ_ONLY = new Set([
 ]);
 const ALLOWED = [...READ_ONLY, WRITE_TOOL, DELETE_TOOL];
 
-export type AgentConfig = { model: string; thinkingTokens: number };
+type AgentConfig = { model: string; thinkingTokens: number };
 
 export type Change = {
   kind: "write" | "delete";

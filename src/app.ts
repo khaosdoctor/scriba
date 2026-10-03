@@ -2,7 +2,7 @@ import { Bot } from "grammy";
 import type { Config } from "./config.ts";
 import { sdkQuery } from "./data/connections/anthropic.ts";
 import { GithubReleases } from "./data/connections/github.ts";
-import { GroqTranscriber } from "./data/connections/groq.ts";
+import { GroqTranscriber, OPENCODE_BASE_URL } from "./data/connections/groq.ts";
 import { ParakeetTranscriber } from "./data/connections/parakeet.ts";
 import { TelegramFiles } from "./data/connections/telegram-files.ts";
 import { WebService } from "./data/connections/web.ts";
@@ -28,7 +28,6 @@ import { EditService } from "./services/edits.ts";
 import {
   Enricher,
   type EnrichFallback,
-  OPENCODE_BASE_URL,
   type SwitchNotifier,
 } from "./services/enrich.ts";
 import { HabitService } from "./services/habits.ts";

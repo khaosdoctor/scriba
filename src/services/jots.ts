@@ -47,7 +47,7 @@ const OUTCOME_EMOJI: Record<JotOutcome, string> = {
   failed: "😱",
 };
 
-export type JotOutcome = "done" | "failed" | "retrying";
+type JotOutcome = "done" | "failed" | "retrying";
 export type VoiceFixChoice = "original" | "proposed";
 
 export interface JotDeps {

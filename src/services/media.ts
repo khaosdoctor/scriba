@@ -22,7 +22,7 @@ const MIME: Record<string, string> = {
   webm: "video/webm",
 };
 
-export interface DownloadedFile {
+interface DownloadedFile {
   bytes: Uint8Array;
   ext: string;
   mime: string;

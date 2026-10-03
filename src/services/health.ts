@@ -1,8 +1,8 @@
 import { type Dispatcher, fetch } from "undici";
+import { OPENCODE_BASE_URL } from "../data/connections/groq.ts";
 import type { UpstreamStatus } from "../domain/health/structures.ts";
 import { logger } from "../libs/log.ts";
 import { formatDuration } from "../libs/text.ts";
-import { OPENCODE_BASE_URL } from "./enrich.ts";
 
 const log = logger("health");
 
@@ -10,13 +10,13 @@ const log = logger("health");
  *  `.../v1/audio/transcriptions` → `.../v1/models`. A GET there generates nothing, which
  *  is why the health probe uses it instead of the endpoint itself. */
 export function modelsUrlFor(transcriptionsUrl: string): string {
-  const u = new URL(transcriptionsUrl);
-  const base = u.pathname
+  const url = new URL(transcriptionsUrl);
+  const base = url.pathname
     .replace(/\/audio\/transcriptions\/?$/, "")
     .replace(/\/$/, "");
-  u.pathname = `${base}/models`;
-  u.search = "";
-  return u.toString();
+  url.pathname = `${base}/models`;
+  url.search = "";
+  return url.toString();
 }
 
 /** One thing the bot depends on, probed with a plain GET. There is no method or body
@@ -33,32 +33,35 @@ export interface Upstream {
   dispatcher?: Dispatcher;
 }
 
-export interface HealthTargets {
+interface HealthTargets {
   groqApiKey: string;
   opencodeApiKey: string;
   obsidianUrl: string;
   parakeetUrl: string;
 }
 
-export function upstreams(t: HealthTargets, obsidian: Dispatcher): Upstream[] {
+export function upstreams(
+  targets: HealthTargets,
+  obsidian: Dispatcher,
+): Upstream[] {
   const list: Upstream[] = [
     { name: "anthropic", url: "https://api.anthropic.com" },
     { name: "telegram", url: "https://api.telegram.org" },
-    { name: "obsidian", url: `${t.obsidianUrl}/`, dispatcher: obsidian },
-    { name: "parakeet", url: modelsUrlFor(t.parakeetUrl) },
+    { name: "obsidian", url: `${targets.obsidianUrl}/`, dispatcher: obsidian },
+    { name: "parakeet", url: modelsUrlFor(targets.parakeetUrl) },
   ];
-  if (t.groqApiKey)
+  if (targets.groqApiKey)
     list.push({
       name: "groq",
       url: "https://api.groq.com/openai/v1/models",
-      headers: { Authorization: `Bearer ${t.groqApiKey}` },
+      headers: { Authorization: `Bearer ${targets.groqApiKey}` },
       requireOk: true,
     });
-  if (t.opencodeApiKey)
+  if (targets.opencodeApiKey)
     list.push({
       name: "opencode",
       url: `${OPENCODE_BASE_URL}/models`,
-      headers: { Authorization: `Bearer ${t.opencodeApiKey}` },
+      headers: { Authorization: `Bearer ${targets.opencodeApiKey}` },
       requireOk: true,
     });
   return list;
@@ -85,9 +88,9 @@ export class HealthMonitor {
     private timeoutMs = 5_000,
   ) {
     const now = Date.now();
-    for (const u of targets)
-      this.state.set(u.name, {
-        name: u.name,
+    for (const upstream of targets)
+      this.state.set(upstream.name, {
+        name: upstream.name,
         up: true,
         latencyMs: null,
         error: null,
@@ -99,7 +102,7 @@ export class HealthMonitor {
   start(): void {
     log.info(
       {
-        upstreams: this.targets.map((u) => u.name),
+        upstreams: this.targets.map((upstream) => upstream.name),
         intervalMs: this.intervalMs,
         timeoutMs: this.timeoutMs,
       },
@@ -117,41 +120,41 @@ export class HealthMonitor {
   }
 
   snapshot(): UpstreamStatus[] {
-    return [...this.state.values()].map((s) => ({ ...s }));
+    return [...this.state.values()].map((status) => ({ ...status }));
   }
 
   async check(): Promise<void> {
-    await Promise.all(this.targets.map((u) => this.probe(u)));
+    await Promise.all(this.targets.map((upstream) => this.probe(upstream)));
   }
 
-  private async probe(u: Upstream): Promise<void> {
+  private async probe(upstream: Upstream): Promise<void> {
     const started = Date.now();
     try {
-      const res = await fetch(u.url, {
-        headers: u.headers,
-        dispatcher: u.dispatcher,
+      const res = await fetch(upstream.url, {
+        headers: upstream.headers,
+        dispatcher: upstream.dispatcher,
         signal: AbortSignal.timeout(this.timeoutMs),
       });
       await res.body?.cancel();
-      if (u.requireOk && !res.ok) throw new Error(`HTTP ${res.status}`);
-      this.record(u.name, Date.now() - started, null);
+      if (upstream.requireOk && !res.ok) throw new Error(`HTTP ${res.status}`);
+      this.record(upstream.name, Date.now() - started, null);
     } catch (err) {
-      this.record(u.name, Date.now() - started, describe(err));
+      this.record(upstream.name, Date.now() - started, describe(err));
     }
   }
 
   private record(name: string, latencyMs: number, error: string | null): void {
-    const s = this.state.get(name);
-    if (!s) return;
-    s.latencyMs = latencyMs;
-    s.error = error;
+    const status = this.state.get(name);
+    if (!status) return;
+    status.latencyMs = latencyMs;
+    status.error = error;
     if (error === null) {
       log.debug({ upstream: name, latencyMs }, "probe ok");
-      s.failures = 0;
-      if (s.up) return;
-      const downFor = Date.now() - s.since;
-      s.up = true;
-      s.since = Date.now();
+      status.failures = 0;
+      if (status.up) return;
+      const downFor = Date.now() - status.since;
+      status.up = true;
+      status.since = Date.now();
       log.info(
         { upstream: name, latencyMs, downForMs: downFor },
         "upstream up",
@@ -162,16 +165,16 @@ export class HealthMonitor {
       );
       return;
     }
-    s.failures++;
+    status.failures++;
     log.debug(
-      { upstream: name, latencyMs, error, failures: s.failures },
+      { upstream: name, latencyMs, error, failures: status.failures },
       "probe failed",
     );
-    if (!s.up || s.failures < 2) return;
-    s.up = false;
-    s.since = Date.now();
+    if (!status.up || status.failures < 2) return;
+    status.up = false;
+    status.since = Date.now();
     log.warn(
-      { upstream: name, latencyMs, error, failures: s.failures },
+      { upstream: name, latencyMs, error, failures: status.failures },
       "upstream down",
     );
     this.announce(name, `🔴 ${name} is unreachable: ${error}`);

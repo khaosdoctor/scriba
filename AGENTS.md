@@ -58,12 +58,13 @@ Layers call downward only: presentation calls services, services call data. `dom
   over `ObsidianConnection`), `TaskNoteRepository` (`task-notes.ts`, the two task notes) and `VaultRepository` (`vault.ts`,
   the read-only mount and the link index).
 - **External clients live in `data/connections/`.** One client per source, with no business
-  operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber` and `groqChat`
-  (`groq.ts`), `ObsidianConnection` (`obsidian.ts`, the REST API and its TLS dispatcher),
-  `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`),
+  operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber`, `groqChat`
+  and the OpenCode base URL (`groq.ts`), `ObsidianConnection` (`obsidian.ts`, the REST API
+  and its TLS dispatcher), `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`),
   `GithubReleases` (`github.ts`), `TelegramFiles` (`telegram-files.ts`, `getFile` and the
   download URL that carries the bot token) and `sdkQuery` (`anthropic.ts`, the Agent SDK's
-  `query`, which also re-exports `createSdkMcpServer`, `tool` and the SDK types). A service
+  `query`, which also re-exports `createSdkMcpServer`, `tool` and the SDK types, and builds
+  streaming-input messages with `userMessage`). A service
   takes its connection through the constructor: `Enricher` and `AgentService` get
   `sdkQuery`, `MediaService` gets `TelegramFiles`, and `FallbackTranscriber` gets its
   backend list from `buildTranscriber` in `app.ts`. A new API gets its client here. Still
