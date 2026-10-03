@@ -51,12 +51,13 @@ Layers call downward only: presentation calls services, services call data. `dom
   `TaskDraftRepository`, `RatingRepository`), opened together by `Repository`
   (`data/repositories/index.ts`), and each service takes the repositories it needs. Do not
   write queries anywhere else: add a method to the repository. Vault operations
-  live here too: `ObsidianClient` (`notes.ts`, the REST API and the per-note lock),
+  live here too: `ObsidianClient` (`notes.ts`, the note operations and the per-note lock, over `ObsidianConnection`),
   `TaskNotesService` (`task-notes.ts`, the two task notes) and `VaultService` (`vault.ts`,
   the read-only mount and the link index).
 - **External clients live in `data/connections/`.** One client per source, with no business
   operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber` and `groqChat`
-  (`groq.ts`), `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`),
+  (`groq.ts`), `ObsidianConnection` (`obsidian.ts`, the REST API and its TLS dispatcher),
+  `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`),
   `GithubReleases` (`github.ts`), `TelegramFiles` (`telegram-files.ts`, `getFile` and the
   download URL that carries the bot token) and `sdkQuery` (`anthropic.ts`, the Agent SDK's
   `query`, which also re-exports `createSdkMcpServer`, `tool` and the SDK types). A service
