@@ -8,7 +8,11 @@ import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";
 import { openNative, sampleJot } from "../test/sqlite.ts";
 import { ModelsDownError } from "./enrich.ts";
-import { HELD as HELD_MARKER, ProcessingService } from "./processing.ts";
+import {
+  HELD as HELD_MARKER,
+  ProcessingService,
+  pieceJot,
+} from "./processing.ts";
 
 /** Status messages the bot was asked to post, with the buttons each one carried. */
 type Posted = { id: string; html: string; opts: any };
@@ -438,13 +442,9 @@ test("writeLine replaces a TIL line in place and never appends", async () => {
 });
 
 test("a split piece stays in its parent's section", () => {
-  const { processor } = noteHarness("");
+  assert.equal(pieceJot(jot({ section: "til" }), "tail", 1).section, "til");
   assert.equal(
-    processor.pieceJot(jot({ section: "til" }), "tail", 1).section,
-    "til",
-  );
-  assert.equal(
-    processor.pieceJot(jot({ section: "journal" }), "tail", 1).section,
+    pieceJot(jot({ section: "journal" }), "tail", 1).section,
     "journal",
   );
 });
