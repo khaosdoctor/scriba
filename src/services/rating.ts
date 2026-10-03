@@ -2,11 +2,15 @@ import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { RatingRepository } from "../data/repositories/ratings.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
 import {
-  FOLLOWUP_QUESTIONS,
   type FollowupQuestion,
   followupQuestions,
   ratingDay,
 } from "../domain/rating/entity.ts";
+import {
+  FOLLOWUP_CODES,
+  type FollowupRef,
+  followupRef,
+} from "../libs/followup.ts";
 import { keyboard, type Row } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import type { Notifier } from "./notifier.ts";
@@ -30,33 +34,10 @@ export type RateOutcome =
   | { kind: "saved"; rating: number }
   | { kind: "already"; current: number };
 
-export interface FollowupRef {
-  question: FollowupQuestion;
-  date: string;
-}
-
 const PROMPTS: Record<FollowupQuestion, string> = {
   journal: "📝 One line for the day?",
   til: "💡 Learned anything today?",
 };
-
-const FOLLOWUP_CODES: Record<FollowupQuestion, string> = {
-  journal: "j",
-  til: "t",
-};
-
-export function followupRef(question: FollowupQuestion, date: string): string {
-  return `(fu:${FOLLOWUP_CODES[question]}:${date})`;
-}
-
-export function followupFromCode(
-  code: string | undefined,
-): FollowupQuestion | null {
-  return (
-    FOLLOWUP_QUESTIONS.find((question) => FOLLOWUP_CODES[question] === code) ??
-    null
-  );
-}
 
 export class RatingService {
   /** Prompts already skipped, so a double tap asks the next question once. Forgotten on

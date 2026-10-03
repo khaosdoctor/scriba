@@ -1,5 +1,5 @@
 import { logger } from "../../../libs/log.ts";
-import { TASK_ADD_REF } from "../../../services/tasks.ts";
+import { TASK_ADD_REF } from "../../../libs/tasks.ts";
 import type { CommandView } from "../commands.ts";
 
 const log = logger("tasks-flow");

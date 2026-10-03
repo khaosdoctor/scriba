@@ -1,4 +1,5 @@
 import type { Context, Filter } from "grammy";
+import type { HabitRef } from "../../../libs/habits.ts";
 import type { FillOutcome, HabitService } from "../../../services/habits.ts";
 import { Responder } from "../chat.ts";
 
@@ -10,7 +11,7 @@ const REFUSALS: Record<Exclude<FillOutcome, "saved">, string> = {
 export function habitReply(habits: HabitService) {
   return async (
     ctx: Filter<Context, "message:text">,
-    { date, index, digest }: { date: string; index: number; digest: string },
+    { date, index, digest }: HabitRef,
   ) => {
     const responder = new Responder(ctx);
     const outcome = await habits.fill(

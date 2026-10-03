@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { type TestContext, test } from "node:test";
+import { followupFromCode, followupRef } from "../libs/followup.ts";
 import { FakeSettings } from "../test/fakes.ts";
-import { followupFromCode, followupRef, RatingService } from "./rating.ts";
+import { RatingService } from "./rating.ts";
 
 const DATE = "2026-07-05";
 const EMPTY = "## Journal\n-\n## TIL\n-\n";

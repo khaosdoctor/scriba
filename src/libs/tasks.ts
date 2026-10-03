@@ -8,6 +8,19 @@ import type {
 import { clip, escapeHtml } from "./text.ts";
 import { plainDate } from "./time.ts";
 
+export const TASK_ADD_REF = "(tk:add)";
+
+export type TaskField = "d" | "s" | "u";
+export type TaskRef = { field: "add" } | { field: TaskField; id: string };
+
+export const taskRef = (field: TaskField, id: string) => `(tk:${field}:${id})`;
+
+export function parseTaskRef(prompt: string): TaskRef | null {
+  if (prompt.includes(TASK_ADD_REF)) return { field: "add" };
+  const match = prompt.match(/\(tk:(d|s|u):([0-9a-f]{6,16})\)/);
+  return match ? { field: match[1] as TaskField, id: match[2]! } : null;
+}
+
 const STATE_ICON: Record<TaskState, string> = {
   open: "☐",
   done: "☑",

@@ -23,10 +23,13 @@ import {
 import { logger } from "../libs/log.ts";
 import { paginate } from "../libs/page.ts";
 import {
+  type TaskField,
+  type TaskRef,
   TYPE_LABEL,
   taskButtonLabel,
   taskCard,
   taskListLine,
+  taskRef,
   VIEW_LABEL,
 } from "../libs/tasks.ts";
 import { errorText, escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
@@ -40,10 +43,6 @@ const log = logger("tasks-flow");
 
 export const TASKS_NS = "tk";
 
-export const TASK_ADD_REF = "(tk:add)";
-
-export type TaskField = "d" | "s" | "u";
-export type TaskRef = { field: "add" } | { field: TaskField; id: string };
 export type AnswerOutcome =
   | "ok"
   | "settled"
@@ -363,7 +362,7 @@ export class TaskService {
     log.info({ draft: row.id, field }, "task: prompting for a field");
     const id = await this.deps.notifier
       .send(
-        `${PROMPTS[field]} (tk:${field}:${row.id})`,
+        `${PROMPTS[field]} ${taskRef(field, row.id)}`,
         fromTap ? { forceReply: true } : undefined,
       )
       .catch((err) => {
