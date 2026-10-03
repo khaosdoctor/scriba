@@ -30,7 +30,6 @@ export class ObsidianClient {
     this.connection = new ObsidianConnection(cfg);
   }
 
-  /** The connection's TLS dispatcher, so the health probe trusts what the client trusts. */
   get dispatcher() {
     return this.connection.dispatcher;
   }

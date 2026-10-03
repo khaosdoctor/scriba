@@ -51,8 +51,8 @@ Layers call downward only: presentation calls services, services call data. `dom
   `TaskDraftRepository`, `RatingRepository`), opened together by `Repository`
   (`data/repositories/index.ts`), and each service takes the repositories it needs. Do not
   write queries anywhere else: add a method to the repository. Vault operations
-  live here too: `ObsidianClient` (`notes.ts`, the note operations and the per-note lock, over `ObsidianConnection`),
-  `TaskNoteRepository` (`task-notes.ts`, the two task notes) and `VaultRepository` (`vault.ts`,
+  live here too: `ObsidianClient` (`notes.ts`, the note operations and the per-note lock,
+  over `ObsidianConnection`), `TaskNoteRepository` (`task-notes.ts`, the two task notes) and `VaultRepository` (`vault.ts`,
   the read-only mount and the link index).
 - **External clients live in `data/connections/`.** One client per source, with no business
   operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber` and `groqChat`

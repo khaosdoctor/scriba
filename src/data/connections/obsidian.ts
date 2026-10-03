@@ -20,6 +20,7 @@ export class ObsidianConnection {
   // trusted LAN with its own self-signed cert. Public so the health probe trusts exactly
   // what the client trusts.
   readonly dispatcher: Agent;
+  readonly verifyTls: boolean;
 
   constructor(private cfg: ObsidianConnectionConfig) {
     const host = new URL(cfg.url).hostname;
@@ -28,11 +29,11 @@ export class ObsidianConnection {
       host === "localhost" ||
       host === "::1" ||
       host === "[::1]";
-    const verifyTls = !loopback && !cfg.insecureTls;
-    if (!verifyTls)
+    this.verifyTls = !loopback && !cfg.insecureTls;
+    if (!this.verifyTls)
       log.warn({ host }, "TLS verification disabled for Obsidian");
     this.dispatcher = new Agent({
-      connect: { rejectUnauthorized: verifyTls },
+      connect: { rejectUnauthorized: this.verifyTls },
     });
   }
 
