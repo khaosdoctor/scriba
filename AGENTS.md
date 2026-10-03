@@ -71,7 +71,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   and `FlushQueue` (`queue.ts`). `domain/<entity>/entity.ts` holds the entity types, the
   constants that belong to them (`JOT_STATUSES`, `MAX_ATTEMPTS`, the `SETTINGS` table) and
   the pure rules of that one entity (`followupQuestions` in `domain/rating/entity.ts`), in a
-  sibling `rules.ts` when they would make `entity.ts` long (`domain/jot/rules.ts`: ids,
+  sibling `rules.ts` when they would make `entity.ts` long (`domain/jot/rules.ts`:
   `isFollower`, `sourceField`, the journal line format, the TIL prefix). `structures.ts`
   holds the shapes passed between layers (`IntakeInput`, `DetectedTask`). A rule that spans
   entities, or has no entity, goes in `libs/`.
