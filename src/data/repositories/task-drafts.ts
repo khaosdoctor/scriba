@@ -5,23 +5,23 @@ import { logger } from "../../libs/log.ts";
 const log = logger("db");
 
 export class TaskDraftRepository {
-  constructor(private k: Knex) {}
+  constructor(private knex: Knex) {}
 
-  async insertTaskDraft(d: TaskDraftRow): Promise<void> {
-    await this.k("task_drafts").insert(d);
+  async insertTaskDraft(draft: TaskDraftRow): Promise<void> {
+    await this.knex("task_drafts").insert(draft);
     log.debug(
-      { id: d.id, source: d.source, type: d.type },
+      { id: draft.id, source: draft.source, type: draft.type },
       "task draft inserted",
     );
   }
   async getTaskDraft(id: string): Promise<TaskDraftRow | undefined> {
-    return this.k<TaskDraftRow>("task_drafts").where({ id }).first();
+    return this.knex<TaskDraftRow>("task_drafts").where({ id }).first();
   }
   async updateTaskDraft(
     id: string,
     patch: Partial<TaskDraftRow>,
   ): Promise<void> {
-    await this.k("task_drafts")
+    await this.knex("task_drafts")
       .where({ id })
       .update({ ...patch, updated_at: Date.now() });
     log.debug({ id, ...patch }, "task draft updated");
@@ -30,10 +30,10 @@ export class TaskDraftRepository {
    *  jots. Only the tap that wins moves it `pending → created`, so a double-tapped ✅ can't
    *  write the same task into the note twice. Returns false when it was already settled. */
   async claimTaskDraft(id: string): Promise<boolean> {
-    const n = await this.k("task_drafts")
+    const changed = await this.knex("task_drafts")
       .where({ id, status: "pending" })
       .update({ status: "created", updated_at: Date.now() });
-    const won = n > 0;
+    const won = changed > 0;
     log.debug({ id, won }, "task draft claim attempt");
     return won;
   }
@@ -42,7 +42,7 @@ export class TaskDraftRepository {
    *  once and answered (created, or dismissed), so a later /reprocess of that jot must
    *  not ask about them all over again. */
   async taskDraftsForJot(jotId: string): Promise<number> {
-    const row = await this.k("task_drafts")
+    const row = await this.knex("task_drafts")
       .where({ jot_id: jotId })
       .count("* as n")
       .first();

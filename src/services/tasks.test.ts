@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { TaskNotesService } from "../data/repositories/task-notes.ts";
+import { TaskNoteRepository } from "../data/repositories/task-notes.ts";
 import type { TaskDraftRow, TaskType } from "../domain/task/entity.ts";
 import { FakeSettings } from "../test/fakes.ts";
 import { noteOps } from "../test/note-ops.ts";
@@ -79,7 +79,7 @@ function setup(
     },
     ...noteOps(() => obsidian),
   };
-  const notes = new TaskNotesService(obsidian, {
+  const notes = new TaskNoteRepository(obsidian, {
     work: {
       path: "work.md",
       heading: "Other Tasks",

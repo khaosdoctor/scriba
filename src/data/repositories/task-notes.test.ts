@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { client } from "../../test/obsidian-server.ts";
-import { TaskNotesService } from "./task-notes.ts";
+import { TaskNoteRepository } from "./task-notes.ts";
 
 const WORK_PATH = "notes/tracking notes/What's going on at work.md";
 const PERSONAL_PATH = "notes/tracking notes/dashboards/Todos.md";
@@ -43,7 +43,7 @@ async function store() {
   ]);
   return {
     vault: fake.vault,
-    tasks: new TaskNotesService(obsidian, {
+    tasks: new TaskNoteRepository(obsidian, {
       work: {
         path: WORK_PATH,
         heading: "Other Tasks",

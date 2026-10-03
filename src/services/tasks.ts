@@ -1,6 +1,6 @@
 import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { TaskDraftRepository } from "../data/repositories/task-drafts.ts";
-import type { TaskNotesService } from "../data/repositories/task-notes.ts";
+import type { TaskNoteRepository } from "../data/repositories/task-notes.ts";
 import type { SwitchKey } from "../domain/setting/entity.ts";
 import {
   draftFromDetection,
@@ -57,7 +57,7 @@ export type Screen = { text: string; keyboard: Keyboard };
 export interface TaskDeps {
   repo: TaskDraftRepository;
   settings: SettingsRepository;
-  notes: TaskNotesService;
+  notes: TaskNoteRepository;
   enricher: Enricher;
   notifier: Pick<Notifier, "notify" | "send" | "edit" | "delete">;
   modes: Modes;

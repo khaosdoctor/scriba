@@ -9,7 +9,7 @@ import { buildTranscriber, createScriba } from "./app.ts";
 import { loadConfig } from "./config.ts";
 import { Repository } from "./data/repositories/index.ts";
 import { SettingsRepository } from "./data/repositories/settings.ts";
-import { VaultService } from "./data/repositories/vault.ts";
+import { VaultRepository } from "./data/repositories/vault.ts";
 import type { SettingKey } from "./domain/setting/entity.ts";
 import { Scheduler } from "./libs/scheduler.ts";
 import { WIZARD_RATING_TIME_REF } from "./libs/wizard.ts";
@@ -141,7 +141,7 @@ dbTest("createScriba wires everything and starts nothing", async (t) => {
   const started = {
     scheduler: t.mock.method(Scheduler.prototype, "start"),
     health: t.mock.method(HealthMonitor.prototype, "start"),
-    links: t.mock.method(VaultService.prototype, "startIndex"),
+    links: t.mock.method(VaultRepository.prototype, "startIndex"),
     polling: t.mock.method(Bot.prototype, "start"),
   };
   const closed = t.mock.method(Repository.prototype, "close");

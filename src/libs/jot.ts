@@ -83,7 +83,7 @@ export function statusKeyboard(jotId: string, opts?: StatusButtons) {
   return { inline_keyboard: [row] };
 }
 
-export function squashLine(total: number): string {
+function squashLine(total: number): string {
   return total > 1 ? `\n🧵 ${total} jots squashed into one entry` : "";
 }
 

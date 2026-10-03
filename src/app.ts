@@ -8,8 +8,8 @@ import { TelegramFiles } from "./data/connections/telegram-files.ts";
 import { WebService } from "./data/connections/web.ts";
 import { Repository } from "./data/repositories/index.ts";
 import { ObsidianClient } from "./data/repositories/notes.ts";
-import { TaskNotesService } from "./data/repositories/task-notes.ts";
-import { VaultService } from "./data/repositories/vault.ts";
+import { TaskNoteRepository } from "./data/repositories/task-notes.ts";
+import { VaultRepository } from "./data/repositories/vault.ts";
 import { logger } from "./libs/log.ts";
 import { FlushQueue } from "./libs/queue.ts";
 import { Scheduler } from "./libs/scheduler.ts";
@@ -51,7 +51,7 @@ export interface ExternalServices {
   obsidian?: ObsidianClient;
   enricher?: Enricher;
   transcriber?: FallbackTranscriber;
-  links?: VaultService;
+  links?: VaultRepository;
   scheduler?: Scheduler;
   queue?: FlushQueue;
   processing?: ProcessingService;
@@ -180,7 +180,7 @@ export async function createScriba(
   });
   const voice = new VoiceService({ media, transcriber });
   const links =
-    externalServices.links ?? new VaultService(config.vaultPath, obsidian);
+    externalServices.links ?? new VaultRepository(config.vaultPath, obsidian);
   const github = externalServices.github ?? new GithubReleases();
   const scheduler = externalServices.scheduler ?? new Scheduler();
   // Command and task mode both own the message stream, so neither opens over the other.
@@ -212,7 +212,7 @@ export async function createScriba(
   const tasks = new TaskService({
     repo: repo.taskDrafts,
     settings: repo.settings,
-    notes: new TaskNotesService(obsidian, config.tasks),
+    notes: new TaskNoteRepository(obsidian, config.tasks),
     enricher,
     notifier: chat,
     modes,

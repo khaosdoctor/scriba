@@ -2,7 +2,7 @@ import { logger } from "./log.ts";
 
 const log = logger("queue");
 
-export interface FlushOpts {
+interface FlushOpts {
   idleMs: number;
   maxBatch: number;
   maxWaitMs: number;

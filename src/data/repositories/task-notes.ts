@@ -20,14 +20,14 @@ import type { ObsidianClient } from "./notes.ts";
 
 const log = logger("tasks");
 
-export interface TaskNoteConfig {
+interface TaskNoteConfig {
   path: string;
   heading: string;
   tag: string;
   insert: "top" | "bottom";
 }
 
-export class TaskNotesService {
+export class TaskNoteRepository {
   constructor(
     private obsidian: ObsidianClient,
     private notes: Record<TaskType, TaskNoteConfig>,

@@ -11,7 +11,7 @@ import { namespace, type Tap } from "../namespace.ts";
 
 const log = logger("reprocess");
 
-export const REPROCESS_NS = "rp";
+const REPROCESS_NS = "rp";
 export const ROOT_TEXT = "🔁 Reprocess — choose scope:";
 
 const rp = (...parts: (string | number)[]) =>

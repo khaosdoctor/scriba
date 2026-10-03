@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import http from "node:http";
 import { createScriba } from "./app.ts";
 import { type Config, loadConfig } from "./config.ts";
-import { logger } from "./libs/log.ts";
+import { level, logger } from "./libs/log.ts";
 import { errorText } from "./libs/text.ts";
 
 const log = logger("main");
@@ -32,7 +32,7 @@ async function main(): Promise<void> {
       dbPath: config.dbPath,
       vaultIndex: config.vaultPath ?? "(none — REST fallback)",
       port: config.telegram.port,
-      logLevel: process.env.LOG_LEVEL ?? "debug",
+      logLevel: level,
     },
     "scriba starting",
   );

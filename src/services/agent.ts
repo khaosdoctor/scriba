@@ -7,7 +7,7 @@ import {
   tool,
 } from "../data/connections/anthropic.ts";
 import type { WebService } from "../data/connections/web.ts";
-import type { VaultService } from "../data/repositories/vault.ts";
+import type { VaultRepository } from "../data/repositories/vault.ts";
 import { logger } from "../libs/log.ts";
 import { errorText } from "../libs/text.ts";
 import { userMessage } from "./enrich.ts";
@@ -117,7 +117,7 @@ export class AgentService {
   private tropeCache?: { text: string; at: number };
 
   constructor(
-    private vault: VaultService,
+    private vault: VaultRepository,
     private web: WebService,
     private config: AgentConfig,
     private query: QueryFn,

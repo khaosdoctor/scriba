@@ -16,14 +16,14 @@ const EnvObject = z.object({
   OBSIDIAN_API_URL: z
     .string()
     .default("https://127.0.0.1:27124")
-    .transform((s) => s.replace(/\/$/, "")),
+    .transform((url) => url.replace(/\/$/, "")),
   OBSIDIAN_API_KEY: z.string().min(1),
   // Skip TLS verification for a non-loopback Obsidian URL (self-signed cert on a
   // trusted LAN, e.g. the homelab deploy). Loopback always skips regardless.
   OBSIDIAN_INSECURE_TLS: z
     .enum(["true", "false"])
     .default("false")
-    .transform((s) => s === "true"),
+    .transform((value) => value === "true"),
   DAILY_NOTES_DIR: z.string().default("notes/daily notes"),
   DAILY_NOTE_TEMPLATE: z.string().default("internal/templates/Daily Note"),
   JOURNAL_HEADING: z.string().default("Journal"),
@@ -162,7 +162,7 @@ function toConfig(env: z.infer<typeof EnvObject>) {
   } as const;
 }
 
-export const EnvSchema = EnvObject.transform(toConfig);
+const EnvSchema = EnvObject.transform(toConfig);
 
 export type Config = z.output<typeof EnvSchema>;
 

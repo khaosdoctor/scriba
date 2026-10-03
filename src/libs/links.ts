@@ -28,7 +28,7 @@ export function tokenize(text: string): string[] {
   return text.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
 }
 
-export function matchAlias(
+function matchAlias(
   alias: string,
   lower: string,
   tokens: Set<string>,

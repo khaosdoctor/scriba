@@ -42,7 +42,7 @@ export function formatStats(label: string, stats: Stats): string {
   ].join("\n");
 }
 
-export interface StatusView {
+interface StatusView {
   counts: StatusCounts;
   queueDepth: number;
   transcriber: string;
