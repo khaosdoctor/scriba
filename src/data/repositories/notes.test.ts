@@ -1,113 +1,11 @@
 import assert from "node:assert/strict";
-import { createServer, type Server } from "node:http";
-import type { AddressInfo } from "node:net";
-import { after, test } from "node:test";
-import { ObsidianClient, type ObsidianConfig } from "./notes.ts";
+import { test } from "node:test";
+import { client, type FakeObsidian } from "../../test/obsidian-server.ts";
 
-/**
- * A stand-in for Obsidian's Local REST API, served on loopback so the client's real fetch,
- * headers and status handling are exercised rather than mocked out. The vault is a map of
- * path → content; every request is recorded so a test can assert what reached the network
- * (which, for the locking and dedupe below, is the whole point).
- */
-type Fake = {
-  url: string;
-  vault: Map<string, string>;
-  seen: { method: string; path: string; auth?: string }[];
-  /** Held back until a test releases it, to force overlap. */
-  stall: (path: string) => () => void;
-  /** Answer one `"<METHOD> <path>"` with a status instead of serving it. */
-  fail: (key: string, status: number) => () => void;
-  close: () => Promise<void>;
-};
-
-async function serve(): Promise<Fake> {
-  const vault = new Map<string, string>();
-  const seen: Fake["seen"] = [];
-  const gates = new Map<string, Promise<void>>();
-  const broken = new Map<string, number>();
-  const server: Server = createServer(async (req, res) => {
-    // The client percent-encodes each segment; decode back to the vault-relative path.
-    const path = decodeURIComponent((req.url ?? "").replace(/^\/vault\//, ""));
-    seen.push({
-      method: req.method ?? "",
-      path,
-      auth: req.headers.authorization,
-    });
-    const key = `${req.method} ${path}`;
-    await gates.get(key);
-    const status = broken.get(key);
-    if (status !== undefined) return void res.writeHead(status).end("nope");
-    if (req.method === "GET") {
-      const body = vault.get(path);
-      if (body === undefined) return void res.writeHead(404).end("not found");
-      return void res.writeHead(200).end(body);
-    }
-    if (req.method === "PUT") {
-      const chunks: Buffer[] = [];
-      for await (const c of req) chunks.push(c as Buffer);
-      vault.set(path, Buffer.concat(chunks).toString("utf8"));
-      return void res.writeHead(204).end();
-    }
-    if (req.method === "DELETE") {
-      if (!vault.delete(path)) return void res.writeHead(404).end();
-      return void res.writeHead(204).end();
-    }
-    res.writeHead(500).end("boom");
-  });
-  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
-  const { port } = server.address() as AddressInfo;
-  return {
-    url: `http://127.0.0.1:${port}`,
-    vault,
-    seen,
-    stall: (key: string) => {
-      let release = () => {};
-      gates.set(
-        key,
-        new Promise<void>((r) => {
-          release = r;
-        }),
-      );
-      return () => {
-        gates.delete(key);
-        release();
-      };
-    },
-    fail: (key: string, status: number) => {
-      broken.set(key, status);
-      return () => void broken.delete(key);
-    },
-    close: () => new Promise<void>((r) => void server.close(() => r())),
-  };
-}
-
-const servers: Fake[] = [];
-after(async () => {
-  for (const s of servers) await s.close();
-});
-
-async function client(over: Partial<ObsidianConfig> = {}) {
-  const fake = await serve();
-  servers.push(fake);
-  const obsidian = new ObsidianClient({
-    url: fake.url,
-    key: "hunter2",
-    dailyDir: "notes/daily notes",
-    dailyTemplate: "internal/templates/Daily Note",
-    journalHeading: "Journal",
-    tilHeading: "TIL",
-    habitsHeading: "Habits",
-    assetsDir: "internal/assets/journal",
-    insecureTls: false,
-    ...over,
-  });
-  return { obsidian, fake };
-}
-
-const counted = (fake: Fake, method: string, path?: string) =>
-  fake.seen.filter((r) => r.method === method && (!path || r.path === path))
-    .length;
+const counted = (fake: FakeObsidian, method: string, path?: string) =>
+  fake.seen.filter(
+    (request) => request.method === method && (!path || request.path === path),
+  ).length;
 
 test("paths with spaces survive the round trip, and every call carries the key", async () => {
   const { obsidian, fake } = await client();
@@ -208,7 +106,7 @@ test("updateNote serializes read-modify-write, so no update is lost", async () =
   // earlier's append.
   const append = (suffix: string) =>
     obsidian.updateNote(path, async (note, write) => {
-      await new Promise((r) => setTimeout(r, 10));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       write(`${note}+${suffix}`);
     });
   await Promise.all([append("one"), append("two")]);
@@ -527,7 +425,9 @@ test("moveToTil takes the note lock, so a concurrent journal append is neither l
   release();
   await Promise.all([moving, appending]);
   assert.deepEqual(
-    fake.seen.filter((r) => r.path === TIL_PATH).map((r) => r.method),
+    fake.seen
+      .filter((request) => request.path === TIL_PATH)
+      .map((request) => request.method),
     ["GET", "PUT", "GET", "PUT"],
   );
   const note = fake.vault.get(TIL_PATH) ?? "";
