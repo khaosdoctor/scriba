@@ -4,6 +4,7 @@ import {
   CircuitBreaker,
   isRecoverable,
   parseModelJson,
+  switchNotice,
   unwrapModelPayload,
 } from "./model.ts";
 
@@ -122,6 +123,21 @@ test("isRecoverable flags transient infra errors, not terminal ones", () => {
   );
   assert.equal(isRecoverable(new Error("429 Too Many Requests")), true);
   assert.equal(isRecoverable(new Error("invalid path")), false);
+});
+
+test("switchNotice words each switch and quotes the reason where there is one", () => {
+  assert.equal(
+    switchNotice("fallback", "groq-model", new Error("usage exhausted")),
+    "⚠️ Enrichment switched to fallback model groq-model. Quality may drop until the chosen model is back.\nReason: usage exhausted",
+  );
+  assert.equal(
+    switchNotice("primary", "haiku"),
+    "✅ Enrichment is back on haiku.",
+  );
+  assert.equal(
+    switchNotice("down", "none", "overloaded"),
+    "⏸ Every enrichment model is down, so new jots are held in place. They go into your journal on their own once one is back.\nReason: overloaded",
+  );
 });
 
 test("isRecoverable covers the OpenAI-shaped SDKs' network errors", () => {

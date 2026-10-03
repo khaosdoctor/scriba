@@ -11,9 +11,9 @@ import { ObsidianClient } from "./data/repositories/notes.ts";
 import { TaskNoteRepository } from "./data/repositories/task-notes.ts";
 import { VaultRepository } from "./data/repositories/vault.ts";
 import { logger } from "./libs/log.ts";
+import { switchNotice } from "./libs/model.ts";
 import { FlushQueue } from "./libs/queue.ts";
 import { Scheduler } from "./libs/scheduler.ts";
-import { errorText } from "./libs/text.ts";
 import { previousDate } from "./libs/time.ts";
 import { Chat } from "./presentation/telegram/chat.ts";
 import {
@@ -156,23 +156,9 @@ export async function createScriba(
     externalServices.transcriber ?? buildTranscriber(config.transcription);
   const enricher =
     externalServices.enricher ??
-    (await buildEnricher(config, repo, (to, model, err) => {
-      const reason = errorText(err);
-      switch (to) {
-        case "fallback":
-          return notify(
-            `⚠️ Enrichment switched to fallback model ${model}. Quality may drop until the chosen model is back.\nReason: ${reason}`,
-          );
-        case "primary":
-          return notify(`✅ Enrichment is back on ${model}.`);
-        case "down":
-          return notify(
-            `⏸ Every enrichment model is down, so new jots are held in place. They go into your journal on their own once one is back.\nReason: ${reason}`,
-          );
-        default:
-          return to satisfies never;
-      }
-    }));
+    (await buildEnricher(config, repo, (to, model, err) =>
+      notify(switchNotice(to, model, err)),
+    ));
   const media = new MediaService({
     files: new TelegramFiles(bot.api, config.telegram.token),
   });

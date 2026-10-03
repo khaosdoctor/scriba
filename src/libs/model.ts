@@ -29,6 +29,26 @@ export class CircuitBreaker {
   }
 }
 
+export type SwitchTarget = "fallback" | "primary" | "down";
+
+export function switchNotice(
+  to: SwitchTarget,
+  model: string,
+  err?: unknown,
+): string {
+  const reason = errorText(err);
+  switch (to) {
+    case "fallback":
+      return `⚠️ Enrichment switched to fallback model ${model}. Quality may drop until the chosen model is back.\nReason: ${reason}`;
+    case "primary":
+      return `✅ Enrichment is back on ${model}.`;
+    case "down":
+      return `⏸ Every enrichment model is down, so new jots are held in place. They go into your journal on their own once one is back.\nReason: ${reason}`;
+    default:
+      return to satisfies never;
+  }
+}
+
 export function isRecoverable(err: unknown): boolean {
   const message = errorText(err).toLowerCase();
   // "connection error" / "timed out" are the OpenAI-shaped SDKs' (Groq, OpenCode) words

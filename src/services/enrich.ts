@@ -16,6 +16,7 @@ import {
   CircuitBreaker,
   isRecoverable,
   parseModelJson,
+  type SwitchTarget,
   unwrapModelPayload,
 } from "../libs/model.ts";
 import { errorText } from "../libs/text.ts";
@@ -55,8 +56,6 @@ export class ModelsDownError extends Error {
 }
 
 const DOWN = -1;
-
-export type SwitchTarget = "fallback" | "primary" | "down";
 
 export type SwitchNotifier = (
   to: SwitchTarget,
