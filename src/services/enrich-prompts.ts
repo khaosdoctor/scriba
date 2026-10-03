@@ -1,3 +1,15 @@
+import type { Candidate } from "../domain/link-rule/entity.ts";
+
+export interface EnrichInput {
+  text: string;
+  candidates: Candidate[];
+  merge?: boolean;
+  splitAt?: number;
+}
+
+/** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
+export const fence = (value: string): string => value.replaceAll('"""', "");
+
 export const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules:
 - The vault is English. If the text is not in English, translate it to natural English preserving the author's voice and meaning. If it is already English, keep it verbatim.
 - Do not summarise or rewrite style. Other than translation, only insert wikilinks.
@@ -42,3 +54,22 @@ export const TASK_SYSTEM = `You turn one line of text into a task for a personal
 export const TASK_JSON_ONLY = `
 Your entire response must be exactly one JSON object and nothing else: {"description": "...", "due": "...", "start": "...", "type": "personal"}
 Do not write any preamble, explanation or commentary. The first character of your response must be "{" and the last character must be "}".`;
+
+export function enrichPrompt(input: EnrichInput): string {
+  const candidateLines = input.candidates.length
+    ? input.candidates
+        .map(
+          (candidate) =>
+            `- "${candidate.surface}" -> [[${candidate.note}]]${candidate.forced ? " (REGISTERED)" : ""}`,
+        )
+        .join("\n")
+    : "(none)";
+  const mergeNote = input.merge
+    ? "\n\nThis entry arrived as several quick messages sent moments apart (each line below is one). Weave them into ONE coherent journal entry with correct punctuation and natural flow. Keep every point — do not summarise, drop, or reorder content."
+    : "";
+  const splitNote =
+    input.splitAt && input.text.length > input.splitAt
+      ? `\n\nThis is longer than ${input.splitAt} characters and will be split into several separate journal entries. Put a blank line between distinct topics so the split lands on a change of subject. Add ONLY blank lines — do not summarise, drop, reorder, or reword anything. If it is all one topic, add none.`
+      : "";
+  return `Candidate links:\n${candidateLines}${mergeNote}${splitNote}\n\nJournal text:\n"""${fence(input.text)}"""`;
+}
