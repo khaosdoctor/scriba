@@ -1,3 +1,10 @@
+## [1.53.3](https://github.com/khaosdoctor/scriba/compare/v1.53.2...v1.53.3) (2026-10-03)
+
+
+### Bug Fixes
+
+* menu habit review day across a clock change and impossible dates ([#81](https://github.com/khaosdoctor/scriba/issues/81)) ([9baf0d5](https://github.com/khaosdoctor/scriba/commit/9baf0d5269dcf86f12c8fb92a9bd7e5d91f15208))
+
 ## [1.53.2](https://github.com/khaosdoctor/scriba/compare/v1.53.1...v1.53.2) (2026-10-02)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * offer to move jots that sound like a TIL to the TIL section ([#22](https://github.com/khaosdoctor/scriba/issues/22)) ([eaf49a6](https://github.com/khaosdoctor/scriba/commit/eaf49a6c4db49acff984f6af58ade108599cd873))
-
-## [1.51.0](https://github.com/khaosdoctor/scriba/compare/v1.50.0...v1.51.0) (2026-09-30)
-
-
-### Features
-
-* write TIL-prefixed jots under the TIL heading ([#21](https://github.com/khaosdoctor/scriba/issues/21)) ([932b7e0](https://github.com/khaosdoctor/scriba/commit/932b7e0b8a56bea1cb05a9478e004e1ea4685b08))
 
