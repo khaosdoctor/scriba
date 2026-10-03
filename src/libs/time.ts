@@ -20,6 +20,9 @@ const pad2 = (n: number) => String(n).padStart(2, "0");
 
 export const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+export const isIsoDate = (date: string): boolean =>
+  IsoDateSchema.safeParse(date).success;
+
 export function plainTime(epochMs: number = Date.now()): string {
   const d = new Date(epochMs);
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;

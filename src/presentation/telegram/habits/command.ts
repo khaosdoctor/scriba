@@ -1,5 +1,5 @@
 import { logger } from "../../../libs/log.ts";
-import { DATE_RE, previousDate } from "../../../libs/time.ts";
+import { isIsoDate, previousDate } from "../../../libs/time.ts";
 import type { CommandView } from "../commands.ts";
 
 const log = logger("habits");
@@ -10,7 +10,7 @@ export const habitsCommand: CommandView = {
   async run(ctx, { habits }) {
     const arg = ctx.match.trim();
     log.info({ arg: arg || "(yesterday)" }, "/habits command");
-    if (arg && !DATE_RE.test(arg)) {
+    if (arg && !isIsoDate(arg)) {
       log.warn({ arg }, "/habits rejected: bad date");
       await ctx.reply("Usage: /habits or /habits YYYY-MM-DD");
       return;

@@ -1,6 +1,6 @@
 import type { Composer, Context } from "grammy";
 import { logger } from "../../../libs/log.ts";
-import { DATE_RE } from "../../../libs/time.ts";
+import { isIsoDate } from "../../../libs/time.ts";
 import { HABITS_NS, type HabitService } from "../../../services/habits.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
@@ -11,7 +11,7 @@ export function habitsView(habits: HabitService): Composer<Context> {
   return namespace(HABITS_NS, async (ctx, [date, action, digest, verd]) => {
     const responder = new Responder(ctx);
     log.debug({ date, action, verd }, "habit button tapped");
-    if (!date || !DATE_RE.test(date)) {
+    if (!date || !isIsoDate(date)) {
       log.warn({ date, action, verd }, "habit tap rejected: bad payload");
       return responder.ack("bad habit");
     }

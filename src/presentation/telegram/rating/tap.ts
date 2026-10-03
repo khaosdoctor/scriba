@@ -2,14 +2,14 @@ import type { Composer, Context } from "grammy";
 import { z } from "zod";
 import { RatingSchema } from "../../../domain/rating/entity.ts";
 import { logger } from "../../../libs/log.ts";
-import { DATE_RE } from "../../../libs/time.ts";
+import { IsoDateSchema } from "../../../libs/time.ts";
 import { RATING_NS, type RatingService } from "../../../services/rating.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
 const log = logger("rating");
 
-const Payload = z.tuple([z.string().regex(DATE_RE), RatingSchema]);
+const Payload = z.tuple([IsoDateSchema, RatingSchema]);
 
 export function ratingView(rating: RatingService): Composer<Context> {
   return namespace(RATING_NS, async (ctx, [date, n]) => {

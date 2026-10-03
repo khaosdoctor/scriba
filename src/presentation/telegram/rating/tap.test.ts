@@ -40,6 +40,7 @@ test("a bad payload is refused before anything is recorded", async () => {
     "rate:",
     `rate:${DAY}`,
     "rate:not-a-date:7",
+    "rate:2026-02-31:7",
     `rate:${DAY}:0`,
     `rate:${DAY}:11`,
     `rate:${DAY}:x`,

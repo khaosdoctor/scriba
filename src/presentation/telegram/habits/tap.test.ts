@@ -36,6 +36,7 @@ test("a payload with a bad date, a non-numeric index or no line digest is refuse
   for (const data of [
     "hb:",
     "hb:2026-7-5:0:y",
+    "hb:2026-02-31:0:y",
     `hb:${DAY}:x:y`,
     `hb:${DAY}`,
     `hb:${DAY}:0`,
