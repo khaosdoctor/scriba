@@ -91,9 +91,19 @@ export class JotService {
     return leader && leader.status !== "deleted" ? leader : jot;
   }
 
+  idForMessage(messageId: number): Promise<string | undefined> {
+    return this.deps.repo.jotForMessage(messageId);
+  }
+
   async byMessage(messageId: number): Promise<Jot | undefined> {
-    const id = await this.deps.repo.jotForMessage(messageId);
+    const id = await this.idForMessage(messageId);
     return id ? this.deps.repo.getJot(id) : undefined;
+  }
+
+  async liveJot(id?: string): Promise<Jot | "gone" | "deleted"> {
+    const jot = id ? await this.get(id) : undefined;
+    if (!jot) return "gone";
+    return jot.status === "deleted" ? "deleted" : jot;
   }
 
   async intake(input: IntakeInput): Promise<void> {

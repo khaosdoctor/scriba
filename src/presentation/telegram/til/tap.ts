@@ -5,7 +5,6 @@ import {
   TIL_NS,
   type TilOutcome,
 } from "../../../services/jots.ts";
-import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
 const log = logger("til-flow");
@@ -31,10 +30,10 @@ const REPLIES: Record<
 };
 
 export function tilView(jots: JotService): Composer<Context> {
-  return namespace(TIL_NS, async (ctx, [action, jotId]) => {
+  return namespace(TIL_NS, async (ctx, [action, jotId], responder) => {
     const outcome = await jots.answerTil(jotId, action === "y");
     const { toast, alert, card } = REPLIES[outcome];
-    await new Responder(ctx).ack(toast, { alert });
+    await responder.ack(toast, { alert });
     if (card === undefined) return;
     await ctx
       .editMessageText(card, { reply_markup: new InlineKeyboard() })

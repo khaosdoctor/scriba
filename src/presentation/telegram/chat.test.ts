@@ -31,7 +31,8 @@ const TAP = {
 const MESSAGE = { message: { message_id: 5, date: 0, chat, from, text: "hi" } };
 
 /** A call's payload as Telegram receives it (a keyboard instance becomes plain JSON). */
-const wire = (c: { payload: unknown }) => JSON.parse(JSON.stringify(c.payload));
+const wire = (call: { payload: unknown }) =>
+  JSON.parse(JSON.stringify(call.payload));
 
 test("the chat sends plain notices and HTML messages with a keyboard to the owner", async () => {
   const { chat, rec } = harness();
@@ -91,7 +92,7 @@ test("the chat edits, deletes and reacts to a message by id, and rejects only on
   await chat.react(7, "👌");
   await chat.typing();
   assert.deepEqual(
-    rec.calls.map((c) => [c.method, wire(c)]),
+    rec.calls.map((call) => [call.method, wire(call)]),
     [
       [
         "editMessageText",
@@ -125,10 +126,10 @@ test("the chat edits, deletes and reacts to a message by id, and rejects only on
 
 test("a tap's responder answers the query with a toast, an alert or nothing", async () => {
   const { ctx, rec } = harness();
-  const r = new Responder(ctx(TAP));
-  await r.ack();
-  await r.ack("done");
-  await r.ack("try again", { alert: true });
+  const responder = new Responder(ctx(TAP));
+  await responder.ack();
+  await responder.ack("done");
+  await responder.ack("try again", { alert: true });
   assert.deepEqual(rec.calls.map(wire), [
     { callback_query_id: "q1" },
     { callback_query_id: "q1", text: "done" },
@@ -156,11 +157,11 @@ test("dropping buttons makes no edit when no button matches the prefix or there 
 
 test("an update's responder replies in its chat or removes its message", async () => {
   const { ctx, rec } = harness();
-  const r = new Responder(ctx(MESSAGE));
-  assert.equal(await r.reply("<i>sure</i>", { html: true }), 900);
-  await r.remove();
+  const responder = new Responder(ctx(MESSAGE));
+  assert.equal(await responder.reply("<i>sure</i>", { html: true }), 900);
+  await responder.remove();
   assert.deepEqual(
-    rec.calls.map((c) => [c.method, wire(c)]),
+    rec.calls.map((call) => [call.method, wire(call)]),
     [
       [
         "sendMessage",
@@ -175,7 +176,7 @@ test("closeMessage deletes the message and leaves it at that", async () => {
   const { ctx, rec } = harness();
   await new Responder(ctx(TAP)).closeMessage("Closed.");
   assert.deepEqual(
-    rec.calls.map((c) => [c.method, wire(c)]),
+    rec.calls.map((call) => [call.method, wire(call)]),
     [["deleteMessage", { chat_id: OWNER, message_id: 50 }]],
   );
 });
@@ -185,7 +186,7 @@ test("closeMessage clears the buttons with the fallback text when the delete is 
   rec.fail.add("deleteMessage");
   await new Responder(ctx(TAP)).closeMessage("Closed.");
   assert.deepEqual(
-    rec.calls.map((c) => [c.method, wire(c)]),
+    rec.calls.map((call) => [call.method, wire(call)]),
     [
       ["deleteMessage", { chat_id: OWNER, message_id: 50 }],
       [
@@ -206,7 +207,7 @@ test("closeMessage rejects when the message can be neither deleted nor edited", 
   rec.fail.add("deleteMessage").add("editMessageText");
   await assert.rejects(new Responder(ctx(TAP)).closeMessage("Closed."));
   assert.deepEqual(
-    rec.calls.map((c) => c.method),
+    rec.calls.map((call) => call.method),
     ["deleteMessage", "editMessageText"],
   );
 });

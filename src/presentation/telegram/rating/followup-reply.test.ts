@@ -11,10 +11,10 @@ test("a reply's formatting is kept and its surrounding whitespace trimmed", asyn
     ["(fu:j:2026-08-15)", "journal"],
     ["(fu:t:2026-08-15)", "til"],
   ] as const) {
-    const h = await botHarness();
+    const harness = await botHarness();
     const rows: Jot[] = [];
-    h.repo.insertJot = (row: Jot) => void rows.push(row);
-    await h.run({
+    harness.repo.insertJot = (row: Jot) => void rows.push(row);
+    await harness.run({
       message: {
         message_id: 200,
         date: NOW / 1000,

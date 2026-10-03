@@ -3,14 +3,12 @@ import { followupFromCode } from "../../../libs/followup.ts";
 import { logger } from "../../../libs/log.ts";
 import { IsoDateSchema } from "../../../libs/time.ts";
 import { FOLLOWUP_NS, type RatingService } from "../../../services/rating.ts";
-import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
 const log = logger("followup");
 
 export function followupView(rating: RatingService): Composer<Context> {
-  return namespace(FOLLOWUP_NS, async (ctx, [code, date]) => {
-    const responder = new Responder(ctx);
+  return namespace(FOLLOWUP_NS, async (ctx, [code, date], responder) => {
     const question = followupFromCode(code);
     const day = IsoDateSchema.safeParse(date);
     if (!question || !day.success) {

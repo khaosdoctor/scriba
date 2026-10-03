@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseWizardRef } from "../../../libs/wizard.ts";
 import { SettingsService } from "../../../services/settings.ts";
+import { Responder } from "../chat.ts";
 import { type LinkDeps, linkRulesTap } from "./links.ts";
 import { linkReply, parseLinkRef } from "./wizard.ts";
 
@@ -114,7 +115,7 @@ function wizardHarness(
       },
       reply: async (text: string) => void replied.push(text),
     };
-    await taps(ctx as never, data.split(":"));
+    await taps(ctx as never, data.split(":"), new Responder(ctx as never));
     const last = edits.at(-1);
     return { answers, edits, replies: replied, text: last?.text, kb: last?.kb };
   }

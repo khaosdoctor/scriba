@@ -9,7 +9,6 @@ import { logger } from "../../../libs/log.ts";
 import { TYPE_LABEL, VIEW_LABEL } from "../../../libs/tasks.ts";
 import { errorText } from "../../../libs/text.ts";
 import { TASKS_NS, type TaskService } from "../../../services/tasks.ts";
-import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
 const log = logger("tasks-flow");
@@ -56,8 +55,7 @@ async function showMenu(ctx: Context, tasks: TaskService): Promise<void> {
  *  answered once its draft is known to be live, and Create answers after claiming the draft
  *  and before the note write, which can outlive Telegram's callback window. */
 export function tasksView(tasks: TaskService): Composer<Context> {
-  return namespace(TASKS_NS, async (ctx, [action, ...args]) => {
-    const responder = new Responder(ctx);
+  return namespace(TASKS_NS, async (ctx, [action, ...args], responder) => {
     const live = async () => {
       const row = await tasks.live(args[0]);
       if (typeof row !== "string") return row;

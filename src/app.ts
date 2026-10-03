@@ -290,12 +290,9 @@ export async function createScriba(
     modes,
     command,
     tasks,
-    jotController: jots,
+    jots,
     edits,
     admin,
-    errors: {
-      jotForMessage: (messageId) => repo.jots.jotForMessage(messageId),
-    },
   });
 
   scheduler.daily(

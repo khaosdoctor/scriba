@@ -1,7 +1,6 @@
 import type { Composer, Context } from "grammy";
 import { DELETE_NS, UNDO_NS } from "../../../libs/jot.ts";
 import { logger } from "../../../libs/log.ts";
-import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
 import { namespace } from "../namespace.ts";
 import { STILL_PROCESSING } from "./edit-reply.ts";
@@ -24,17 +23,16 @@ const REMOVALS: Record<
 
 export function removeView(
   ns: Namespace,
-  { jotController, edits }: ViewDeps,
+  { jots, edits }: ViewDeps,
 ): Composer<Context> {
   const { source, toast, already } = REMOVALS[ns];
-  return namespace(ns, async (ctx, [jotId]) => {
-    const responder = new Responder(ctx);
-    const jot = jotId ? await jotController.get(jotId) : undefined;
-    if (!jot) {
+  return namespace(ns, async (_ctx, [jotId], responder) => {
+    const jot = await jots.liveJot(jotId);
+    if (jot === "gone") {
       log.warn({ jotId, source }, "remove: jot is gone");
       return responder.ack("gone");
     }
-    if (jot.status === "deleted") {
+    if (jot === "deleted") {
       log.warn({ jotId, source }, "remove: already removed");
       return responder.ack(already);
     }

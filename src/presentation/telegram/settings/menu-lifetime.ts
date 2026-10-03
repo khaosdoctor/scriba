@@ -51,9 +51,9 @@ export class MenuLifetime {
 
   private cancel(chatId: number, msgId: number): void {
     const key = `${chatId}:${msgId}`;
-    const t = this.expiry.get(key);
-    if (!t) return;
-    clearTimeout(t);
+    const timer = this.expiry.get(key);
+    if (!timer) return;
+    clearTimeout(timer);
     this.expiry.delete(key);
   }
 }

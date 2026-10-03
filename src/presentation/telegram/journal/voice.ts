@@ -18,11 +18,11 @@ async function spokenTask(
   await taskMessage(ctx, tasks, text);
 }
 
-export function voiceView(bot: Bot, { tasks, jotController }: ViewDeps): void {
+export function voiceView(bot: Bot, { tasks, jots }: ViewDeps): void {
   bot.on(["message:voice", "message:audio"], (ctx) => {
     const input = intakeInput(ctx.message)!;
     return tasks.isOpen()
       ? spokenTask(ctx, tasks, input.fileId!)
-      : jotController.intake(input);
+      : jots.intake(input);
   });
 }

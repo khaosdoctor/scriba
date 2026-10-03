@@ -14,31 +14,31 @@ function harness(refuse = false) {
   return { deleted, menus: new MenuLifetime(api) };
 }
 
-test("a menu message self-destructs after a minute of no taps", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("a menu message self-destructs after a minute of no taps", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
   const { menus, deleted } = harness();
   menus.opened(7, 42);
-  t.mock.timers.tick(59_000);
+  context.mock.timers.tick(59_000);
   assert.deepEqual(deleted, []);
-  t.mock.timers.tick(2_000);
+  context.mock.timers.tick(2_000);
   assert.deepEqual(deleted, [[7, 42]]);
 });
 
-test("each tap restarts the countdown, and closing cancels it", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("each tap restarts the countdown, and closing cancels it", (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
   const { menus, deleted } = harness();
   menus.opened(7, 42);
-  t.mock.timers.tick(50_000);
+  context.mock.timers.tick(50_000);
   menus.touch(7, 42); // a tap
-  t.mock.timers.tick(50_000); // 100s since the send, 50s since the tap
+  context.mock.timers.tick(50_000); // 100s since the send, 50s since the tap
   assert.deepEqual(deleted, []);
   menus.closed(7, 42);
-  t.mock.timers.tick(120_000);
+  context.mock.timers.tick(120_000);
   assert.deepEqual(deleted, []);
 });
 
-test("closing a menu by hand, even one that is no longer the chat's last, leaves nothing to retire", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("closing a menu by hand, even one that is no longer the chat's last, leaves nothing to retire", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
   const { menus, deleted } = harness(true);
   menus.opened(7, 42);
   await menus.retire(7);
@@ -46,7 +46,7 @@ test("closing a menu by hand, even one that is no longer the chat's last, leaves
   menus.closed(7, 42);
   await menus.retire(7);
   assert.deepEqual(deleted, [[7, 42]], "43 is not retired");
-  t.mock.timers.tick(61_000);
+  context.mock.timers.tick(61_000);
   assert.deepEqual(
     deleted,
     [
@@ -57,8 +57,8 @@ test("closing a menu by hand, even one that is no longer the chat's last, leaves
   );
 });
 
-test("opening a fresh root menu retires the previous one in that chat, once", async (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+test("opening a fresh root menu retires the previous one in that chat, once", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
   const { menus, deleted } = harness(true);
   await menus.retire(7);
   assert.deepEqual(deleted, []);
@@ -66,11 +66,11 @@ test("opening a fresh root menu retires the previous one in that chat, once", as
   menus.opened(7, 42);
   await menus.retire(7);
   assert.deepEqual(deleted, [[7, 42]]);
-  t.mock.timers.tick(120_000);
+  context.mock.timers.tick(120_000);
   assert.deepEqual(deleted, [[7, 42]], "the retired menu's countdown is gone");
 
   menus.opened(7, 43);
-  t.mock.timers.tick(61_000);
+  context.mock.timers.tick(61_000);
   await menus.retire(7);
   assert.deepEqual(deleted, [
     [7, 42],

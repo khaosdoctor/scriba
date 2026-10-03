@@ -1,48 +1,33 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
 import { SETTINGS, type SwitchKey } from "../../../domain/setting/entity.ts";
-import {
-  formatJotDetail,
-  jotPreview,
-  RETRY_NS,
-  STATUS_ICON,
-} from "../../../libs/jot.ts";
+import { RETRY_NS } from "../../../libs/jot.ts";
 import { logger } from "../../../libs/log.ts";
-import { paginate } from "../../../libs/page.ts";
 import { fitTelegram } from "../../../libs/text.ts";
 import { plainDate, previousDate } from "../../../libs/time.ts";
-import type { JotService } from "../../../services/jots.ts";
 import type {
-  ModelKey,
   RootState,
   SettingsPrompt,
   SettingsService,
 } from "../../../services/settings.ts";
-import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
-import { STILL_PROCESSING } from "../journal/edit-reply.ts";
-import { backTo, pagedScreen, withClose } from "../keyboard.ts";
+import { backTo, withClose } from "../keyboard.ts";
 import { namespace, type Tap } from "../namespace.ts";
 import {
   ROOT_TEXT as REPROCESS_TEXT,
   rootKeyboard as reprocessKeyboard,
 } from "../reprocess/tap.ts";
 import { openTaskMode } from "../tasks/mode.ts";
+import { jotsTap } from "./jots.ts";
 import { linkRulesTap } from "./links.ts";
+import { MENU_CLOSE, MENU_NS, MODELS, menu } from "./menu-data.ts";
 
 const log = logger("menu");
 const reprocessLog = logger("reprocess");
 
 export const MENU_TEXT = "🗂 scriba control menu";
-const CLOSE = "menu:close";
 
 const MODEL_PRESETS = ["claude-haiku-4-5", "claude-sonnet-5", "claude-opus-5"];
 const ENTRY_SIZES = [140, 280, 560, 1000, 0];
-
-const MODELS: Record<"em" | "vfm", [ModelKey, string, string, string, string]> =
-  {
-    em: ["enrichModel", "🧠 Enrichment model", "enrichment", "ems", "emc"],
-    vfm: ["voiceFixModel", "🎤 Voice fix model", "voice fix", "vfs", "vfc"],
-  };
 
 const onOff = (on: boolean) => (on ? "on" : "off");
 const shortModel = (model: string) =>
@@ -50,53 +35,53 @@ const shortModel = (model: string) =>
 
 export function rootKeyboard(state: RootState): InlineKeyboard {
   return new InlineKeyboard()
-    .text("📊 Rate today", "menu:rate")
-    .text("🌱 Review habits", "menu:habits")
+    .text("📊 Rate today", menu("rate"))
+    .text("🌱 Review habits", menu("habits"))
     .row()
-    .text("🗒 Recent jots", "menu:jots")
+    .text("🗒 Recent jots", menu("jots"))
     .row()
-    .text("🗂 Tasks", "menu:tasks")
-    .text("📝 Task mode", "menu:taskmode")
+    .text("🗂 Tasks", menu("tasks"))
+    .text("📝 Task mode", menu("taskmode"))
     .row()
-    .text("🔁 Reprocess", "menu:reprocess")
+    .text("🔁 Reprocess", menu("reprocess"))
     .row()
-    .text("📈 Stats", "menu:stats")
-    .text("🩺 Status", "menu:status")
+    .text("📈 Stats", menu("stats"))
+    .text("🩺 Status", menu("status"))
     .row()
-    .text("⚠️ Failed queue", "menu:failed")
+    .text("⚠️ Failed queue", menu("failed"))
     .row()
     .text(
       `✂️ Entry size: ${state.entrySize ? `${state.entrySize} chars` : "off"}`,
-      "menu:esz",
+      menu("esz"),
     )
     .row()
-    .text(`🔧 Voice fix: ${onOff(state.voiceFix)}`, "menu:vfix")
+    .text(`🔧 Voice fix: ${onOff(state.voiceFix)}`, menu("vfix"))
     .row()
-    .text(`🌙 Nightly rating: ${onOff(state.nightlyRating)}`, "menu:rtsw")
-    .text(`💬 Follow-up: ${onOff(state.nightlyFollowup)}`, "menu:fusw")
+    .text(`🌙 Nightly rating: ${onOff(state.nightlyRating)}`, menu("rtsw"))
+    .text(`💬 Follow-up: ${onOff(state.nightlyFollowup)}`, menu("fusw"))
     .row()
-    .text(`🕛 Rating time: ${state.ratingTime}`, "menu:rtt")
+    .text(`🕛 Rating time: ${state.ratingTime}`, menu("rtt"))
     .row()
-    .text(`🧠 Enrich: ${shortModel(state.enrichModel ?? "?")}`, "menu:em")
-    .text(`🎤 VF model: ${shortModel(state.voiceFixModel ?? "?")}`, "menu:vfm")
+    .text(`🧠 Enrich: ${shortModel(state.enrichModel ?? "?")}`, menu("em"))
+    .text(`🎤 VF model: ${shortModel(state.voiceFixModel ?? "?")}`, menu("vfm"))
     .row()
-    .text("🔗 Link rules", "menu:links")
-    .text("🛠 Maintenance", "menu:maint")
+    .text("🔗 Link rules", menu("links"))
+    .text("🛠 Maintenance", menu("maint"))
     .row()
-    .text("✖ Close", CLOSE);
+    .text("✖ Close", MENU_CLOSE);
 }
 
 const maintenanceKeyboard = () =>
   withClose(
     new InlineKeyboard()
-      .text("⚡ Flush", "menu:flush")
-      .text("🧹 Sweep", "menu:sweep")
+      .text("⚡ Flush", menu("flush"))
+      .text("🧹 Sweep", menu("sweep"))
       .row()
-      .text("🔧 Unstick", "menu:unstick")
-      .text("🔄 Retry all", "menu:retryall")
+      .text("🔧 Unstick", menu("unstick"))
+      .text("🔄 Retry all", menu("retryall"))
       .row()
-      .text("‹ Back", "menu:root"),
-    CLOSE,
+      .text("‹ Back", menu("root")),
+    MENU_CLOSE,
   );
 
 function picker(
@@ -107,8 +92,8 @@ function picker(
   for (const [label, data, current] of options)
     kb.text(`${current ? "✅ " : ""}${label}`, data).row();
   kb.text(...custom).row();
-  kb.text("‹ Back", "menu:root");
-  return withClose(kb, CLOSE);
+  kb.text("‹ Back", menu("root"));
+  return withClose(kb, MENU_CLOSE);
 }
 
 async function modelPicker(
@@ -116,20 +101,17 @@ async function modelPicker(
   settings: SettingsService,
   which: "em" | "vfm",
 ): Promise<void> {
-  const [key, title, , pick, custom] = MODELS[which];
+  const { key, title, logName, pick, custom } = MODELS[which];
   const current = await settings.get(key);
-  log.info(
-    { which: key === "enrichModel" ? "enrich" : "voiceFix", current },
-    "menu: model picker",
-  );
+  log.info({ which: logName, current }, "menu: model picker");
   await ctx.editMessageText(`${title}\n\nCurrent: ${current ?? "not set"}`, {
     reply_markup: picker(
       MODEL_PRESETS.map((preset) => [
         shortModel(preset),
-        `menu:${pick}:${preset}`,
+        menu(pick, preset),
         preset === current,
       ]),
-      ["✍️ Type a model", `menu:${custom}`],
+      ["✍️ Type a model", menu(custom)],
     ),
   });
 }
@@ -154,75 +136,23 @@ async function entrySizeScreen(
       reply_markup: picker(
         ENTRY_SIZES.map((size) => [
           size ? `${size} chars` : "Don't split",
-          `menu:ess:${size}`,
+          menu("ess", size),
           size === current,
         ]),
-        ["✍️ Type a size", "menu:esc"],
+        ["✍️ Type a size", menu("esc")],
       ),
     },
   );
 }
 
-async function jotsList(ctx: Tap, jots: JotService): Promise<unknown> {
-  const recent = await jots.recent(10);
-  if (!recent.length)
-    return ctx.editMessageText("No jots yet.", {
-      reply_markup: backTo("menu:root", CLOSE),
-    });
-  const screen = pagedScreen({
-    view: paginate(recent, 0, recent.length),
-    title: () => "🗒 Recent jots:",
-    row: (kb, jot) =>
-      kb.text(
-        `${STATUS_ICON[jot.status]} ${jot.time} ${jotPreview(jot)}`,
-        `menu:jot:${jot.id}`,
-      ),
-    back: { text: "‹ Back", data: "menu:root" },
-  });
-  return ctx.editMessageText(screen.text, {
-    reply_markup: withClose(screen.kb, CLOSE),
-  });
-}
-
-async function jotDetail(
-  ctx: Tap,
-  jots: JotService,
-  id?: string,
-): Promise<unknown> {
-  const jot = id ? await jots.get(id) : undefined;
-  if (!jot)
-    return ctx.editMessageText(`No jot ${id ?? ""}.`, {
-      reply_markup: backTo("menu:jots", CLOSE),
-    });
-  const kb = new InlineKeyboard()
-    .text("🔄 Retry", `menu:jr:${jot.id}`)
-    .text("✏️ Edit", `menu:je:${jot.id}`)
-    .row()
-    .text("🗑 Delete", `menu:jd:${jot.id}`)
-    .row()
-    .text("‹ Back", "menu:jots");
-  return ctx.editMessageText(formatJotDetail(jot), {
-    reply_markup: withClose(kb, CLOSE),
-  });
-}
-
 export function menuView(deps: ViewDeps): Composer<Context> {
-  const {
-    settings,
-    admin,
-    menus,
-    rating,
-    habits,
-    tasks,
-    jotController,
-    edits,
-  } = deps;
+  const { settings, admin, menus, rating, habits, tasks } = deps;
   const links = linkRulesTap(deps);
-  return namespace("menu", async (ctx, rest) => {
+  const jotBrowser = jotsTap(deps);
+  return namespace(MENU_NS, async (ctx, rest, responder) => {
     const [action, arg] = rest;
     const tapped = ctx.callbackQuery.message;
     if (tapped) menus.touch(tapped.chat.id, tapped.message_id);
-    const responder = new Responder(ctx);
     const redraw = async () =>
       ctx.editMessageText(MENU_TEXT, {
         reply_markup: rootKeyboard(await settings.root()),
@@ -244,14 +174,14 @@ export function menuView(deps: ViewDeps): Composer<Context> {
       if (kind === "es") log.info("menu: prompting for a custom entry size");
       if (kind === "em" || kind === "vfm")
         log.info(
-          { which: kind === "em" ? "enrich" : "voiceFix" },
+          { which: MODELS[kind].logName },
           "menu: prompting for a custom model",
         );
       return settings.ask(kind);
     };
     const pickModel = async (which: "em" | "vfm") => {
       if (!arg?.trim()) return responder.ack("expired");
-      const [key, , label] = MODELS[which];
+      const { key, label } = MODELS[which];
       await settings.setModel(key, arg);
       await responder.ack(`${label}: ${shortModel(arg)}`);
       return modelPicker(ctx, settings, which);
@@ -297,32 +227,32 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         await responder.ack();
         if (!arg) {
           const kb = new InlineKeyboard()
-            .text("Today", "menu:stats:today")
-            .text("Week", "menu:stats:week")
-            .text("All", "menu:stats:all")
+            .text("Today", menu("stats", "today"))
+            .text("Week", menu("stats", "week"))
+            .text("All", menu("stats", "all"))
             .row()
-            .text("‹ Back", "menu:root");
+            .text("‹ Back", menu("root"));
           return ctx.editMessageText("📈 Stats range:", {
-            reply_markup: withClose(kb, CLOSE),
+            reply_markup: withClose(kb, MENU_CLOSE),
           });
         }
         return ctx.editMessageText(fitTelegram(await admin.stats(arg)), {
-          reply_markup: backTo("menu:stats", CLOSE),
+          reply_markup: backTo(menu("stats"), MENU_CLOSE),
         });
       }
       case "status":
         await responder.ack();
         return ctx.editMessageText(fitTelegram(await admin.status()), {
-          reply_markup: backTo("menu:root", CLOSE),
+          reply_markup: backTo(menu("root"), MENU_CLOSE),
         });
       case "failed": {
         await responder.ack();
         const { text, ids } = await admin.failed();
         const kb = new InlineKeyboard();
         for (const id of ids) kb.text(`🔄 ${id}`, `${RETRY_NS}:${id}`).row();
-        kb.text("‹ Back", "menu:root");
+        kb.text("‹ Back", menu("root"));
         return ctx.editMessageText(text, {
-          reply_markup: withClose(kb, CLOSE),
+          reply_markup: withClose(kb, MENU_CLOSE),
         });
       }
       case "vfix":
@@ -369,11 +299,11 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         log.info("menu: retry-all confirm");
         await responder.ack();
         const kb = new InlineKeyboard()
-          .text("✅ Yes, retry all", "menu:retryally")
+          .text("✅ Yes, retry all", menu("retryally"))
           .row()
-          .text("‹ Cancel", "menu:maint");
+          .text("‹ Cancel", menu("maint"));
         return ctx.editMessageText("Requeue every failed jot?", {
-          reply_markup: withClose(kb, CLOSE),
+          reply_markup: withClose(kb, MENU_CLOSE),
         });
       }
       case "flush":
@@ -391,56 +321,14 @@ export function menuView(deps: ViewDeps): Composer<Context> {
           if (tapped) menus.closed(tapped.chat.id, tapped.message_id);
         });
       case "jots":
-        await responder.ack();
-        return jotsList(ctx, jotController);
       case "jot":
-        await responder.ack();
-        return jotDetail(ctx, jotController, arg);
-      case "jr": {
-        const jot = arg ? await jotController.get(arg) : undefined;
-        if (!jot || jot.status === "deleted") return responder.ack("gone");
-        log.info({ jotId: arg }, "menu: manual retry requested");
-        if ((await jotController.retry(jot)) === "in-flight")
-          return responder.ack("still processing");
-        await responder.ack("retrying");
-        return ctx.editMessageText(`🔄 retrying ${arg}…`, {
-          reply_markup: backTo("menu:jots", CLOSE),
-        });
-      }
-      case "jd": {
-        await responder.ack();
-        if (!arg) return;
-        const kb = new InlineKeyboard()
-          .text("🗑 Yes, delete", `menu:jdy:${arg}`)
-          .text("Cancel", `menu:jot:${arg}`);
-        return ctx.editMessageText(
-          `Delete jot ${arg}? This removes its line from the journal.`,
-          { reply_markup: withClose(kb, CLOSE) },
-        );
-      }
-      case "jdy": {
-        const jot = arg ? await jotController.get(arg) : undefined;
-        if (!jot || jot.status === "deleted") return responder.ack("gone");
-        log.info({ jotId: arg }, "menu: delete jot");
-        const outcome = await edits.discard(jot);
-        // Answer before the note-lock read/write below, which can be slow enough to blow
-        // past Telegram's callback-query window: the edited message carries the result.
-        await responder.ack();
-        return ctx.editMessageText(
-          outcome === "removal-queued"
-            ? STILL_PROCESSING["removal-queued"]
-            : await outcome.now(),
-          { reply_markup: backTo("menu:jots", CLOSE) },
-        );
-      }
+      case "jr":
+      case "jd":
+      case "jdy":
       case "je":
-        if (!arg || !(await jotController.get(arg)))
-          return responder.ack("gone");
-        await responder.ack();
-        log.info({ jotId: arg }, "menu: edit jot — prompting for a reply");
-        return jotController.askEdit(arg);
+        return jotBrowser(ctx, action, arg, responder);
       default:
-        return links(ctx, rest);
+        return links(ctx, rest, responder);
     }
   });
 }

@@ -1,8 +1,8 @@
-import type { Context, Filter } from "grammy";
 import type { Message } from "grammy/types";
 import type { TaskRef } from "../../../libs/tasks.ts";
 import type { AnswerOutcome, TaskService } from "../../../services/tasks.ts";
 import { Responder } from "../chat.ts";
+import type { TextReply } from "../namespace.ts";
 import { TASKADD_EMPTY } from "./add.ts";
 
 const REFUSALS: Record<Exclude<AnswerOutcome, "ok">, string> = {
@@ -16,11 +16,7 @@ const REFUSALS: Record<Exclude<AnswerOutcome, "ok">, string> = {
 };
 
 export function taskReply(tasks: TaskService) {
-  return async (
-    ctx: Filter<Context, "message:text">,
-    ref: TaskRef,
-    prompt: Message,
-  ) => {
+  return async (ctx: TextReply, ref: TaskRef, prompt: Message) => {
     const outcome = await tasks.answer(
       ref,
       ctx.message.text.trim(),

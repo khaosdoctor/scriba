@@ -23,8 +23,8 @@ const HELP = [
 
 test("every command Telegram lists gets an answer from the bot", async () => {
   for (const { command } of COMMANDS) {
-    const h = await botHarness();
-    const run = await h.say(`/${command}`);
+    const harness = await botHarness();
+    const run = await harness.say(`/${command}`);
     assert.ok(run.calls.length > 0, `/${command} went unanswered`);
     for (const text of run.texts("sendMessage"))
       assert.doesNotMatch(text, /^⚠️ Couldn't save that/, `/${command}`);
@@ -32,14 +32,14 @@ test("every command Telegram lists gets an answer from the bot", async () => {
 });
 
 test("/help lists the admin commands only, itself last", async () => {
-  const h = await botHarness();
-  const run = await h.say("/help");
+  const harness = await botHarness();
+  const run = await harness.say("/help");
   assert.equal(run.rendered, "tg.sendMessage");
   assert.equal(run.texts("sendMessage")[0], HELP);
 });
 
 test("an update from anyone but the owner is dropped, whatever its kind", async () => {
-  const h = await botHarness();
+  const harness = await botHarness();
   const stranger = { id: 2, is_bot: false, first_name: "Someone" };
   const chat = { id: 2, type: "private" as const };
   const message = {
@@ -74,7 +74,7 @@ test("an update from anyone but the owner is dropped, whatever its kind", async 
     },
   ];
   for (const update of updates) {
-    const run = await h.run(update);
+    const run = await harness.run(update);
     assert.equal(run.rendered, "", Object.keys(update)[0]);
   }
 });

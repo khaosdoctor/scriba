@@ -5,7 +5,7 @@ import { logger } from "../../../libs/log.ts";
 import { pluralize } from "../../../libs/text.ts";
 import { IsoDateSchema, monthGrid, plainDate } from "../../../libs/time.ts";
 import type { AdminService, ReprocessScope } from "../../../services/admin.ts";
-import { Responder } from "../chat.ts";
+import type { Responder } from "../chat.ts";
 import { backTo, pagedScreen, withClose } from "../keyboard.ts";
 import { namespace, type Tap } from "../namespace.ts";
 
@@ -38,8 +38,6 @@ const confirmKeyboard = (yes: string, go: string) =>
     CLOSE,
   );
 
-const ack = (ctx: Tap, text?: string) => new Responder(ctx).ack(text);
-
 const pad = (value = "") => value.padStart(2, "0");
 const ymd = ([year, month, day]: string[]) =>
   `${year}-${pad(month)}-${pad(day)}`;
@@ -61,11 +59,12 @@ const within = (value: number, lo: number, hi: number, fallback: number) =>
  *  the range-end picker can carry the range start along. */
 async function calendar(
   ctx: Tap,
+  responder: Responder,
   prefix: string,
   lead: string,
   [yearArg, monthArg]: string[],
 ): Promise<void> {
-  await ack(ctx);
+  await responder.ack();
   const now = new Date();
   const year = within(Number(yearArg), 1000, 9999, now.getFullYear());
   const month = within(Number(monthArg), 1, 12, now.getMonth() + 1);
@@ -97,24 +96,36 @@ async function calendar(
   });
 }
 
-function rejectDate(ctx: Tap, fields: object, message: string): void {
+function rejectDate(
+  responder: Responder,
+  fields: object,
+  message: string,
+): void {
   log.warn(fields, message);
-  return void ack(ctx, "bad date");
+  return void responder.ack("bad date");
 }
 
 const rangeEnd = (
   ctx: Tap,
+  responder: Responder,
   start: string,
   lead: string,
   ym: string[],
   rejected: string,
 ) =>
   isDate(start)
-    ? calendar(ctx, rp("rangeend", start), `📆 Start: ${start}. ${lead}`, ym)
-    : rejectDate(ctx, { start }, rejected);
+    ? calendar(
+        ctx,
+        responder,
+        rp("rangeend", start),
+        `📆 Start: ${start}. ${lead}`,
+        ym,
+      )
+    : rejectDate(responder, { start }, rejected);
 
 async function confirmRange(
   ctx: Tap,
+  responder: Responder,
   admin: AdminService,
   first: string,
   second: string,
@@ -123,17 +134,17 @@ async function confirmRange(
   const range = span(first, second);
   if (!range && day)
     return rejectDate(
-      ctx,
+      responder,
       { date: first },
       "reprocess: day tap rejected: bad date",
     );
   if (!range)
     return rejectDate(
-      ctx,
+      responder,
       { start: first, end: second },
       "reprocess: range-end tap rejected: bad date",
     );
-  await ack(ctx);
+  await responder.ack();
   const { lo, hi } = range;
   const count = await admin.reprocessCount(lo, hi);
   if (!count) {
@@ -158,10 +169,11 @@ async function confirmRange(
 
 async function showJotPage(
   ctx: Tap,
+  responder: Responder,
   admin: AdminService,
   page: number,
 ): Promise<void> {
-  await ack(ctx);
+  await responder.ack();
   const view = await admin.jotsPage(page);
   if (!view.items.length) {
     return void ctx.editMessageText(
@@ -183,21 +195,21 @@ async function showJotPage(
       ),
     nav: (target) => rp("jot", target),
     back: { text: "‹ Back", data: ROOT },
+    close: CLOSE,
   });
-  await ctx.editMessageText(screen.text, {
-    reply_markup: withClose(screen.kb, CLOSE),
-  });
+  await ctx.editMessageText(screen.text, { reply_markup: screen.kb });
 }
 
 async function confirmJot(
   ctx: Tap,
+  responder: Responder,
   admin: AdminService,
   id?: string,
 ): Promise<void> {
   const jot = await admin.reprocessPick(id);
-  if (jot === "gone") return void ack(ctx, "gone");
-  if (jot === "busy") return void ack(ctx, "not reprocessable anymore");
-  await ack(ctx);
+  if (jot === "gone") return void responder.ack("gone");
+  if (jot === "busy") return void responder.ack("not reprocessable anymore");
+  await responder.ack();
   const note = isFollower(jot)
     ? "\n(part of a squashed entry — this reprocesses the whole line)"
     : "";
@@ -211,11 +223,12 @@ async function confirmJot(
 
 async function execute(
   ctx: Tap,
+  responder: Responder,
   admin: AdminService,
   [mode, first = "", second = ""]: string[],
 ): Promise<void> {
   const run = async (scope: ReprocessScope) => {
-    await ack(ctx);
+    await responder.ack();
     const { text, queued } = await admin.reprocessExecute(scope);
     if (!queued) return void ctx.editMessageText(text, back());
     await ctx.editMessageText(text);
@@ -223,15 +236,15 @@ async function execute(
   if (mode === "j") {
     if (first) return run({ jot: first });
     log.warn("reprocess: execute rejected: missing jot id");
-    return void ack(ctx, "bad jot id");
+    return void responder.ack("bad jot id");
   }
-  if (mode !== "d" && mode !== "r") return ack(ctx);
+  if (mode !== "d" && mode !== "r") return responder.ack();
   const day = mode === "d";
   const end = day ? first : second;
   const range = span(first, end);
   if (!range)
     return rejectDate(
-      ctx,
+      responder,
       day ? { date: first } : { start: first, end },
       "reprocess: execute rejected: bad date",
     );
@@ -239,36 +252,50 @@ async function execute(
 }
 
 export function reprocessView(admin: AdminService): Composer<Context> {
-  return namespace(REPROCESS_NS, async (ctx, [action, ...args]) => {
+  return namespace(REPROCESS_NS, async (ctx, [action, ...args], responder) => {
     switch (action) {
       case "root":
-        await ack(ctx);
+        await responder.ack();
         await ctx.editMessageText(ROOT_TEXT, { reply_markup: rootKeyboard() });
         return;
       case "noop":
-        return void ack(ctx);
+        return void responder.ack();
       case "day": {
         if (args.length < 3)
-          return calendar(ctx, rp("day"), "📅 Pick a day to reprocess", args);
+          return calendar(
+            ctx,
+            responder,
+            rp("day"),
+            "📅 Pick a day to reprocess",
+            args,
+          );
         const date = ymd(args);
-        return confirmRange(ctx, admin, date, date, true);
+        return confirmRange(ctx, responder, admin, date, date, true);
       }
       case "range":
         return args.length >= 3
           ? rangeEnd(
               ctx,
+              responder,
               ymd(args),
               "Now pick the range end",
               args,
               "reprocess: range-start tap rejected: bad date",
             )
-          : calendar(ctx, rp("range"), "📆 Pick the range start", args);
+          : calendar(
+              ctx,
+              responder,
+              rp("range"),
+              "📆 Pick the range start",
+              args,
+            );
       case "rangeend": {
         const [start = "", ...ym] = args;
         return args.length >= 4
-          ? confirmRange(ctx, admin, start, ymd(ym), false)
+          ? confirmRange(ctx, responder, admin, start, ymd(ym), false)
           : rangeEnd(
               ctx,
+              responder,
               start,
               "Pick the range end",
               ym,
@@ -277,18 +304,23 @@ export function reprocessView(admin: AdminService): Composer<Context> {
       }
       case "jot":
         // A crafted or stale button can carry a negative page.
-        return showJotPage(ctx, admin, Math.max(0, Number(args[0]) || 0));
+        return showJotPage(
+          ctx,
+          responder,
+          admin,
+          Math.max(0, Number(args[0]) || 0),
+        );
       case "jotpick":
-        return confirmJot(ctx, admin, args[0]);
+        return confirmJot(ctx, responder, admin, args[0]);
       case "go":
-        return execute(ctx, admin, args);
+        return execute(ctx, responder, admin, args);
       case "cancel":
       case "close":
-        await ack(ctx);
-        return new Responder(ctx).closeMessage("Cancelled.").catch(() => {});
+        await responder.ack();
+        return responder.closeMessage("Cancelled.").catch(() => {});
       default:
         log.warn({ action }, "reprocess: unknown action");
-        await ack(ctx);
+        await responder.ack();
     }
   });
 }

@@ -2,13 +2,21 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { InlineKeyboard } from "grammy";
 import { paginate } from "../../libs/page.ts";
-import { backTo, navRow, pagedScreen, withClose } from "./keyboard.ts";
+import {
+  backTo,
+  navRow,
+  pagedScreen,
+  pageSuffix,
+  withClose,
+} from "./keyboard.ts";
 
 const rows = (kb: InlineKeyboard) =>
   kb.inline_keyboard
-    .filter((r) => r.length > 0)
-    .map((r) =>
-      r.map((b) => ("callback_data" in b ? b.callback_data : b.text)),
+    .filter((row) => row.length > 0)
+    .map((row) =>
+      row.map((button) =>
+        "callback_data" in button ? button.callback_data : button.text,
+      ),
     );
 
 test("withClose appends Close after the last real row and drops empty rows", () => {
@@ -26,7 +34,7 @@ test("backTo is a Back button over Close", () => {
 });
 
 test("navRow adds Prev and Next only where a page exists, and nothing for one page", () => {
-  const cb = (p: number) => `n:${p}`;
+  const cb = (page: number) => `n:${page}`;
   assert.deepEqual(rows(navRow(new InlineKeyboard(), 0, 1, cb)), []);
   assert.deepEqual(rows(navRow(new InlineKeyboard(), 0, 3, cb)), [["n:1"]]);
   assert.deepEqual(rows(navRow(new InlineKeyboard(), 1, 3, cb)), [
@@ -38,9 +46,9 @@ test("navRow adds Prev and Next only where a page exists, and nothing for one pa
 test("pagedScreen builds item rows with global indices, then nav, extra rows and Back", () => {
   const screen = pagedScreen({
     view: paginate(["a", "b", "c"], 1, 2),
-    title: (v) => `page ${v.page + 1}/${v.pages}`,
-    row: (kb, item, i) => kb.text(item, `pick:${i}`),
-    nav: (p) => `go:${p}`,
+    title: (view) => `page ${view.page + 1}/${view.pages}`,
+    row: (kb, item, index) => kb.text(item, `pick:${index}`),
+    nav: (page) => `go:${page}`,
     extraRows: (kb) => kb.text("more", "more"),
     back: { text: "Back", data: "root" },
   });
@@ -53,7 +61,23 @@ test("pagedScreen appends to a keyboard the caller started", () => {
     kb: new InlineKeyboard().text("Add", "add").row(),
     view: paginate(["a"], 0, 8),
     title: () => "t",
-    row: (kb, item, i) => kb.text(item, `pick:${i}`),
+    row: (kb, item, index) => kb.text(item, `pick:${index}`),
   });
   assert.deepEqual(rows(screen.kb), [["add"], ["pick:0"]]);
+});
+
+test("pagedScreen closes the keyboard when given a close action", () => {
+  const screen = pagedScreen({
+    view: paginate(["a"], 0, 8),
+    title: () => "t",
+    row: (kb, item, index) => kb.text(item, `pick:${index}`),
+    back: { text: "Back", data: "root" },
+    close: "x:close",
+  });
+  assert.deepEqual(rows(screen.kb), [["pick:0"], ["root"], ["x:close"]]);
+});
+
+test("pageSuffix names the page only when there is more than one", () => {
+  assert.equal(pageSuffix(paginate(["a"], 0, 8)), "");
+  assert.equal(pageSuffix(paginate(["a", "b", "c"], 1, 2)), " (page 2/2)");
 });

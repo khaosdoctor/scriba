@@ -1,7 +1,7 @@
-import type { Context, Filter } from "grammy";
 import type { HabitRef } from "../../../libs/habits.ts";
 import type { FillOutcome, HabitService } from "../../../services/habits.ts";
 import { Responder } from "../chat.ts";
+import type { TextReply } from "../namespace.ts";
 
 const REFUSALS: Record<Exclude<FillOutcome, "saved">, string> = {
   notNumber: "That's not a number. Reply with a number only.",
@@ -9,10 +9,7 @@ const REFUSALS: Record<Exclude<FillOutcome, "saved">, string> = {
 };
 
 export function habitReply(habits: HabitService) {
-  return async (
-    ctx: Filter<Context, "message:text">,
-    { date, index, digest }: HabitRef,
-  ) => {
+  return async (ctx: TextReply, { date, index, digest }: HabitRef) => {
     const responder = new Responder(ctx);
     const outcome = await habits.fill(
       date,
