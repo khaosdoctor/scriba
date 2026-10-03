@@ -208,6 +208,7 @@ export async function createScriba(
     obsidian,
     enricher,
     jots: jotController,
+    notifier: chat,
   });
   const tasks = new TaskService({
     repo: repo.taskDrafts,
@@ -262,7 +263,6 @@ export async function createScriba(
       repo: repo.jots,
       settings: repo.settings,
       linkRules: repo.linkRules,
-      taskDrafts: repo.taskDrafts,
       obsidian,
       transcriber,
       enricher,

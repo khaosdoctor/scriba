@@ -45,7 +45,10 @@ Layers call downward only: presentation calls services, services call data. `dom
   A service may call repositories, connections, other services, `domain/` and `libs/`,
   never presentation, and it stays free of grammy: whatever a service says on its own goes
   through `Notifier` (`services/notifier.ts`), which `Chat` (`presentation/telegram/chat.ts`)
-  implements.
+  implements. A service does not reach into another feature's storage: `ProcessingService`
+  hands the tasks the enricher spotted to `TaskService.draftsFor` (which reads the
+  detection switch and the draft table) and each ambiguous link to `EditService.askLink`
+  (which stores the pending link and sends the Yes/No, and consumes it in `confirmLink`).
 - **Persistence lives in `data/repositories/`.** All SQL/knex is there, one repository per
   table group (`JotRepository`, `LinkRuleRepository`, `SettingsRepository`,
   `TaskDraftRepository`, `RatingRepository`), opened together by `Repository`

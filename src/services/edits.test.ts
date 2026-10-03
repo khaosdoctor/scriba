@@ -48,22 +48,74 @@ function setup(over: { jot?: Jot | null; mapped?: boolean } = {}) {
     status: async (_id: string, html: string, opts?: StatusButtons) =>
       void statuses.push([html, opts]),
   };
+  const pending: [string, string, string, string][] = [];
+  const sent: { text: string; opts: unknown }[] = [];
+  const events: string[] = [];
+  const linkRules = {
+    addPendingLink: async (
+      pendingId: string,
+      jotId: string,
+      surface: string,
+      note: string,
+    ) => {
+      pending.push([pendingId, jotId, surface, note]);
+      events.push("addPendingLink");
+    },
+  };
+  const notifier = {
+    send: async (text: string, opts: unknown) => {
+      sent.push({ text, opts });
+      events.push("send");
+      return 1;
+    },
+  };
   const edits = new EditService({
     repo,
-    linkRules: repo,
+    linkRules,
     obsidian,
     enricher: { editText: async (text: string) => text },
     jots,
+    notifier,
   } as never);
   /** The jot's line as it now reads in the note, without its time and anchor. */
   const line = () => {
     const found = anchorLine(notes.get(NOTE) ?? "", ID);
     return found === null ? null : stripJournalLine(found, TIME);
   };
-  return { edits, jots, queued, statuses, deleted, line };
+  return {
+    edits,
+    jots,
+    queued,
+    statuses,
+    deleted,
+    line,
+    pending,
+    sent,
+    events,
+  };
 }
 
 const edited = (text: string) => ({ messageId: 77, text });
+
+test("asking about a link stores it pending, then sends a yes/no carrying its id", async () => {
+  const harness = setup();
+  const pendingId = await harness.edits.askLink(ID, "X", "N");
+  assert.deepEqual(harness.pending, [[pendingId, ID, "X", "N"]]);
+  assert.equal(harness.sent.length, 1);
+  assert.equal(harness.sent[0]?.text, 'Link "X" → [[N]]?');
+  // plain text: the only option is the keyboard, no parse mode
+  assert.deepEqual(harness.sent[0]?.opts, {
+    keyboard: {
+      inline_keyboard: [
+        [
+          { text: "Yes", callback_data: `lk:y:${pendingId}` },
+          { text: "No", callback_data: `lk:n:${pendingId}` },
+        ],
+      ],
+    },
+  });
+  assert.deepEqual(harness.events, ["addPendingLink", "send"]);
+});
 
 test("a blank edit whose last status can't be shown fails the update instead of going unhandled", async () => {
   const harness = setup();

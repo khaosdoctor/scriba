@@ -25,12 +25,7 @@ const jot = (over: Partial<Jot> = {}): Jot =>
  *  throws, which is the give-up path's own escape hatch: it keeps the stubs to the parts
  *  under test. */
 function harness(
-  over: {
-    followers?: Jot[];
-    detection?: string;
-    priorDrafts?: number;
-    tilAsked?: boolean;
-  } = {},
+  over: { followers?: Jot[]; detection?: string; tilAsked?: boolean } = {},
 ) {
   const posted: Posted[] = [];
   const reactions: [string, string][] = [];
@@ -43,7 +38,6 @@ function harness(
         ? { taskDetection: over.detection, tilDetection: over.detection }
         : {},
     ),
-    taskDraftsForJot: async () => over.priorDrafts ?? 0,
     tilOffered: async () => over.tilAsked ?? false,
   };
   const obsidian = {
@@ -63,7 +57,6 @@ function harness(
     repo,
     settings: repo,
     linkRules: repo,
-    taskDrafts: repo,
     obsidian,
     jots,
     edits: { drainQueued: async () => {} },
@@ -132,47 +125,6 @@ test("a failed status message that won't send doesn't take the batch down", asyn
   await processor.fail(jot(), new Error("fetch failed"));
 });
 
-// --- tasks spotted in a jot ---
-
-const detected = [
-  { description: "Call the vet tomorrow", type: "personal" },
-  { description: "Answer the RFC", due: "next friday", type: "work" },
-];
-
-test("detected tasks become drafts dated from the jot's own day", async () => {
-  const { processor } = harness();
-  // The jot's note is 2026-08-16 (a Sunday), so "tomorrow" is the day after the entry,
-  // not the day it happens to be processed.
-  assert.deepEqual(await processor.tasksFrom(detected, jot()), [
-    {
-      description: "Call the vet",
-      type: "personal",
-      start: null,
-      due: "2026-08-17",
-    },
-    {
-      description: "Answer the RFC",
-      type: "work",
-      start: null,
-      due: "2026-08-21",
-    },
-  ]);
-});
-
-test("detection can be switched off, and never asks about the same jot twice", async () => {
-  const off = harness({ detection: "off" });
-  assert.deepEqual(await off.processor.tasksFrom(detected, jot()), []);
-
-  // A jot that already produced drafts was asked about once: /reprocess must not ask
-  // again about tasks that were created, or dismissed, weeks ago.
-  const asked = harness({ priorDrafts: 2 });
-  assert.deepEqual(await asked.processor.tasksFrom(detected, jot()), []);
-
-  const none = harness();
-  assert.deepEqual(await none.processor.tasksFrom([], jot()), []);
-  assert.deepEqual(await none.processor.tasksFrom(undefined, jot()), []);
-});
-
 test("a TIL card needs the enricher's read and passes every guard", async () => {
   assert.equal(await harness().processor.tilWanted(true, jot()), true);
   assert.equal(await harness().processor.tilWanted(false, jot()), false);
@@ -204,7 +156,7 @@ function pipeline(
 ) {
   const calls: string[] = [];
   const sent: { text: string; opts: unknown }[] = [];
-  const pending: { pid: string; surface: string; note: string }[] = [];
+  const asked: { jotId: string; surface: string; note: string }[] = [];
   const tilAsks: [string, string][] = [];
   const enriched: string[] = [];
   const offered = new Set<string>();
@@ -229,16 +181,6 @@ function pipeline(
     stopwords: async () => new Set<string>(),
     rejections: async () => new Set<string>(),
     registeredLinks: async () => [],
-    addPendingLink: async (
-      pid: string,
-      _jotId: string,
-      surface: string,
-      linked: string,
-    ) => {
-      pending.push({ pid, surface, note: linked });
-      calls.push("addPendingLink");
-    },
-    taskDraftsForJot: async () => 0,
     tilOffered: async (id: string) => offered.has(id),
     insertJot: async () => {},
   };
@@ -282,13 +224,20 @@ function pipeline(
     repo,
     settings: repo,
     linkRules: repo,
-    taskDrafts: repo,
     obsidian,
     enricher,
     links: { list: () => [] },
     jots: jotFakes,
-    edits: { drainQueued: async () => void calls.push("onJotDone") },
+    edits: {
+      drainQueued: async () => void calls.push("onJotDone"),
+      askLink: async (jotId: string, surface: string, linked: string) => {
+        asked.push({ jotId, surface, note: linked });
+        calls.push("askLink");
+        return "pid00001";
+      },
+    },
     tasks: {
+      draftsFor: async (detectedTasks: unknown[]) => detectedTasks,
       suggest: async (draft: { description: string }) =>
         void calls.push(`askTask:${draft.description}`),
     },
@@ -304,7 +253,7 @@ function pipeline(
     processor,
     calls,
     sent,
-    pending,
+    asked,
     tilAsks,
     enriched,
     offered,
@@ -323,26 +272,15 @@ test("a jot the enricher read as a TIL gets its card after the entry is written 
   assert.ok(at("askTil") < at("onJotDone"));
 });
 
-test("an ambiguous link asks for a yes/no with the pending link's id", async () => {
-  const p = pipeline({ ambiguous: [{ surface: "X", note: "N" }] });
-  await p.processor.processJot(p.leaderId);
-  assert.equal(p.pending.length, 1);
-  const pid = p.pending[0]?.pid;
-  assert.deepEqual(p.pending[0], { pid, surface: "X", note: "N" });
-  assert.equal(p.sent.length, 1);
-  assert.equal(p.sent[0]?.text, 'Link "X" → [[N]]?');
-  // plain text: the only option is the keyboard, no parse mode
-  assert.deepEqual(p.sent[0]?.opts, {
-    keyboard: {
-      inline_keyboard: [
-        [
-          { text: "Yes", callback_data: `lk:y:${pid}` },
-          { text: "No", callback_data: `lk:n:${pid}` },
-        ],
-      ],
-    },
-  });
-  assert.ok(p.calls.indexOf("addPendingLink") < p.calls.indexOf("send"));
+test("every ambiguous link the enricher returns is handed to the edits service for confirmation", async () => {
+  const scenario = pipeline({ ambiguous: [{ surface: "X", note: "N" }] });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.deepEqual(scenario.asked, [
+    { jotId: scenario.leaderId, surface: "X", note: "N" },
+  ]);
+  assert.ok(
+    scenario.calls.indexOf("askLink") < scenario.calls.indexOf("write"),
+  );
 });
 
 test("no card when the enricher did not read it as a TIL", async () => {
@@ -606,14 +544,13 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
     repo: repo.jots,
     settings: repo.settings,
     linkRules: repo.linkRules,
-    taskDrafts: repo.taskDrafts,
     obsidian,
     transcriber,
     enricher,
     links: { list: () => [] },
     jots,
-    edits: { drainQueued: async () => {} },
-    tasks: { suggest: async () => {} },
+    edits: { drainQueued: async () => {}, askLink: async () => "pid00001" },
+    tasks: { suggest: async () => {}, draftsFor: async () => [] },
     notifier: { typing: async () => {} },
     files: {
       downloadFile: async (fileId: string) => {

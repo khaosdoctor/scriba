@@ -1,6 +1,5 @@
 import type { Composer, Context } from "grammy";
-import type { EditService } from "../../../services/edits.ts";
-import { LINK_NS } from "../../../services/processing.ts";
+import { type EditService, LINK_NS } from "../../../services/edits.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 

@@ -19,12 +19,17 @@ import {
   type StatusButtons,
   setEmbeds,
 } from "../libs/jot.ts";
+import { keyboard } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import { anchorLine, deleteAnchorLine } from "../libs/note.ts";
+import { shortId } from "../libs/text.ts";
 import type { Enricher } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
+import type { Notifier } from "./notifier.ts";
 
 const log = logger("bot");
+
+export const LINK_NS = "lk";
 
 export interface EditDeps {
   repo: JotRepository;
@@ -32,6 +37,7 @@ export interface EditDeps {
   obsidian: ObsidianClient;
   enricher: Pick<Enricher, "editText">;
   jots: Pick<JotService, "status" | "leaderOf">;
+  notifier: Pick<Notifier, "send">;
 }
 
 export type EditOutcome =
@@ -215,6 +221,21 @@ export class EditService {
         });
       },
     };
+  }
+
+  async askLink(jotId: string, surface: string, note: string): Promise<string> {
+    const pendingId = shortId();
+    await this.deps.linkRules.addPendingLink(pendingId, jotId, surface, note);
+    log.debug({ pendingId, surface, note }, "asking user to confirm link");
+    await this.deps.notifier.send(`Link "${surface}" → [[${note}]]?`, {
+      keyboard: keyboard([
+        [
+          ["Yes", `${LINK_NS}:y:${pendingId}`],
+          ["No", `${LINK_NS}:n:${pendingId}`],
+        ],
+      ]),
+    });
+    return pendingId;
   }
 
   async confirmLink(pendingId: string, accept: boolean): Promise<LinkOutcome> {

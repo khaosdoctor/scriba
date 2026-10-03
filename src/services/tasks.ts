@@ -14,6 +14,7 @@ import {
   type TaskType,
   type TaskView,
 } from "../domain/task/entity.ts";
+import type { DetectedTask } from "../domain/task/structures.ts";
 import {
   type Keyboard,
   keyboard,
@@ -40,6 +41,7 @@ import type { Notifier } from "./notifier.ts";
 import type { VoiceService } from "./voice.ts";
 
 const log = logger("tasks-flow");
+const processorLog = logger("processor");
 
 export const TASKS_NS = "tk";
 
@@ -203,6 +205,42 @@ export class TaskService {
     );
     await this.sendCard(row);
     if (!row.due) await this.ask(row, "u");
+  }
+
+  async draftsFor(
+    detected: DetectedTask[],
+    jotId: string,
+    day: string,
+  ): Promise<TaskDraft[]> {
+    if (!detected?.length) return [];
+    if (!(await this.deps.settings.getSetting("taskDetection"))) {
+      processorLog.debug(
+        { id: jotId },
+        "task detection off — suggestions dropped",
+      );
+      return [];
+    }
+    if (await this.deps.repo.taskDraftsForJot(jotId)) {
+      processorLog.info(
+        { id: jotId, tasks: detected.length },
+        "task detection: this jot was already asked about — not asking again",
+      );
+      return [];
+    }
+    const drafts = detected
+      .map((task) => draftFromDetection(task, day))
+      .filter((draft) => draft.description.trim());
+    processorLog.info(
+      {
+        id: jotId,
+        count: drafts.length,
+        tasks: drafts.map(
+          (draft) => `${draft.description} (due ${draft.due ?? "?"})`,
+        ),
+      },
+      `task detection: ${drafts.length} task(s) found in this jot`,
+    );
+    return drafts;
   }
 
   private async propose(
