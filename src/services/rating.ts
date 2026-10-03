@@ -22,7 +22,7 @@ export const RATING_NS = "rate";
 export const FOLLOWUP_NS = "fu";
 
 export interface RatingDeps {
-  repo: SettingsRepository;
+  settings: Pick<SettingsRepository, "getSetting" | "ratingTime">;
   ratings: RatingRepository;
   obsidian: Pick<ObsidianClient, "setDailyRating" | "readDailyNote">;
   notifier: Pick<Notifier, "send" | "delete">;
@@ -30,7 +30,7 @@ export interface RatingDeps {
   headings: { journal: string; til: string };
 }
 
-export type RateOutcome =
+type RateOutcome =
   | { kind: "saved"; rating: number }
   | { kind: "already"; current: number };
 
@@ -47,12 +47,12 @@ export class RatingService {
   constructor(private deps: RatingDeps) {}
 
   async nightly(): Promise<void> {
-    const { repo, ratingTime } = this.deps;
-    if (!(await repo.getSetting("nightlyRating"))) {
+    const { settings, ratingTime } = this.deps;
+    if (!(await settings.getSetting("nightlyRating"))) {
       log.rating.info("nightly rating is off, skipping");
       return;
     }
-    const at = await repo.ratingTime(ratingTime);
+    const at = await settings.ratingTime(ratingTime);
     await this.prompt(ratingDay(at));
   }
 
@@ -98,7 +98,7 @@ export class RatingService {
   }
 
   async startFollowup(date: string): Promise<void> {
-    if (!(await this.deps.repo.getSetting("nightlyFollowup"))) {
+    if (!(await this.deps.settings.getSetting("nightlyFollowup"))) {
       log.followup.info({ date }, "follow-up is off, not asking");
       return;
     }

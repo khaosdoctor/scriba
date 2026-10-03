@@ -47,12 +47,15 @@ const OUTCOME_EMOJI: Record<JotOutcome, string> = {
   failed: "😱",
 };
 
-export type JotOutcome = "done" | "failed" | "retrying";
+type JotOutcome = "done" | "failed" | "retrying";
 export type VoiceFixChoice = "original" | "proposed";
 
 export interface JotDeps {
   repo: JotRepository;
-  obsidian: ObsidianClient;
+  obsidian: Pick<
+    ObsidianClient,
+    "dailyPath" | "ensureDailyNote" | "appendJournalLine" | "moveToTil"
+  >;
   notifier: Notifier;
   queue: Pick<FlushQueue, "add">;
   squashWindowMs: number;

@@ -68,7 +68,7 @@ function wizardHarness(
     },
   };
   const settings = new SettingsService({
-    repo,
+    settings: repo,
     linkRules: repo,
     links: {
       list: () => init.aliases ?? [],

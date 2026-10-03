@@ -148,7 +148,7 @@ test("a second /command while it is open sends nothing and keeps the session", a
 
 test("/command is refused without a vault path", async () => {
   const harness = await botHarness();
-  harness.bot.command.deps.service = { enabled: false };
+  harness.bot.command.deps.agent = { enabled: false };
   assert.equal(
     first((await harness.say("/command")).texts("sendMessage")),
     `⚠️ command mode needs SCRIBA_VAULT_HOST_PATH ${EM} the vault isn't mounted.`,

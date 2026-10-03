@@ -45,7 +45,10 @@ Layers call downward only: presentation calls services, services call data. `dom
   A service may call repositories, connections, other services, `domain/` and `libs/`,
   never presentation, and it stays free of grammy: whatever a service says on its own goes
   through `Notifier` (`services/notifier.ts`), which `Chat` (`presentation/telegram/chat.ts`)
-  implements.
+  implements. A service does not reach into another feature's storage: `ProcessingService`
+  hands the tasks the enricher spotted to `TaskService.draftsFor` (which reads the
+  detection switch and the draft table) and each ambiguous link to `EditService.askLink`
+  (which stores the pending link and sends the Yes/No, and consumes it in `confirmLink`).
 - **Persistence lives in `data/repositories/`.** All SQL/knex is there, one repository per
   table group (`JotRepository`, `LinkRuleRepository`, `SettingsRepository`,
   `TaskDraftRepository`, `RatingRepository`), opened together by `Repository`
@@ -55,12 +58,13 @@ Layers call downward only: presentation calls services, services call data. `dom
   over `ObsidianConnection`), `TaskNoteRepository` (`task-notes.ts`, the two task notes) and `VaultRepository` (`vault.ts`,
   the read-only mount and the link index).
 - **External clients live in `data/connections/`.** One client per source, with no business
-  operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber` and `groqChat`
-  (`groq.ts`), `ObsidianConnection` (`obsidian.ts`, the REST API and its TLS dispatcher),
-  `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`),
+  operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber`, `groqChat`
+  and the OpenCode base URL (`groq.ts`), `ObsidianConnection` (`obsidian.ts`, the REST API
+  and its TLS dispatcher), `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`),
   `GithubReleases` (`github.ts`), `TelegramFiles` (`telegram-files.ts`, `getFile` and the
   download URL that carries the bot token) and `sdkQuery` (`anthropic.ts`, the Agent SDK's
-  `query`, which also re-exports `createSdkMcpServer`, `tool` and the SDK types). A service
+  `query`, which also re-exports `createSdkMcpServer`, `tool` and the SDK types, and builds
+  streaming-input messages with `userMessage`). A service
   takes its connection through the constructor: `Enricher` and `AgentService` get
   `sdkQuery`, `MediaService` gets `TelegramFiles`, and `FallbackTranscriber` gets its
   backend list from `buildTranscriber` in `app.ts`. A new API gets its client here. Still
@@ -83,7 +87,10 @@ Layers call downward only: presentation calls services, services call data. `dom
   entities, or has no entity, goes in `libs/`.
 - **Wiring happens only in `src/app.ts`.** Each system block is a class, with its
   collaborators injected through the constructor (usually one `deps` object typed with
-  `Pick<...>`). `createScriba` builds and wires all of them and registers the scheduled
+  `Pick<...>` down to the methods the service calls, so a test fake only needs those).
+  A dependency has one name everywhere: `repo` is the service's own repository,
+  `settings` the `SettingsRepository`, `media` the `MediaService`, `agent` the
+  `AgentService`. `Enricher` takes its deps object like the rest. `createScriba` builds and wires all of them and registers the scheduled
   jobs; its `ExternalServices` argument lets a test swap any outside collaborator.
   `src/index.ts` only loads the config, calls `createScriba`, serves `/health` and handles
   shutdown signals.

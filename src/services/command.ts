@@ -42,10 +42,10 @@ const TURN_SILENCE_MS = 5 * 60_000;
 const WORKING = "🧭 Working…";
 
 export type CommandOpen = "opened" | "already" | "busy" | "noVault";
-export type Decision = (allow: boolean) => void;
+type Decision = (allow: boolean) => void;
 
 export interface CommandDeps {
-  service: Pick<AgentService, "enabled" | "startQuery">;
+  agent: Pick<AgentService, "enabled" | "startQuery">;
   notifier: Pick<Notifier, "send" | "edit">;
   modes: Modes;
 }
@@ -92,12 +92,12 @@ export class CommandService {
   }
 
   open(): CommandOpen {
-    const { modes, service } = this.deps;
+    const { modes, agent } = this.deps;
     if (modes.isOpen("task")) {
       log.warn("command mode refused — task mode is open");
       return "busy";
     }
-    if (!service.enabled) {
+    if (!agent.enabled) {
       log.warn("command mode unavailable — no vault path configured");
       return "noVault";
     }
@@ -277,7 +277,7 @@ export class CommandService {
   }
 
   private async consume(stream: PromptStream): Promise<void> {
-    const query = await this.deps.service.startQuery({
+    const query = await this.deps.agent.startQuery({
       prompt: stream,
       resume: this.sessionId,
       confirm: ({ kind, path, content }) =>

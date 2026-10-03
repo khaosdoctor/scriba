@@ -58,7 +58,7 @@ const nativeSqlite = await Repository.open(":memory:").then(
   (repo) => repo.close().then(() => true),
   () => false,
 );
-const dbTest = (name: string, fn: (t: TestContext) => Promise<void>) =>
+const dbTest = (name: string, fn: (context: TestContext) => Promise<void>) =>
   test(name, { skip: !nativeSqlite && "native sqlite unavailable" }, fn);
 
 // Nothing here may reach the network: probes and release lookups fail at once.
@@ -125,9 +125,9 @@ function fakeTelegram(
 }
 
 /** Records every settings write on `events`, then performs it. */
-function recordSettingWrites(t: TestContext, events: string[]) {
+function recordSettingWrites(context: TestContext, events: string[]) {
   const write = SettingsRepository.prototype.setSetting;
-  t.mock.method(
+  context.mock.method(
     SettingsRepository.prototype,
     "setSetting",
     function (this: SettingsRepository, key: SettingKey, value: string) {
@@ -137,14 +137,14 @@ function recordSettingWrites(t: TestContext, events: string[]) {
   );
 }
 
-dbTest("createScriba wires everything and starts nothing", async (t) => {
+dbTest("createScriba wires everything and starts nothing", async (context) => {
   const started = {
-    scheduler: t.mock.method(Scheduler.prototype, "start"),
-    health: t.mock.method(HealthMonitor.prototype, "start"),
-    links: t.mock.method(VaultRepository.prototype, "startIndex"),
-    polling: t.mock.method(Bot.prototype, "start"),
+    scheduler: context.mock.method(Scheduler.prototype, "start"),
+    health: context.mock.method(HealthMonitor.prototype, "start"),
+    links: context.mock.method(VaultRepository.prototype, "startIndex"),
+    polling: context.mock.method(Bot.prototype, "start"),
   };
-  const closed = t.mock.method(Repository.prototype, "close");
+  const closed = context.mock.method(Repository.prototype, "close");
 
   const app = await createScriba(
     configFor(),
@@ -160,9 +160,9 @@ dbTest("createScriba wires everything and starts nothing", async (t) => {
 
 dbTest(
   "the daily jobs read their own configured times, and only the rating arms before it runs",
-  async (t) => {
-    const daily = t.mock.method(Scheduler.prototype, "daily");
-    const every = t.mock.method(Scheduler.prototype, "every");
+  async (context) => {
+    const daily = context.mock.method(Scheduler.prototype, "daily");
+    const every = context.mock.method(Scheduler.prototype, "every");
     const app = await createScriba(
       configFor(":memory:", {
         SUMMARY_TIME: "21:00",
@@ -192,7 +192,7 @@ dbTest(
       ["tasks", "07:00", false],
     ]);
     assert.deepEqual(
-      every.mock.calls.map((c) => c.arguments.slice(0, 2)),
+      every.mock.calls.map((call) => call.arguments.slice(0, 2)),
       [["retry", 5 * 60_000]],
     );
   },
@@ -200,9 +200,13 @@ dbTest(
 
 dbTest(
   "a rating time typed in the menu re-arms the nightly job on the scheduler that registered it",
-  async (t) => {
-    const daily = t.mock.method(Scheduler.prototype, "daily");
-    const rearm = t.mock.method(Scheduler.prototype, "rearm", async () => {});
+  async (context) => {
+    const daily = context.mock.method(Scheduler.prototype, "daily");
+    const rearm = context.mock.method(
+      Scheduler.prototype,
+      "rearm",
+      async () => {},
+    );
     const app = await createScriba(
       configFor(),
       { version: "9.9.9", sha: "abc" },
@@ -232,15 +236,17 @@ dbTest(
     });
     await app.stop();
 
-    const owner = daily.mock.calls.find((c) => c.arguments[0] === "rating");
+    const owner = daily.mock.calls.find(
+      (call) => call.arguments[0] === "rating",
+    );
     assert.ok(owner?.this instanceof Scheduler, "daily('rating') registered");
     assert.deepEqual(
-      rearm.mock.calls.map((c) => c.arguments),
+      rearm.mock.calls.map((call) => call.arguments),
       [["rating"]],
     );
     assert.equal(rearm.mock.calls[0]?.this, owner.this);
     assert.equal(
-      calls.find((c) => c.method === "sendMessage")?.payload.text,
+      calls.find((call) => call.method === "sendMessage")?.payload.text,
       "🕛 nightly rating at 23:30",
     );
   },
@@ -248,9 +254,9 @@ dbTest(
 
 dbTest(
   "start seeds the models, registers the commands and announces the deploy",
-  async (t) => {
+  async (context) => {
     const events: string[] = [];
-    recordSettingWrites(t, events);
+    recordSettingWrites(context, events);
     const config = configFor();
     const app = await createScriba(config, { version: "9.9.9", sha: "abc" });
     const calls = fakeTelegram(app, events);
@@ -259,7 +265,7 @@ dbTest(
     await app.stop();
 
     assert.deepEqual(
-      calls.find((c) => c.method === "setMyCommands")?.payload.commands,
+      calls.find((call) => call.method === "setMyCommands")?.payload.commands,
       COMMANDS,
     );
     assert.deepEqual(events, [
@@ -268,7 +274,7 @@ dbTest(
       "tg.sendMessage",
       "set deployId=9.9.9@abc",
     ]);
-    const notice = calls.find((c) => c.method === "sendMessage")?.payload;
+    const notice = calls.find((call) => call.method === "sendMessage")?.payload;
     assert.equal(notice?.chat_id, 1);
     assert.match(String(notice?.text), /9\.9\.9 \(abc\)/);
   },
@@ -276,12 +282,12 @@ dbTest(
 
 dbTest(
   "the deploy notice and the model seeding follow the database, not the process",
-  async (t) => {
+  async (context) => {
     const dir = await mkdtemp(join(tmpdir(), "scriba-index-"));
-    t.after(() => rm(dir, { recursive: true, force: true }));
+    context.after(() => rm(dir, { recursive: true, force: true }));
     const config = configFor(join(dir, "scriba.db"));
     const events: string[] = [];
-    recordSettingWrites(t, events);
+    recordSettingWrites(context, events);
 
     const boots = [
       {
@@ -318,30 +324,33 @@ dbTest(
   },
 );
 
-dbTest("the enricher starts on the model saved in the database", async (t) => {
-  const dir = await mkdtemp(join(tmpdir(), "scriba-index-"));
-  t.after(() => rm(dir, { recursive: true, force: true }));
-  const config = configFor(join(dir, "scriba.db"), {
-    GROQ_API_KEY: "g",
-    OPENCODE_GO_API_KEY: "oc",
-  });
-  const build = { version: "9.9.9", sha: "abc" };
-  const modelOf = (app: Scriba) =>
-    (app.enricher as unknown as { model: string }).model;
+dbTest(
+  "the enricher starts on the model saved in the database",
+  async (context) => {
+    const dir = await mkdtemp(join(tmpdir(), "scriba-index-"));
+    context.after(() => rm(dir, { recursive: true, force: true }));
+    const config = configFor(join(dir, "scriba.db"), {
+      GROQ_API_KEY: "g",
+      OPENCODE_GO_API_KEY: "oc",
+    });
+    const build = { version: "9.9.9", sha: "abc" };
+    const modelOf = (app: Scriba) =>
+      (app.enricher as unknown as { model: string }).model;
 
-  const first = await createScriba(config, build);
-  await first.stop();
-  const saved = await Repository.open(config.dbPath);
-  await saved.settings.setSetting("enrichModel", "saved-model");
-  await saved.close();
-  const second = await createScriba(config, build);
-  await second.stop();
+    const first = await createScriba(config, build);
+    await first.stop();
+    const saved = await Repository.open(config.dbPath);
+    await saved.settings.setSetting("enrichModel", "saved-model");
+    await saved.close();
+    const second = await createScriba(config, build);
+    await second.stop();
 
-  assert.deepEqual(
-    [modelOf(first), modelOf(second)],
-    [config.enrich.model, "saved-model"],
-  );
-});
+    assert.deepEqual(
+      [modelOf(first), modelOf(second)],
+      [config.enrich.model, "saved-model"],
+    );
+  },
+);
 
 dbTest("a model switch is told to the owner with its reason", async () => {
   const app = await createScriba(
@@ -350,16 +359,16 @@ dbTest("a model switch is told to the owner with its reason", async () => {
     { obsidian: fakeObsidian, transcriber: fakeTranscriber },
   );
   const calls = fakeTelegram(app);
-  const { notifySwitch: notify } = app.enricher as unknown as {
-    notifySwitch: SwitchNotifier;
-  };
+  const { notifySwitch: notify } = (
+    app.enricher as unknown as { deps: { notifySwitch: SwitchNotifier } }
+  ).deps;
 
   await notify("fallback", "groq-model", new Error("usage exhausted"));
   await notify("primary", "haiku", undefined);
   await notify("down", "none", "overloaded");
   await app.stop();
 
-  const texts = calls.map((c) => String(c.payload.text));
+  const texts = calls.map((call) => String(call.payload.text));
   assert.match(texts[0]!, /fallback model groq-model[\s\S]*usage exhausted/);
   assert.match(texts[1]!, /back on haiku/);
   assert.match(texts[2]!, /Every enrichment model is down[\s\S]*overloaded/);

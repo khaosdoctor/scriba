@@ -67,12 +67,12 @@ export interface AdminDeps {
   repo: JotRepository;
   linkRules: LinkRuleRepository;
   settings: SettingsRepository;
-  queue: FlushQueue;
-  processing: ProcessingService;
-  transcriber: FallbackTranscriber;
-  links: VaultRepository;
-  github: GithubReleases;
-  health: HealthMonitor;
+  queue: Pick<FlushQueue, "add" | "depth" | "flush">;
+  processing: Pick<ProcessingService, "retryPass">;
+  transcriber: Pick<FallbackTranscriber, "chain">;
+  links: Pick<VaultRepository, "stats">;
+  github: Pick<GithubReleases, "byVersion" | "latest" | "recent">;
+  health: Pick<HealthMonitor, "snapshot">;
   notifier: Pick<Notifier, "notify">;
   jots: Pick<JotService, "retry">;
   build: { version: string; sha: string };
@@ -93,7 +93,7 @@ const WINDOWS: Record<
 const isStatsRange = (range: string): range is StatsRange =>
   Object.hasOwn(WINDOWS, range);
 
-export interface RejectedWord {
+interface RejectedWord {
   surface: string;
   notes: string[];
 }

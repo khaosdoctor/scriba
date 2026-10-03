@@ -2,7 +2,6 @@ import type { JotRepository } from "../data/repositories/jots.ts";
 import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
-import type { TaskDraftRepository } from "../data/repositories/task-drafts.ts";
 import type { VaultRepository } from "../data/repositories/vault.ts";
 import { type Jot, MAX_ATTEMPTS } from "../domain/jot/entity.ts";
 import {
@@ -14,9 +13,7 @@ import {
   journalLine,
   sourceField,
 } from "../domain/jot/rules.ts";
-import { draftFromDetection } from "../domain/task/draft.ts";
 import type { TaskDraft } from "../domain/task/entity.ts";
-import type { DetectedTask } from "../domain/task/structures.ts";
 import {
   doneMessage,
   embedOffer,
@@ -24,7 +21,6 @@ import {
   heldNotice,
   retryNotice,
 } from "../libs/jot.ts";
-import { keyboard } from "../libs/keyboard.ts";
 import { candidates, forcedCandidates, linkDateWords } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import { isRecoverable } from "../libs/model.ts";
@@ -32,15 +28,12 @@ import { errorText, escapeHtml, shortId, splitEntry } from "../libs/text.ts";
 import type { EditService } from "./edits.ts";
 import { type Enricher, ModelsDownError } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
-import type { DownloadedFile } from "./media.ts";
+import type { MediaService } from "./media.ts";
 import type { Notifier } from "./notifier.ts";
 import type { TaskService } from "./tasks.ts";
 import type { Transcriber } from "./transcriber.ts";
 
 const log = logger("processor");
-const botLog = logger("bot");
-
-export const LINK_NS = "lk";
 
 export const HELD = "held: every enrichment model is down";
 
@@ -57,19 +50,39 @@ const voiceStatus = (transcript: string, step: string): string =>
   `🎤 <i>${escapeHtml(transcript.trim())}</i>\n\n${step}`;
 
 export interface ProcessingDeps {
-  repo: JotRepository;
-  settings: SettingsRepository;
-  linkRules: LinkRuleRepository;
-  taskDrafts: TaskDraftRepository;
-  obsidian: ObsidianClient;
+  repo: Pick<
+    JotRepository,
+    | "claim"
+    | "getJot"
+    | "groupFollowers"
+    | "insertJot"
+    | "pendingJots"
+    | "tilOffered"
+    | "updateJot"
+  >;
+  settings: Pick<SettingsRepository, "getSetting">;
+  linkRules: Pick<
+    LinkRuleRepository,
+    "registeredLinks" | "rejections" | "stopwords"
+  >;
+  obsidian: Pick<
+    ObsidianClient,
+    "appendJournalLine" | "ensureDailyNote" | "saveAsset" | "updateLine"
+  >;
   transcriber: Transcriber;
-  enricher: Enricher;
-  links: VaultRepository;
-  jots: JotService;
-  edits: Pick<EditService, "drainQueued">;
-  tasks: Pick<TaskService, "suggest">;
-  notifier: Pick<Notifier, "send" | "typing">;
-  files: { downloadFile(fileId: string): Promise<DownloadedFile> };
+  enricher: Pick<
+    Enricher,
+    "available" | "describeImage" | "enrich" | "fixTranscript"
+  >;
+  links: Pick<VaultRepository, "list">;
+  jots: Pick<
+    JotService,
+    "askTil" | "awaitVoiceFix" | "deleteStatus" | "react" | "status"
+  >;
+  edits: Pick<EditService, "drainQueued" | "askLink">;
+  tasks: Pick<TaskService, "suggest" | "draftsFor">;
+  notifier: Pick<Notifier, "typing">;
+  media: Pick<MediaService, "downloadFile">;
 }
 
 export class ProcessingService {
@@ -255,17 +268,18 @@ export class ProcessingService {
           },
           "enricher: done",
         );
-        detected = await this.tasksFrom(res.tasks, jot);
+        detected = await this.deps.tasks.draftsFor(
+          res.tasks,
+          jot.id,
+          jotDay(jot),
+        );
         tilCard = await this.tilWanted(res.til, jot);
         for (const link of res.ambiguous) {
-          const pid = shortId();
-          await this.deps.linkRules.addPendingLink(
-            pid,
+          const pid = await this.deps.edits.askLink(
             jot.id,
             link.surface,
             link.note,
           );
-          await this.askLink(pid, link.surface, link.note);
           log.debug(
             { id, pid, surface: link.surface, note: link.note },
             "asked to confirm link",
@@ -364,22 +378,6 @@ export class ProcessingService {
     } catch (err) {
       await this.fail(loaded, err);
     }
-  }
-
-  private async askLink(
-    pendingId: string,
-    surface: string,
-    note: string,
-  ): Promise<void> {
-    botLog.debug({ pendingId, surface, note }, "asking user to confirm link");
-    await this.deps.notifier.send(`Link "${surface}" → [[${note}]]?`, {
-      keyboard: keyboard([
-        [
-          ["Yes", `${LINK_NS}:y:${pendingId}`],
-          ["No", `${LINK_NS}:n:${pendingId}`],
-        ],
-      ]),
-    });
   }
 
   private async fail(jot: Jot, err: unknown): Promise<void> {
@@ -488,7 +486,7 @@ export class ProcessingService {
       { id: jot.id, fileId: jot.file_id },
       "downloading media from telegram",
     );
-    const file = await this.deps.files.downloadFile(jot.file_id);
+    const file = await this.deps.media.downloadFile(jot.file_id);
     log.debug(
       { id: jot.id, ext: file.ext, mime: file.mime, bytes: file.bytes.length },
       "media downloaded",
@@ -525,39 +523,6 @@ export class ProcessingService {
     }
     await this.deps.repo.updateJot(jot.id, patch);
     return { ...jot, ...patch };
-  }
-
-  private async tasksFrom(
-    detected: DetectedTask[],
-    jot: Jot,
-  ): Promise<TaskDraft[]> {
-    if (!detected?.length) return [];
-    if (!(await this.deps.settings.getSetting("taskDetection"))) {
-      log.debug({ id: jot.id }, "task detection off — suggestions dropped");
-      return [];
-    }
-    if (await this.deps.taskDrafts.taskDraftsForJot(jot.id)) {
-      log.info(
-        { id: jot.id, tasks: detected.length },
-        "task detection: this jot was already asked about — not asking again",
-      );
-      return [];
-    }
-    const day = jotDay(jot);
-    const drafts = detected
-      .map((task) => draftFromDetection(task, day))
-      .filter((draft) => draft.description.trim());
-    log.info(
-      {
-        id: jot.id,
-        count: drafts.length,
-        tasks: drafts.map(
-          (draft) => `${draft.description} (due ${draft.due ?? "?"})`,
-        ),
-      },
-      `task detection: ${drafts.length} task(s) found in this jot`,
-    );
-    return drafts;
   }
 
   private async tilWanted(sounds: boolean, jot: Jot): Promise<boolean> {

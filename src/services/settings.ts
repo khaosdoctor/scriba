@@ -28,7 +28,10 @@ import type { Notifier } from "./notifier.ts";
 const log = logger("menu");
 
 export interface SettingsDeps {
-  repo: SettingsRepository;
+  settings: Pick<
+    SettingsRepository,
+    "getSetting" | "setSetting" | "toggleSetting" | "ratingTime"
+  >;
   linkRules: LinkRuleRepository;
   links: Pick<VaultRepository, "list" | "stats">;
   enricher: Pick<Enricher, "setModel">;
@@ -67,24 +70,24 @@ export class SettingsService {
   constructor(private deps: SettingsDeps) {}
 
   async root() {
-    const { repo, ratingTime } = this.deps;
+    const { settings, ratingTime } = this.deps;
     return {
-      entrySize: await repo.getSetting("entryMaxChars"),
-      voiceFix: await repo.getSetting("fixVoiceTranscript"),
-      enrichModel: await repo.getSetting("enrichModel"),
-      voiceFixModel: await repo.getSetting("voiceFixModel"),
-      nightlyRating: await repo.getSetting("nightlyRating"),
-      nightlyFollowup: await repo.getSetting("nightlyFollowup"),
-      ratingTime: await repo.ratingTime(ratingTime),
+      entrySize: await settings.getSetting("entryMaxChars"),
+      voiceFix: await settings.getSetting("fixVoiceTranscript"),
+      enrichModel: await settings.getSetting("enrichModel"),
+      voiceFixModel: await settings.getSetting("voiceFixModel"),
+      nightlyRating: await settings.getSetting("nightlyRating"),
+      nightlyFollowup: await settings.getSetting("nightlyFollowup"),
+      ratingTime: await settings.ratingTime(ratingTime),
     };
   }
 
   get<K extends SettingKey>(key: K): Promise<SettingValue<K>> {
-    return this.deps.repo.getSetting(key);
+    return this.deps.settings.getSetting(key);
   }
 
   async toggle(key: SwitchKey): Promise<boolean> {
-    const next = await this.deps.repo.toggleSetting(key);
+    const next = await this.deps.settings.toggleSetting(key);
     const state = next ? "on" : "off";
     if (key === "fixVoiceTranscript")
       log.info({ next: state }, "menu: voice fix toggled");
@@ -99,7 +102,7 @@ export class SettingsService {
     model: string,
     message = "menu: model changed",
   ): Promise<void> {
-    await this.deps.repo.setSetting(key, model);
+    await this.deps.settings.setSetting(key, model);
     if (key === "enrichModel") this.deps.enricher.setModel(model);
     log.info(
       { which: key === "enrichModel" ? "enrich" : "voiceFix", model },
@@ -108,13 +111,13 @@ export class SettingsService {
   }
 
   async setEntrySize(size: number): Promise<void> {
-    await this.deps.repo.setSetting("entryMaxChars", String(size));
+    await this.deps.settings.setSetting("entryMaxChars", String(size));
     log.info({ size }, "menu: entry size changed");
   }
 
   /** The scheduler owns the nightly timer, so it re-reads the time right away. */
   async setRatingTime(time: string): Promise<void> {
-    await this.deps.repo.setSetting("ratingTime", time);
+    await this.deps.settings.setSetting("ratingTime", time);
     await this.deps.scheduler.rearm("rating");
     log.info({ time }, "menu: rating time changed");
   }

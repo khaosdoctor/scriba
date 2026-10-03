@@ -6,7 +6,8 @@ import { Modes } from "./modes.ts";
 
 /** Let the controller's promise chains (agent stream, serialized Telegram sends) run out. */
 const settle = async (times = 6) => {
-  for (let i = 0; i < times; i++) await new Promise((r) => setTimeout(r, 1));
+  for (let tick = 0; tick < times; tick++)
+    await new Promise((resolve) => setTimeout(resolve, 1));
 };
 
 /**
@@ -35,8 +36,8 @@ class FakeAgent {
         while (self.out.length) yield self.out.shift();
         if (self.failure) throw self.failure;
         if (self.ended) return;
-        await new Promise<void>((r) => {
-          self.wake = r;
+        await new Promise<void>((resolve) => {
+          self.wake = resolve;
         });
       }
     })();
@@ -49,7 +50,8 @@ class FakeAgent {
 
   private async drain(stream: AsyncIterable<any>): Promise<void> {
     // The same shape the CLI is handed: {role, content: [{type:"text", text}]}.
-    for await (const m of stream) this.prompts.push(m.message.content[0].text);
+    for await (const message of stream)
+      this.prompts.push(message.message.content[0].text);
   }
 
   emit(msg: any): void {
@@ -120,7 +122,7 @@ async function harness(
   );
   const modes = new Modes(notifier, idleMs);
   const command: any = new CommandService(
-    { service, notifier, modes },
+    { agent: service, notifier, modes },
     feedEditMs,
     turnSilenceMs,
   );
@@ -138,7 +140,7 @@ async function harness(
     return incoming;
   };
   /** Every send that is not a prompt's status message. */
-  const extra = () => sent.filter((s) => !replies.includes(s));
+  const extra = () => sent.filter((message) => !replies.includes(message));
 
   const opened = command.open();
   return {
@@ -160,7 +162,7 @@ async function harness(
 
 /** The text of every edit made to one message, oldest first. */
 const editsTo = (edits: { msg: number; text: string }[], id: number) =>
-  edits.filter((e) => e.msg === id).map((e) => e.text);
+  edits.filter((edit) => edit.msg === id).map((edit) => edit.text);
 
 /** What a recorded send is threaded under, if anything. */
 const repliedTo = (call: { opts: any }) => call.opts?.replyTo;
@@ -185,7 +187,7 @@ const DELETE = "mcp__vault__vault_delete";
 /** The ✅/❌ callback data on a confirmation message. */
 const confirmData = (call: { opts: any }) =>
   call.opts.keyboard.inline_keyboard[0].map(
-    (b: any) => b.callback_data as string,
+    (button: any) => button.callback_data as string,
   );
 
 test("a message sent while the agent is working is accepted, not refused", async () => {
@@ -221,17 +223,23 @@ test("each answer arrives on the message that asked for it", async () => {
   const firstId = replies[0]!.id;
   const secondId = replies[1]!.id;
   // The first prompt's status message became its answer, and lost its button.
-  const answer = edits.find((e) => e.msg === firstId && e.text === "one done");
+  const answer = edits.find(
+    (edit) => edit.msg === firstId && edit.text === "one done",
+  );
   assert.ok(answer, "the first prompt's message was edited into the answer");
   assert.deepEqual(answer!.opts.keyboard.inline_keyboard.flat(), []);
   // The second was handed over and its message promoted out of the queue.
   assert.deepEqual(agent.prompts, ["first", "second"]);
-  assert.ok(edits.some((e) => e.msg === secondId && /Working/.test(e.text)));
+  assert.ok(
+    edits.some((edit) => edit.msg === secondId && /Working/.test(edit.text)),
+  );
 
   agent.emit(assistant({ type: "text", text: "two done" }));
   agent.emit(result());
   await settle();
-  assert.ok(edits.some((e) => e.msg === secondId && e.text === "two done"));
+  assert.ok(
+    edits.some((edit) => edit.msg === secondId && edit.text === "two done"),
+  );
 });
 
 test("the live feed rewrites one message instead of posting more", async () => {
@@ -288,7 +296,7 @@ test("each line carries an emoji for what it is", async () => {
 
   const lines = editsTo(edits, replies[0]!.id).at(-1)!.split("\n").slice(2);
   assert.deepEqual(
-    lines.map((l) => l.split(" ")[0]),
+    lines.map((line) => line.split(" ")[0]),
     ["🔍", "💭", "🔍", "✍️", "🔎", "🔧"],
   );
   assert.equal(lines[1], "💭 (thinking)");
@@ -300,9 +308,12 @@ test("the feed drops its oldest lines rather than outgrow the message", async ()
   await settle();
 
   // Each thought clips to 330 characters, so ~13 of them pass Telegram's 4096 cap.
-  for (let i = 0; i < 30; i++) {
+  for (let step = 0; step < 30; step++) {
     agent.emit(
-      assistant({ type: "thinking", thinking: `step ${i} ${"x".repeat(400)}` }),
+      assistant({
+        type: "thinking",
+        thinking: `step ${step} ${"x".repeat(400)}`,
+      }),
     );
     await settle(2);
   }
@@ -321,8 +332,8 @@ test("feed edits are throttled, so a busy agent doesn't hammer Telegram", async 
   await settle();
   const before = editsTo(edits, replies[0]!.id).length;
 
-  for (const t of ["one", "two", "three"]) {
-    agent.emit(assistant({ type: "thinking", thinking: t }));
+  for (const thought of ["one", "two", "three"]) {
+    agent.emit(assistant({ type: "thinking", thinking: thought }));
     await settle();
   }
   assert.equal(
@@ -354,7 +365,7 @@ test("prose written mid-run joins the feed; the closing prose is the answer", as
   await settle();
 
   const seen = editsTo(edits, replies[0]!.id);
-  assert.ok(seen.some((t) => t.includes("reading the folder first")));
+  assert.ok(seen.some((text) => text.includes("reading the folder first")));
   // The last block is the answer: the message ends as that alone, feed cleared away.
   assert.equal(seen.at(-1), "wrote notes/a.md");
 });
@@ -376,14 +387,14 @@ test("the feed follows whichever prompt is being answered", async () => {
 
   const one = editsTo(edits, replies[0]!.id);
   const two = editsTo(edits, replies[1]!.id);
-  assert.ok(one.some((t) => t.includes("on the first")));
+  assert.ok(one.some((text) => text.includes("on the first")));
   assert.equal(
     one.at(-1),
     "first answered",
     "the answer is the last word on it",
   );
-  assert.ok(two.some((t) => t.includes("on the second")));
-  assert.ok(!two.some((t) => t.includes("on the first")));
+  assert.ok(two.some((text) => text.includes("on the second")));
+  assert.ok(!two.some((text) => text.includes("on the first")));
 });
 
 test("a failing tool result gets a line, a successful one does not", async () => {
@@ -418,7 +429,7 @@ test("Stop interrupts the running turn and closes its message", async () => {
   // The interrupt comes back as a result; the turn settles as stopped, not as an answer.
   agent.emit(result(undefined, "error_during_execution"));
   await settle();
-  const last = edits.filter((e) => e.msg === replies[0]!.id).at(-1);
+  const last = edits.filter((edit) => edit.msg === replies[0]!.id).at(-1);
   assert.match(last!.text, /Stopped/);
 });
 
@@ -434,7 +445,7 @@ test("Stop on a queued prompt drops it without touching the agent", async () => 
 
   assert.equal(agent.interrupts, 0);
   assert.match(
-    edits.filter((e) => e.msg === replies[1]!.id).at(-1)!.text,
+    edits.filter((edit) => edit.msg === replies[1]!.id).at(-1)!.text,
     /Dropped/,
   );
   // And it never reaches the agent, even after the running turn finishes.
@@ -467,7 +478,7 @@ test("a query that dies is rebuilt, and the queue keeps moving", async () => {
 
   // The turn it was on says so rather than spinning forever…
   assert.match(
-    edits.filter((e) => e.msg === replies[0]!.id).at(-1)!.text,
+    edits.filter((edit) => edit.msg === replies[0]!.id).at(-1)!.text,
     /stopped early/,
   );
   // …and the waiting prompt goes to a fresh query, resuming the same conversation.
@@ -487,11 +498,11 @@ test("closing the session answers everything still in flight", async () => {
   assert.equal(command.isOpen(), false);
   assert.equal(agent.interrupts, 1);
   assert.match(
-    edits.filter((e) => e.msg === replies[0]!.id).at(-1)!.text,
+    edits.filter((edit) => edit.msg === replies[0]!.id).at(-1)!.text,
     /Command mode closed — this one stopped/,
   );
   assert.match(
-    edits.filter((e) => e.msg === replies[1]!.id).at(-1)!.text,
+    edits.filter((edit) => edit.msg === replies[1]!.id).at(-1)!.text,
     /Command mode closed — this one never ran/,
   );
 });
@@ -509,7 +520,7 @@ test("a session nobody talks to closes itself: in-flight prompts are answered an
   await say("second");
   await settle();
 
-  await new Promise((r) => setTimeout(r, IDLE * 2));
+  await new Promise((resolve) => setTimeout(resolve, IDLE * 2));
   await settle();
 
   assert.equal(command.isOpen(), false);
@@ -536,7 +547,8 @@ test("the agent is given a thinking budget, so there is reasoning to relay", asy
 
 /** Long enough that the timer fires within a test, short enough not to slow it down. */
 const SILENCE = 40;
-const silence = () => new Promise((r) => setTimeout(r, SILENCE * 2));
+const silence = () =>
+  new Promise((resolve) => setTimeout(resolve, SILENCE * 2));
 
 test("a turn that goes silent is given up on, and the queue moves", async () => {
   const { agent, say, replies, edits } = await harness(0, SILENCE);
@@ -573,12 +585,12 @@ test("the agent doing anything at all resets the silence timer", async () => {
   await settle();
 
   // Something every half-window: the turn is alive, so it must not be given up on.
-  for (let i = 0; i < 6; i++) {
-    agent.emit(assistant({ type: "thinking", thinking: `step ${i}` }));
-    await new Promise((r) => setTimeout(r, SILENCE / 2));
+  for (let step = 0; step < 6; step++) {
+    agent.emit(assistant({ type: "thinking", thinking: `step ${step}` }));
+    await new Promise((resolve) => setTimeout(resolve, SILENCE / 2));
   }
   assert.ok(
-    !editsTo(edits, replies[0]!.id).some((t) => t.includes("went quiet")),
+    !editsTo(edits, replies[0]!.id).some((text) => text.includes("went quiet")),
     "a working turn was killed",
   );
 
@@ -600,7 +612,7 @@ test("a turn waiting on a confirmation tap isn't counted as silent", async () =>
   await settle();
   await silence();
   assert.ok(
-    !editsTo(edits, replies[0]!.id).some((t) => t.includes("went quiet")),
+    !editsTo(edits, replies[0]!.id).some((text) => text.includes("went quiet")),
     "a turn waiting on the owner was given up on",
   );
 

@@ -2,7 +2,7 @@ import { Bot } from "grammy";
 import type { Config } from "./config.ts";
 import { sdkQuery } from "./data/connections/anthropic.ts";
 import { GithubReleases } from "./data/connections/github.ts";
-import { GroqTranscriber } from "./data/connections/groq.ts";
+import { GroqTranscriber, OPENCODE_BASE_URL } from "./data/connections/groq.ts";
 import { ParakeetTranscriber } from "./data/connections/parakeet.ts";
 import { TelegramFiles } from "./data/connections/telegram-files.ts";
 import { WebService } from "./data/connections/web.ts";
@@ -11,9 +11,9 @@ import { ObsidianClient } from "./data/repositories/notes.ts";
 import { TaskNoteRepository } from "./data/repositories/task-notes.ts";
 import { VaultRepository } from "./data/repositories/vault.ts";
 import { logger } from "./libs/log.ts";
+import { switchNotice } from "./libs/model.ts";
 import { FlushQueue } from "./libs/queue.ts";
 import { Scheduler } from "./libs/scheduler.ts";
-import { errorText } from "./libs/text.ts";
 import { previousDate } from "./libs/time.ts";
 import { Chat } from "./presentation/telegram/chat.ts";
 import {
@@ -28,7 +28,6 @@ import { EditService } from "./services/edits.ts";
 import {
   Enricher,
   type EnrichFallback,
-  OPENCODE_BASE_URL,
   type SwitchNotifier,
 } from "./services/enrich.ts";
 import { HabitService } from "./services/habits.ts";
@@ -102,16 +101,14 @@ async function buildEnricher(
       ? `enricher ready with ${fallbacks.length} chat fallback(s)`
       : "enricher ready — no chat fallbacks, jots post un-enriched when both Claude models are unavailable",
   );
-  return new Enricher(
-    enrichModel,
-    sdkQuery,
+  return new Enricher({
+    model: enrichModel,
+    query: sdkQuery,
     fallbacks,
-    undefined,
-    config.enrich.backupModel,
-    config.enrich.timeoutMs,
-    undefined,
+    backupModel: config.enrich.backupModel,
+    timeoutMs: config.enrich.timeoutMs,
     notifySwitch,
-  );
+  });
 }
 
 export function buildTranscriber(cfg: {
@@ -158,23 +155,9 @@ export async function createScriba(
     externalServices.transcriber ?? buildTranscriber(config.transcription);
   const enricher =
     externalServices.enricher ??
-    (await buildEnricher(config, repo, (to, model, err) => {
-      const reason = errorText(err);
-      switch (to) {
-        case "fallback":
-          return notify(
-            `⚠️ Enrichment switched to fallback model ${model}. Quality may drop until the chosen model is back.\nReason: ${reason}`,
-          );
-        case "primary":
-          return notify(`✅ Enrichment is back on ${model}.`);
-        case "down":
-          return notify(
-            `⏸ Every enrichment model is down, so new jots are held in place. They go into your journal on their own once one is back.\nReason: ${reason}`,
-          );
-        default:
-          return to satisfies never;
-      }
-    }));
+    (await buildEnricher(config, repo, (to, model, err) =>
+      notify(switchNotice(to, model, err)),
+    ));
   const media = new MediaService({
     files: new TelegramFiles(bot.api, config.telegram.token),
   });
@@ -195,7 +178,7 @@ export async function createScriba(
       onFlush: (ids) => processing.processBatch(ids),
     });
 
-  const jotController = new JotService({
+  const jots = new JotService({
     repo: repo.jots,
     obsidian,
     notifier: chat,
@@ -207,7 +190,8 @@ export async function createScriba(
     linkRules: repo.linkRules,
     obsidian,
     enricher,
-    jots: jotController,
+    jots,
+    notifier: chat,
   });
   const tasks = new TaskService({
     repo: repo.taskDrafts,
@@ -220,7 +204,7 @@ export async function createScriba(
     voice,
   });
   const rating = new RatingService({
-    repo: repo.settings,
+    settings: repo.settings,
     ratings: repo.ratings,
     obsidian,
     notifier: chat,
@@ -238,17 +222,12 @@ export async function createScriba(
   // /command: an agent session scoped to the vault. It gets no built-in tool that could
   // reach the host; services/agent.ts holds the allow list.
   const command = new CommandService({
-    service: new AgentService(
-      links,
-      new WebService(),
-      config.command,
-      sdkQuery,
-    ),
+    agent: new AgentService(links, new WebService(), config.command, sdkQuery),
     notifier: chat,
     modes,
   });
   const settings = new SettingsService({
-    repo: repo.settings,
+    settings: repo.settings,
     linkRules: repo.linkRules,
     links,
     enricher,
@@ -262,16 +241,15 @@ export async function createScriba(
       repo: repo.jots,
       settings: repo.settings,
       linkRules: repo.linkRules,
-      taskDrafts: repo.taskDrafts,
       obsidian,
       transcriber,
       enricher,
       links,
-      jots: jotController,
+      jots,
       edits,
       tasks,
       notifier: chat,
-      files: media,
+      media,
     });
 
   const health =
@@ -299,7 +277,7 @@ export async function createScriba(
     github,
     health,
     notifier: { notify },
-    jots: jotController,
+    jots,
     build: { version, sha },
     startedAt,
   });
@@ -312,7 +290,7 @@ export async function createScriba(
     modes,
     command,
     tasks,
-    jotController,
+    jotController: jots,
     edits,
     admin,
     errors: {
@@ -350,7 +328,7 @@ export async function createScriba(
     bot,
     enricher,
     media,
-    jotController,
+    jotController: jots,
     edits,
     tasks,
     command,
