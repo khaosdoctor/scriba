@@ -17,6 +17,7 @@ import { clipUpdate } from "../libs/feed.ts";
 import { type StatusButtons, statusKeyboard } from "../libs/jot.ts";
 import { type Keyboard, keyboard } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
+import { PendingDecisions } from "../libs/pending.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { escapeHtml, shortId } from "../libs/text.ts";
 import { dayBounds, plainDate, plainTime } from "../libs/time.ts";
@@ -66,7 +67,9 @@ export type TilOutcome =
 
 export class JotService {
   private statusMsgs = new Map<string, number>();
-  private voiceFixPending = new Map<string, (choice: VoiceFixChoice) => void>();
+  private voiceFixPending = new PendingDecisions<VoiceFixChoice>({
+    clearAndUnref: false,
+  });
 
   constructor(private deps: JotDeps) {}
 
@@ -294,25 +297,16 @@ export class JotService {
         ],
       ]),
     );
-    return new Promise<VoiceFixChoice>((resolve) => {
-      this.voiceFixPending.set(jotId, resolve);
-      setTimeout(
-        () => {
-          if (this.voiceFixPending.delete(jotId)) {
-            log.info({ jotId }, "voice fix: timed out, using original");
-            resolve("original");
-          }
-        },
-        5 * 60 * 1000,
-      );
-    });
+    return this.voiceFixPending.wait(jotId, 5 * 60 * 1000, "original", () =>
+      log.info({ jotId }, "voice fix: timed out, using original"),
+    );
   }
 
   pickVoiceFix(
     jotId: string,
     choice: VoiceFixChoice,
   ): (() => void) | undefined {
-    const resolve = this.voiceFixPending.get(jotId);
+    const resolve = this.voiceFixPending.take(jotId);
     if (!resolve) {
       log.warn(
         { jotId },
@@ -320,7 +314,6 @@ export class JotService {
       );
       return undefined;
     }
-    this.voiceFixPending.delete(jotId);
     log.info({ jotId, choice }, "voice fix: user picked");
     return () => resolve(choice);
   }

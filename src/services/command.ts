@@ -11,6 +11,7 @@ import {
 } from "../libs/feed.ts";
 import { type Keyboard, keyboard, NO_BUTTONS } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
+import { PendingDecisions } from "../libs/pending.ts";
 import { errorText, escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
 import { type AgentService, PromptStream } from "./agent.ts";
 import type { Modes } from "./modes.ts";
@@ -58,10 +59,7 @@ type Turn = {
 
 export class CommandService {
   private sessionId?: string;
-  private pending = new Map<
-    string,
-    { decide: Decision; timer: NodeJS.Timeout }
-  >();
+  private pending = new PendingDecisions<boolean>({ clearAndUnref: true });
   private queue: Turn[] = [];
   private active?: Turn;
   private text = "";
@@ -135,11 +133,7 @@ export class CommandService {
   }
 
   private denyPending(): void {
-    for (const [, confirmation] of this.pending) {
-      clearTimeout(confirmation.timer);
-      confirmation.decide(false);
-    }
-    this.pending.clear();
+    this.pending.settleAll(false);
   }
 
   async handle(prompt: string, sourceId?: number): Promise<void> {
@@ -420,47 +414,36 @@ export class CommandService {
     return keyboard([[["⏹ Stop", `${COMMAND_NS}:s:${turn.id}`]]]);
   }
 
-  private confirm(question: string, preview: string): Promise<boolean> {
+  private async confirm(question: string, preview: string): Promise<boolean> {
     const turn = this.active;
-    return new Promise<boolean>((resolvePromise) => {
-      const id = shortId();
-      const buttons = keyboard([
-        [
-          ["✅ Do it", `${COMMAND_NS}:y:${id}`],
-          ["❌ No", `${COMMAND_NS}:n:${id}`],
-        ],
-      ]);
-      const body = preview
-        ? `${question}\n<blockquote>${escapeHtml(preview.slice(0, 600))}${preview.length > 600 ? "\n…" : ""}</blockquote>`
-        : question;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        log.warn({ id }, "command: confirmation timed out");
-        resolvePromise(false);
-      }, CONFIRM_TTL_MS);
-      timer.unref?.();
-      this.pending.set(id, { decide: resolvePromise, timer });
-      void this.deps.notifier
-        .send(fitTelegram(body), {
-          html: true,
-          keyboard: buttons,
-          replyTo: turn?.sourceId,
-        })
-        .catch((err) => {
-          log.error({ err }, "command: could not ask for confirmation");
-          clearTimeout(timer);
-          this.pending.delete(id);
-          resolvePromise(false);
-        });
-    });
+    const id = shortId();
+    const buttons = keyboard([
+      [
+        ["✅ Do it", `${COMMAND_NS}:y:${id}`],
+        ["❌ No", `${COMMAND_NS}:n:${id}`],
+      ],
+    ]);
+    const body = preview
+      ? `${question}\n<blockquote>${escapeHtml(preview.slice(0, 600))}${preview.length > 600 ? "\n…" : ""}</blockquote>`
+      : question;
+    const decision = this.pending.wait(id, CONFIRM_TTL_MS, false, () =>
+      log.warn({ id }, "command: confirmation timed out"),
+    );
+    void this.deps.notifier
+      .send(fitTelegram(body), {
+        html: true,
+        keyboard: buttons,
+        replyTo: turn?.sourceId,
+      })
+      .catch((err) => {
+        log.error({ err }, "command: could not ask for confirmation");
+        this.pending.take(id)?.(false);
+      });
+    return decision;
   }
 
   takeConfirmation(id?: string): Decision | undefined {
-    const entry = id === undefined ? undefined : this.pending.get(id);
-    if (entry === undefined || id === undefined) return undefined;
-    clearTimeout(entry.timer);
-    this.pending.delete(id);
-    return entry.decide;
+    return id === undefined ? undefined : this.pending.take(id);
   }
 
   async stop(
