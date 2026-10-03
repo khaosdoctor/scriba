@@ -1,25 +1,25 @@
 import type { Knex } from "knex";
 import {
+  ratingTimeOrFallback,
   SETTINGS,
   type SettingKey,
   type SettingValue,
   type SwitchKey,
 } from "../../domain/setting/entity.ts";
-import { parseClockTime } from "../../libs/time.ts";
 
 export class SettingsRepository {
-  constructor(private k: Knex) {}
+  constructor(private knex: Knex) {}
 
   private async raw(key: SettingKey): Promise<string | undefined> {
-    const r = await this.k("settings").where({ key }).first();
-    return r?.value;
+    const row = await this.knex("settings").where({ key }).first();
+    return row?.value;
   }
 
   async getSetting<K extends SettingKey>(key: K): Promise<SettingValue<K>> {
     return SETTINGS[key].parse(await this.raw(key)) as SettingValue<K>;
   }
   async setSetting(key: SettingKey, value: string): Promise<void> {
-    await this.k("settings")
+    await this.knex("settings")
       .insert({ key, value, updated_at: Date.now() })
       .onConflict("key")
       .merge();
@@ -40,10 +40,6 @@ export class SettingsRepository {
     }
   }
   async ratingTime(fallback: string): Promise<string> {
-    return (
-      (await this.getSetting("ratingTime")) ??
-      parseClockTime(fallback) ??
-      fallback
-    );
+    return ratingTimeOrFallback(await this.getSetting("ratingTime"), fallback);
   }
 }

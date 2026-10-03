@@ -70,9 +70,13 @@ Layers call downward only: presentation calls services, services call data. `dom
   are infrastructure: the logger (`log.ts`) and the timers of `Scheduler` (`scheduler.ts`)
   and `FlushQueue` (`queue.ts`). `domain/<entity>/entity.ts` holds the entity types, the
   constants that belong to them (`JOT_STATUSES`, `MAX_ATTEMPTS`, the `SETTINGS` table) and
-  the pure rules of that one entity (`followupQuestions` in `domain/rating/entity.ts`), in a
-  sibling `rules.ts` when they would make `entity.ts` long (`domain/jot/rules.ts`:
-  `isFollower`, `sourceField`, the journal line format, the TIL prefix). `structures.ts`
+  the pure rules of that one entity (`followupQuestions` and `ratingDay` in
+  `domain/rating/entity.ts`, `parseEntrySize` in `domain/setting/entity.ts`, `linkRuleKey`
+  and `notesFor` in `domain/link-rule/entity.ts`), in a sibling `rules.ts` when they would
+  make `entity.ts` long (`domain/jot/rules.ts`: `isFollower`, `sourceField`, the journal
+  line format, the TIL prefix; `domain/habit/rules.ts`: `parseHabits`, `completeHabitLine`).
+  A reply-ref marker keeps its builder and parser together in `libs/` (`parseHabitRef` in
+  `libs/habits.ts`), since services build it and views parse it. `structures.ts`
   holds the shapes passed between layers (`IntakeInput`, `DetectedTask`). A rule that spans
   entities, or has no entity, goes in `libs/`.
 - **Wiring happens only in `src/app.ts`.** Each system block is a class, with its

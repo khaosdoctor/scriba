@@ -23,9 +23,26 @@ const onUnlessOff = (raw: string | undefined) => raw !== "off";
 const onOff = (name: string) => (on: boolean) => `${name} ${on ? "on" : "off"}`;
 
 function entryMaxChars(raw: string | undefined): number {
-  const s = raw?.trim();
-  const n = Number(s);
-  return s && Number.isInteger(n) && n >= 0 ? n : 280;
+  const trimmed = raw?.trim();
+  const count = Number(trimmed);
+  return trimmed && Number.isInteger(count) && count >= 0 ? count : 280;
+}
+
+/** A typed entry-size reply: a whole number of characters, or "off" to stop splitting.
+ *  Null when it isn't usable: under 40 characters no sentence would ever fit. */
+export function parseEntrySize(text: string): number | null {
+  const trimmed = text.trim().toLowerCase();
+  if (trimmed === "off" || trimmed === "none" || trimmed === "0") return 0;
+  if (!/^\d{1,4}$/.test(trimmed)) return null;
+  const count = Number(trimmed);
+  return count >= 40 && count <= 4000 ? count : null;
+}
+
+export function ratingTimeOrFallback(
+  stored: string | undefined,
+  fallback: string,
+): string {
+  return stored ?? parseClockTime(fallback) ?? fallback;
 }
 
 export const SETTINGS = {

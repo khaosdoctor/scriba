@@ -1,4 +1,10 @@
 import * as chrono from "chrono-node";
+import {
+  type AliasEntry,
+  type Candidate,
+  type LinkRule,
+  linkRuleKey,
+} from "../domain/link-rule/entity.ts";
 import { dateFromIso, plainDate } from "./time.ts";
 
 /** URLs Obsidian renders inline when written as `![](url)`: YouTube videos, tweets and
@@ -13,16 +19,6 @@ const EMBEDDABLE = [
 
 export function isEmbeddableUrl(url: string): boolean {
   return EMBEDDABLE.some((re) => re.test(url));
-}
-
-export interface AliasEntry {
-  note: string;
-  alias: string;
-}
-export interface Candidate {
-  surface: string;
-  note: string;
-  forced?: boolean;
 }
 
 export function tokenize(text: string): string[] {
@@ -48,14 +44,14 @@ export function candidates(
   const out: Candidate[] = [];
   const seen = new Set<string>();
   for (const { note, alias } of index) {
-    const a = alias.trim();
-    const al = a.toLowerCase();
-    if (a.length < 3 || stopwords.has(al)) continue; // 1-2 char aliases are junk; stopwords catch the rest
-    if (!matchAlias(al, lower, tokens)) continue;
-    const key = `${al} ${note}`;
+    const trimmed = alias.trim();
+    const lowered = trimmed.toLowerCase();
+    if (trimmed.length < 3 || stopwords.has(lowered)) continue; // 1-2 char aliases are junk; stopwords catch the rest
+    if (!matchAlias(lowered, lower, tokens)) continue;
+    const key = linkRuleKey(lowered, note);
     if (rejected.has(key) || seen.has(key)) continue;
     seen.add(key);
-    out.push({ surface: a, note });
+    out.push({ surface: trimmed, note });
   }
   return out;
 }
@@ -70,23 +66,25 @@ const wikilinkRe = /\[\[.*?\]\]/g;
  * 3 days" is a duration that chrono resolves to a day that far ahead ("been in the
  * dryer for a week now" became next Monday), so it's out too.
  */
-export function isDateLike(r: chrono.ParsedResult): boolean {
+export function isDateLike(result: chrono.ParsedResult): boolean {
   return (
-    (r.start.isCertain("day") ||
-      r.start.isCertain("weekday") ||
-      r.start.isCertain("month")) &&
-    !r.start.tags().has("casualReference/now") &&
-    !/^for\s/i.test(r.text)
+    (result.start.isCertain("day") ||
+      result.start.isCertain("weekday") ||
+      result.start.isCertain("month")) &&
+    !result.start.tags().has("casualReference/now") &&
+    !/^for\s/i.test(result.text)
   );
 }
 
 export function linkDateWords(text: string, referenceDate: string): string {
   if (!text.trim()) return text;
   const linkSpans = [...text.matchAll(wikilinkRe)].map(
-    (m) => [m.index, m.index + m[0].length] as const,
+    (link) => [link.index, link.index + link[0].length] as const,
   );
   const overlapsLink = (start: number, end: number) =>
-    linkSpans.some(([s, e]) => start < e && end > s);
+    linkSpans.some(
+      ([spanStart, spanEnd]) => start < spanEnd && end > spanStart,
+    );
 
   const ref = dateFromIso(referenceDate);
   // chrono leans on `\b`, which is ASCII-only in JS: in "Pokémon" the accented é counts as
@@ -99,35 +97,35 @@ export function linkDateWords(text: string, referenceDate: string): string {
   const matches = chrono.en.casual
     .parse(text, ref)
     .filter(
-      (r) =>
-        isDateLike(r) &&
-        !overlapsLink(r.index, r.index + r.text.length) &&
-        !insideWord(r.index, r.index + r.text.length),
+      (result) =>
+        isDateLike(result) &&
+        !overlapsLink(result.index, result.index + result.text.length) &&
+        !insideWord(result.index, result.index + result.text.length),
     )
-    .sort((a, b) => b.index - a.index); // right-to-left so earlier indices stay valid
+    .sort((left, right) => right.index - left.index); // right-to-left so earlier indices stay valid
 
   let out = text;
-  for (const r of matches) {
-    const date = plainDate(r.start.date().getTime());
-    const start = r.index;
-    const end = start + r.text.length;
-    out = `${out.slice(0, start)}[[${date}|${r.text}]]${out.slice(end)}`;
+  for (const result of matches) {
+    const date = plainDate(result.start.date().getTime());
+    const start = result.index;
+    const end = start + result.text.length;
+    out = `${out.slice(0, start)}[[${date}|${result.text}]]${out.slice(end)}`;
   }
   return out;
 }
 
 export function forcedCandidates(
   text: string,
-  registered: { surface: string; note: string }[],
+  registered: LinkRule[],
 ): Candidate[] {
   const tokens = new Set(tokenize(text));
   const lower = text.toLowerCase();
   const out: Candidate[] = [];
   for (const { surface, note } of registered) {
     const trimmed = surface.trim();
-    const al = trimmed.toLowerCase();
-    if (!al) continue;
-    if (!matchAlias(al, lower, tokens)) continue;
+    const lowered = trimmed.toLowerCase();
+    if (!lowered) continue;
+    if (!matchAlias(lowered, lower, tokens)) continue;
     out.push({ surface: trimmed, note, forced: true });
   }
   return out;
@@ -157,12 +155,19 @@ export function noteSuggestions(
   index: AliasEntry[],
   limit = 200,
 ): string[] {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [];
   const best = new Map<string, number>();
   for (const { note, alias } of index) {
-    const a = alias.toLowerCase();
-    const rank = a === q ? 0 : a.startsWith(q) ? 1 : a.includes(q) ? 2 : -1;
+    const lowered = alias.toLowerCase();
+    const rank =
+      lowered === needle
+        ? 0
+        : lowered.startsWith(needle)
+          ? 1
+          : lowered.includes(needle)
+            ? 2
+            : -1;
     if (rank < 0) continue;
     // alias length is the tiebreak, scaled so it can never outweigh the rank above
     const score = rank * 1000 + Math.min(alias.length, 999);
@@ -170,7 +175,9 @@ export function noteSuggestions(
     if (seen === undefined || score < seen) best.set(note, score);
   }
   return [...best.entries()]
-    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+    .sort(
+      (left, right) => left[1] - right[1] || left[0].localeCompare(right[0]),
+    )
     .slice(0, limit)
     .map(([note]) => note);
 }
@@ -178,5 +185,5 @@ export function noteSuggestions(
 export function distinctSurfaces<T extends { surface: string }>(
   list: T[],
 ): string[] {
-  return [...new Set(list.map((r) => r.surface))];
+  return [...new Set(list.map((item) => item.surface))];
 }

@@ -58,16 +58,16 @@ export class SettingsService {
   // In memory and single-flow: one user, and a restart just drops a half-finished add.
   private pending?: {
     words: string[]; // surfaces still waiting for a note
-    i: number; // which one we're on
+    position: number; // which one we're on
     query: string; // current search text (seeded with the word itself)
     page: number;
     retarget?: LinkRule; // pair being replaced, if editing
   };
 
-  constructor(private d: SettingsDeps) {}
+  constructor(private deps: SettingsDeps) {}
 
   async root() {
-    const { repo, ratingTime } = this.d;
+    const { repo, ratingTime } = this.deps;
     return {
       entrySize: await repo.getSetting("entryMaxChars"),
       voiceFix: await repo.getSetting("fixVoiceTranscript"),
@@ -80,11 +80,11 @@ export class SettingsService {
   }
 
   get<K extends SettingKey>(key: K): Promise<SettingValue<K>> {
-    return this.d.repo.getSetting(key);
+    return this.deps.repo.getSetting(key);
   }
 
   async toggle(key: SwitchKey): Promise<boolean> {
-    const next = await this.d.repo.toggleSetting(key);
+    const next = await this.deps.repo.toggleSetting(key);
     const state = next ? "on" : "off";
     if (key === "fixVoiceTranscript")
       log.info({ next: state }, "menu: voice fix toggled");
@@ -99,8 +99,8 @@ export class SettingsService {
     model: string,
     message = "menu: model changed",
   ): Promise<void> {
-    await this.d.repo.setSetting(key, model);
-    if (key === "enrichModel") this.d.enricher.setModel(model);
+    await this.deps.repo.setSetting(key, model);
+    if (key === "enrichModel") this.deps.enricher.setModel(model);
     log.info(
       { which: key === "enrichModel" ? "enrich" : "voiceFix", model },
       message,
@@ -108,23 +108,23 @@ export class SettingsService {
   }
 
   async setEntrySize(size: number): Promise<void> {
-    await this.d.repo.setSetting("entryMaxChars", String(size));
+    await this.deps.repo.setSetting("entryMaxChars", String(size));
     log.info({ size }, "menu: entry size changed");
   }
 
   /** The scheduler owns the nightly timer, so it re-reads the time right away. */
   async setRatingTime(time: string): Promise<void> {
-    await this.d.repo.setSetting("ratingTime", time);
-    await this.d.scheduler.rearm("rating");
+    await this.deps.repo.setSetting("ratingTime", time);
+    await this.deps.scheduler.rearm("rating");
     log.info({ time }, "menu: rating time changed");
   }
 
   async ask(kind: SettingsPrompt): Promise<void> {
-    await this.d.notifier.send(PROMPTS[kind], { forceReply: true });
+    await this.deps.notifier.send(PROMPTS[kind], { forceReply: true });
   }
 
   async linkRules() {
-    const { linkRules, links } = this.d;
+    const { linkRules, links } = this.deps;
     const [stopwords, rejections, pairs] = await Promise.all([
       linkRules.stopwordList(),
       linkRules.rejectionList(),
@@ -143,47 +143,50 @@ export class SettingsService {
   }
 
   stopwords(): Promise<string[]> {
-    return this.d.linkRules.stopwordList();
+    return this.deps.linkRules.stopwordList();
   }
 
   rejections(): Promise<LinkRule[]> {
-    return this.d.linkRules.rejectionList();
+    return this.deps.linkRules.rejectionList();
   }
 
   pairs(): Promise<LinkRule[]> {
-    return this.d.linkRules.registeredLinks();
+    return this.deps.linkRules.registeredLinks();
   }
 
   async addStopwords(words: string[]): Promise<void> {
-    for (const w of words) await this.d.linkRules.addStopword(w);
+    for (const word of words) await this.deps.linkRules.addStopword(word);
     log.info({ words }, "link wizard: never-link words added");
   }
 
   async removeStopword(word: string): Promise<void> {
-    const n = await this.d.linkRules.delStopword(word);
-    log.info({ word, removed: n }, "link wizard: never-link word removed");
+    const removed = await this.deps.linkRules.delStopword(word);
+    log.info({ word, removed }, "link wizard: never-link word removed");
   }
 
   async unreject(surface: string, note: string): Promise<boolean> {
-    const n = await this.d.linkRules.unreject(surface, note);
-    log.info({ surface, note, removed: n }, "link wizard: rejection undone");
-    return (await this.d.linkRules.rejectionList()).some(
-      (r) => r.surface === surface,
+    const removed = await this.deps.linkRules.unreject(surface, note);
+    log.info({ surface, note, removed }, "link wizard: rejection undone");
+    return (await this.deps.linkRules.rejectionList()).some(
+      (rule) => rule.surface === surface,
     );
   }
 
-  async removePair(r: LinkRule): Promise<void> {
-    const n = await this.d.linkRules.delRegisteredLink(r.surface, r.note);
+  async removePair(pair: LinkRule): Promise<void> {
+    const removed = await this.deps.linkRules.delRegisteredLink(
+      pair.surface,
+      pair.note,
+    );
     log.info(
-      { surface: r.surface, note: r.note, removed: n },
+      { surface: pair.surface, note: pair.note, removed },
       "link wizard: always-link pair removed",
     );
   }
 
-  async renamePair(r: LinkRule, word: string): Promise<void> {
-    await this.d.linkRules.delRegisteredLink(r.surface, r.note);
-    await this.d.linkRules.addRegisteredLink(word, r.note);
-    log.info({ from: r.surface, to: word }, "link wizard: pair renamed");
+  async renamePair(pair: LinkRule, word: string): Promise<void> {
+    await this.deps.linkRules.delRegisteredLink(pair.surface, pair.note);
+    await this.deps.linkRules.addRegisteredLink(word, pair.note);
+    log.info({ from: pair.surface, to: word }, "link wizard: pair renamed");
   }
 
   async askLink(kind: LinkPrompt, gi?: number): Promise<void> {
@@ -196,27 +199,30 @@ export class SettingsService {
       rgm: `✍️ Reply to this message with the exact title of the note${word ? ` "${word}" should link to` : ""} — it doesn't have to exist yet. ${WIZARD_NEWNOTE_REF}`,
       rgw: `✏️ Reply to this message with the new word for this pair. ${`(${WIZARD_RENAME_REF}:${gi})`}`,
     };
-    await this.d.notifier.send(prompts[kind], { forceReply: true });
+    await this.deps.notifier.send(prompts[kind], { forceReply: true });
   }
 
   queueWords(words: string[]): void {
     log.info({ words }, "link wizard: queued words needing a note");
-    this.pending = { words, i: 0, query: words[0] ?? "", page: 0 };
+    this.pending = { words, position: 0, query: words[0] ?? "", page: 0 };
   }
 
-  retarget(r: LinkRule): void {
-    log.info({ surface: r.surface, note: r.note }, "link wizard: retargeting");
+  retarget(pair: LinkRule): void {
+    log.info(
+      { surface: pair.surface, note: pair.note },
+      "link wizard: retargeting",
+    );
     this.pending = {
-      words: [r.surface],
-      i: 0,
-      query: r.surface,
+      words: [pair.surface],
+      position: 0,
+      query: pair.surface,
       page: 0,
-      retarget: { ...r },
+      retarget: { ...pair },
     };
   }
 
   currentWord(): string | undefined {
-    return this.pending?.words[this.pending.i];
+    return this.pending?.words[this.pending.position];
   }
 
   search(query: string): boolean {
@@ -227,38 +233,41 @@ export class SettingsService {
   }
 
   picker(page: number) {
-    const p = this.pending;
-    if (!p) return "expired" as const;
-    const word = p.words[p.i];
+    const pending = this.pending;
+    if (!pending) return "expired" as const;
+    const word = pending.words[pending.position];
     if (word === undefined) {
       this.finish();
       return "done" as const;
     }
-    const hits = noteSuggestions(p.query, this.d.links.list());
+    const hits = noteSuggestions(pending.query, this.deps.links.list());
     const view = paginate(hits, page, PICK_PAGE);
-    p.page = view.page;
+    pending.page = view.page;
     return {
       word,
-      query: p.query,
+      query: pending.query,
       total: hits.length,
       view,
-      nth: p.i + 1,
-      of: p.words.length,
+      nth: pending.position + 1,
+      of: pending.words.length,
     };
   }
 
-  pick(j: number): { word: string; note: string } | undefined {
-    const p = this.pending;
-    const word = p?.words[p.i];
-    if (!p || word === undefined) {
+  pick(choice: number): { word: string; note: string } | undefined {
+    const pending = this.pending;
+    const word = pending?.words[pending.position];
+    if (!pending || word === undefined) {
       log.warn("link wizard: pick with no pending flow");
       return undefined;
     }
-    const note = noteSuggestions(p.query, this.d.links.list())[
-      p.page * PICK_PAGE + j
+    const note = noteSuggestions(pending.query, this.deps.links.list())[
+      pending.page * PICK_PAGE + choice
     ];
     if (note === undefined) {
-      log.warn({ j, page: p.page }, "link wizard: suggestion out of range");
+      log.warn(
+        { j: choice, page: pending.page },
+        "link wizard: suggestion out of range",
+      );
       return undefined;
     }
     return { word, note };
@@ -266,8 +275,8 @@ export class SettingsService {
 
   async savePair(word: string, note: string): Promise<void> {
     const old = this.pending?.retarget;
-    if (old) await this.d.linkRules.delRegisteredLink(old.surface, old.note);
-    await this.d.linkRules.addRegisteredLink(word, note);
+    if (old) await this.deps.linkRules.delRegisteredLink(old.surface, old.note);
+    await this.deps.linkRules.addRegisteredLink(word, note);
     log.info(
       { surface: word, note, replaced: old?.note },
       "link wizard: pair saved",
@@ -275,15 +284,15 @@ export class SettingsService {
   }
 
   advance(): string | undefined {
-    const p = this.pending;
-    if (!p) return undefined;
-    p.i += 1;
-    const next = p.words[p.i];
+    const pending = this.pending;
+    if (!pending) return undefined;
+    pending.position += 1;
+    const next = pending.words[pending.position];
     if (next === undefined) {
       this.finish();
       return undefined;
     }
-    p.query = next;
+    pending.query = next;
     return next;
   }
 

@@ -5,7 +5,7 @@ import {
   isHabitsReviewed,
   isNumericValue,
   parseHabits,
-} from "../libs/habits.ts";
+} from "../domain/habit/rules.ts";
 import { logger } from "../libs/log.ts";
 import { fingerprint } from "../libs/text.ts";
 import type { Notifier } from "./notifier.ts";

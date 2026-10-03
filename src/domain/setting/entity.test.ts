@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SETTINGS } from "./entity.ts";
+import { parseEntrySize, SETTINGS } from "./entity.ts";
+
+test("parseEntrySize validates a typed entry size", () => {
+  assert.equal(parseEntrySize("280"), 280);
+  assert.equal(parseEntrySize(" off "), 0);
+  assert.equal(parseEntrySize("0"), 0);
+  assert.equal(parseEntrySize("10"), null); // no sentence fits
+  assert.equal(parseEntrySize("99999"), null);
+  assert.equal(parseEntrySize("lots"), null);
+});
 
 test("entryMaxChars falls back to 280 and treats 0 as off", () => {
   const parse = SETTINGS.entryMaxChars.parse;

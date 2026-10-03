@@ -102,11 +102,6 @@ export function msUntilNext(hhmm: string): number {
   return next.getTime() - now.getTime();
 }
 
-export function ratingDay(time: string, now: number = Date.now()): string {
-  const hour = Number(parseClockTime(time)!.slice(0, 2));
-  return hour < 12 ? previousDate(now) : plainDate(now);
-}
-
 export function monthGrid(year: number, month: number): number[][] {
   const daysInMonth = new Date(year, month, 0).getDate();
   const startDow = new Date(year, month - 1, 1).getDay();

@@ -1,11 +1,11 @@
 import {
+  ratingTimeOrFallback,
   SETTINGS,
   type SettingKey,
   type SettingValue,
   type SwitchKey,
 } from "../domain/setting/entity.ts";
 import type { Task } from "../domain/task/entity.ts";
-import { parseClockTime } from "../libs/time.ts";
 
 export const sampleTask = (over: Partial<Task>): Task => ({
   index: 0,
@@ -55,9 +55,7 @@ export class FakeSettings {
   };
 
   ratingTime = async (fallback: string) =>
-    (await this.getSetting("ratingTime")) ??
-    parseClockTime(fallback) ??
-    fallback;
+    ratingTimeOrFallback(await this.getSetting("ratingTime"), fallback);
 }
 
 export type ApiCall = { method: string; payload: any };

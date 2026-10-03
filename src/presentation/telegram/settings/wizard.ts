@@ -1,7 +1,7 @@
 import { type Context, type Filter, InlineKeyboard } from "grammy";
+import { parseEntrySize } from "../../../domain/setting/entity.ts";
 import { cleanNoteTitle, parseRuleWords } from "../../../libs/links.ts";
 import { logger } from "../../../libs/log.ts";
-import { parseEntrySize } from "../../../libs/text.ts";
 import { parseClockTime } from "../../../libs/time.ts";
 import { parseWizardRef, type WizardPrompt } from "../../../libs/wizard.ts";
 import type {
@@ -79,8 +79,8 @@ export function parseSettingsRef(prompt: string): SettingsPrompt | null {
 export type LinkRef = Exclude<WizardPrompt, { kind: SettingsPrompt }>;
 
 export function parseLinkRef(prompt: string): LinkRef | null {
-  const p = parseWizardRef(prompt);
-  return p !== null && !(p.kind in REPLIES) ? (p as LinkRef) : null;
+  const ref = parseWizardRef(prompt);
+  return ref !== null && !(ref.kind in REPLIES) ? (ref as LinkRef) : null;
 }
 
 export function wizardReply({ settings, menus }: ViewDeps) {
@@ -107,9 +107,9 @@ const LINK_RULES = () =>
 
 export function linkReply(deps: LinkDeps) {
   const { settings } = deps;
-  return async (ctx: Filter<Context, "message:text">, p: LinkRef) => {
+  return async (ctx: Filter<Context, "message:text">, ref: LinkRef) => {
     const body = ctx.message.text;
-    switch (p.kind) {
+    switch (ref.kind) {
       case "sw": {
         const words = parseRuleWords(body);
         if (!words.length) {
@@ -157,9 +157,9 @@ export function linkReply(deps: LinkDeps) {
         return advance(ctx, deps, "send");
       }
       case "rgw": {
-        const r = (await settings.pairs())[p.index];
-        if (!r) {
-          log.warn({ index: p.index }, "link wizard: rename target is gone");
+        const pair = (await settings.pairs())[ref.index];
+        if (!pair) {
+          log.warn({ index: ref.index }, "link wizard: rename target is gone");
           return void ctx.reply("That pair is gone — reopen /menu.");
         }
         const [word] = parseRuleWords(body, 1);
@@ -167,16 +167,16 @@ export function linkReply(deps: LinkDeps) {
           log.warn({ body }, "link wizard: empty rename reply");
           return void ctx.reply("Nothing to rename to — send a word.");
         }
-        await settings.renamePair(r, word);
+        await settings.renamePair(pair, word);
         return replyMenu(
           ctx,
           deps,
-          `✏️ "${word}" always links to [[${r.note}]]`,
+          `✏️ "${word}" always links to [[${pair.note}]]`,
           LINK_RULES(),
         );
       }
       default:
-        return void (p satisfies never);
+        return void (ref satisfies never);
     }
   };
 }

@@ -1,4 +1,5 @@
 import { type Context, InlineKeyboard } from "grammy";
+import { notesFor } from "../../../domain/link-rule/entity.ts";
 import { distinctSurfaces } from "../../../libs/links.ts";
 import { logger } from "../../../libs/log.ts";
 import { paginate } from "../../../libs/page.ts";
@@ -66,9 +67,7 @@ export function linkRulesTap(deps: LinkDeps) {
         const note =
           surface === undefined
             ? undefined
-            : list.filter((r) => r.surface === surface).map((r) => r.note)[
-                Number(arg2)
-              ];
+            : notesFor(list, surface)[Number(arg2)];
         if (surface === undefined || note === undefined) {
           log.warn(
             { a: arg, b: arg2 },
@@ -94,28 +93,28 @@ export function linkRulesTap(deps: LinkDeps) {
         return prompt(ctx, "rg");
       case "lrgd": {
         const gi = arg === undefined ? -1 : Number(arg);
-        const r = (await settings.pairs())[gi];
-        if (!r) {
+        const pair = (await settings.pairs())[gi];
+        if (!pair) {
           log.warn({ arg }, "link wizard: pair index out of range");
           return void ctx.answerCallbackQuery({ text: "expired" });
         }
         // Answer before the write, so a slow DB round-trip can't outlive Telegram's
         // callback-query window: the re-rendered page carries the result.
-        await ctx.answerCallbackQuery({ text: `dropped ${r.surface}` });
-        await settings.removePair(r);
+        await ctx.answerCallbackQuery({ text: `dropped ${pair.surface}` });
+        await settings.removePair(pair);
         return pairsPage(ctx, settings, Math.floor(gi / PAGE));
       }
       case "lrgw":
         return prompt(ctx, "rgw", Number(arg));
       case "lrgt": {
         const gi = Number(arg);
-        const r = (await settings.pairs())[gi];
-        if (!r) {
+        const pair = (await settings.pairs())[gi];
+        if (!pair) {
           log.warn({ gi }, "link wizard: retarget index out of range");
           return void ctx.answerCallbackQuery({ text: "expired" });
         }
         await ctx.answerCallbackQuery();
-        settings.retarget(r);
+        settings.retarget(pair);
         return notePicker(ctx, deps, "edit", 0);
       }
       case "lrgp": {
@@ -216,14 +215,15 @@ async function stopwordPage(
   }
   const screen = pagedScreen({
     view: paginate(stops, page, PAGE),
-    title: (v) =>
+    title: (view) =>
       [
         "🔗 Link rules › 🔇 Never link › 🗑 Remove — step 3 of 3",
         "",
-        `Tap a word to let it be linked again.${v.pages > 1 ? ` (page ${v.page + 1}/${v.pages})` : ""}`,
+        `Tap a word to let it be linked again.${view.pages > 1 ? ` (page ${view.page + 1}/${view.pages})` : ""}`,
       ].join("\n"),
-    row: (kb, w, i) => kb.text(`🗑 ${w}`.slice(0, 60), `menu:lswd:${i}`),
-    nav: (p) => `menu:lswl:${p}`,
+    row: (kb, word, idx) =>
+      kb.text(`🗑 ${word}`.slice(0, 60), `menu:lswd:${idx}`),
+    nav: (target) => `menu:lswl:${target}`,
     back: { text: "‹ Back", data: "menu:lsw" },
   });
   await ctx.editMessageText(screen.text, {
@@ -245,17 +245,20 @@ async function rejectedWords(
   }
   const screen = pagedScreen({
     view: paginate(distinctSurfaces(list), page, PAGE),
-    title: (v) =>
+    title: (view) =>
       [
         "🔗 Link rules › 🚫 Rejected pairs — step 2 of 3",
         "",
-        `Pick the word whose rejection you want to undo.${v.pages > 1 ? ` (page ${v.page + 1}/${v.pages})` : ""}`,
+        `Pick the word whose rejection you want to undo.${view.pages > 1 ? ` (page ${view.page + 1}/${view.pages})` : ""}`,
       ].join("\n"),
-    row: (kb, s, i) => {
-      const n = list.filter((r) => r.surface === s).length;
-      kb.text(`🚫 ${s} · ${n} note(s)`.slice(0, 60), `menu:lrjs:${i}`);
+    row: (kb, surface, idx) => {
+      const count = notesFor(list, surface).length;
+      kb.text(
+        `🚫 ${surface} · ${count} note(s)`.slice(0, 60),
+        `menu:lrjs:${idx}`,
+      );
     },
-    nav: (p) => `menu:lrj:${p}`,
+    nav: (target) => `menu:lrj:${target}`,
     back: { text: "‹ Back", data: "menu:links" },
   });
   await ctx.editMessageText(screen.text, {
@@ -275,18 +278,19 @@ async function rejectedNotes(
     log.warn({ si }, "link wizard: surface index out of range");
     return rejectedWords(ctx, settings, 0);
   }
-  const notes = list.filter((r) => r.surface === surface).map((r) => r.note);
+  const notes = notesFor(list, surface);
   // Row indices stay global so the undo resolves them against the whole note list.
   const screen = pagedScreen({
     view: paginate(notes, page, PAGE),
-    title: (v) =>
+    title: (view) =>
       [
         `🔗 Link rules › 🚫 ${surface} — step 3 of 3`,
         "",
-        `${notes.length} note(s) rejected. Tap one to let "${surface}" link to it again.${v.pages > 1 ? ` (page ${v.page + 1}/${v.pages})` : ""}`,
+        `${notes.length} note(s) rejected. Tap one to let "${surface}" link to it again.${view.pages > 1 ? ` (page ${view.page + 1}/${view.pages})` : ""}`,
       ].join("\n"),
-    row: (kb, n, i) => kb.text(`↩️ ${n}`.slice(0, 60), `menu:lrju:${si}:${i}`),
-    nav: (p) => `menu:lrjs:${si}:${p}`,
+    row: (kb, note, idx) =>
+      kb.text(`↩️ ${note}`.slice(0, 60), `menu:lrju:${si}:${idx}`),
+    nav: (target) => `menu:lrjs:${si}:${target}`,
     back: { text: "‹ Back", data: `menu:lrj:${Math.floor(si / PAGE)}` },
   });
   await ctx.editMessageText(screen.text, {
@@ -304,17 +308,20 @@ async function pairsPage(
   const screen = pagedScreen({
     kb: new InlineKeyboard().text("➕ Add word(s)", "menu:lrga").row(),
     view: paginate(forced, page, PAGE),
-    title: (v) =>
+    title: (view) =>
       [
         "🔗 Link rules › 🔗 Always link — step 2 of 3",
         "",
         forced.length
-          ? `${forced.length} pair(s) linked with no judgment call. Tap one to change it.${v.pages > 1 ? ` (page ${v.page + 1}/${v.pages})` : ""}`
+          ? `${forced.length} pair(s) linked with no judgment call. Tap one to change it.${view.pages > 1 ? ` (page ${view.page + 1}/${view.pages})` : ""}`
           : "No always-link pairs yet.",
       ].join("\n"),
-    row: (kb, r, i) =>
-      kb.text(`${r.surface} → ${r.note}`.slice(0, 60), `menu:lrgv:${i}`),
-    nav: (p) => `menu:lrg:${p}`,
+    row: (kb, pair, idx) =>
+      kb.text(
+        `${pair.surface} → ${pair.note}`.slice(0, 60),
+        `menu:lrgv:${idx}`,
+      ),
+    nav: (target) => `menu:lrg:${target}`,
     back: { text: "‹ Back", data: "menu:links" },
   });
   await ctx.editMessageText(screen.text, {
@@ -327,8 +334,8 @@ async function pairDetail(
   settings: SettingsService,
   gi: number,
 ): Promise<void> {
-  const r = (await settings.pairs())[gi];
-  if (!r) {
+  const pair = (await settings.pairs())[gi];
+  if (!pair) {
     log.warn({ gi }, "link wizard: pair index out of range");
     return pairsPage(ctx, settings, 0);
   }
@@ -342,9 +349,9 @@ async function pairDetail(
     .text("‹ Back", `menu:lrg:${Math.floor(gi / PAGE)}`);
   await ctx.editMessageText(
     [
-      `🔗 Link rules › 🔗 Always link › ${r.surface} — step 3 of 3`,
+      `🔗 Link rules › 🔗 Always link › ${pair.surface} — step 3 of 3`,
       "",
-      `"${r.surface}" always links to [[${r.note}]].`,
+      `"${pair.surface}" always links to [[${pair.note}]].`,
     ].join("\n"),
     { reply_markup: withClose(kb, CLOSE) },
   );
@@ -364,19 +371,19 @@ export async function notePicker(
   const queue = of > 1 ? ` (word ${nth} of ${of})` : "";
   const { text, kb } = pagedScreen({
     view,
-    title: (v) =>
+    title: (pageView) =>
       [
         `🔗 "${word}" → which note?${queue}`,
         "",
         total
-          ? `${total} match(es) for "${query}"${v.pages > 1 ? `, page ${v.page + 1}/${v.pages}` : ""}. Tap one, or search again.`
+          ? `${total} match(es) for "${query}"${pageView.pages > 1 ? `, page ${pageView.page + 1}/${pageView.pages}` : ""}. Tap one, or search again.`
           : `Nothing in the vault matches "${query}". Search again with another part of the title.`,
       ].join("\n"),
     // A pick resolves against the remembered page, so the callback carries the index
     // within the page.
-    row: (kb, note, i) =>
-      kb.text(`📝 ${note}`.slice(0, 60), `menu:lrgp:${i - view.offset}`),
-    nav: (n) => `menu:lrgn:${n}`,
+    row: (kb, note, idx) =>
+      kb.text(`📝 ${note}`.slice(0, 60), `menu:lrgp:${idx - view.offset}`),
+    nav: (target) => `menu:lrgn:${target}`,
     extraRows: (kb) => {
       kb.text("🔎 Search by another name", "menu:lrgq").row();
       kb.text("✍️ Type a note that doesn't exist yet", "menu:lrgm").row();

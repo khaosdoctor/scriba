@@ -1,10 +1,16 @@
 import { z } from "zod";
 import { sectionHasContent } from "../../libs/note.ts";
+import { parseClockTime, plainDate, previousDate } from "../../libs/time.ts";
 
 export const RatingSchema = z.coerce.number().int().min(1).max(10);
 
 export const FOLLOWUP_QUESTIONS = ["journal", "til"] as const;
 export type FollowupQuestion = (typeof FOLLOWUP_QUESTIONS)[number];
+
+export function ratingDay(time: string, now: number = Date.now()): string {
+  const hour = Number(parseClockTime(time)!.slice(0, 2));
+  return hour < 12 ? previousDate(now) : plainDate(now);
+}
 
 export function followupQuestions(
   note: string | null,
