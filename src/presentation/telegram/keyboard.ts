@@ -7,7 +7,7 @@ export function withClose(
   kb: InlineKeyboard,
   closeData: string,
 ): InlineKeyboard {
-  const rows = kb.inline_keyboard.filter((r) => r.length > 0);
+  const rows = kb.inline_keyboard.filter((row) => row.length > 0);
   return InlineKeyboard.from(rows).row().text("✖ Close", closeData);
 }
 
@@ -38,8 +38,8 @@ export function pagedScreen<T>(opts: {
   close?: string;
 }): { text: string; kb: InlineKeyboard } {
   const { view, kb = new InlineKeyboard() } = opts;
-  for (const [j, item] of view.items.entries()) {
-    opts.row(kb, item, view.offset + j);
+  for (const [position, item] of view.items.entries()) {
+    opts.row(kb, item, view.offset + position);
     kb.row();
   }
   if (opts.nav) navRow(kb, view.page, view.pages, opts.nav);

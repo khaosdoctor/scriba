@@ -3,11 +3,11 @@ import { test } from "node:test";
 import { botHarness, JOT_ID, sampleJot } from "../../../test/bot-harness.ts";
 
 async function setup(moved: "moved" | "no-line" | "no-heading" = "moved") {
-  const h = await botHarness();
-  h.repo.getJot = sampleJot();
-  h.obsidian.moveToTil = moved;
-  h.repo.groupFollowers = [];
-  return h;
+  const harness = await botHarness();
+  harness.repo.getJot = sampleJot();
+  harness.obsidian.moveToTil = moved;
+  harness.repo.groupFollowers = [];
+  return harness;
 }
 
 test("each outcome gets its toast and a final card text with the buttons cleared", async () => {
@@ -33,11 +33,12 @@ test("each outcome gets its toast and a final card text with the buttons cleared
     ],
   ] as const;
   for (const [moved, data, toast, card] of cases) {
-    const h = await setup(moved);
-    const run = await h.tap(data);
-    const edit = run.calls.find((c) => c.method === "editMessageText");
+    const harness = await setup(moved);
+    const run = await harness.tap(data);
+    const edit = run.calls.find((call) => call.method === "editMessageText");
     assert.deepEqual(
-      run.calls.find((c) => c.method === "answerCallbackQuery")?.payload.text,
+      run.calls.find((call) => call.method === "answerCallbackQuery")?.payload
+        .text,
       toast,
     );
     assert.equal(edit?.payload.text, card);
@@ -46,24 +47,24 @@ test("each outcome gets its toast and a final card text with the buttons cleared
 });
 
 test("a jot that is gone answers gone and settles the card", async () => {
-  const h = await botHarness();
-  const run = await h.tap(`ti:y:${JOT_ID}`);
+  const harness = await botHarness();
+  const run = await harness.tap(`ti:y:${JOT_ID}`);
   assert.deepEqual(run.texts("editMessageText"), ["That jot is gone."]);
 });
 
 test("a card Telegram refuses to edit does not undo the move", async () => {
-  const h = await setup();
-  h.failApi.add("editMessageText");
-  const run = await h.tap(`ti:y:${JOT_ID}`);
+  const harness = await setup();
+  harness.failApi.add("editMessageText");
+  const run = await harness.tap(`ti:y:${JOT_ID}`);
   assert.match(run.rendered, /repo\.updateJot/);
   assert.equal(run.texts("answerCallbackQuery").length, 1);
 });
 
 test("an expired tap rejects after the move and the card is not settled", async () => {
   for (const data of [`ti:y:${JOT_ID}`, `ti:n:${JOT_ID}`]) {
-    const h = await setup();
-    h.failApi.add("answerCallbackQuery");
-    const run = await h.tap(data);
+    const harness = await setup();
+    harness.failApi.add("answerCallbackQuery");
+    const run = await harness.tap(data);
     assert.equal(run.texts("editMessageText").length, 0);
   }
 });

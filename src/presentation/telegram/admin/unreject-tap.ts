@@ -19,8 +19,8 @@ export function unrejectView(admin: AdminService): Composer<Context> {
         "unreject: surface picked",
       );
       const kb = new InlineKeyboard();
-      for (const [i, note] of word.notes.entries())
-        kb.text(note, `${UNREJECT_NS}:p:${idx[0]}:${i}`).row();
+      for (const [index, note] of word.notes.entries())
+        kb.text(note, `${UNREJECT_NS}:p:${idx[0]}:${index}`).row();
       await responder.ack();
       return ctx.editMessageText(`Unreject "${surface}" → which note?`, {
         reply_markup: kb,

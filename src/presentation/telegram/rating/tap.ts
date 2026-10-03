@@ -11,11 +11,11 @@ const log = logger("rating");
 const Payload = z.tuple([IsoDateSchema, RatingSchema]);
 
 export function ratingView(rating: RatingService): Composer<Context> {
-  return namespace(RATING_NS, async (ctx, [date, n], responder) => {
-    log.debug({ date, n }, "rating button tapped");
-    const payload = Payload.safeParse([date, n]);
+  return namespace(RATING_NS, async (ctx, [date, rawScore], responder) => {
+    log.debug({ date, n: rawScore }, "rating button tapped");
+    const payload = Payload.safeParse([date, rawScore]);
     if (!payload.success) {
-      log.warn({ date, n }, "rating tap rejected: bad payload");
+      log.warn({ date, n: rawScore }, "rating tap rejected: bad payload");
       return responder.ack("bad rating");
     }
     const [day, score] = payload.data;

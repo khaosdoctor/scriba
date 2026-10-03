@@ -9,9 +9,9 @@ const NOTE = [
 ].join("\n");
 
 const list = async (command: string, note: string | (() => never) = NOTE) => {
-  const h = await botHarness();
-  h.obsidian.readNote = note;
-  return h.say(command);
+  const harness = await botHarness();
+  harness.obsidian.readNote = note;
+  return harness.say(command);
 };
 
 test("/tasks with no argument lists the open tasks ahead", async () => {

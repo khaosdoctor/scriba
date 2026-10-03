@@ -66,5 +66,5 @@ export async function publishCommands(
     .setMyCommands(
       COMMANDS.map(({ command, description }) => ({ command, description })),
     )
-    .catch((e) => log.warn({ err: e }, "setMyCommands failed"));
+    .catch((err) => log.warn({ err }, "setMyCommands failed"));
 }
