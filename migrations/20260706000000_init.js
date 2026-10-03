@@ -69,55 +69,55 @@ const SEED_STOPWORDS = [
 ];
 
 export async function up(knex) {
-  await knex.schema.createTable("jots", (t) => {
-    t.string("id", 8).primary();
-    t.text("kind").notNullable();
-    t.text("note_path").notNullable();
-    t.text("anchor").notNullable();
-    t.text("time").notNullable();
-    t.text("raw_text");
-    t.text("transcript");
-    t.text("asset_path");
-    t.text("file_id");
-    t.text("status").notNullable().defaultTo("pending");
-    t.integer("attempts").notNullable().defaultTo(0);
-    t.text("error");
-    t.bigInteger("received_at").notNullable();
-    t.bigInteger("updated_at").notNullable();
-    t.index(["status"]);
+  await knex.schema.createTable("jots", (table) => {
+    table.string("id", 8).primary();
+    table.text("kind").notNullable();
+    table.text("note_path").notNullable();
+    table.text("anchor").notNullable();
+    table.text("time").notNullable();
+    table.text("raw_text");
+    table.text("transcript");
+    table.text("asset_path");
+    table.text("file_id");
+    table.text("status").notNullable().defaultTo("pending");
+    table.integer("attempts").notNullable().defaultTo(0);
+    table.text("error");
+    table.bigInteger("received_at").notNullable();
+    table.bigInteger("updated_at").notNullable();
+    table.index(["status"]);
   });
 
-  await knex.schema.createTable("msg_map", (t) => {
-    t.bigInteger("tg_message_id").primary();
-    t.string("jot_id", 8).notNullable();
+  await knex.schema.createTable("msg_map", (table) => {
+    table.bigInteger("tg_message_id").primary();
+    table.string("jot_id", 8).notNullable();
   });
 
-  await knex.schema.createTable("rejections", (t) => {
-    t.text("surface").notNullable();
-    t.text("note").notNullable();
-    t.bigInteger("created_at").notNullable();
-    t.primary(["surface", "note"]);
+  await knex.schema.createTable("rejections", (table) => {
+    table.text("surface").notNullable();
+    table.text("note").notNullable();
+    table.bigInteger("created_at").notNullable();
+    table.primary(["surface", "note"]);
   });
 
-  await knex.schema.createTable("pending_links", (t) => {
-    t.string("id", 8).primary();
-    t.string("jot_id", 8).notNullable();
-    t.text("surface").notNullable();
-    t.text("note").notNullable();
-    t.bigInteger("created_at").notNullable();
+  await knex.schema.createTable("pending_links", (table) => {
+    table.string("id", 8).primary();
+    table.string("jot_id", 8).notNullable();
+    table.text("surface").notNullable();
+    table.text("note").notNullable();
+    table.bigInteger("created_at").notNullable();
   });
 
   // Edits that arrived while a jot was still processing — applied once it's done.
-  await knex.schema.createTable("queued_edits", (t) => {
-    t.increments("id").primary();
-    t.string("jot_id", 8).notNullable();
-    t.text("instruction").notNullable();
-    t.bigInteger("created_at").notNullable();
-    t.index(["jot_id"]);
+  await knex.schema.createTable("queued_edits", (table) => {
+    table.increments("id").primary();
+    table.string("jot_id", 8).notNullable();
+    table.text("instruction").notNullable();
+    table.bigInteger("created_at").notNullable();
+    table.index(["jot_id"]);
   });
 
-  await knex.schema.createTable("stopwords", (t) => {
-    t.text("word").primary();
+  await knex.schema.createTable("stopwords", (table) => {
+    table.text("word").primary();
   });
   await knex("stopwords").insert(
     [...new Set(SEED_STOPWORDS)].map((word) => ({ word })),

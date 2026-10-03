@@ -16,17 +16,17 @@ const MAX_REDIRECTS = 5;
 export function isPrivateAddress(ip: string): boolean {
   const v4 = ip.replace(/^::ffff:/i, "");
   const parts = v4.split(".").map(Number);
-  if (parts.length === 4 && parts.every((n) => Number.isInteger(n))) {
-    const [a = 0, b = 0] = parts;
+  if (parts.length === 4 && parts.every((part) => Number.isInteger(part))) {
+    const [first = 0, second = 0] = parts;
     return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127) || // CGNAT
-      a >= 224 // multicast + reserved
+      first === 0 ||
+      first === 10 ||
+      first === 127 ||
+      (first === 169 && second === 254) ||
+      (first === 172 && second >= 16 && second <= 31) ||
+      (first === 192 && second === 168) ||
+      (first === 100 && second >= 64 && second <= 127) || // CGNAT
+      first >= 224 // multicast + reserved
     );
   }
   const v6 = ip.toLowerCase();
@@ -44,7 +44,7 @@ export function isPrivateAddress(ip: string): boolean {
 export const publicLookup: LookupFunction = (hostname, options, callback) => {
   resolveHost(hostname, { ...options, all: true }, (err, addresses) => {
     if (err) return callback(err, []);
-    const blocked = addresses.find((a) => isPrivateAddress(a.address));
+    const blocked = addresses.find((entry) => isPrivateAddress(entry.address));
     if (blocked)
       return callback(
         new Error(
@@ -128,16 +128,16 @@ export class WebService {
 
   private async assertPublicHttpUrl(raw: string): Promise<void> {
     if (!URL.canParse(raw)) throw new Error(`not a URL: ${raw}`);
-    const u = new URL(raw);
-    if (u.protocol !== "http:" && u.protocol !== "https:")
-      throw new Error(`only http(s) URLs can be fetched, got ${u.protocol}`);
-    const addrs = await lookup(u.hostname, { all: true }).catch(() => {
-      throw new Error(`cannot resolve ${u.hostname}`);
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:")
+      throw new Error(`only http(s) URLs can be fetched, got ${url.protocol}`);
+    const addrs = await lookup(url.hostname, { all: true }).catch(() => {
+      throw new Error(`cannot resolve ${url.hostname}`);
     });
     for (const { address } of addrs)
       if (isPrivateAddress(address))
         throw new Error(
-          `refusing to fetch ${u.hostname}: it resolves to a private address (${address})`,
+          `refusing to fetch ${url.hostname}: it resolves to a private address (${address})`,
         );
   }
 }
