@@ -290,7 +290,7 @@ export async function createScriba(
     modes,
     command,
     tasks,
-    jotController: jots,
+    jots,
     edits,
     admin,
   });

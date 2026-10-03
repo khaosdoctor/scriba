@@ -1,4 +1,4 @@
-import { type Context, type Filter, InlineKeyboard } from "grammy";
+import { InlineKeyboard } from "grammy";
 import { parseEntrySize } from "../../../domain/setting/entity.ts";
 import { cleanNoteTitle, parseRuleWords } from "../../../libs/links.ts";
 import { logger } from "../../../libs/log.ts";
@@ -10,8 +10,9 @@ import type {
 } from "../../../services/settings.ts";
 import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
+import type { TextReply } from "../namespace.ts";
 import { advance, type LinkDeps, notePicker, replyMenu } from "./links.ts";
-import { MODELS, menu } from "./menu-data.ts";
+import { FLOW_EXPIRED, MODELS, menu, NOTHING_TO_ADD } from "./menu-data.ts";
 
 const log = logger("menu");
 
@@ -82,7 +83,7 @@ export function parseLinkRef(prompt: string): LinkRef | null {
 }
 
 export function wizardReply(deps: ViewDeps) {
-  return async (ctx: Filter<Context, "message:text">, kind: SettingsPrompt) => {
+  return async (ctx: TextReply, kind: SettingsPrompt) => {
     const reply = REPLIES[kind];
     const body = ctx.message.text;
     const done = await reply.apply(deps.settings, body);
@@ -105,14 +106,14 @@ const LINK_RULES = () =>
 
 export function linkReply(deps: LinkDeps) {
   const { settings } = deps;
-  return async (ctx: Filter<Context, "message:text">, ref: LinkRef) => {
+  return async (ctx: TextReply, ref: LinkRef) => {
     const body = ctx.message.text;
     switch (ref.kind) {
       case "sw": {
         const words = parseRuleWords(body);
         if (!words.length) {
           log.warn({ body }, "link wizard: empty never-link reply");
-          return void ctx.reply("Nothing to add — send a word.");
+          return void ctx.reply(NOTHING_TO_ADD);
         }
         await settings.addStopwords(words);
         return replyMenu(
@@ -126,7 +127,7 @@ export function linkReply(deps: LinkDeps) {
         const words = parseRuleWords(body);
         if (!words.length) {
           log.warn({ body }, "link wizard: empty always-link reply");
-          return void ctx.reply("Nothing to add — send a word.");
+          return void ctx.reply(NOTHING_TO_ADD);
         }
         settings.queueWords(words);
         return notePicker(ctx, deps, "send", 0);
@@ -134,7 +135,7 @@ export function linkReply(deps: LinkDeps) {
       case "rgn": {
         if (!settings.search(cleanNoteTitle(body))) {
           log.warn("link wizard: search reply with no pending flow");
-          return void ctx.reply("That link flow expired — reopen /menu.");
+          return void ctx.reply(FLOW_EXPIRED);
         }
         return notePicker(ctx, deps, "send", 0);
       }
@@ -142,7 +143,7 @@ export function linkReply(deps: LinkDeps) {
         const word = settings.currentWord();
         if (word === undefined) {
           log.warn("link wizard: manual note reply with no pending flow");
-          return void ctx.reply("That link flow expired — reopen /menu.");
+          return void ctx.reply(FLOW_EXPIRED);
         }
         const note = cleanNoteTitle(body);
         if (!note) {

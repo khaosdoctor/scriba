@@ -148,7 +148,7 @@ async function entrySizeScreen(
 export function menuView(deps: ViewDeps): Composer<Context> {
   const { settings, admin, menus, rating, habits, tasks } = deps;
   const links = linkRulesTap(deps);
-  const jots = jotsTap(deps);
+  const jotBrowser = jotsTap(deps);
   return namespace(MENU_NS, async (ctx, rest, responder) => {
     const [action, arg] = rest;
     const tapped = ctx.callbackQuery.message;
@@ -326,7 +326,7 @@ export function menuView(deps: ViewDeps): Composer<Context> {
       case "jd":
       case "jdy":
       case "je":
-        return jots(ctx, action, arg, responder);
+        return jotBrowser(ctx, action, arg, responder);
       default:
         return links(ctx, rest, responder);
     }

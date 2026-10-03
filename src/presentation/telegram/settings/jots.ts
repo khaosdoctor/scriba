@@ -14,7 +14,7 @@ const log = logger("menu");
 
 export type JotAction = "jots" | "jot" | "jr" | "jd" | "jdy" | "je";
 
-export type JotsDeps = Pick<ViewDeps, "jotController" | "edits">;
+export type JotsDeps = Pick<ViewDeps, "jots" | "edits">;
 
 type JotHandler = (
   ctx: Tap,
@@ -22,7 +22,7 @@ type JotHandler = (
   responder: Responder,
 ) => Promise<unknown>;
 
-export function jotsTap({ jotController: jots, edits }: JotsDeps) {
+export function jotsTap({ jots, edits }: JotsDeps) {
   const handlers: Record<JotAction, JotHandler> = {
     jots: async (ctx, _arg, responder) => {
       await responder.ack();

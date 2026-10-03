@@ -23,11 +23,11 @@ const REMOVALS: Record<
 
 export function removeView(
   ns: Namespace,
-  { jotController, edits }: ViewDeps,
+  { jots, edits }: ViewDeps,
 ): Composer<Context> {
   const { source, toast, already } = REMOVALS[ns];
   return namespace(ns, async (_ctx, [jotId], responder) => {
-    const jot = await jotController.liveJot(jotId);
+    const jot = await jots.liveJot(jotId);
     if (jot === "gone") {
       log.warn({ jotId, source }, "remove: jot is gone");
       return responder.ack("gone");

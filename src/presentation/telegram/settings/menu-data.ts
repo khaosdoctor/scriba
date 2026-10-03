@@ -7,6 +7,9 @@ export const menu = (...parts: (string | number)[]) =>
 
 export const MENU_CLOSE = menu("close");
 
+export const FLOW_EXPIRED = "That link flow expired — reopen /menu.";
+export const NOTHING_TO_ADD = "Nothing to add — send a word.";
+
 type ModelSpec = {
   key: ModelKey;
   title: string;

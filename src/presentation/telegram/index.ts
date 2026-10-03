@@ -12,12 +12,11 @@ import type { TaskService } from "../../services/tasks.ts";
 import { callbackViews } from "./callbacks.ts";
 import { COMMANDS } from "./commands.ts";
 import { errorHandler } from "./errors.ts";
+import { attachmentView } from "./journal/attachment.ts";
 import { editedView } from "./journal/edited.ts";
 import { fallbackView } from "./journal/fallback.ts";
-import { photoView } from "./journal/photo.ts";
 import { reactionView } from "./journal/reaction.ts";
 import { textView } from "./journal/text.ts";
-import { videoView } from "./journal/video.ts";
 import { voiceView } from "./journal/voice.ts";
 import type { MenuLifetime } from "./settings/menu-lifetime.ts";
 
@@ -32,7 +31,7 @@ export type ViewDeps = {
   modes: Modes;
   command: CommandService;
   tasks: TaskService;
-  jotController: JotService;
+  jots: JotService;
   edits: EditService;
   admin: AdminService;
 };
@@ -43,7 +42,7 @@ const describe = (ctx: Context) => ({
 });
 
 export function registerViews(bot: Bot, deps: ViewDeps): void {
-  bot.catch(errorHandler(deps.jotController));
+  bot.catch(errorHandler(deps.jots));
   bot.use(async (ctx, next) => {
     if (ctx.from?.id !== deps.ownerId) return;
     log.debug(describe(ctx), "update received");
@@ -53,8 +52,7 @@ export function registerViews(bot: Bot, deps: ViewDeps): void {
     bot.command(command.command, (ctx) => command.run(ctx, deps));
   textView(bot, deps);
   voiceView(bot, deps);
-  photoView(bot, deps);
-  videoView(bot, deps);
+  attachmentView(bot, deps);
   editedView(bot, deps);
   for (const view of callbackViews(deps)) bot.use(view);
   reactionView(bot, deps);

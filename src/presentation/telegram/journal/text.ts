@@ -6,7 +6,7 @@ import { taskMessage } from "../tasks/mode.ts";
 import { editReply } from "./edit-reply.ts";
 
 export function textView(bot: Bot, deps: ViewDeps): void {
-  const { command, modes, tasks, edits, jotController } = deps;
+  const { command, modes, tasks, edits, jots } = deps;
   bot.on("message:text", async (ctx, next) => {
     if (ctx.message.text.startsWith("/")) return;
     if (modes.isOpen("command"))
@@ -19,7 +19,5 @@ export function textView(bot: Bot, deps: ViewDeps): void {
     await next();
   });
   bot.use(editReply(edits));
-  bot.on("message:text", (ctx) =>
-    jotController.intake(intakeInput(ctx.message)!),
-  );
+  bot.on("message:text", (ctx) => jots.intake(intakeInput(ctx.message)!));
 }

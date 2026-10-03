@@ -12,7 +12,7 @@ import type { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
 import { backTo, pagedScreen, pageSuffix, withClose } from "../keyboard.ts";
 import type { Tap } from "../namespace.ts";
-import { MENU_CLOSE, menu } from "./menu-data.ts";
+import { FLOW_EXPIRED, MENU_CLOSE, menu } from "./menu-data.ts";
 
 const log = logger("menu");
 
@@ -366,8 +366,7 @@ export async function notePicker(
   page: number,
 ): Promise<void> {
   const shown = deps.settings.picker(page);
-  if (shown === "expired")
-    return void ctx.reply("That link flow expired — reopen /menu.");
+  if (shown === "expired") return void ctx.reply(FLOW_EXPIRED);
   if (shown === "done") return finished(ctx, deps, mode);
   const { word, query, total, view, nth, of } = shown;
   const queue = of > 1 ? ` (word ${nth} of ${of})` : "";

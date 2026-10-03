@@ -19,19 +19,19 @@ import { tilView } from "./til/tap.ts";
 /** One view per callback namespace, with the empty answer for an unknown namespace last so
  *  a stale button never leaves its spinner running. */
 export function callbackViews(deps: ViewDeps): Composer<Context>[] {
-  const { command, tasks, jotController, edits, rating, habits, admin } = deps;
+  const { command, tasks, jots, edits, rating, habits, admin } = deps;
   const unknown = new Composer<Context>();
   unknown.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
   return [
     menuView(deps),
-    voiceFixView(jotController),
-    retryView(jotController),
+    voiceFixView(jots),
+    retryView(jots),
     removeView(UNDO_NS, deps),
     removeView(DELETE_NS, deps),
     embedView(edits),
     commandView(command),
     tasksView(tasks),
-    tilView(jotController),
+    tilView(jots),
     linkView(edits),
     unrejectView(admin),
     ratingView(rating),

@@ -2,6 +2,7 @@ import { Composer, type Context, type Filter } from "grammy";
 import { Responder } from "./chat.ts";
 
 export type Tap = Filter<Context, "callback_query:data">;
+export type TextReply = Filter<Context, "message:text">;
 
 export function namespace(
   ns: string,
