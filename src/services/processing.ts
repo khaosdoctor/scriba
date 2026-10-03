@@ -13,6 +13,7 @@ import {
   journalLine,
   sourceField,
 } from "../domain/jot/rules.ts";
+import type { Candidate } from "../domain/link-rule/entity.ts";
 import type { TaskDraft } from "../domain/task/entity.ts";
 import {
   doneMessage,
@@ -48,6 +49,63 @@ const STARTING: Record<Jot["kind"], string> = {
 
 const voiceStatus = (transcript: string, step: string): string =>
   `🎤 <i>${escapeHtml(transcript.trim())}</i>\n\n${step}`;
+
+const groupSource = (
+  jot: Jot,
+  followers: Jot[],
+  audioFallback?: string,
+): string =>
+  combineEnrichSource(
+    [jot, ...followers].map((member) =>
+      enrichableSource(member, audioFallback),
+    ),
+  );
+
+/** A jot for one spillover piece of an over-long entry: a plain text jot, already done
+ *  (the text is enriched: it came out of this jot's own enrichment), with an id and
+ *  anchor of its own so it edits, undoes and reprocesses independently. Its `received_at`
+ *  is nudged past the parent's so the intake order (and any later squash query) still
+ *  reads left to right. */
+export function pieceJot(
+  parent: Jot,
+  pieceText: string,
+  receivedOffset: number,
+): Jot {
+  const id = shortId();
+  return {
+    ...parent,
+    id,
+    anchor: id,
+    kind: "text",
+    raw_text: pieceText,
+    transcript: null,
+    proposed_text: null,
+    asset_path: null, // the media stays on the parent's line, embedded once
+    file_id: null,
+    status: "done",
+    attempts: 0,
+    error: null,
+    received_at: parent.received_at + receivedOffset,
+    updated_at: Date.now(),
+  };
+}
+
+interface Group {
+  followers: Jot[];
+  merged: boolean;
+  source: string;
+}
+
+interface Enriched {
+  text: string;
+  tasks: TaskDraft[];
+  tilCard: boolean;
+}
+
+interface Written {
+  linked: string;
+  spillover: Jot[];
+}
 
 export interface ProcessingDeps {
   repo: Pick<
@@ -109,275 +167,337 @@ export class ProcessingService {
   async processJot(id: string): Promise<void> {
     const loaded = await this.deps.repo.getJot(id);
     if (!loaded) return log.warn({ id }, "processJot: jot not found, skipping");
-    // A squashed follower shares its leader's anchor and is folded into the leader's
-    // line, so the leader processes it. Defer: unless the leader is gone (deleted), in
-    // which case fall through and process this jot standalone (its write appends).
-    if (isFollower(loaded)) {
-      const leader = await this.deps.repo.getJot(loaded.anchor);
-      if (leader && leader.status !== "deleted") {
-        // Group already finished but this follower lingered (e.g. a crash between the
-        // leader's write and marking its followers): reconcile so it doesn't stay pending.
-        if (
-          (leader.status === "done" || leader.status === "abandoned") &&
-          loaded.status !== "done"
-        )
-          await this.deps.repo.updateJot(loaded.id, {
-            status: "done",
-            error: null,
-          });
-        return log.debug(
-          { id, leader: loaded.anchor },
-          "processJot: squashed follower, deferred to leader",
-        );
-      }
-    }
+    if (await this.deferToLeader(loaded)) return;
     if (loaded.kind !== "video" && !this.deps.enricher.available())
       return this.hold(loaded);
-    // Atomic claim: only the winner proceeds, so flush + retry passes can't double-process.
-    if (!(await this.deps.repo.claim(id)))
-      return log.debug({ id }, "processJot: claim lost, another worker has it");
+    if (!(await this.claim(id))) return;
     const t0 = Date.now();
-    log.info(
-      { id, kind: loaded.kind, attempts: loaded.attempts },
-      "processing jot",
-    );
-    await this.deps.notifier.typing(); // best-effort "typing…" so the user sees work is underway
-    await this.deps.jots.status(id, STARTING[loaded.kind]); // live status message, edited in place from here on
+    await this.announceStart(loaded);
     try {
-      let jot = await this.ensureMedia(loaded);
-      if (jot.kind === "audio" && jot.transcript?.trim()) {
-        await this.deps.jots.status(id, voiceStatus(jot.transcript, WEAVING));
-      }
-      const vfModel = await this.deps.settings.getSetting("voiceFixModel");
-      if (
-        jot.kind === "audio" &&
-        jot.transcript?.trim() &&
-        vfModel &&
-        (await this.deps.settings.getSetting("fixVoiceTranscript"))
-      ) {
-        const original = jot.transcript.trim();
-        await this.deps.jots.status(
-          id,
-          voiceStatus(original, "🔧 Checking transcript…"),
-        );
-        // Voice fix is an optional clean-up: when it can't run, the original goes on
-        // to enrichment instead of failing the whole jot. Held on ModelsDownError, like
-        // any other step, since enrichment right after would hit the same wall.
-        const proposed = await this.deps.enricher
-          .fixTranscript(original, vfModel)
-          .catch((err: unknown) => {
-            if (err instanceof ModelsDownError) throw err;
-            log.warn(
-              { id, err },
-              "voice fix failed — keeping the original transcript",
-            );
-            return original;
-          });
-        if (proposed !== original) {
-          const choice = await this.deps.jots.awaitVoiceFix(
-            id,
-            original,
-            proposed,
-          );
-          const winner = choice === "proposed" ? proposed : original;
-          jot = { ...jot, transcript: winner };
-          await this.deps.repo.updateJot(id, { transcript: winner });
-          log.info({ id, choice }, `voice fix: user picked ${choice}`);
-        } else {
-          log.info({ id }, "voice fix: no change proposed");
-        }
-        await this.deps.jots.status(id, voiceStatus(jot.transcript!, WEAVING));
-      }
-      const followers: Jot[] = [];
-      for (const follower of await this.deps.repo.groupFollowers(jot.id))
-        followers.push(await this.ensureMedia(follower));
-      const merged = followers.length > 0;
-      const source = combineEnrichSource(
-        [jot, ...followers].map((member) => enrichableSource(member)),
-      ); // video is attach-only, so it contributes nothing here
-      if (merged)
-        log.info(
-          { id, followers: followers.map((follower) => follower.id) },
-          `squash: enriching ${followers.length + 1} jots as one line`,
-        );
-
+      const jot = await this.fixVoice(await this.ensureMedia(loaded));
+      const group = await this.loadGroup(jot);
       const maxChars = await this.deps.settings.getSetting("entryMaxChars");
-      let textPart = source;
-      let detected: TaskDraft[] = [];
-      let tilCard = false;
-      if (source.trim()) {
-        const [stopwords, rejections, registered] = await Promise.all([
-          this.deps.linkRules.stopwords(),
-          this.deps.linkRules.rejections(),
-          this.deps.linkRules.registeredLinks(),
-        ]);
-        const index = this.deps.links.list();
-        if (!index.length)
-          log.warn(
-            { id },
-            "enricher: link index empty (SCRIBA_VAULT_HOST_PATH unset or unreadable) — no wikilinks suggested",
-          );
-        // Registered (user-forced) pairs win over anything the vault index would also
-        // suggest for the same surface+note, so it isn't listed (and judged) twice.
-        // JSON-encoded so a surface/note containing a space can't collide with a
-        // different pair (plain `${surface} ${note}` concatenation could).
-        const pairKey = (link: { surface: string; note: string }) =>
-          JSON.stringify([link.surface.toLowerCase(), link.note]);
-        const forced = forcedCandidates(source, registered);
-        const forcedKeys = new Set(forced.map(pairKey));
-        const cands = [
-          ...forced,
-          ...candidates(source, index, stopwords, rejections).filter(
-            (candidate) => !forcedKeys.has(pairKey(candidate)),
-          ),
-        ];
-        log.info(
-          {
-            id,
-            indexSize: index.length,
-            count: cands.length,
-            forced: forced.length,
-            stopwords: stopwords.size,
-            rejections: rejections.size,
-            candidates: cands.map(
-              (candidate) =>
-                `"${candidate.surface}" -> [[${candidate.note}]]${candidate.forced ? " (registered)" : ""}`,
-            ),
-          },
-          `enricher: ${cands.length} link candidate(s) (${forced.length} registered) from local index of ${index.length} aliases`,
-        );
-        log.info(
-          { id, chars: source.length, candidates: cands.length },
-          "enricher: calling agent",
-        );
-        const res = await this.deps.enricher.enrich({
-          text: source,
-          candidates: cands,
-          merge: merged,
-          splitAt: maxChars,
-        });
-        textPart = res.text;
-        log.info(
-          {
-            id,
-            ambiguous: res.ambiguous.length,
-            ambiguousLinks: res.ambiguous.map(
-              (link) => `"${link.surface}" -> [[${link.note}]]`,
-            ),
-            usage: res.usage,
-          },
-          "enricher: done",
-        );
-        detected = await this.deps.tasks.draftsFor(
-          res.tasks,
-          jot.id,
-          jotDay(jot),
-        );
-        tilCard = await this.tilWanted(res.til, jot);
-        for (const link of res.ambiguous) {
-          const pid = await this.deps.edits.askLink(
-            jot.id,
-            link.surface,
-            link.note,
-          );
-          log.debug(
-            { id, pid, surface: link.surface, note: link.note },
-            "asked to confirm link",
-          );
-        }
-      } else {
-        log.debug(
-          { id, kind: jot.kind },
-          "no enrichable text (attach-only or empty)",
-        );
-      }
-
-      const pieces = splitEntry(linkDateWords(textPart, jotDay(jot)), maxChars);
-      const linked = pieces[0] ?? "";
-      const spillover = pieces
-        .slice(1)
-        .map((text, index) => this.pieceJot(jot, text, index + 1));
-      if (spillover.length)
-        log.info(
-          { id, maxChars, pieces: spillover.map((piece) => piece.id) },
-          `entry over ${maxChars} chars — split into ${pieces.length} jots`,
-        );
-      await this.writeLine(
+      const enriched = await this.enrichEntry(jot, group, maxChars);
+      const written = await this.writeEntry(
         jot,
-        [
-          this.composeLine(jot, linked),
-          ...spillover.map((piece) =>
-            journalLine(piece.time, piece.raw_text ?? "", piece.anchor),
-          ),
-        ].join("\n"),
+        group,
+        enriched.text,
+        maxChars,
       );
-      // Rows only after the note write: a failed write retries the whole jot, and rows
-      // written first would be duplicated by that retry.
-      // ponytail: a crash between the write and these inserts leaves the spillover lines
-      // in the note with no jot row (uneditable). Sub-millisecond window, local sqlite.
-      for (const piece of spillover) await this.deps.repo.insertJot(piece);
-      if (spillover.length && !merged)
-        await this.deps.repo.updateJot(jot.id, {
-          [sourceField(jot.kind)]: linked,
-        });
-      await this.deps.repo.updateJot(jot.id, { status: "done", error: null });
-      for (const follower of followers)
-        await this.deps.repo.updateJot(follower.id, {
-          status: "done",
-          error: null,
-        });
-      // Post-`done` steps are best-effort UI + the queued-edit drain. A transient throw
-      // here must NOT route to fail(): that would demote an already-committed `done` jot
-      // to `failed`, causing wasted re-enrichment and duplicate link prompts on retry.
-      try {
-        await this.deps.jots.react(jot.id, "done");
-        const of = spillover.length + 1;
-        await this.deps.jots.status(
-          jot.id,
-          doneMessage(
-            jot.time,
-            jot.kind,
-            linked,
-            jot.id,
-            merged ? followers.length + 1 : 0,
-            of > 1 ? { i: 1, of } : undefined,
-          ),
-          { undo: true, embed: embedOffer(linked) },
-        );
-        for (const [index, piece] of spillover.entries())
-          await this.deps.jots.status(
-            piece.id,
-            doneMessage(
-              piece.time,
-              piece.kind,
-              piece.raw_text ?? "",
-              piece.id,
-              0,
-              {
-                i: index + 2,
-                of,
-              },
-            ),
-            { undo: true, embed: embedOffer(piece.raw_text ?? "") },
-          );
-        // Tasks come after the entry is safely in the note: a card is a question about
-        // something already journalled, never a step on the way to journalling it.
-        for (const draft of detected)
-          await this.deps.tasks.suggest(draft, jot.id, jotDay(jot));
-        if (tilCard) await this.deps.jots.askTil(jot.id, linked);
-        await this.deps.edits.drainQueued(jot.id); // apply anything queued while we were working
-        for (const follower of followers) {
-          await this.deps.jots.react(follower.id, "done");
-          await this.deps.jots.deleteStatus(follower.id);
-          await this.deps.edits.drainQueued(follower.id);
-        }
-      } catch (err) {
-        log.error({ id, err }, "post-done side effect failed — jot stays done");
-      }
+      await this.afterDone(jot, group, written, enriched);
       log.info({ id, ms: Date.now() - t0 }, "jot done");
     } catch (err) {
       await this.fail(loaded, err);
     }
+  }
+
+  /** A squashed follower shares its leader's anchor and is folded into the leader's
+   *  line, so the leader processes it. Defer: unless the leader is gone (deleted), in
+   *  which case fall through and process this jot standalone (its write appends). */
+  private async deferToLeader(jot: Jot): Promise<boolean> {
+    if (!isFollower(jot)) return false;
+    const leader = await this.deps.repo.getJot(jot.anchor);
+    if (!leader || leader.status === "deleted") return false;
+    // Group already finished but this follower lingered (e.g. a crash between the
+    // leader's write and marking its followers): reconcile so it doesn't stay pending.
+    if (
+      (leader.status === "done" || leader.status === "abandoned") &&
+      jot.status !== "done"
+    )
+      await this.deps.repo.updateJot(jot.id, { status: "done", error: null });
+    log.debug(
+      { id: jot.id, leader: jot.anchor },
+      "processJot: squashed follower, deferred to leader",
+    );
+    return true;
+  }
+
+  /** Atomic claim: only the winner proceeds, so flush + retry passes can't double-process. */
+  private async claim(id: string): Promise<boolean> {
+    if (await this.deps.repo.claim(id)) return true;
+    log.debug({ id }, "processJot: claim lost, another worker has it");
+    return false;
+  }
+
+  private async announceStart(jot: Jot): Promise<void> {
+    log.info(
+      { id: jot.id, kind: jot.kind, attempts: jot.attempts },
+      "processing jot",
+    );
+    await this.deps.notifier.typing(); // best-effort "typing…" so the user sees work is underway
+    await this.deps.jots.status(jot.id, STARTING[jot.kind]); // live status message, edited in place from here on
+  }
+
+  private async fixVoice(jot: Jot): Promise<Jot> {
+    const { id } = jot;
+    if (jot.kind === "audio" && jot.transcript?.trim()) {
+      await this.deps.jots.status(id, voiceStatus(jot.transcript, WEAVING));
+    }
+    const voiceFixModel = await this.deps.settings.getSetting("voiceFixModel");
+    if (
+      !(
+        jot.kind === "audio" &&
+        jot.transcript?.trim() &&
+        voiceFixModel &&
+        (await this.deps.settings.getSetting("fixVoiceTranscript"))
+      )
+    )
+      return jot;
+    const original = jot.transcript.trim();
+    await this.deps.jots.status(
+      id,
+      voiceStatus(original, "🔧 Checking transcript…"),
+    );
+    // Voice fix is an optional clean-up: when it can't run, the original goes on
+    // to enrichment instead of failing the whole jot. Held on ModelsDownError, like
+    // any other step, since enrichment right after would hit the same wall.
+    const proposed = await this.deps.enricher
+      .fixTranscript(original, voiceFixModel)
+      .catch((err: unknown) => {
+        if (err instanceof ModelsDownError) throw err;
+        log.warn(
+          { id, err },
+          "voice fix failed — keeping the original transcript",
+        );
+        return original;
+      });
+    const fixed = await this.settleVoiceFix(jot, original, proposed);
+    await this.deps.jots.status(id, voiceStatus(fixed.transcript!, WEAVING));
+    return fixed;
+  }
+
+  private async settleVoiceFix(
+    jot: Jot,
+    original: string,
+    proposed: string,
+  ): Promise<Jot> {
+    const { id } = jot;
+    if (proposed === original) {
+      log.info({ id }, "voice fix: no change proposed");
+      return jot;
+    }
+    const choice = await this.deps.jots.awaitVoiceFix(id, original, proposed);
+    const winner = choice === "proposed" ? proposed : original;
+    await this.deps.repo.updateJot(id, { transcript: winner });
+    log.info({ id, choice }, `voice fix: user picked ${choice}`);
+    return { ...jot, transcript: winner };
+  }
+
+  private async loadGroup(jot: Jot): Promise<Group> {
+    const followers: Jot[] = [];
+    for (const follower of await this.deps.repo.groupFollowers(jot.id))
+      followers.push(await this.ensureMedia(follower));
+    const merged = followers.length > 0;
+    const source = groupSource(jot, followers);
+    if (merged)
+      log.info(
+        { id: jot.id, followers: followers.map((follower) => follower.id) },
+        `squash: enriching ${followers.length + 1} jots as one line`,
+      );
+    return { followers, merged, source };
+  }
+
+  private async enrichEntry(
+    jot: Jot,
+    { merged, source }: Group,
+    maxChars: number,
+  ): Promise<Enriched> {
+    const { id } = jot;
+    if (!source.trim()) {
+      log.debug(
+        { id, kind: jot.kind },
+        "no enrichable text (attach-only or empty)",
+      );
+      return { text: source, tasks: [], tilCard: false };
+    }
+    const cands = await this.linkCandidates(id, source);
+    log.info(
+      { id, chars: source.length, candidates: cands.length },
+      "enricher: calling agent",
+    );
+    const res = await this.deps.enricher.enrich({
+      text: source,
+      candidates: cands,
+      merge: merged,
+      splitAt: maxChars,
+    });
+    log.info(
+      {
+        id,
+        ambiguous: res.ambiguous.length,
+        ambiguousLinks: res.ambiguous.map(
+          (link) => `"${link.surface}" -> [[${link.note}]]`,
+        ),
+        usage: res.usage,
+      },
+      "enricher: done",
+    );
+    const tasks = await this.deps.tasks.draftsFor(
+      res.tasks,
+      jot.id,
+      jotDay(jot),
+    );
+    const tilCard = await this.tilWanted(res.til, jot);
+    await this.askToConfirm(id, res.ambiguous);
+    return { text: res.text, tasks, tilCard };
+  }
+
+  private async linkCandidates(
+    id: string,
+    source: string,
+  ): Promise<Candidate[]> {
+    const [stopwords, rejections, registered] = await Promise.all([
+      this.deps.linkRules.stopwords(),
+      this.deps.linkRules.rejections(),
+      this.deps.linkRules.registeredLinks(),
+    ]);
+    const index = this.deps.links.list();
+    if (!index.length)
+      log.warn(
+        { id },
+        "enricher: link index empty (SCRIBA_VAULT_HOST_PATH unset or unreadable) — no wikilinks suggested",
+      );
+    // Registered (user-forced) pairs win over anything the vault index would also
+    // suggest for the same surface+note, so it isn't listed (and judged) twice.
+    // JSON-encoded so a surface/note containing a space can't collide with a
+    // different pair (plain `${surface} ${note}` concatenation could).
+    const pairKey = (link: { surface: string; note: string }) =>
+      JSON.stringify([link.surface.toLowerCase(), link.note]);
+    const forced = forcedCandidates(source, registered);
+    const forcedKeys = new Set(forced.map(pairKey));
+    const cands = [
+      ...forced,
+      ...candidates(source, index, stopwords, rejections).filter(
+        (candidate) => !forcedKeys.has(pairKey(candidate)),
+      ),
+    ];
+    log.info(
+      {
+        id,
+        indexSize: index.length,
+        count: cands.length,
+        forced: forced.length,
+        stopwords: stopwords.size,
+        rejections: rejections.size,
+        candidates: cands.map(
+          (candidate) =>
+            `"${candidate.surface}" -> [[${candidate.note}]]${candidate.forced ? " (registered)" : ""}`,
+        ),
+      },
+      `enricher: ${cands.length} link candidate(s) (${forced.length} registered) from local index of ${index.length} aliases`,
+    );
+    return cands;
+  }
+
+  private async askToConfirm(
+    id: string,
+    ambiguous: Candidate[],
+  ): Promise<void> {
+    for (const link of ambiguous) {
+      const pid = await this.deps.edits.askLink(id, link.surface, link.note);
+      log.debug(
+        { id, pid, surface: link.surface, note: link.note },
+        "asked to confirm link",
+      );
+    }
+  }
+
+  private async writeEntry(
+    jot: Jot,
+    { followers, merged }: Group,
+    text: string,
+    maxChars: number,
+  ): Promise<Written> {
+    const pieces = splitEntry(linkDateWords(text, jotDay(jot)), maxChars);
+    const linked = pieces[0] ?? "";
+    const spillover = pieces
+      .slice(1)
+      .map((piece, index) => pieceJot(jot, piece, index + 1));
+    if (spillover.length)
+      log.info(
+        { id: jot.id, maxChars, pieces: spillover.map((piece) => piece.id) },
+        `entry over ${maxChars} chars — split into ${pieces.length} jots`,
+      );
+    await this.writeLine(
+      jot,
+      [
+        this.composeLine(jot, linked),
+        ...spillover.map((piece) =>
+          journalLine(piece.time, piece.raw_text ?? "", piece.anchor),
+        ),
+      ].join("\n"),
+    );
+    // Rows only after the note write: a failed write retries the whole jot, and rows
+    // written first would be duplicated by that retry.
+    // ponytail: a crash between the write and these inserts leaves the spillover lines
+    // in the note with no jot row (uneditable). Sub-millisecond window, local sqlite.
+    for (const piece of spillover) await this.deps.repo.insertJot(piece);
+    if (spillover.length && !merged)
+      await this.deps.repo.updateJot(jot.id, {
+        [sourceField(jot.kind)]: linked,
+      });
+    await this.deps.repo.updateJot(jot.id, { status: "done", error: null });
+    for (const follower of followers)
+      await this.deps.repo.updateJot(follower.id, {
+        status: "done",
+        error: null,
+      });
+    return { linked, spillover };
+  }
+
+  /** Post-`done` steps are best-effort UI + the queued-edit drain. A transient throw
+   *  here must NOT route to fail(): that would demote an already-committed `done` jot
+   *  to `failed`, causing wasted re-enrichment and duplicate link prompts on retry. */
+  private async afterDone(
+    jot: Jot,
+    { followers, merged }: Group,
+    { linked, spillover }: Written,
+    { tasks, tilCard }: Enriched,
+  ): Promise<void> {
+    try {
+      await this.deps.jots.react(jot.id, "done");
+      const of = spillover.length + 1;
+      await this.doneStatus(
+        jot,
+        linked,
+        merged ? followers.length + 1 : 0,
+        of > 1 ? { i: 1, of } : undefined,
+      );
+      for (const [index, piece] of spillover.entries())
+        await this.doneStatus(piece, piece.raw_text ?? "", 0, {
+          i: index + 2,
+          of,
+        });
+      // Tasks come after the entry is safely in the note: a card is a question about
+      // something already journalled, never a step on the way to journalling it.
+      for (const draft of tasks)
+        await this.deps.tasks.suggest(draft, jot.id, jotDay(jot));
+      if (tilCard) await this.deps.jots.askTil(jot.id, linked);
+      await this.deps.edits.drainQueued(jot.id); // apply anything queued while we were working
+      for (const follower of followers) {
+        await this.deps.jots.react(follower.id, "done");
+        await this.deps.jots.deleteStatus(follower.id);
+        await this.deps.edits.drainQueued(follower.id);
+      }
+    } catch (err) {
+      log.error(
+        { id: jot.id, err },
+        "post-done side effect failed — jot stays done",
+      );
+    }
+  }
+
+  private async doneStatus(
+    jot: Jot,
+    text: string,
+    squashed: number,
+    part?: { i: number; of: number },
+  ): Promise<void> {
+    await this.deps.jots.status(
+      jot.id,
+      doneMessage(jot.time, jot.kind, text, jot.id, squashed, part),
+      { undo: true, embed: embedOffer(text) },
+    );
   }
 
   private async fail(jot: Jot, err: unknown): Promise<void> {
@@ -389,23 +509,39 @@ export class ProcessingService {
     const msg = errorText(err);
     const attempts = (jot.attempts ?? 0) + 1;
     const recoverable = isRecoverable(err);
-    if (recoverable && attempts < MAX_ATTEMPTS) {
-      log.warn(
-        { id: jot.id, attempts, max: MAX_ATTEMPTS, err },
-        "jot failed (transient) — will retry",
-      );
-      await this.deps.repo.updateJot(jot.id, {
-        status: "failed",
-        attempts,
-        error: msg,
-      });
-      await this.deps.jots.react(jot.id, "retrying");
-      await this.say(
-        jot.id,
-        retryNotice(jot.kind, attempts, MAX_ATTEMPTS, msg),
-      );
-      return;
-    }
+    if (recoverable && attempts < MAX_ATTEMPTS)
+      return this.retryLater(jot, attempts, msg, err);
+    return this.giveUp(jot, { attempts, msg, recoverable, err });
+  }
+
+  private async retryLater(
+    jot: Jot,
+    attempts: number,
+    msg: string,
+    err: unknown,
+  ): Promise<void> {
+    log.warn(
+      { id: jot.id, attempts, max: MAX_ATTEMPTS, err },
+      "jot failed (transient) — will retry",
+    );
+    await this.deps.repo.updateJot(jot.id, {
+      status: "failed",
+      attempts,
+      error: msg,
+    });
+    await this.deps.jots.react(jot.id, "retrying");
+    await this.say(jot.id, retryNotice(jot.kind, attempts, MAX_ATTEMPTS, msg));
+  }
+
+  private async giveUp(
+    jot: Jot,
+    {
+      attempts,
+      msg,
+      recoverable,
+      err,
+    }: { attempts: number; msg: string; recoverable: boolean; err: unknown },
+  ): Promise<void> {
     const reason = recoverable
       ? `no luck after ${attempts} tries`
       : "unrecoverable error";
@@ -414,10 +550,10 @@ export class ProcessingService {
       "jot abandoned — posting un-enriched",
     );
     const followers = await this.deps.repo.groupFollowers(jot.id);
-    const source = combineEnrichSource(
-      [jot, ...followers].map((member) =>
-        enrichableSource(member, "🎤 (voice note — transcription failed)"),
-      ),
+    const source = groupSource(
+      jot,
+      followers,
+      "🎤 (voice note — transcription failed)",
     );
     try {
       await this.writeLine(
@@ -544,31 +680,6 @@ export class ProcessingService {
     }
     log.info({ id: jot.id }, "til detection: this jot sounds like a TIL");
     return true;
-  }
-
-  /** A jot for one spillover piece of an over-long entry: a plain text jot, already done
-   *  (the text is enriched: it came out of this jot's own enrichment), with an id and
-   *  anchor of its own so it edits, undoes and reprocesses independently. Its `received_at`
-   *  is nudged past the parent's so the intake order (and any later squash query) still
-   *  reads left to right. */
-  private pieceJot(jot: Jot, text: string, offset: number): Jot {
-    const id = shortId();
-    return {
-      ...jot,
-      id,
-      anchor: id,
-      kind: "text",
-      raw_text: text,
-      transcript: null,
-      proposed_text: null,
-      asset_path: null, // the media stays on the parent's line, embedded once
-      file_id: null,
-      status: "done",
-      attempts: 0,
-      error: null,
-      received_at: jot.received_at + offset,
-      updated_at: Date.now(),
-    };
   }
 
   private composeLine(jot: Jot, textPart: string): string {

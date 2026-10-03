@@ -26,6 +26,9 @@ import {
 import { errorText } from "../libs/text.ts";
 import {
   ENRICH_JSON_ONLY,
+  type EnrichInput,
+  enrichPrompt,
+  fence,
   SYSTEM,
   TASK_JSON_ONLY,
   TASK_SYSTEM,
@@ -65,12 +68,6 @@ export type SwitchNotifier = (
   err?: unknown,
 ) => void | Promise<void>;
 
-interface EnrichInput {
-  text: string;
-  candidates: Candidate[];
-  merge?: boolean;
-  splitAt?: number;
-}
 interface EnrichResult {
   text: string; // journal text with confident links applied inline
   ambiguous: Candidate[]; // links to confirm via Telegram buttons
@@ -114,9 +111,6 @@ const outputFormat = (schema: z.ZodType): OutputFormat => {
 
 const TASK_OUTPUT_FORMAT = outputFormat(TaskOutputStrict);
 const ENRICH_OUTPUT_FORMAT = outputFormat(EnrichOutputStrict);
-
-/** Strip the fence we wrap user text in, so content can't break out of the delimiter. */
-const fence = (value: string): string => value.replaceAll('"""', "");
 
 export interface EnricherDeps {
   query: QueryFn;
@@ -191,22 +185,7 @@ export class Enricher {
   }
 
   async enrich(input: EnrichInput): Promise<EnrichResult> {
-    const cands = input.candidates.length
-      ? input.candidates
-          .map(
-            (candidate) =>
-              `- "${candidate.surface}" -> [[${candidate.note}]]${candidate.forced ? " (REGISTERED)" : ""}`,
-          )
-          .join("\n")
-      : "(none)";
-    const mergeNote = input.merge
-      ? "\n\nThis entry arrived as several quick messages sent moments apart (each line below is one). Weave them into ONE coherent journal entry with correct punctuation and natural flow. Keep every point — do not summarise, drop, or reorder content."
-      : "";
-    const splitNote =
-      input.splitAt && input.text.length > input.splitAt
-        ? `\n\nThis is longer than ${input.splitAt} characters and will be split into several separate journal entries. Put a blank line between distinct topics so the split lands on a change of subject. Add ONLY blank lines — do not summarise, drop, reorder, or reword anything. If it is all one topic, add none.`
-        : "";
-    const prompt = `Candidate links:\n${cands}${mergeNote}${splitNote}\n\nJournal text:\n"""${fence(input.text)}"""`;
+    const prompt = enrichPrompt(input);
     log.info(
       {
         candidates: input.candidates.length,
@@ -378,36 +357,13 @@ export class Enricher {
     model?: string;
     parse?: (out: SdkOut) => T;
   }): Promise<T> {
-    const sdkSystem =
-      system && outputFormat ? system + USE_OUTPUT_TOOL : system;
-    const groqMessages: GroqMessage[] | undefined =
-      typeof prompt === "string"
-        ? [
-            ...(system
-              ? [{ role: "system" as const, content: system + jsonTail }]
-              : []),
-            { role: "user", content: prompt },
-          ]
-        : undefined;
-    const steps: { name: string; call: () => Promise<SdkOut> }[] = [
-      ...this.models(modelOverride ?? this.model).map((model) => ({
-        name: model ?? "default",
-        call: () => this.runSdk(prompt, sdkSystem, outputFormat, model),
-      })),
-      ...(groqMessages
-        ? this.fallbacks.map((fb) => ({
-            name: fb.name ?? fb.model,
-            call: () =>
-              (this.deps.groqChat ?? groqChat)(
-                fb.apiKey,
-                fb.model,
-                groqMessages,
-                fb.baseUrl,
-                this.timeoutMs,
-              ),
-          }))
-        : []),
-    ];
+    const steps = this.steps(
+      prompt,
+      system,
+      jsonTail,
+      outputFormat,
+      modelOverride,
+    );
     let lastErr: unknown;
     for (const [tier, step] of steps.entries()) {
       const breaker = this.breaker(step.name);
@@ -445,6 +401,49 @@ export class Enricher {
         log.warn({ err, step: step.name, tier }, "enrich: unusable answer");
       }
     }
+    return this.allDown(lastErr);
+  }
+
+  private steps(
+    prompt: string | AsyncIterable<unknown>,
+    system: string | undefined,
+    jsonTail: string,
+    outputFormat: OutputFormat | undefined,
+    modelOverride: string | undefined,
+  ): { name: string; call: () => Promise<SdkOut> }[] {
+    const sdkSystem =
+      system && outputFormat ? system + USE_OUTPUT_TOOL : system;
+    const groqMessages: GroqMessage[] | undefined =
+      typeof prompt === "string"
+        ? [
+            ...(system
+              ? [{ role: "system" as const, content: system + jsonTail }]
+              : []),
+            { role: "user", content: prompt },
+          ]
+        : undefined;
+    return [
+      ...this.models(modelOverride ?? this.model).map((model) => ({
+        name: model ?? "default",
+        call: () => this.runSdk(prompt, sdkSystem, outputFormat, model),
+      })),
+      ...(groqMessages
+        ? this.fallbacks.map((fallback) => ({
+            name: fallback.name ?? fallback.model,
+            call: () =>
+              (this.deps.groqChat ?? groqChat)(
+                fallback.apiKey,
+                fallback.model,
+                groqMessages,
+                fallback.baseUrl,
+                this.timeoutMs,
+              ),
+          }))
+        : []),
+    ];
+  }
+
+  private async allDown(lastErr: unknown): Promise<never> {
     if (this.available()) throw lastErr;
     if (this.tier !== DOWN) {
       log.error(
