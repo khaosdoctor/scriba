@@ -50,6 +50,46 @@ const STARTING: Record<Jot["kind"], string> = {
 const voiceStatus = (transcript: string, step: string): string =>
   `🎤 <i>${escapeHtml(transcript.trim())}</i>\n\n${step}`;
 
+const groupSource = (
+  jot: Jot,
+  followers: Jot[],
+  audioFallback?: string,
+): string =>
+  combineEnrichSource(
+    [jot, ...followers].map((member) =>
+      enrichableSource(member, audioFallback),
+    ),
+  );
+
+/** A jot for one spillover piece of an over-long entry: a plain text jot, already done
+ *  (the text is enriched: it came out of this jot's own enrichment), with an id and
+ *  anchor of its own so it edits, undoes and reprocesses independently. Its `received_at`
+ *  is nudged past the parent's so the intake order (and any later squash query) still
+ *  reads left to right. */
+export function pieceJot(
+  parent: Jot,
+  pieceText: string,
+  receivedOffset: number,
+): Jot {
+  const id = shortId();
+  return {
+    ...parent,
+    id,
+    anchor: id,
+    kind: "text",
+    raw_text: pieceText,
+    transcript: null,
+    proposed_text: null,
+    asset_path: null, // the media stays on the parent's line, embedded once
+    file_id: null,
+    status: "done",
+    attempts: 0,
+    error: null,
+    received_at: parent.received_at + receivedOffset,
+    updated_at: Date.now(),
+  };
+}
+
 interface Group {
   followers: Jot[];
   merged: boolean;
@@ -248,9 +288,7 @@ export class ProcessingService {
     for (const follower of await this.deps.repo.groupFollowers(jot.id))
       followers.push(await this.ensureMedia(follower));
     const merged = followers.length > 0;
-    const source = combineEnrichSource(
-      [jot, ...followers].map((member) => enrichableSource(member)),
-    ); // video is attach-only, so it contributes nothing here
+    const source = groupSource(jot, followers);
     if (merged)
       log.info(
         { id: jot.id, followers: followers.map((follower) => follower.id) },
@@ -374,7 +412,7 @@ export class ProcessingService {
     const linked = pieces[0] ?? "";
     const spillover = pieces
       .slice(1)
-      .map((piece, index) => this.pieceJot(jot, piece, index + 1));
+      .map((piece, index) => pieceJot(jot, piece, index + 1));
     if (spillover.length)
       log.info(
         { id: jot.id, maxChars, pieces: spillover.map((piece) => piece.id) },
@@ -475,23 +513,39 @@ export class ProcessingService {
     const msg = errorText(err);
     const attempts = (jot.attempts ?? 0) + 1;
     const recoverable = isRecoverable(err);
-    if (recoverable && attempts < MAX_ATTEMPTS) {
-      log.warn(
-        { id: jot.id, attempts, max: MAX_ATTEMPTS, err },
-        "jot failed (transient) — will retry",
-      );
-      await this.deps.repo.updateJot(jot.id, {
-        status: "failed",
-        attempts,
-        error: msg,
-      });
-      await this.deps.jots.react(jot.id, "retrying");
-      await this.say(
-        jot.id,
-        retryNotice(jot.kind, attempts, MAX_ATTEMPTS, msg),
-      );
-      return;
-    }
+    if (recoverable && attempts < MAX_ATTEMPTS)
+      return this.retryLater(jot, attempts, msg, err);
+    return this.giveUp(jot, { attempts, msg, recoverable, err });
+  }
+
+  private async retryLater(
+    jot: Jot,
+    attempts: number,
+    msg: string,
+    err: unknown,
+  ): Promise<void> {
+    log.warn(
+      { id: jot.id, attempts, max: MAX_ATTEMPTS, err },
+      "jot failed (transient) — will retry",
+    );
+    await this.deps.repo.updateJot(jot.id, {
+      status: "failed",
+      attempts,
+      error: msg,
+    });
+    await this.deps.jots.react(jot.id, "retrying");
+    await this.say(jot.id, retryNotice(jot.kind, attempts, MAX_ATTEMPTS, msg));
+  }
+
+  private async giveUp(
+    jot: Jot,
+    {
+      attempts,
+      msg,
+      recoverable,
+      err,
+    }: { attempts: number; msg: string; recoverable: boolean; err: unknown },
+  ): Promise<void> {
     const reason = recoverable
       ? `no luck after ${attempts} tries`
       : "unrecoverable error";
@@ -500,10 +554,10 @@ export class ProcessingService {
       "jot abandoned — posting un-enriched",
     );
     const followers = await this.deps.repo.groupFollowers(jot.id);
-    const source = combineEnrichSource(
-      [jot, ...followers].map((member) =>
-        enrichableSource(member, "🎤 (voice note — transcription failed)"),
-      ),
+    const source = groupSource(
+      jot,
+      followers,
+      "🎤 (voice note — transcription failed)",
     );
     try {
       await this.writeLine(
@@ -630,31 +684,6 @@ export class ProcessingService {
     }
     log.info({ id: jot.id }, "til detection: this jot sounds like a TIL");
     return true;
-  }
-
-  /** A jot for one spillover piece of an over-long entry: a plain text jot, already done
-   *  (the text is enriched: it came out of this jot's own enrichment), with an id and
-   *  anchor of its own so it edits, undoes and reprocesses independently. Its `received_at`
-   *  is nudged past the parent's so the intake order (and any later squash query) still
-   *  reads left to right. */
-  private pieceJot(jot: Jot, text: string, offset: number): Jot {
-    const id = shortId();
-    return {
-      ...jot,
-      id,
-      anchor: id,
-      kind: "text",
-      raw_text: text,
-      transcript: null,
-      proposed_text: null,
-      asset_path: null, // the media stays on the parent's line, embedded once
-      file_id: null,
-      status: "done",
-      attempts: 0,
-      error: null,
-      received_at: jot.received_at + offset,
-      updated_at: Date.now(),
-    };
   }
 
   private composeLine(jot: Jot, textPart: string): string {
