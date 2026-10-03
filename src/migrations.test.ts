@@ -3,7 +3,7 @@ import { test } from "node:test";
 import knexLib, { type Knex } from "knex";
 import { openDb } from "./data/connections/sqlite.ts";
 import { JotRepository } from "./data/repositories/jots.ts";
-import { removeDb, tempDbPath } from "./test/sqlite.ts";
+import { withNative } from "./test/sqlite.ts";
 
 const BEFORE_SECTION = "20260922000000";
 const SECTION = "20260930000000";
@@ -19,8 +19,8 @@ const insertOld = (knex: Knex, id: string) =>
     [id, id],
   );
 
-/** A knex on a fresh sqlite file, or null when better-sqlite3 can't build here. */
-async function open(dbPath: string): Promise<Knex | null> {
+/** A knex on a fresh sqlite file; throws when better-sqlite3 can't build here. */
+async function open(dbPath: string): Promise<Knex> {
   const knex = knexLib({
     client: "better-sqlite3",
     connection: { filename: dbPath },
@@ -36,26 +36,16 @@ async function open(dbPath: string): Promise<Knex | null> {
   try {
     await knex.raw("select 1");
     return knex;
-  } catch {
+  } catch (error) {
     await knex.destroy();
-    return null;
+    throw error;
   }
 }
 
-async function withDb(
+const withDb = (
   testContext: { skip: (why: string) => void },
   fn: (knex: Knex, dbPath: string) => Promise<void>,
-) {
-  const dbPath = tempDbPath();
-  const knex = await open(dbPath);
-  if (!knex) return testContext.skip("native sqlite unavailable");
-  try {
-    await fn(knex, dbPath);
-  } finally {
-    await knex.destroy().catch(() => {});
-    await removeDb(dbPath);
-  }
-}
+) => withNative(testContext, open, fn);
 
 async function migrateTo(knex: Knex, version: string) {
   while ((await knex.migrate.currentVersion()) !== version)
@@ -134,8 +124,8 @@ test("jot_section gives rows that predate it the journal section", async (testCo
     await knex.destroy();
 
     // The repository sees that old row as a journal jot and never as a TIL one.
-    const k2 = await openDb(dbPath);
-    const repo = new JotRepository(k2);
+    const reopened = await openDb(dbPath);
+    const repo = new JotRepository(reopened);
     try {
       assert.equal(
         (await repo.lastPendingEnrichableJot("n.md", "journal"))?.id,
@@ -146,7 +136,7 @@ test("jot_section gives rows that predate it the journal section", async (testCo
         undefined,
       );
     } finally {
-      await k2.destroy();
+      await reopened.destroy();
     }
   });
 });

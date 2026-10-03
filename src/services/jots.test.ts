@@ -6,7 +6,7 @@ import type { Jot } from "../domain/jot/entity.ts";
 import type { IntakeInput } from "../domain/jot/structures.ts";
 import { moveAnchorLine, placeholderLine } from "../libs/note.ts";
 import { plainDate, plainTime, previousDate } from "../libs/time.ts";
-import { removeDb, sampleJot, tempDbPath } from "../test/sqlite.ts";
+import { sampleJot, withNative } from "../test/sqlite.ts";
 import { JotService } from "./jots.ts";
 
 type Moved = "moved" | "no-line" | "no-heading";
@@ -70,61 +70,61 @@ function setup(
 }
 
 test("accepting moves the line and follows it with the leader's and followers' section", async () => {
-  const h = setup();
-  assert.equal(await h.jots.answerTil("abcd1234", true), "moved");
-  assert.deepEqual(h.updates, [
+  const harness = setup();
+  assert.equal(await harness.jots.answerTil("abcd1234", true), "moved");
+  assert.deepEqual(harness.updates, [
     ["abcd1234", { section: "til" }],
     ["f0000001", { section: "til" }],
   ]);
 });
 
 test("a jot with no followers gets exactly one section update", async () => {
-  const h = setup({ followers: [] });
-  await h.jots.answerTil("abcd1234", true);
-  assert.deepEqual(h.updates, [["abcd1234", { section: "til" }]]);
+  const harness = setup({ followers: [] });
+  await harness.jots.answerTil("abcd1234", true);
+  assert.deepEqual(harness.updates, [["abcd1234", { section: "til" }]]);
 });
 
 test("a note with no TIL heading is left alone", async () => {
-  const h = setup({ moved: "no-heading" });
-  assert.equal(await h.jots.answerTil("abcd1234", true), "no-heading");
-  assert.deepEqual(h.updates, []);
+  const harness = setup({ moved: "no-heading" });
+  assert.equal(await harness.jots.answerTil("abcd1234", true), "no-heading");
+  assert.deepEqual(harness.updates, []);
 });
 
 test("a line that is gone from the note changes nothing", async () => {
-  const h = setup({ moved: "no-line" });
-  assert.equal(await h.jots.answerTil("abcd1234", true), "no-line");
-  assert.deepEqual(h.updates, []);
+  const harness = setup({ moved: "no-line" });
+  assert.equal(await harness.jots.answerTil("abcd1234", true), "no-line");
+  assert.deepEqual(harness.updates, []);
 });
 
 test("declining changes nothing", async () => {
-  const h = setup();
-  assert.equal(await h.jots.answerTil("abcd1234", false), "kept");
-  assert.deepEqual(h.updates, []);
-  assert.deepEqual(h.moves, []);
+  const harness = setup();
+  assert.equal(await harness.jots.answerTil("abcd1234", false), "kept");
+  assert.deepEqual(harness.updates, []);
+  assert.deepEqual(harness.moves, []);
 });
 
 test("a purged or deleted jot is gone whatever was tapped", async () => {
   for (const jot of [null, { status: "deleted" }]) {
     for (const accept of [true, false]) {
-      const h = setup({ jot });
-      assert.equal(await h.jots.answerTil("abcd1234", accept), "gone");
-      assert.deepEqual(h.moves, []);
-      assert.deepEqual(h.updates, []);
-      assert.deepEqual(h.marked, []);
+      const harness = setup({ jot });
+      assert.equal(await harness.jots.answerTil("abcd1234", accept), "gone");
+      assert.deepEqual(harness.moves, []);
+      assert.deepEqual(harness.updates, []);
+      assert.deepEqual(harness.marked, []);
     }
   }
 });
 
 test("callback data with no jot id never looks a jot up", async () => {
-  const h = setup();
-  assert.equal(await h.jots.answerTil(undefined, true), "gone");
-  assert.deepEqual(h.lookups, []);
+  const harness = setup();
+  assert.equal(await harness.jots.answerTil(undefined, true), "gone");
+  assert.deepEqual(harness.lookups, []);
 });
 
 test("a failing vault write changes nothing and reports a failed move", async () => {
-  const h = setup({ moveFails: true });
-  assert.equal(await h.jots.answerTil("abcd1234", true), "failed");
-  assert.deepEqual(h.updates, []);
+  const harness = setup({ moveFails: true });
+  assert.equal(await harness.jots.answerTil("abcd1234", true), "failed");
+  assert.deepEqual(harness.updates, []);
 });
 
 test("tapping accept twice against a real note keeps one copy of the line in the TIL section", async () => {
@@ -135,7 +135,7 @@ test("tapping accept twice against a real note keeps one copy of the line in the
     "## TIL",
     "- ",
   ].join("\n");
-  const h = setup({
+  const harness = setup({
     move: async (_path, anchor) => {
       const out = moveAnchorLine(note, anchor, "TIL");
       if ("missing" in out) return "no-line";
@@ -143,11 +143,13 @@ test("tapping accept twice against a real note keeps one copy of the line in the
       return "moved";
     },
   });
-  await h.jots.answerTil("abcd1234", true);
-  await h.jots.answerTil("abcd1234", true);
+  await harness.jots.answerTil("abcd1234", true);
+  await harness.jots.answerTil("abcd1234", true);
   assert.equal(note.split("^abcd1234").length - 1, 1);
   assert.ok(note.indexOf("^abcd1234") > note.indexOf("## TIL"));
-  assert.ok(h.updates.every(([, patch]) => (patch as any).section === "til"));
+  assert.ok(
+    harness.updates.every(([, patch]) => (patch as any).section === "til"),
+  );
 });
 
 test("a fresh controller can answer a card another instance sent, since the card carries only the jot id", async () => {
@@ -165,22 +167,22 @@ test("the move uses the jot's own note, even when the tap comes the next day", a
     "notes/daily notes/2026-08-16.md",
     "notes/daily notes/2026-12-31.md",
   ]) {
-    const h = setup({ jot: { note_path: notePath } });
-    await h.jots.answerTil("abcd1234", true);
-    assert.deepEqual(h.moves, [[notePath, "abcd1234"]]);
+    const harness = setup({ jot: { note_path: notePath } });
+    await harness.jots.answerTil("abcd1234", true);
+    assert.deepEqual(harness.moves, [[notePath, "abcd1234"]]);
   }
 });
 
 test("the card is HTML with both buttons carrying the jot id", async () => {
-  const h = setup();
-  await h.jots.askTil("abcd1234", "sqlite has WAL");
-  const sent = h.sends[0]!;
+  const harness = setup();
+  await harness.jots.askTil("abcd1234", "sqlite has WAL");
+  const sent = harness.sends[0]!;
   assert.equal(sent.opts.html, true);
   assert.match(sent.text, /<blockquote>sqlite has WAL<\/blockquote>/);
   assert.deepEqual(
     sent.opts.keyboard.inline_keyboard
       .flat()
-      .map((b: any) => [b.text, b.callback_data]),
+      .map((button: any) => [button.text, button.callback_data]),
     [
       ["✅ Move to TIL", "ti:y:abcd1234"],
       ["🚫 Keep in Journal", "ti:n:abcd1234"],
@@ -189,27 +191,27 @@ test("the card is HTML with both buttons carrying the jot id", async () => {
 });
 
 test("the jot's text is escaped so it cannot close the quote early", async () => {
-  const h = setup();
-  await h.jots.askTil("abcd1234", '<b>x</b> & "q" </blockquote><script>');
-  const { text } = h.sends[0]!;
+  const harness = setup();
+  await harness.jots.askTil("abcd1234", '<b>x</b> & "q" </blockquote><script>');
+  const { text } = harness.sends[0]!;
   assert.ok(!text.includes("<b>x"));
   assert.ok(!text.includes("<script>"));
   assert.equal(text.split("</blockquote>").length - 1, 1);
 });
 
 test("a jot over Telegram's cap is quoted truncated, so the card still goes out and is marked", async () => {
-  const h = setup({ sendFails: (text) => text.length > 4096 });
-  await h.jots.askTil("abcd1234", "x".repeat(10_000));
-  assert.equal(h.sends.length, 1);
-  assert.ok(h.sends[0]!.text.length < 4096);
-  assert.match(h.sends[0]!.text, /…<\/blockquote>$/);
-  assert.deepEqual(h.marked, ["abcd1234"]);
+  const harness = setup({ sendFails: (text) => text.length > 4096 });
+  await harness.jots.askTil("abcd1234", "x".repeat(10_000));
+  assert.equal(harness.sends.length, 1);
+  assert.ok(harness.sends[0]!.text.length < 4096);
+  assert.match(harness.sends[0]!.text, /…<\/blockquote>$/);
+  assert.deepEqual(harness.marked, ["abcd1234"]);
 });
 
 test("a worst-case escaped jot still fits in one message", async () => {
-  const h = setup({ sendFails: (text) => text.length > 4096 });
-  await h.jots.askTil("abcd1234", "&".repeat(10_000));
-  assert.equal(h.sends.length, 1);
+  const harness = setup({ sendFails: (text) => text.length > 4096 });
+  await harness.jots.askTil("abcd1234", "&".repeat(10_000));
+  assert.equal(harness.sends.length, 1);
 });
 
 test("the jot is marked as asked only after the card was sent", async () => {
@@ -259,8 +261,9 @@ function intakeSetup(over: IntakeFakes = {}) {
   const reacts: [number, string][] = [];
   const notices: string[] = [];
   const repo = over.realRepo ?? {
-    insertJot: async (j: Jot) => void inserted.push(j),
-    mapMessage: async (m: number, id: string) => void mapped.push([m, id]),
+    insertJot: async (jot: Jot) => void inserted.push(jot),
+    mapMessage: async (messageId: number, id: string) =>
+      void mapped.push([messageId, id]),
     lastPendingEnrichableJot: async (notePath: string, section: string) => {
       lookups.push([notePath, section]);
       return over.prev ?? (over.chain ? inserted.at(-1) : undefined);
@@ -312,29 +315,29 @@ function intakeSetup(over: IntakeFakes = {}) {
 }
 
 test("a TIL text jot is stored stripped, in the til section, and written under it", async () => {
-  const h = intakeSetup();
-  await h.intake({ rawText: "TIL: sqlite has WAL mode" });
-  const row = h.inserted[0]!;
+  const harness = intakeSetup();
+  await harness.intake({ rawText: "TIL: sqlite has WAL mode" });
+  const row = harness.inserted[0]!;
   assert.equal(row.section, "til");
   assert.equal(row.raw_text, "sqlite has WAL mode");
-  assert.deepEqual(h.lookups, [[notePath, "til"]]);
-  assert.deepEqual(h.appended, [
+  assert.deepEqual(harness.lookups, [[notePath, "til"]]);
+  assert.deepEqual(harness.appended, [
     [today, placeholderLine(row.time, row.id), "til"],
   ]);
-  assert.deepEqual(h.mapped, [[77, row.id]]);
-  assert.deepEqual(h.queued, [row.id]);
-  assert.deepEqual(h.reacts(), ["✍"]);
-  assert.deepEqual(h.reactedTo(), [77]);
+  assert.deepEqual(harness.mapped, [[77, row.id]]);
+  assert.deepEqual(harness.queued, [row.id]);
+  assert.deepEqual(harness.reacts(), ["✍"]);
+  assert.deepEqual(harness.reactedTo(), [77]);
 });
 
 test("a plain text jot stays in the journal section untouched", async () => {
-  const h = intakeSetup();
-  await h.intake({ rawText: "bought milk" });
-  const row = h.inserted[0]!;
+  const harness = intakeSetup();
+  await harness.intake({ rawText: "bought milk" });
+  const row = harness.inserted[0]!;
   assert.equal(row.section, "journal");
   assert.equal(row.raw_text, "bought milk");
-  assert.deepEqual(h.lookups, [[notePath, "journal"]]);
-  assert.equal(h.appended[0]?.[2], "journal");
+  assert.deepEqual(harness.lookups, [[notePath, "journal"]]);
+  assert.equal(harness.appended[0]?.[2], "journal");
 });
 
 test("only text jots are checked for the TIL marker", async () => {
@@ -355,11 +358,11 @@ test("known limitation: 'til' the English word sends a jot to the TIL section", 
     ["Til midnight", "midnight"],
     ["til 5pm", "5pm"],
   ] as const) {
-    const h = intakeSetup();
-    await h.intake({ rawText: text });
-    assert.equal(h.inserted[0]?.section, "til", text);
-    assert.equal(h.inserted[0]?.raw_text, stored, text);
-    assert.equal(h.appended[0]?.[2], "til", text);
+    const harness = intakeSetup();
+    await harness.intake({ rawText: text });
+    assert.equal(harness.inserted[0]?.section, "til", text);
+    assert.equal(harness.inserted[0]?.raw_text, stored, text);
+    assert.equal(harness.appended[0]?.[2], "til", text);
   }
 });
 
@@ -377,87 +380,85 @@ test("a jot with no text at all is a journal jot with a null raw_text, a caption
 });
 
 test("a TIL jot squashes into a pending TIL leader and writes no placeholder", async () => {
-  const h = intakeSetup({ prev: leader({ section: "til" }) });
-  await h.intake({ rawText: "TIL: second fact" });
-  const row = h.inserted[0]!;
+  const harness = intakeSetup({ prev: leader({ section: "til" }) });
+  await harness.intake({ rawText: "TIL: second fact" });
+  const row = harness.inserted[0]!;
   assert.equal(row.anchor, "aaaaaaaa");
   assert.equal(row.section, "til");
-  assert.deepEqual(h.reacts(), ["🤝"]);
-  assert.deepEqual(h.appended, []);
-  assert.deepEqual(h.ensured, []);
-  assert.deepEqual(h.queued, [row.id]);
+  assert.deepEqual(harness.reacts(), ["🤝"]);
+  assert.deepEqual(harness.appended, []);
+  assert.deepEqual(harness.ensured, []);
+  assert.deepEqual(harness.queued, [row.id]);
 });
 
 test("a TIL leader outside the squash window is not joined", async () => {
-  const h = intakeSetup({
+  const harness = intakeSetup({
     prev: leader({ section: "til", received_at: NOW - 60_000 }),
   });
-  await h.intake({ rawText: "TIL: later fact" });
-  const row = h.inserted[0]!;
+  await harness.intake({ rawText: "TIL: later fact" });
+  const row = harness.inserted[0]!;
   assert.equal(row.anchor, row.id);
-  assert.deepEqual(h.reacts(), ["✍"]);
-  assert.equal(h.appended[0]?.[2], "til");
+  assert.deepEqual(harness.reacts(), ["✍"]);
+  assert.equal(harness.appended[0]?.[2], "til");
 });
 
 test("a voice jot squashes into a journal leader and keeps the journal section", async () => {
-  const h = intakeSetup({ prev: leader() });
-  await h.intake({ kind: "audio", fileId: "f1" });
-  assert.equal(h.inserted[0]?.anchor, "aaaaaaaa");
-  assert.equal(h.inserted[0]?.section, "journal");
-  assert.deepEqual(h.lookups, [[notePath, "journal"]]);
+  const harness = intakeSetup({ prev: leader() });
+  await harness.intake({ kind: "audio", fileId: "f1" });
+  assert.equal(harness.inserted[0]?.anchor, "aaaaaaaa");
+  assert.equal(harness.inserted[0]?.section, "journal");
+  assert.deepEqual(harness.lookups, [[notePath, "journal"]]);
 });
 
 test("image and video jots never look for a squash leader", async () => {
   for (const kind of ["image", "video"] as const) {
-    const h = intakeSetup({ prev: leader() });
-    await h.intake({ kind, fileId: "f1", rawText: "" });
-    assert.deepEqual(h.lookups, [], kind);
-    assert.equal(h.inserted[0]?.section, "journal", kind);
-    assert.equal(h.inserted[0]?.anchor, h.inserted[0]?.id, kind);
+    const harness = intakeSetup({ prev: leader() });
+    await harness.intake({ kind, fileId: "f1", rawText: "" });
+    assert.deepEqual(harness.lookups, [], kind);
+    assert.equal(harness.inserted[0]?.section, "journal", kind);
+    assert.equal(harness.inserted[0]?.anchor, harness.inserted[0]?.id, kind);
   }
 });
 
 test("a failed placeholder write still leaves the til row mapped and unqueued", async () => {
-  const h = intakeSetup({ appendFails: true });
+  const harness = intakeSetup({ appendFails: true });
   await assert.rejects(
-    () => h.intake({ rawText: "TIL: x y" }),
+    () => harness.intake({ rawText: "TIL: x y" }),
     /obsidian is down/,
   );
-  assert.equal(h.inserted[0]?.section, "til");
-  assert.equal(h.mapped.length, 1);
-  assert.deepEqual(h.queued, []);
+  assert.equal(harness.inserted[0]?.section, "til");
+  assert.equal(harness.mapped.length, 1);
+  assert.deepEqual(harness.queued, []);
 });
 
-test("a TIL jot does not join a pending journal jot in the real repository", async (t) => {
-  const dbPath = tempDbPath();
-  let repo: Repository;
-  try {
-    repo = await Repository.open(dbPath);
-  } catch (e) {
-    return t.skip(
-      `native sqlite unavailable: ${(e as Error).message.slice(0, 80)}`,
-    );
-  }
-  try {
-    await repo.jots.insertJot(leader());
-    const h = intakeSetup({ realRepo: repo.jots });
-    await h.intake({ rawText: "TIL: x y" });
-    const til = await repo.jots.getJot((await repo.jots.jotForMessage(77))!);
-    assert.equal(til?.section, "til");
-    assert.equal(til?.anchor, til?.id);
-    assert.deepEqual(h.reacts(), ["✍"]);
+test("a TIL jot does not join a pending journal jot in the real repository", async (testContext) => {
+  await withNative(
+    testContext,
+    (dbPath) => Repository.open(dbPath),
+    async (repo) => {
+      await repo.jots.insertJot(leader());
+      const harness = intakeSetup({ realRepo: repo.jots });
+      await harness.intake({ rawText: "TIL: x y" });
+      const til = await repo.jots.getJot((await repo.jots.jotForMessage(77))!);
+      assert.equal(til?.section, "til");
+      assert.equal(til?.anchor, til?.id);
+      assert.deepEqual(harness.reacts(), ["✍"]);
 
-    // and the other way round: a plain jot after the TIL jot skips it and rejoins the
-    // journal run it left off
-    await h.intake({ rawText: "plain", messageId: 78, sentAt: NOW + 1000 });
-    const plain = await repo.jots.getJot((await repo.jots.jotForMessage(78))!);
-    assert.equal(plain?.section, "journal");
-    assert.equal(plain?.anchor, "aaaaaaaa");
-    assert.deepEqual(h.reacts(), ["✍", "🤝"]);
-  } finally {
-    await repo.close();
-    await removeDb(dbPath);
-  }
+      // and the other way round: a plain jot after the TIL jot skips it and rejoins the
+      // journal run it left off
+      await harness.intake({
+        rawText: "plain",
+        messageId: 78,
+        sentAt: NOW + 1000,
+      });
+      const plain = await repo.jots.getJot(
+        (await repo.jots.jotForMessage(78))!,
+      );
+      assert.equal(plain?.section, "journal");
+      assert.equal(plain?.anchor, "aaaaaaaa");
+      assert.deepEqual(harness.reacts(), ["✍", "🤝"]);
+    },
+  );
 });
 
 // --- filing under another day (the follow-up after the nightly rating) ---
@@ -466,46 +467,46 @@ const rated = previousDate(NOW);
 const ratedPath = `notes/daily notes/${rated}.md`;
 
 test("a jot for a past day is filed as that day's last entry", async () => {
-  const h = intakeSetup();
-  await h.intake({ rawText: "Quiet day", day: rated });
-  assert.equal(h.inserted.length, 1);
-  const row = h.inserted[0]!;
+  const harness = intakeSetup();
+  await harness.intake({ rawText: "Quiet day", day: rated });
+  assert.equal(harness.inserted.length, 1);
+  const row = harness.inserted[0]!;
   assert.equal(row.note_path, ratedPath);
   assert.equal(row.time, "23:59:59");
   assert.equal(row.section, "journal");
   assert.equal(row.raw_text, "Quiet day");
   assert.equal(row.kind, "text");
-  assert.deepEqual(h.ensured, [rated]);
+  assert.deepEqual(harness.ensured, [rated]);
 });
 
 test("a TIL-prefixed answer for a past day goes into that day's til section", async () => {
-  const h = intakeSetup();
-  await h.intake({ rawText: "TIL: owls", day: rated });
-  const row = h.inserted[0]!;
+  const harness = intakeSetup();
+  await harness.intake({ rawText: "TIL: owls", day: rated });
+  const row = harness.inserted[0]!;
   assert.equal(row.section, "til");
   assert.equal(row.raw_text, "owls");
   assert.equal(row.note_path, ratedPath);
-  assert.equal(h.appended[0]?.[2], "til");
+  assert.equal(harness.appended[0]?.[2], "til");
 });
 
 test("two entries for one past day never squash, even seconds apart", async () => {
-  const h = intakeSetup({ chain: true });
-  await h.intake({ rawText: "one", day: rated });
-  await h.intake({ rawText: "two", day: rated, sentAt: NOW + 2000 });
-  assert.equal(h.inserted.length, 2);
-  for (const row of h.inserted) assert.equal(row.anchor, row.id);
-  assert.deepEqual(h.lookups, []);
-  assert.deepEqual(h.reacts(), ["✍", "✍"]);
+  const harness = intakeSetup({ chain: true });
+  await harness.intake({ rawText: "one", day: rated });
+  await harness.intake({ rawText: "two", day: rated, sentAt: NOW + 2000 });
+  assert.equal(harness.inserted.length, 2);
+  for (const row of harness.inserted) assert.equal(row.anchor, row.id);
+  assert.deepEqual(harness.lookups, []);
+  assert.deepEqual(harness.reacts(), ["✍", "✍"]);
 });
 
 test("an entry for the day it is sent on keeps its real time and skips squashing", async () => {
-  const h = intakeSetup({ chain: true });
-  await h.intake({ rawText: "now", day: today });
-  const row = h.inserted[0]!;
+  const harness = intakeSetup({ chain: true });
+  await harness.intake({ rawText: "now", day: today });
+  const row = harness.inserted[0]!;
   assert.equal(row.time, plainTime(NOW));
   assert.equal(row.received_at, NOW);
   assert.equal(row.note_path, notePath);
-  assert.deepEqual(h.lookups, []);
+  assert.deepEqual(harness.lookups, []);
 });
 
 test("the day override gives 23:59:59 on DST change days", async () => {
@@ -516,11 +517,11 @@ test("the day override gives 23:59:59 on DST change days", async () => {
       ["2026-03-29", new Date(2026, 2, 30, 0, 10)],
       ["2026-10-25", new Date(2026, 9, 26, 0, 10)],
     ] as const) {
-      const h = intakeSetup();
-      await h.intake({ rawText: "x", day, sentAt: next.getTime() });
-      assert.equal(h.inserted[0]?.time, "23:59:59", day);
+      const harness = intakeSetup();
+      await harness.intake({ rawText: "x", day, sentAt: next.getTime() });
+      assert.equal(harness.inserted[0]?.time, "23:59:59", day);
       assert.equal(
-        h.inserted[0]?.note_path,
+        harness.inserted[0]?.note_path,
         `notes/daily notes/${day}.md`,
         day,
       );
@@ -542,24 +543,24 @@ test("an un-squashed TIL follower is re-appended under the til section", async (
     anchor: "aaaaaaaa",
     status: "pending",
   });
-  const h = intakeSetup({ jotId: "bbbbbbbb", jot: follower });
-  await h.jots.optOutOfSquash(77);
-  assert.deepEqual(h.appended, [
+  const harness = intakeSetup({ jotId: "bbbbbbbb", jot: follower });
+  await harness.jots.optOutOfSquash(77);
+  assert.deepEqual(harness.appended, [
     [
       plainDate(follower.received_at),
       placeholderLine(follower.time, "bbbbbbbb"),
       "til",
     ],
   ]);
-  assert.deepEqual(h.reacts(), ["✍"]);
-  assert.deepEqual(h.reactedTo(), [77]);
+  assert.deepEqual(harness.reacts(), ["✍"]);
+  assert.deepEqual(harness.reactedTo(), [77]);
 });
 
 test("an un-squashed journal follower is re-appended under the journal section", async () => {
   const follower = leader({ id: "bbbbbbbb", anchor: "aaaaaaaa" });
-  const h = intakeSetup({ jotId: "bbbbbbbb", jot: follower });
-  await h.jots.optOutOfSquash(77);
-  assert.equal(h.appended[0]?.[2], "journal");
+  const harness = intakeSetup({ jotId: "bbbbbbbb", jot: follower });
+  await harness.jots.optOutOfSquash(77);
+  assert.equal(harness.appended[0]?.[2], "journal");
 });
 
 test("the opt-out writes the placeholder on the jot's own day, not today's", async () => {
@@ -569,10 +570,10 @@ test("the opt-out writes the placeholder on the jot's own day, not today's", asy
     anchor: "aaaaaaaa",
     received_at: received,
   });
-  const h = intakeSetup({ jotId: "bbbbbbbb", jot: follower });
-  await h.jots.optOutOfSquash(77);
-  assert.deepEqual(h.ensured, [plainDate(received)]);
-  assert.equal(h.appended[0]?.[0], plainDate(received));
+  const harness = intakeSetup({ jotId: "bbbbbbbb", jot: follower });
+  await harness.jots.optOutOfSquash(77);
+  assert.deepEqual(harness.ensured, [plainDate(received)]);
+  assert.equal(harness.appended[0]?.[0], plainDate(received));
   assert.notEqual(plainDate(received), today);
 });
 
@@ -583,8 +584,11 @@ test("the merge opt-out ignores an unknown message and a leader, and reports a l
   await unknown.jots.optOutOfSquash(77);
   const isLeader = intakeSetup({ jotId: "aaaaaaaa", jot: tilJot() });
   await isLeader.jots.optOutOfSquash(77);
-  for (const h of [unknown, isLeader])
-    assert.deepEqual([h.appended, h.notices, h.reacts()], [[], [], []]);
+  for (const harness of [unknown, isLeader])
+    assert.deepEqual(
+      [harness.appended, harness.notices, harness.reacts()],
+      [[], [], []],
+    );
 
   const late = intakeSetup({
     jotId: "bbbbbbbb",
@@ -600,16 +604,16 @@ test("the merge opt-out ignores an unknown message and a leader, and reports a l
 // --- the voice-fix pick ---
 
 test("a voice-fix pick is claimed once: the second claim and an unknown jot get nothing", () => {
-  const h = setup();
+  const harness = setup();
   const choices: string[] = [];
-  (h.jots as any).voiceFixPending.set("abcd1234", (c: string) =>
-    choices.push(c),
+  (harness.jots as any).voiceFixPending.set("abcd1234", (choice: string) =>
+    choices.push(choice),
   );
-  const settle = h.jots.pickVoiceFix("abcd1234", "proposed");
+  const settle = harness.jots.pickVoiceFix("abcd1234", "proposed");
   assert.ok(settle);
   assert.deepEqual(choices, []);
   settle();
   assert.deepEqual(choices, ["proposed"]);
-  assert.equal(h.jots.pickVoiceFix("abcd1234", "original"), undefined);
-  assert.equal(h.jots.pickVoiceFix("ffffffff", "original"), undefined);
+  assert.equal(harness.jots.pickVoiceFix("abcd1234", "original"), undefined);
+  assert.equal(harness.jots.pickVoiceFix("ffffffff", "original"), undefined);
 });

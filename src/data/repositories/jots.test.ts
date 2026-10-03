@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { removeDb, sampleJot, tempDbPath, withDb } from "../../test/sqlite.ts";
+import { sampleJot, withDb, withNative } from "../../test/sqlite.ts";
 import { openDb } from "../connections/sqlite.ts";
 import { JotRepository } from "./jots.ts";
 
-test("jots: insert, update, retry cap, claim, message map and queued edits", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("jots: insert, update, retry cap, claim, message map and queued edits", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     const jot = sampleJot("aaaaaaaa");
     await jots.insertJot(jot);
     assert.equal((await jots.getJot("aaaaaaaa"))?.raw_text, "hi");
@@ -16,7 +16,7 @@ test("jots: insert, update, retry cap, claim, message map and queued edits", asy
 
     await jots.insertJot({ ...sampleJot("bbbbbbbb"), status: "failed" });
     assert.deepEqual(
-      (await jots.pendingJots()).map((j) => j.id),
+      (await jots.pendingJots()).map((row) => row.id),
       ["bbbbbbbb"],
     );
 
@@ -26,14 +26,14 @@ test("jots: insert, update, retry cap, claim, message map and queued edits", asy
       status: "failed",
       attempts: 10,
     });
-    assert.ok(!(await jots.pendingJots()).some((j) => j.id === "cccccccc"));
+    assert.ok(!(await jots.pendingJots()).some((row) => row.id === "cccccccc"));
 
     // atomic claim: wins once, then the jot is `processing` and no longer pending
     assert.equal(await jots.claim("bbbbbbbb"), true);
     assert.equal(await jots.claim("bbbbbbbb"), false); // already claimed
-    assert.ok(!(await jots.pendingJots()).some((j) => j.id === "bbbbbbbb"));
+    assert.ok(!(await jots.pendingJots()).some((row) => row.id === "bbbbbbbb"));
     await jots.resetProcessing(); // crash recovery restores it
-    assert.ok((await jots.pendingJots()).some((j) => j.id === "bbbbbbbb"));
+    assert.ok((await jots.pendingJots()).some((row) => row.id === "bbbbbbbb"));
 
     await jots.mapMessage(42, "aaaaaaaa");
     assert.equal(await jots.jotForMessage(42), "aaaaaaaa");
@@ -49,9 +49,9 @@ test("jots: insert, update, retry cap, claim, message map and queued edits", asy
   });
 });
 
-test("a deleted status message stops resolving to its jot", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("a deleted status message stops resolving to its jot", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     await jots.insertJot(sampleJot("aaaaaaaa"));
     await jots.mapMessage(42, "aaaaaaaa");
     await jots.mapMessage(43, "aaaaaaaa");
@@ -62,9 +62,9 @@ test("a deleted status message stops resolving to its jot", async (t) => {
   });
 });
 
-test("resetForRetry sends a failed jot back to pending with its attempts and error cleared", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("resetForRetry sends a failed jot back to pending with its attempts and error cleared", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     await jots.insertJot({
       ...sampleJot("aaaaaaaa"),
       status: "failed",
@@ -105,9 +105,9 @@ test("resetForRetry leaves a jot being processed, or a deleted one, alone", asyn
   });
 });
 
-test("windowStats and statusCounts break down the live table", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("windowStats and statusCounts break down the live table", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     await jots.insertJot({ ...sampleJot("aaaaaaaa"), status: "done" });
     await jots.insertJot({ ...sampleJot("bbbbbbbb"), status: "pending" });
     await jots.insertJot({ ...sampleJot("cccccccc"), status: "failed" });
@@ -127,9 +127,9 @@ test("windowStats and statusCounts break down the live table", async (t) => {
   });
 });
 
-test("failedJots + resetFailed: a failed-at-cap jot is reset to pending", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("failedJots + resetFailed: a failed-at-cap jot is reset to pending", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     await jots.insertJot({
       ...sampleJot("cccccccc"),
       status: "failed",
@@ -137,7 +137,7 @@ test("failedJots + resetFailed: a failed-at-cap jot is reset to pending", async 
     });
 
     assert.deepEqual(
-      (await jots.failedJots()).map((j) => j.id),
+      (await jots.failedJots()).map((row) => row.id),
       ["cccccccc"],
     );
     assert.equal(await jots.resetFailed(false), 1);
@@ -146,9 +146,9 @@ test("failedJots + resetFailed: a failed-at-cap jot is reset to pending", async 
   });
 });
 
-test("recentJots lists newest first and excludes deleted jots", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("recentJots lists newest first and excludes deleted jots", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     await jots.insertJot(sampleJot("aaaaaaaa"));
     await jots.insertJot({ ...sampleJot("bbbbbbbb"), status: "pending" });
     await jots.insertJot({ ...sampleJot("cccccccc"), status: "pending" });
@@ -159,16 +159,16 @@ test("recentJots lists newest first and excludes deleted jots", async (t) => {
     await jots.markDeleted("aaaaaaaa");
 
     // recentJots (the /menu browser): newest first by received_at, deleted excluded
-    const recent = (await jots.recentJots()).map((j) => j.id);
+    const recent = (await jots.recentJots()).map((row) => row.id);
     assert.equal(recent[0], "dddddddd"); // highest received_at leads
     assert.ok(!recent.includes("aaaaaaaa")); // deleted is excluded
     assert.ok(recent.includes("bbbbbbbb") && recent.includes("cccccccc"));
   });
 });
 
-test("squash queries: lastPendingEnrichableJot and groupFollowers", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("squash queries: lastPendingEnrichableJot and groupFollowers", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     // squash queries. lastPendingEnrichableJot: newest still-pending text/voice jot in
     // a note, ignoring attach-only kinds. groupFollowers: same-anchor followers,
     // oldest-first, leader + deleted excluded.
@@ -196,7 +196,7 @@ test("squash queries: lastPendingEnrichableJot and groupFollowers", async (t) =>
       "22222222",
     ); // newest pending enrichable; image skipped
     assert.deepEqual(
-      (await jots.groupFollowers("11111111")).map((j) => j.id),
+      (await jots.groupFollowers("11111111")).map((row) => row.id),
       ["22222222"],
     );
     await jots.updateJot("22222222", { status: "done" }); // no longer an open run head
@@ -226,9 +226,9 @@ test("squash queries: lastPendingEnrichableJot and groupFollowers", async (t) =>
   });
 });
 
-test("unsquash wins only while the follower is still pending", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("unsquash wins only while the follower is still pending", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     const NOTE = "notes/daily notes/2026-07-09.md";
     // unsquash: the 🤝 merge opt-out. Only wins while the follower is still pending;
     // atomic compare-and-swap like claim(), so it can't resurrect an already-merged jot.
@@ -253,9 +253,9 @@ test("unsquash wins only while the follower is still pending", async (t) => {
   });
 });
 
-test("reprocess queries: jotsInRange, jotsPage and resetForReprocess", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("reprocess queries: jotsInRange, jotsPage and resetForReprocess", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     // /reprocess queries: jotsInRange (day/range pickers), jotsPage (the "one jot"
     // browser), resetForReprocess (bulk reset by explicit id set).
     const RP_NOTE = "notes/daily notes/2026-07-08.md";
@@ -278,11 +278,11 @@ test("reprocess queries: jotsInRange, jotsPage and resetForReprocess", async (t)
       received_at: 7000,
     });
     assert.deepEqual(
-      (await jots.jotsInRange(0, 10_000)).map((j) => j.id),
+      (await jots.jotsInRange(0, 10_000)).map((row) => row.id),
       ["eeeeeeee", "ffffffff"], // processing excluded, oldest first
     );
     assert.deepEqual(
-      (await jots.jotsPage(0, 1)).map((j) => j.id),
+      (await jots.jotsPage(0, 1)).map((row) => row.id),
       ["ffffffff"], // newest first
     );
     assert.deepEqual(
@@ -295,9 +295,9 @@ test("reprocess queries: jotsInRange, jotsPage and resetForReprocess", async (t)
   });
 });
 
-test("the offered flag is per jot, strictly boolean, and survives edits and a reprocess reset", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("the offered flag is per jot, strictly boolean, and survives edits and a reprocess reset", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     assert.equal(await jots.tilOffered("ffffffff"), false); // no such jot
     await jots.insertJot(sampleJot("aaaaaaaa"));
     await jots.insertJot(sampleJot("bbbbbbbb"));
@@ -321,9 +321,9 @@ test("the offered flag is per jot, strictly boolean, and survives edits and a re
   });
 });
 
-test("squash lookups stay inside their section", async (t) => {
-  await withDb(t, async (k) => {
-    const jots = new JotRepository(k);
+test("squash lookups stay inside their section", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    const jots = new JotRepository(knex);
     const NOTE = "notes/daily notes/2026-07-09.md";
     await jots.insertJot({
       ...sampleJot("aaaaaaaa"),
@@ -356,25 +356,18 @@ test("squash lookups stay inside their section", async (t) => {
   });
 });
 
-test("reopening a migrated database applies nothing and keeps the section", async (t) => {
-  const dbPath = tempDbPath();
-  try {
-    const k1 = await openDb(dbPath);
-    const first = new JotRepository(k1);
-    await first.insertJot({ ...sampleJot("aaaaaaaa"), section: "til" });
-    await k1.destroy();
-  } catch (e) {
-    await removeDb(dbPath);
-    return t.skip(
-      `native sqlite unavailable: ${(e as Error).message.slice(0, 80)}`,
-    );
-  }
-  try {
-    const k2 = await openDb(dbPath);
-    const second = new JotRepository(k2);
+test("reopening a migrated database applies nothing and keeps the section", async (testContext) => {
+  const seedThenReopen = async (dbPath: string) => {
+    const first = await openDb(dbPath);
+    await new JotRepository(first).insertJot({
+      ...sampleJot("aaaaaaaa"),
+      section: "til",
+    });
+    await first.destroy();
+    return openDb(dbPath);
+  };
+  await withNative(testContext, seedThenReopen, async (knex) => {
+    const second = new JotRepository(knex);
     assert.equal((await second.getJot("aaaaaaaa"))?.section, "til");
-    await k2.destroy();
-  } finally {
-    await removeDb(dbPath);
-  }
+  });
 });

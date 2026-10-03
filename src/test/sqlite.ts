@@ -61,23 +61,53 @@ export async function removeDb(dbPath: string): Promise<void> {
     await rm(`${dbPath}${suffix}`, { force: true });
 }
 
-export async function withDb(
-  t: { skip: (why: string) => void },
-  fn: (k: Knex) => Promise<void>,
-): Promise<void> {
+type Skippable = { skip: (why: string) => void };
+type Closable =
+  | { close: () => Promise<void> }
+  | { destroy: () => Promise<void> };
+
+/**
+ * Opens a native-sqlite handle (a Knex or a Repository) on a temp file, or skips the test
+ * when the addon cannot load. `close` is for the caller to run once the test is over.
+ */
+export async function openNative<Handle extends Closable>(
+  testContext: Skippable,
+  open: (dbPath: string) => Promise<Handle>,
+) {
   const dbPath = tempDbPath();
-  let k: Knex;
   try {
-    k = await openDb(dbPath);
-  } catch (e) {
-    return t.skip(
-      `native sqlite unavailable: ${(e as Error).message.slice(0, 80)}`,
-    );
-  }
-  try {
-    await fn(k);
-  } finally {
-    await k.destroy();
+    const handle = await open(dbPath);
+    const close = async () => {
+      await ("close" in handle ? handle.close() : handle.destroy()).catch(
+        () => {},
+      );
+      await removeDb(dbPath);
+    };
+    return { handle, dbPath, close };
+  } catch (error) {
     await removeDb(dbPath);
+    testContext.skip(
+      `native sqlite unavailable: ${(error as Error).message.slice(0, 80)}`,
+    );
+    return null;
   }
 }
+
+export async function withNative<Handle extends Closable>(
+  testContext: Skippable,
+  open: (dbPath: string) => Promise<Handle>,
+  fn: (handle: Handle, dbPath: string) => Promise<void>,
+): Promise<void> {
+  const native = await openNative(testContext, open);
+  if (!native) return;
+  try {
+    await fn(native.handle, native.dbPath);
+  } finally {
+    await native.close();
+  }
+}
+
+export const withDb = (
+  testContext: Skippable,
+  fn: (knex: Knex) => Promise<void>,
+) => withNative(testContext, openDb, fn);
