@@ -7,6 +7,7 @@ import {
 } from "../../../domain/task/entity.ts";
 import { logger } from "../../../libs/log.ts";
 import { TYPE_LABEL, VIEW_LABEL } from "../../../libs/tasks.ts";
+import { errorText } from "../../../libs/text.ts";
 import { TASKS_NS, type TaskService } from "../../../services/tasks.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
@@ -25,7 +26,7 @@ export async function showTaskList(
 ): Promise<void> {
   const screen = await tasks.list(view, page).catch((err: unknown) => {
     log.error({ err, view }, "tasks: could not read the task notes");
-    const why = err instanceof Error ? err.message : String(err);
+    const why = errorText(err);
     return {
       text: `⚠️ Couldn't read your task notes: ${why}`,
       keyboard: undefined,

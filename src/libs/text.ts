@@ -4,6 +4,9 @@ export function shortId(): string {
   return randomBytes(4).toString("hex");
 }
 
+export const errorText = (err: unknown) =>
+  err instanceof Error ? err.message : String(err);
+
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 export const escapeRe = (text: string) =>
   text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

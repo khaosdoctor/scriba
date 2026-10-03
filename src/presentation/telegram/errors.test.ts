@@ -46,6 +46,12 @@ test("a tap whose error toast Telegram refuses is still swallowed", async () => 
   await fail(new Error("again"), TAP);
 });
 
+test("an update with neither a tap nor a message is swallowed", async () => {
+  const { rec, fail } = harness("aaaaaaaa");
+  await fail(new Error("odd update"), { poll: { id: "p" } });
+  assert.deepEqual(rec.texts("sendMessage"), []);
+});
+
 test("a failed message with no jot, or whose lookup and reply both fail, gets a plain error", async () => {
   const noJot = harness();
   await noJot.fail("disk full", MESSAGE);

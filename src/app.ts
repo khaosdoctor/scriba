@@ -13,6 +13,7 @@ import { VaultService } from "./data/repositories/vault.ts";
 import { logger } from "./libs/log.ts";
 import { FlushQueue } from "./libs/queue.ts";
 import { Scheduler } from "./libs/scheduler.ts";
+import { errorText } from "./libs/text.ts";
 import { previousDate } from "./libs/time.ts";
 import { Chat } from "./presentation/telegram/chat.ts";
 import {
@@ -158,7 +159,7 @@ export async function createScriba(
   const enricher =
     externalServices.enricher ??
     (await buildEnricher(config, repo, (to, model, err) => {
-      const reason = err instanceof Error ? err.message : String(err);
+      const reason = errorText(err);
       switch (to) {
         case "fallback":
           return notify(

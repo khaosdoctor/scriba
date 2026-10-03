@@ -28,7 +28,7 @@ import { keyboard } from "../libs/keyboard.ts";
 import { candidates, forcedCandidates, linkDateWords } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import { isRecoverable } from "../libs/model.ts";
-import { escapeHtml, shortId, splitEntry } from "../libs/text.ts";
+import { errorText, escapeHtml, shortId, splitEntry } from "../libs/text.ts";
 import type { EditService } from "./edits.ts";
 import { type Enricher, ModelsDownError } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
@@ -386,7 +386,7 @@ export class ProcessingService {
       // Always re-post: the status message says "Weaving…" again after this attempt.
       return this.hold({ ...jot, error: null });
     }
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorText(err);
     const attempts = (jot.attempts ?? 0) + 1;
     const recoverable = isRecoverable(err);
     if (recoverable && attempts < MAX_ATTEMPTS) {

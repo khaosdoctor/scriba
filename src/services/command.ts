@@ -11,7 +11,7 @@ import {
 } from "../libs/feed.ts";
 import { type Keyboard, keyboard, NO_BUTTONS } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
-import { escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
+import { errorText, escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
 import { type AgentService, PromptStream } from "./agent.ts";
 import type { Modes } from "./modes.ts";
 import type { Notifier } from "./notifier.ts";
@@ -265,7 +265,7 @@ export class CommandService {
         stranded.state === "stopping"
           ? "⏹ Stopped."
           : err
-            ? `⚠️ ${err instanceof Error ? err.message : String(err)}`
+            ? `⚠️ ${errorText(err)}`
             : "⚠️ the assistant stopped early.";
       this.settle(stranded, partial ? `${reason}\n\n${partial}` : reason);
     }

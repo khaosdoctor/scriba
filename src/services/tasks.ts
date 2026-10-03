@@ -29,7 +29,7 @@ import {
   taskListLine,
   VIEW_LABEL,
 } from "../libs/tasks.ts";
-import { escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
+import { errorText, escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
 import { plainDate } from "../libs/time.ts";
 import type { Enricher } from "./enrich.ts";
 import type { Modes, OpenOutcome } from "./modes.ts";
@@ -335,7 +335,7 @@ export class TaskService {
       log.error({ err, draft: row.id }, "task creation failed");
       await this.deps.repo.updateTaskDraft(row.id, { status: "pending" });
       await this.redraw(row);
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       await this.deps.notifier
         .notify(`⚠️ Couldn't write that task: ${why}`)
         .catch(() => {});
@@ -558,7 +558,7 @@ export class TaskService {
       log.info({ date: today, tasks: count }, "tasks: daily summary sent");
     } catch (err) {
       log.error({ err }, "tasks: daily summary failed");
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       await notifier
         .send(`⚠️ Couldn't put together your task summary: ${why}`, {
           silent: false,

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  errorText,
   escapeHtml,
   fitTelegram,
   formatDuration,
@@ -11,6 +12,12 @@ import {
   splitEntry,
   TELEGRAM_LIMIT,
 } from "./text.ts";
+
+test("errorText reads an Error's message and stringifies anything else", () => {
+  assert.equal(errorText(new Error("boom")), "boom");
+  assert.equal(errorText("plain"), "plain");
+  assert.equal(errorText(42), "42");
+});
 
 test("ids are fixed 8-char hex", () => {
   const id = shortId();

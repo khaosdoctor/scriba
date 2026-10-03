@@ -18,6 +18,7 @@ import {
   parseModelJson,
   unwrapModelPayload,
 } from "../libs/model.ts";
+import { errorText } from "../libs/text.ts";
 import {
   ENRICH_JSON_ONLY,
   SYSTEM,
@@ -46,10 +47,9 @@ const log = logger("enrich");
 
 export class ModelsDownError extends Error {
   constructor(cause: unknown) {
-    super(
-      `every enrichment model is down (last error: ${cause instanceof Error ? cause.message : String(cause)})`,
-      { cause },
-    );
+    super(`every enrichment model is down (last error: ${errorText(cause)})`, {
+      cause,
+    });
     this.name = "ModelsDownError";
   }
 }

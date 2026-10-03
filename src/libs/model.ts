@@ -1,3 +1,5 @@
+import { errorText } from "./text.ts";
+
 export class CircuitBreaker {
   private failures = 0;
   private openUntil = 0;
@@ -28,9 +30,7 @@ export class CircuitBreaker {
 }
 
 export function isRecoverable(err: unknown): boolean {
-  const message = (
-    err instanceof Error ? err.message : String(err)
-  ).toLowerCase();
+  const message = errorText(err).toLowerCase();
   // "connection error" / "timed out" are the OpenAI-shaped SDKs' (Groq, OpenCode) words
   // for the same network failures.
   return /timeout|timed out|connection error|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(

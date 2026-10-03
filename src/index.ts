@@ -4,6 +4,7 @@ import http from "node:http";
 import { createScriba } from "./app.ts";
 import { type Config, loadConfig } from "./config.ts";
 import { logger } from "./libs/log.ts";
+import { errorText } from "./libs/text.ts";
 
 const log = logger("main");
 
@@ -18,10 +19,7 @@ function readConfig(): Config {
   try {
     return loadConfig(process.env);
   } catch (err) {
-    logger("config").error(
-      { issues: err instanceof Error ? err.message : String(err) },
-      "invalid config",
-    );
+    logger("config").error({ issues: errorText(err) }, "invalid config");
     process.exit(1);
   }
 }
