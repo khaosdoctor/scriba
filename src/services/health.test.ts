@@ -204,6 +204,33 @@ test("a failing notifier never throws out of a round", async () => {
   assert.match(m.snapshot()[0]!.error ?? "", /^fetch failed: \S/);
 });
 
+test("a refused dual-stack host is reported by its error code", async () => {
+  const closed = createServer();
+  await new Promise<void>((r) => closed.listen(0, "127.0.0.1", r));
+  const { port } = closed.address() as AddressInfo;
+  await new Promise((r) => closed.close(r));
+  const dualStack = new Agent({
+    autoSelectFamily: true,
+    connect: {
+      lookup: (_host, _options, done) =>
+        (done as unknown as (err: null, found: object[]) => void)(null, [
+          { address: "::1", family: 6 },
+          { address: "127.0.0.1", family: 4 },
+        ]),
+    },
+  });
+  const { m } = monitor([
+    {
+      name: "dead",
+      url: `http://dual.invalid:${port}/`,
+      dispatcher: dualStack,
+    },
+  ]);
+  await m.check();
+  await dualStack.close();
+  assert.match(m.snapshot()[0]!.error ?? "", /^fetch failed: \S*ECONNREFUSED/);
+});
+
 test("start probes on a timer and stop ends it", async () => {
   seen.length = 0;
   const { m } = monitor([{ name: "a", url: `${base}/ok` }], { intervalMs: 20 });
