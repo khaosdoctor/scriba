@@ -1,5 +1,5 @@
+import type { TaskView } from "../../../domain/task/entity.ts";
 import { logger } from "../../../libs/log.ts";
-import type { TaskView } from "../../../libs/tasks.ts";
 import type { CommandView } from "../commands.ts";
 import { showTaskList } from "./tap.ts";
 

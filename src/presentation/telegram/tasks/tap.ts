@@ -1,13 +1,12 @@
 import type { Composer, Context } from "grammy";
 import { SETTINGS } from "../../../domain/setting/entity.ts";
-import type { TaskType } from "../../../domain/task/entity.ts";
-import { logger } from "../../../libs/log.ts";
 import {
   isTaskType,
+  type TaskType,
   type TaskView,
-  TYPE_LABEL,
-  VIEW_LABEL,
-} from "../../../libs/tasks.ts";
+} from "../../../domain/task/entity.ts";
+import { logger } from "../../../libs/log.ts";
+import { TYPE_LABEL, VIEW_LABEL } from "../../../libs/tasks.ts";
 import { TASKS_NS, type TaskService } from "../../../services/tasks.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";

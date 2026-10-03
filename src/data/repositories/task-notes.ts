@@ -1,6 +1,9 @@
-import type { Task, TaskDraft, TaskType } from "../../domain/task/entity.ts";
-import { logger } from "../../libs/log.ts";
-import { setFrontmatterValue } from "../../libs/note.ts";
+import {
+  TASK_TYPES,
+  type Task,
+  type TaskDraft,
+  type TaskType,
+} from "../../domain/task/entity.ts";
 import {
   completeTaskLine,
   insertTaskLine,
@@ -9,7 +12,9 @@ import {
   renderTaskLine,
   replaceTaskLineAt,
   uncompleteTaskLine,
-} from "../../libs/tasks.ts";
+} from "../../domain/task/line.ts";
+import { logger } from "../../libs/log.ts";
+import { setFrontmatterValue } from "../../libs/note.ts";
 import { plainDate } from "../../libs/time.ts";
 import type { ObsidianClient } from "./notes.ts";
 
@@ -29,13 +34,16 @@ export class TaskNotesService {
   ) {}
 
   async list(type?: TaskType): Promise<Task[]> {
-    const types: TaskType[] = type ? [type] : ["work", "personal"];
+    const types = type ? [type] : TASK_TYPES;
     const out: Task[] = [];
-    for (const t of types) {
-      const cfg = this.notes[t];
+    for (const kind of types) {
+      const cfg = this.notes[kind];
       const note = await this.obsidian.readNote(cfg.path);
-      const tasks = parseTasks(note, cfg.heading, cfg.tag, t);
-      log.debug({ type: t, path: cfg.path, tasks: tasks.length }, "tasks read");
+      const tasks = parseTasks(note, cfg.heading, cfg.tag, kind);
+      log.debug(
+        { type: kind, path: cfg.path, tasks: tasks.length },
+        "tasks read",
+      );
       out.push(...tasks);
     }
     return out;

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import type { Jot } from "./domain/jot/entity.ts";
 import { journalLine } from "./domain/jot/rules.ts";
 import type { TaskDraftRow } from "./domain/task/entity.ts";
-import { parseTasks } from "./libs/tasks.ts";
+import { parseTasks } from "./domain/task/line.ts";
 import {
   botHarness,
   EM,

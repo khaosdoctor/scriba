@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { fingerprint } from "../../../libs/tasks.ts";
+import { fingerprint } from "../../../libs/text.ts";
 import { botHarness } from "../../../test/bot-harness.ts";
 
 const DAY = "2026-08-15";
