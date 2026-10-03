@@ -27,12 +27,12 @@ export function removeView(
 ): Composer<Context> {
   const { source, toast, already } = REMOVALS[ns];
   return namespace(ns, async (_ctx, [jotId], responder) => {
-    const jot = jotId ? await jotController.get(jotId) : undefined;
-    if (!jot) {
+    const jot = await jotController.liveJot(jotId);
+    if (jot === "gone") {
       log.warn({ jotId, source }, "remove: jot is gone");
       return responder.ack("gone");
     }
-    if (jot.status === "deleted") {
+    if (jot === "deleted") {
       log.warn({ jotId, source }, "remove: already removed");
       return responder.ack(already);
     }

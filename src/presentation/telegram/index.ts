@@ -11,7 +11,7 @@ import type { SettingsService } from "../../services/settings.ts";
 import type { TaskService } from "../../services/tasks.ts";
 import { callbackViews } from "./callbacks.ts";
 import { COMMANDS } from "./commands.ts";
-import { type ErrorDeps, errorHandler } from "./errors.ts";
+import { errorHandler } from "./errors.ts";
 import { editedView } from "./journal/edited.ts";
 import { fallbackView } from "./journal/fallback.ts";
 import { photoView } from "./journal/photo.ts";
@@ -35,7 +35,6 @@ export type ViewDeps = {
   jotController: JotService;
   edits: EditService;
   admin: AdminService;
-  errors: ErrorDeps;
 };
 
 const describe = (ctx: Context) => ({
@@ -44,7 +43,7 @@ const describe = (ctx: Context) => ({
 });
 
 export function registerViews(bot: Bot, deps: ViewDeps): void {
-  bot.catch(errorHandler(deps.errors));
+  bot.catch(errorHandler(deps.jotController));
   bot.use(async (ctx, next) => {
     if (ctx.from?.id !== deps.ownerId) return;
     log.debug(describe(ctx), "update received");

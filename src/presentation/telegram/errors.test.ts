@@ -25,7 +25,7 @@ function harness(jotId?: string, lookupFails = false) {
   const rec = recordingApi();
   api.config.use(rec.transformer as never);
   const handler = errorHandler({
-    jotForMessage: async () => {
+    idForMessage: async () => {
       if (lookupFails) throw new Error("db is locked");
       return jotId;
     },

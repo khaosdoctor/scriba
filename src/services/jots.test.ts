@@ -618,3 +618,26 @@ test("a voice-fix pick is claimed once: the second claim and an unknown jot get 
   assert.equal(harness.jots.pickVoiceFix("abcd1234", "original"), undefined);
   assert.equal(harness.jots.pickVoiceFix("ffffffff", "original"), undefined);
 });
+
+// --- liveness ---
+
+test("liveJot tells a missing id, a missing jot and a deleted jot apart from a live one", async () => {
+  assert.equal(await setup().jots.liveJot(undefined), "gone");
+  assert.equal(await setup({ jot: null }).jots.liveJot("aaaaaaaa"), "gone");
+  assert.equal(
+    await setup({ jot: { status: "deleted" } }).jots.liveJot("aaaaaaaa"),
+    "deleted",
+  );
+  const live = await setup().jots.liveJot("aaaaaaaa");
+  assert.equal(typeof live === "string" ? live : live.id, "aaaaaaaa");
+});
+
+test("idForMessage reads the repository's message map", async () => {
+  const jots = new JotService({
+    repo: {
+      jotForMessage: async (id: number) => (id === 5 ? "aaaaaaaa" : undefined),
+    },
+  } as never);
+  assert.equal(await jots.idForMessage(5), "aaaaaaaa");
+  assert.equal(await jots.idForMessage(6), undefined);
+});

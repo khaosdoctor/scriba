@@ -395,8 +395,8 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         await responder.ack();
         return jotDetail(ctx, jotController, arg);
       case "jr": {
-        const jot = arg ? await jotController.get(arg) : undefined;
-        if (!jot || jot.status === "deleted") return responder.ack("gone");
+        const jot = await jotController.liveJot(arg);
+        if (typeof jot === "string") return responder.ack("gone");
         log.info({ jotId: arg }, "menu: manual retry requested");
         if ((await jotController.retry(jot)) === "in-flight")
           return responder.ack("still processing");
@@ -417,8 +417,8 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         );
       }
       case "jdy": {
-        const jot = arg ? await jotController.get(arg) : undefined;
-        if (!jot || jot.status === "deleted") return responder.ack("gone");
+        const jot = await jotController.liveJot(arg);
+        if (typeof jot === "string") return responder.ack("gone");
         log.info({ jotId: arg }, "menu: delete jot");
         const outcome = await edits.discard(jot);
         // Answer before the note-lock read/write below, which can be slow enough to blow
