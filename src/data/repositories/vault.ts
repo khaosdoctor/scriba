@@ -1,15 +1,8 @@
 import { type FSWatcher, watch } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
-import {
-  basename,
-  dirname,
-  extname,
-  join,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import type { AliasEntry } from "../../domain/link-rule/entity.ts";
+import { parseAliasEntries } from "../../libs/links.ts";
 import { logger } from "../../libs/log.ts";
 import type { ObsidianClient } from "./notes.ts";
 
@@ -272,20 +265,4 @@ export class VaultService {
       /* watch unsupported here, rely on the periodic rebuild */
     }
   }
-}
-
-const unquote = (text: string) => text.trim().replace(/^["']|["']$/g, "");
-
-function parseAliasEntries(path: string, text: string): AliasEntry[] {
-  const note = basename(path, ".md");
-  const out: AliasEntry[] = [{ note, alias: note }]; // the title is always an alias
-  const front = text.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
-  const inline = front.match(/^aliases:\s*\[(.*?)\]/m)?.[1];
-  const block = front.match(/^aliases:\s*\n((?:\s*-\s*.+\n?)+)/m)?.[1];
-  const items = inline?.trim()
-    ? inline.split(",")
-    : (block?.split("\n").map((line) => line.replace(/^\s*-\s*/, "")) ?? []);
-  for (const alias of items.map(unquote).filter(Boolean))
-    out.push({ note, alias });
-  return out;
 }

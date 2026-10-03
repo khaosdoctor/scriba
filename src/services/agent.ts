@@ -9,6 +9,7 @@ import {
 import type { WebService } from "../data/connections/web.ts";
 import type { VaultService } from "../data/repositories/vault.ts";
 import { logger } from "../libs/log.ts";
+import { errorText } from "../libs/text.ts";
 import { userMessage } from "./enrich.ts";
 
 const log = logger("agent");
@@ -286,7 +287,7 @@ export class AgentService {
     try {
       return { content: [{ type: "text" as const, text: await fn() }] };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorText(err);
       log.warn({ err }, "agent: tool failed");
       return {
         content: [{ type: "text" as const, text: `error: ${message}` }],

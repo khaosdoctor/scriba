@@ -1,4 +1,9 @@
-import { findSection, stampCompletion } from "../../libs/note.ts";
+import {
+  findSection,
+  frontmatterBlock,
+  stampCompletion,
+} from "../../libs/note.ts";
+import { collapse } from "../../libs/text.ts";
 import type { Habit, HabitField } from "./entity.ts";
 
 // `[Pages read:: 0]` → key "Pages read", value "0". Global so we can walk every field.
@@ -14,11 +19,7 @@ function habitField(line: string): HabitField | null {
 
 function habitLabel(rest: string, field: HabitField | null): string {
   if (field) return field.key;
-  return rest
-    .replace(inlineFieldRe, "")
-    .replace(/#\S+/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return collapse(rest.replace(inlineFieldRe, "").replace(/#\S+/g, ""));
 }
 
 export function parseHabits(note: string, heading = "Habits"): Habit[] {
@@ -61,9 +62,9 @@ export function completeHabitLine(
 }
 
 export function isHabitsReviewed(note: string): boolean {
-  const frontmatter = note.match(/^---\n([\s\S]*?)\n---/);
-  if (!frontmatter) return false;
-  return /^habitsReviewed:\s*true\s*$/m.test(frontmatter[1]!);
+  const frontmatter = frontmatterBlock(note);
+  if (frontmatter === undefined) return false;
+  return /^habitsReviewed:\s*true\s*$/m.test(frontmatter);
 }
 
 export function isNumericValue(text: string): boolean {

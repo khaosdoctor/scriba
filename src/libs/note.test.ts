@@ -4,6 +4,7 @@ import {
   anchorLine,
   deleteAnchorLine,
   findSection,
+  frontmatterBlock,
   insertJournalLine,
   moveAnchorLine,
   replaceAnchorLine,
@@ -11,6 +12,11 @@ import {
   setFrontmatterValue,
   stampCompletion,
 } from "./note.ts";
+
+test("frontmatterBlock returns the text between the leading fences", () => {
+  assert.equal(frontmatterBlock("---\nrating: 5\n---\nbody"), "rating: 5");
+  assert.equal(frontmatterBlock("body\n---\nrating: 5\n---"), undefined);
+});
 
 const DAILY_TEMPLATE = `---
 tags:

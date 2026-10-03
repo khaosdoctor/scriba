@@ -1,5 +1,9 @@
 import type { Composer, Context } from "grammy";
-import type { JotService, VoiceFixChoice } from "../../../services/jots.ts";
+import {
+  type JotService,
+  VOICEFIX_NS,
+  type VoiceFixChoice,
+} from "../../../services/jots.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
@@ -9,7 +13,7 @@ const TOASTS: Record<VoiceFixChoice, string> = {
 };
 
 export function voiceFixView(jots: JotService): Composer<Context> {
-  return namespace("vf", async (ctx, [verdict, jotId]) => {
+  return namespace(VOICEFIX_NS, async (ctx, [verdict, jotId]) => {
     const responder = new Responder(ctx);
     if (!jotId || !verdict) return responder.ack();
     const choice: VoiceFixChoice = verdict === "p" ? "proposed" : "original";

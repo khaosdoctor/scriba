@@ -1,20 +1,9 @@
 import type { Context, Filter } from "grammy";
 import type { Message } from "grammy/types";
-import {
-  type AnswerOutcome,
-  TASK_ADD_REF,
-  type TaskField,
-  type TaskRef,
-  type TaskService,
-} from "../../../services/tasks.ts";
+import type { TaskRef } from "../../../libs/tasks.ts";
+import type { AnswerOutcome, TaskService } from "../../../services/tasks.ts";
 import { Responder } from "../chat.ts";
 import { TASKADD_EMPTY } from "./add.ts";
-
-export function parseTaskRef(prompt: string): TaskRef | null {
-  if (prompt.includes(TASK_ADD_REF)) return { field: "add" };
-  const m = prompt.match(/\(tk:(d|s|u):([0-9a-f]{6,16})\)/);
-  return m ? { field: m[1] as TaskField, id: m[2]! } : null;
-}
 
 const REFUSALS: Record<Exclude<AnswerOutcome, "ok">, string> = {
   settled: "That task is already settled.",

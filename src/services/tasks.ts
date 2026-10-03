@@ -14,16 +14,25 @@ import {
   type TaskType,
   type TaskView,
 } from "../domain/task/entity.ts";
+import {
+  type Keyboard,
+  keyboard,
+  NO_BUTTONS,
+  type Row,
+} from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import { paginate } from "../libs/page.ts";
 import {
+  type TaskField,
+  type TaskRef,
   TYPE_LABEL,
   taskButtonLabel,
   taskCard,
   taskListLine,
+  taskRef,
   VIEW_LABEL,
 } from "../libs/tasks.ts";
-import { escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
+import { errorText, escapeHtml, fitTelegram, shortId } from "../libs/text.ts";
 import { plainDate } from "../libs/time.ts";
 import type { Enricher } from "./enrich.ts";
 import type { Modes, OpenOutcome } from "./modes.ts";
@@ -34,10 +43,6 @@ const log = logger("tasks-flow");
 
 export const TASKS_NS = "tk";
 
-export const TASK_ADD_REF = "(tk:add)";
-
-export type TaskField = "d" | "s" | "u";
-export type TaskRef = { field: "add" } | { field: TaskField; id: string };
 export type AnswerOutcome =
   | "ok"
   | "settled"
@@ -47,10 +52,6 @@ export type AnswerOutcome =
   | "badDate"
   | "needsDue";
 
-type Row = [text: string, callbackData: string][];
-export type Keyboard = {
-  inline_keyboard: { text: string; callback_data: string }[][];
-};
 export type Screen = { text: string; keyboard: Keyboard };
 
 export interface TaskDeps {
@@ -76,12 +77,6 @@ const PROMPTS: Record<TaskField, string> = {
   s: "📅 Reply to this message with the start date — a date, “next monday”, or “none” to leave it to the deadline.",
   u: "🏁 Reply to this message with the due date — a date, or something like “next friday”. This one it needs.",
 };
-
-const keyboard = (rows: Row[]): Keyboard => ({
-  inline_keyboard: rows.map((row) =>
-    row.map(([text, callback_data]) => ({ text, callback_data })),
-  ),
-});
 
 const cardKeyboard = (row: TaskDraftRow) => {
   const at = (action: string) => `${TASKS_NS}:${action}:${row.id}`;
@@ -279,7 +274,7 @@ export class TaskService {
     await notifier
       .edit(row.message_id, text, {
         html: true,
-        keyboard: { inline_keyboard: [] },
+        keyboard: NO_BUTTONS,
       })
       .catch((err) =>
         log.warn({ err, draft: row.id }, "task card settle failed"),
@@ -339,7 +334,7 @@ export class TaskService {
       log.error({ err, draft: row.id }, "task creation failed");
       await this.deps.repo.updateTaskDraft(row.id, { status: "pending" });
       await this.redraw(row);
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       await this.deps.notifier
         .notify(`⚠️ Couldn't write that task: ${why}`)
         .catch(() => {});
@@ -367,7 +362,7 @@ export class TaskService {
     log.info({ draft: row.id, field }, "task: prompting for a field");
     const id = await this.deps.notifier
       .send(
-        `${PROMPTS[field]} (tk:${field}:${row.id})`,
+        `${PROMPTS[field]} ${taskRef(field, row.id)}`,
         fromTap ? { forceReply: true } : undefined,
       )
       .catch((err) => {
@@ -562,7 +557,7 @@ export class TaskService {
       log.info({ date: today, tasks: count }, "tasks: daily summary sent");
     } catch (err) {
       log.error({ err }, "tasks: daily summary failed");
-      const why = err instanceof Error ? err.message : String(err);
+      const why = errorText(err);
       await notifier
         .send(`⚠️ Couldn't put together your task summary: ${why}`, {
           silent: false,

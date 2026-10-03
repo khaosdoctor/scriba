@@ -1,4 +1,5 @@
 import type { Composer, Context } from "grammy";
+import { DELETE_NS, UNDO_NS } from "../../../libs/jot.ts";
 import { logger } from "../../../libs/log.ts";
 import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
@@ -7,14 +8,18 @@ import { STILL_PROCESSING } from "./edit-reply.ts";
 
 const log = logger("bot");
 
-type Namespace = "un" | "dl";
+type Namespace = typeof UNDO_NS | typeof DELETE_NS;
 
 const REMOVALS: Record<
   Namespace,
   { source: "undo" | "discard"; toast: string; already: string }
 > = {
-  un: { source: "undo", toast: "undoing", already: "already undone" },
-  dl: { source: "discard", toast: "deleting", already: "already deleted" },
+  [UNDO_NS]: { source: "undo", toast: "undoing", already: "already undone" },
+  [DELETE_NS]: {
+    source: "discard",
+    toast: "deleting",
+    already: "already deleted",
+  },
 };
 
 export function removeView(

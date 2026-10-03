@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Jot } from "./domain/jot/entity.ts";
+import { parseFollowupRef } from "./libs/followup.ts";
 import { parseHabitRef } from "./libs/habits.ts";
-import { parseFollowupRef } from "./presentation/telegram/rating/followup-reply.ts";
+import { parseTaskRef } from "./libs/tasks.ts";
 import {
   parseLinkRef,
   parseSettingsRef,
 } from "./presentation/telegram/settings/wizard.ts";
-import { parseTaskRef } from "./presentation/telegram/tasks/reply.ts";
 import {
   botHarness,
   EM,

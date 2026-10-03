@@ -1,9 +1,30 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sampleTask as task } from "../test/fakes.ts";
-import { taskButtonLabel, taskCard, taskListLine } from "./tasks.ts";
+import {
+  parseTaskRef,
+  taskButtonLabel,
+  taskCard,
+  taskListLine,
+  taskRef,
+} from "./tasks.ts";
 
 const TODAY = "2026-08-29"; // a Saturday
+
+test("a prompt is recognized by its marker, and an ordinary message is not", () => {
+  assert.equal(taskRef("u", "d1d1d1d1"), "(tk:u:d1d1d1d1)");
+  assert.deepEqual(parseTaskRef(`due? ${taskRef("u", "d1d1d1d1")}`), {
+    field: "u",
+    id: "d1d1d1d1",
+  });
+  assert.deepEqual(parseTaskRef("(tk:d:0123456789abcdef)"), {
+    field: "d",
+    id: "0123456789abcdef",
+  });
+  assert.deepEqual(parseTaskRef("the task. (tk:add)"), { field: "add" });
+  assert.equal(parseTaskRef("(tk:u:xyz)"), null);
+  assert.equal(parseTaskRef("just a message"), null);
+});
 
 test("a row shows the dates a task carries and says when it has no text", () => {
   assert.equal(

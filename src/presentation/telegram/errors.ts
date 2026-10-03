@@ -1,6 +1,7 @@
 import type { Context, ErrorHandler } from "grammy";
 import { statusKeyboard } from "../../libs/jot.ts";
 import { logger } from "../../libs/log.ts";
+import { errorText } from "../../libs/text.ts";
 import { Responder } from "./chat.ts";
 
 const log = logger("bot");
@@ -13,8 +14,7 @@ export function errorHandler({
   jotForMessage,
 }: ErrorDeps): ErrorHandler<Context> {
   return async (err) => {
-    const msg =
-      err.error instanceof Error ? err.error.message : String(err.error);
+    const msg = errorText(err.error);
     log.error({ err: err.error }, "bot handler error");
     const responder = new Responder(err.ctx);
     // Telegram caps a toast at 200 characters.

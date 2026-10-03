@@ -60,16 +60,26 @@ export type StatusButtons = {
   embed?: "embed" | "plain";
 };
 
+export const UNDO_NS = "un";
+export const EMBED_NS = "em";
+export const RETRY_NS = "rt";
+export const DELETE_NS = "dl";
+
 export function statusKeyboard(jotId: string, opts?: StatusButtons) {
   const row: { text: string; callback_data: string }[] = [];
-  if (opts?.undo) row.push({ text: "↩️ Undo", callback_data: `un:${jotId}` });
+  if (opts?.undo)
+    row.push({ text: "↩️ Undo", callback_data: `${UNDO_NS}:${jotId}` });
   if (opts?.embed === "embed")
-    row.push({ text: "🖼 Embed", callback_data: `em:${jotId}:1` });
+    row.push({ text: "🖼 Embed", callback_data: `${EMBED_NS}:${jotId}:1` });
   if (opts?.embed === "plain")
-    row.push({ text: "🔗 Plain link", callback_data: `em:${jotId}:0` });
-  if (opts?.retry) row.push({ text: "🔄 Retry", callback_data: `rt:${jotId}` });
+    row.push({
+      text: "🔗 Plain link",
+      callback_data: `${EMBED_NS}:${jotId}:0`,
+    });
+  if (opts?.retry)
+    row.push({ text: "🔄 Retry", callback_data: `${RETRY_NS}:${jotId}` });
   if (opts?.discard)
-    row.push({ text: "🗑 Delete", callback_data: `dl:${jotId}` });
+    row.push({ text: "🗑 Delete", callback_data: `${DELETE_NS}:${jotId}` });
   return { inline_keyboard: [row] };
 }
 

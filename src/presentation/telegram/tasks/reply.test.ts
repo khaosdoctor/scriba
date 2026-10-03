@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { botHarness, sampleDraft } from "../../../test/bot-harness.ts";
-import { parseTaskRef } from "./reply.ts";
 
 const DRAFT = sampleDraft({ due: null });
 const DUE_PROMPT =
@@ -13,17 +12,6 @@ const answer = async (text: string, draft: object | null = DRAFT) => {
   harness.repo.getTaskDraft = draft;
   return harness.say(text, { message_id: 7, text: DUE_PROMPT });
 };
-
-test("a prompt is recognized by its marker, and an ordinary message is not", () => {
-  assert.deepEqual(parseTaskRef(DUE_PROMPT), { field: "u", id: "d1d1d1d1" });
-  assert.deepEqual(parseTaskRef("(tk:d:0123456789abcdef)"), {
-    field: "d",
-    id: "0123456789abcdef",
-  });
-  assert.deepEqual(parseTaskRef(ADD_PROMPT), { field: "add" });
-  assert.equal(parseTaskRef("(tk:u:xyz)"), null);
-  assert.equal(parseTaskRef("just a message"), null);
-});
 
 test("a date that can be read is saved, the question leaves the chat and the card is redrawn", async () => {
   const run = await answer("2026-09-15");

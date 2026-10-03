@@ -5,8 +5,21 @@ import type {
   TaskType,
   TaskView,
 } from "../domain/task/entity.ts";
-import { escapeHtml } from "./text.ts";
+import { clip, escapeHtml } from "./text.ts";
 import { plainDate } from "./time.ts";
+
+export const TASK_ADD_REF = "(tk:add)";
+
+export type TaskField = "d" | "s" | "u";
+export type TaskRef = { field: "add" } | { field: TaskField; id: string };
+
+export const taskRef = (field: TaskField, id: string) => `(tk:${field}:${id})`;
+
+export function parseTaskRef(prompt: string): TaskRef | null {
+  if (prompt.includes(TASK_ADD_REF)) return { field: "add" };
+  const match = prompt.match(/\(tk:(d|s|u):([0-9a-f]{6,16})\)/);
+  return match ? { field: match[1] as TaskField, id: match[2]! } : null;
+}
 
 const STATE_ICON: Record<TaskState, string> = {
   open: "☐",
@@ -50,8 +63,7 @@ export function taskListLine(
     task.state === "open" && task.start && task.start !== task.due
       ? ` · starts ${task.start}`
       : "";
-  const full = task.text || "(no description)";
-  const text = full.length > max ? `${full.slice(0, max - 1)}…` : full;
+  const text = clip(task.text || "(no description)", max);
   return `${position}. ${STATE_ICON[task.state]} ${escapeHtml(text)}${dates}${started} <i>${task.type}</i>`;
 }
 
@@ -61,8 +73,10 @@ export function taskButtonLabel(
   position: number,
   max = 34,
 ): string {
-  const text = (task.text || "(no description)").replace(/\s+/g, " ");
-  const body = text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  const body = clip(
+    (task.text || "(no description)").replace(/\s+/g, " "),
+    max,
+  );
   return `${STATE_ICON[task.state]} ${position}. ${body}`;
 }
 

@@ -24,10 +24,11 @@ import {
   heldNotice,
   retryNotice,
 } from "../libs/jot.ts";
+import { keyboard } from "../libs/keyboard.ts";
 import { candidates, forcedCandidates, linkDateWords } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import { isRecoverable } from "../libs/model.ts";
-import { escapeHtml, shortId, splitEntry } from "../libs/text.ts";
+import { errorText, escapeHtml, shortId, splitEntry } from "../libs/text.ts";
 import type { EditService } from "./edits.ts";
 import { type Enricher, ModelsDownError } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
@@ -38,6 +39,8 @@ import type { Transcriber } from "./transcriber.ts";
 
 const log = logger("processor");
 const botLog = logger("bot");
+
+export const LINK_NS = "lk";
 
 export const HELD = "held: every enrichment model is down";
 
@@ -370,14 +373,12 @@ export class ProcessingService {
   ): Promise<void> {
     botLog.debug({ pendingId, surface, note }, "asking user to confirm link");
     await this.deps.notifier.send(`Link "${surface}" → [[${note}]]?`, {
-      keyboard: {
-        inline_keyboard: [
-          [
-            { text: "Yes", callback_data: `lk:y:${pendingId}` },
-            { text: "No", callback_data: `lk:n:${pendingId}` },
-          ],
+      keyboard: keyboard([
+        [
+          ["Yes", `${LINK_NS}:y:${pendingId}`],
+          ["No", `${LINK_NS}:n:${pendingId}`],
         ],
-      },
+      ]),
     });
   }
 
@@ -387,7 +388,7 @@ export class ProcessingService {
       // Always re-post: the status message says "Weaving…" again after this attempt.
       return this.hold({ ...jot, error: null });
     }
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorText(err);
     const attempts = (jot.attempts ?? 0) + 1;
     const recoverable = isRecoverable(err);
     if (recoverable && attempts < MAX_ATTEMPTS) {

@@ -498,10 +498,11 @@ const turn = (over: object = {}) => ({
   ...over,
 });
 const withConfirmation = (harness: Harness) =>
-  harness.bot.command.pending.set("c1", {
-    decide: () => {},
-    timer: setTimeout(() => {}, 0),
-  });
+  harness.bot.command.pending.set(
+    "c1",
+    () => {},
+    setTimeout(() => {}, 0),
+  );
 
 ledger("cm", [
   {

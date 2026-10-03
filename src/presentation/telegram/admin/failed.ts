@@ -1,4 +1,5 @@
 import { InlineKeyboard } from "grammy";
+import { DELETE_NS, RETRY_NS } from "../../../libs/jot.ts";
 import type { CommandView } from "../commands.ts";
 
 export const failed: CommandView = {
@@ -10,7 +11,9 @@ export const failed: CommandView = {
     if (!ids.length) return void (await ctx.reply(text));
     const kb = new InlineKeyboard();
     for (const id of ids)
-      kb.text(`🔄 ${id}`, `rt:${id}`).text("🗑", `dl:${id}`).row();
+      kb.text(`🔄 ${id}`, `${RETRY_NS}:${id}`)
+        .text("🗑", `${DELETE_NS}:${id}`)
+        .row();
     await ctx.reply(text, { reply_markup: kb });
   },
 };

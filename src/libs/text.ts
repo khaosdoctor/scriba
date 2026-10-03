@@ -4,6 +4,9 @@ export function shortId(): string {
   return randomBytes(4).toString("hex");
 }
 
+export const errorText = (err: unknown) =>
+  err instanceof Error ? err.message : String(err);
+
 // ponytail: swap for RegExp.escape once TypeScript ships its typedef (5.9 lacks it).
 export const escapeRe = (text: string) =>
   text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -56,7 +59,22 @@ export function escapeHtml(text: string): string {
 // real sentence ends split. Zero-width, so `split` keeps every character.
 const SENTENCE_BOUNDARY = /(?<=[.!?…]["')\]]*)\s+(?=[^\p{Ll}\s])/u;
 
-const collapse = (text: string): string => text.replace(/\s+/g, " ").trim();
+export const collapse = (text: string): string =>
+  text.replace(/\s+/g, " ").trim();
+
+export const clip = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text;
+
+export const AGENT_UPDATE_CHARS = 330;
+
+export function clipUpdate(text: string, max = AGENT_UPDATE_CHARS): string {
+  const flat = collapse(text);
+  if (flat.length <= max) return flat;
+  const cut = flat.slice(0, max - 1);
+  const space = cut.lastIndexOf(" ");
+  const body = space > max * 0.6 ? cut.slice(0, space) : cut;
+  return `${body.trimEnd()}…`;
+}
 
 export function splitEntry(text: string, maxChars: number): string[] {
   const clean = collapse(text);

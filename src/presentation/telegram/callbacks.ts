@@ -1,4 +1,5 @@
 import { Composer, type Context } from "grammy";
+import { DELETE_NS, UNDO_NS } from "../../libs/jot.ts";
 import { unrejectView } from "./admin/unreject-tap.ts";
 import { commandView } from "./command/tap.ts";
 import { habitsView } from "./habits/tap.ts";
@@ -25,8 +26,8 @@ export function callbackViews(deps: ViewDeps): Composer<Context>[] {
     menuView(deps),
     voiceFixView(jotController),
     retryView(jotController),
-    removeView("un", deps),
-    removeView("dl", deps),
+    removeView(UNDO_NS, deps),
+    removeView(DELETE_NS, deps),
     embedView(edits),
     commandView(command),
     tasksView(tasks),

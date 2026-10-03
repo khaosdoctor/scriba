@@ -2,11 +2,16 @@ import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { RatingRepository } from "../data/repositories/ratings.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
 import {
-  FOLLOWUP_QUESTIONS,
   type FollowupQuestion,
   followupQuestions,
   ratingDay,
 } from "../domain/rating/entity.ts";
+import {
+  FOLLOWUP_CODES,
+  type FollowupRef,
+  followupRef,
+} from "../libs/followup.ts";
+import { keyboard, type Row } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import type { Notifier } from "./notifier.ts";
 
@@ -29,33 +34,10 @@ export type RateOutcome =
   | { kind: "saved"; rating: number }
   | { kind: "already"; current: number };
 
-export interface FollowupRef {
-  question: FollowupQuestion;
-  date: string;
-}
-
 const PROMPTS: Record<FollowupQuestion, string> = {
   journal: "📝 One line for the day?",
   til: "💡 Learned anything today?",
 };
-
-const FOLLOWUP_CODES: Record<FollowupQuestion, string> = {
-  journal: "j",
-  til: "t",
-};
-
-export function followupRef(question: FollowupQuestion, date: string): string {
-  return `(fu:${FOLLOWUP_CODES[question]}:${date})`;
-}
-
-export function followupFromCode(
-  code: string | undefined,
-): FollowupQuestion | null {
-  return (
-    FOLLOWUP_QUESTIONS.find((question) => FOLLOWUP_CODES[question] === code) ??
-    null
-  );
-}
 
 export class RatingService {
   /** Prompts already skipped, so a double tap asks the next question once. Forgotten on
@@ -76,17 +58,15 @@ export class RatingService {
 
   async prompt(date: string): Promise<void> {
     log.rating.info({ date }, "prompting for daily rating");
-    const button = (score: number) => ({
-      text: String(score),
-      callback_data: `${RATING_NS}:${date}:${score}`,
-    });
+    const button = (score: number): Row[number] => [
+      String(score),
+      `${RATING_NS}:${date}:${score}`,
+    ];
     await this.deps.notifier.send(`📊 How was ${date}? Rate it 1–10:`, {
-      keyboard: {
-        inline_keyboard: [
-          [1, 2, 3, 4, 5].map(button),
-          [6, 7, 8, 9, 10].map(button),
-        ],
-      },
+      keyboard: keyboard([
+        [1, 2, 3, 4, 5].map(button),
+        [6, 7, 8, 9, 10].map(button),
+      ]),
     });
   }
 
@@ -105,13 +85,13 @@ export class RatingService {
     log.rating.info({ date, rating }, "recorded rating, writing frontmatter");
     try {
       await obsidian.setDailyRating(date, rating);
-    } catch (e) {
+    } catch (err) {
       log.rating.error(
-        { err: e, date, rating },
+        { err, date, rating },
         "frontmatter write failed, releasing rating for retry",
       );
       await ratings.clearRating(date);
-      throw e;
+      throw err;
     }
     log.rating.info({ date, rating }, "daily rating saved");
     return { kind: "saved", rating };
@@ -182,16 +162,9 @@ export class RatingService {
     await notifier.send(
       `${PROMPTS[question]} Reply to this message, or skip.\n${followupRef(question, date)}`,
       {
-        keyboard: {
-          inline_keyboard: [
-            [
-              {
-                text: "⏭ Skip",
-                callback_data: `${FOLLOWUP_NS}:${FOLLOWUP_CODES[question]}:${date}`,
-              },
-            ],
-          ],
-        },
+        keyboard: keyboard([
+          [["⏭ Skip", `${FOLLOWUP_NS}:${FOLLOWUP_CODES[question]}:${date}`]],
+        ]),
       },
     );
   }

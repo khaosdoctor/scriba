@@ -1,16 +1,18 @@
 import { Composer, type Context, type Filter } from "grammy";
 import type { Message } from "grammy/types";
+import { parseFollowupRef } from "../../libs/followup.ts";
 import { parseHabitRef } from "../../libs/habits.ts";
+import { parseTaskRef } from "../../libs/tasks.ts";
 import { habitReply } from "./habits/reply.ts";
 import type { ViewDeps } from "./index.ts";
-import { followupReply, parseFollowupRef } from "./rating/followup-reply.ts";
+import { followupReply } from "./rating/followup-reply.ts";
 import {
   linkReply,
   parseLinkRef,
   parseSettingsRef,
   wizardReply,
 } from "./settings/wizard.ts";
-import { parseTaskRef, taskReply } from "./tasks/reply.ts";
+import { taskReply } from "./tasks/reply.ts";
 
 type Reply = Filter<Context, "message:text">;
 

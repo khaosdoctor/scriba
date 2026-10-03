@@ -1,10 +1,11 @@
 import type { Composer, Context } from "grammy";
 import type { EditService } from "../../../services/edits.ts";
+import { LINK_NS } from "../../../services/processing.ts";
 import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
 export function linkView(edits: EditService): Composer<Context> {
-  return namespace("lk", async (ctx, [verdict, pendingId]) => {
+  return namespace(LINK_NS, async (ctx, [verdict, pendingId]) => {
     const responder = new Responder(ctx);
     if (!pendingId) return responder.ack();
     const outcome = await edits.confirmLink(pendingId, verdict !== "n");

@@ -1,9 +1,8 @@
 import type { UpstreamStatus } from "../domain/health/structures.ts";
 import type { Stats, StatusCounts } from "../domain/jot/structures.ts";
 import type { ReleaseNote } from "../domain/release/structures.ts";
-import { clipUpdate } from "./feed.ts";
 import { paginate } from "./page.ts";
-import { formatDuration } from "./text.ts";
+import { clipUpdate, formatDuration } from "./text.ts";
 import { plainDate } from "./time.ts";
 
 export function formatListPage(
@@ -13,26 +12,33 @@ export function formatListPage(
   cmd: string,
   sep = "\n",
 ): string {
-  const { items: shown, page: p, pages, offset } = paginate(items, page, size);
+  const {
+    items: shown,
+    page: current,
+    pages,
+    offset,
+  } = paginate(items, page, size);
   const body = shown.join(sep);
   if (pages === 1) return body;
   const from = offset + 1;
   const nav =
-    p + 1 < pages ? `next: ${cmd} ${p + 2}` : `back to the start: ${cmd} 1`;
-  return `${body}\n\nShowing ${from}–${from + shown.length - 1} of ${items.length} · page ${p + 1}/${pages} · ${nav}`;
+    current + 1 < pages
+      ? `next: ${cmd} ${current + 2}`
+      : `back to the start: ${cmd} 1`;
+  return `${body}\n\nShowing ${from}–${from + shown.length - 1} of ${items.length} · page ${current + 1}/${pages} · ${nav}`;
 }
 
-export function formatStats(label: string, s: Stats): string {
+export function formatStats(label: string, stats: Stats): string {
   const tail = [
-    s.inflight ? `in-flight ${s.inflight}` : "",
-    s.failed ? `failed ${s.failed}` : "",
-    s.abandoned ? `abandoned ${s.abandoned}` : "",
+    stats.inflight ? `in-flight ${stats.inflight}` : "",
+    stats.failed ? `failed ${stats.failed}` : "",
+    stats.abandoned ? `abandoned ${stats.abandoned}` : "",
   ].filter(Boolean);
   return [
     `📊 ${label}`,
-    `Jots: ${s.total}`,
-    `  text ${s.text} · voice ${s.audio} · image ${s.image} · video ${s.video}`,
-    `Done ${s.done}${tail.length ? ` · ${tail.join(" · ")}` : ""}`,
+    `Jots: ${stats.total}`,
+    `  text ${stats.text} · voice ${stats.audio} · image ${stats.image} · video ${stats.video}`,
+    `Done ${stats.done}${tail.length ? ` · ${tail.join(" · ")}` : ""}`,
   ].join("\n");
 }
 
@@ -46,30 +52,32 @@ export interface StatusView {
   uptimeMs: number;
 }
 
-export function formatStatus(v: StatusView): string {
-  const c = v.counts;
-  const links = v.links.enabled
-    ? `${v.links.files} files / ${v.links.aliases} aliases`
+export function formatStatus(view: StatusView): string {
+  const counts = view.counts;
+  const links = view.links.enabled
+    ? `${view.links.files} files / ${view.links.aliases} aliases`
     : "disabled";
   return [
-    `🩺 scriba ${v.version} (${v.sha.slice(0, 7)})`,
-    `Uptime: ${formatDuration(v.uptimeMs)}`,
-    `Jots: ${c.done} done · ${c.pending + c.processing} in-flight · ${c.failed} failed · ${c.abandoned} abandoned`,
-    `Queue depth: ${v.queueDepth}`,
-    `Transcriber: ${v.transcriber}`,
+    `🩺 scriba ${view.version} (${view.sha.slice(0, 7)})`,
+    `Uptime: ${formatDuration(view.uptimeMs)}`,
+    `Jots: ${counts.done} done · ${counts.pending + counts.processing} in-flight · ${counts.failed} failed · ${counts.abandoned} abandoned`,
+    `Queue depth: ${view.queueDepth}`,
+    `Transcriber: ${view.transcriber}`,
     `Link index: ${links}`,
   ].join("\n");
 }
 
 export function formatHealth(rows: UpstreamStatus[], now: number): string {
   const lines = ["Upstreams:"];
-  for (const r of rows) {
+  for (const row of rows) {
     // 🟡 is one failed probe: an error on show, but not yet the two that make it down.
-    const dot = !r.up ? "🔴" : r.failures ? "🟡" : "🟢";
-    const parts = [`${dot} ${r.name}`];
-    if (!r.up) parts.push(`down ${formatDuration(now - r.since)}`);
-    parts.push(r.latencyMs === null ? "not probed yet" : `${r.latencyMs} ms`);
-    if (r.error) parts.push(clipUpdate(r.error, 120));
+    const dot = !row.up ? "🔴" : row.failures ? "🟡" : "🟢";
+    const parts = [`${dot} ${row.name}`];
+    if (!row.up) parts.push(`down ${formatDuration(now - row.since)}`);
+    parts.push(
+      row.latencyMs === null ? "not probed yet" : `${row.latencyMs} ms`,
+    );
+    if (row.error) parts.push(clipUpdate(row.error, 120));
     lines.push(parts.join(" · "));
   }
   return lines.join("\n");
@@ -122,7 +130,8 @@ export function formatReleaseList(notes: ReleaseNote[]): string {
   if (!notes.length) return "no releases found";
   return notes
     .map(
-      (n) => `• ${n.tag} (${plainDate(Date.parse(n.publishedAt))}) — ${n.url}`,
+      (note) =>
+        `• ${note.tag} (${plainDate(Date.parse(note.publishedAt))}) — ${note.url}`,
     )
     .join("\n");
 }

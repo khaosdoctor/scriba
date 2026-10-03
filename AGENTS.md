@@ -76,7 +76,8 @@ Layers call downward only: presentation calls services, services call data. `dom
   make `entity.ts` long (`domain/jot/rules.ts`: `isFollower`, `sourceField`, the journal
   line format, the TIL prefix; `domain/habit/rules.ts`: `parseHabits`, `completeHabitLine`).
   A reply-ref marker keeps its builder and parser together in `libs/` (`parseHabitRef` in
-  `libs/habits.ts`), since services build it and views parse it. `structures.ts`
+  `libs/habits.ts`, `followupRef`/`parseFollowupRef` in `libs/followup.ts`,
+  `taskRef`/`parseTaskRef` in `libs/tasks.ts`), since services build it and views parse it. `structures.ts`
   holds the shapes passed between layers (`IntakeInput`, `DetectedTask`). A rule that spans
   entities, or has no entity, goes in `libs/`.
 - **Wiring happens only in `src/app.ts`.** Each system block is a class, with its
@@ -253,7 +254,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   while it works goes into that turn's status message: reasoning
   (`COMMAND_THINKING_TOKENS`, default 4000; `0` turns thinking and those lines off), tool
   calls, ⚠️ failed tool results, and prose it writes before doing something else. Each line
-  is flattened and cut to 330 chars (`clipUpdate`), then the message is re-rendered as
+  is flattened and cut to 330 chars (`clipUpdate` in `libs/text.ts`), then the message is re-rendered as
   `feedMessage(header, turn.feed)`. **Every line is prefixed with an emoji for what it is**
   — `toolIcon` per tool (📖 read, 🔍 search, ✍️ write, 🗑 delete, 🌐 fetch, 🔧 unknown) and
   `thoughtIcon` for the agent's own words, a keyword lookup so a glance says which part of
@@ -452,7 +453,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   reading the note: blank lines, empty bullets (`-`, `- [ ]`), rules and HTML comments are
   template scaffolding, and the frontmatter rating is never looked at. A day with no note
   asks both. No state is held: the prompt's text carries `(fu:j|t:<date>)` and a reply is
-  routed by it (`parseFollowupRef` in `presentation/telegram/rating/followup-reply.ts`),
+  routed by it (`parseFollowupRef` in `libs/followup.ts`),
   while the note says what is still empty, so an
   answer works after a restart and an unanswered question costs nothing. Each question has
   a ⏭ Skip button (`fu:<j|t>:<date>`) and, since an inline keyboard and `force_reply` can't

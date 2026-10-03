@@ -1,7 +1,5 @@
 import { pluralize, TELEGRAM_LIMIT } from "./text.ts";
 
-export const AGENT_UPDATE_CHARS = 330;
-
 export function feedMessage(header: string, lines: string[]): string {
   return lines.length ? `${header}\n\n${lines.join("\n")}` : header;
 }
@@ -55,15 +53,6 @@ export function thoughtIcon(text: string): string {
   return "💭";
 }
 
-export function clipUpdate(text: string, max = AGENT_UPDATE_CHARS): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  if (flat.length <= max) return flat;
-  const cut = flat.slice(0, max - 1);
-  const space = cut.lastIndexOf(" ");
-  const body = space > max * 0.6 ? cut.slice(0, space) : cut;
-  return `${body.trimEnd()}…`;
-}
-
 const TOOL_ARGS = ["path", "url", "query", "dir", "pattern", "prompt"];
 
 export function formatToolCall(
@@ -72,7 +61,7 @@ export function formatToolCall(
 ): string {
   const label = name.replace(/^mcp__.*?__/, "");
   const key = TOOL_ARGS.find(
-    (k) => typeof input[k] === "string" && (input[k] as string).trim(),
+    (arg) => typeof input[arg] === "string" && (input[arg] as string).trim(),
   );
   const detail = key ? ` · ${String(input[key]).trim()}` : "";
   // A write carries the whole note; its size is the useful part, never the body.

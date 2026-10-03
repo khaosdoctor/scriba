@@ -4,10 +4,11 @@ import { botHarness, type Harness } from "../../../test/bot-harness.ts";
 
 /** A write/delete question the agent is parked on, with what the owner decided recorded. */
 function ask(h: Harness, id: string, decided: boolean[]) {
-  h.bot.command.pending.set(id, {
-    decide: (allow: boolean) => void decided.push(allow),
-    timer: setTimeout(() => {}, 0),
-  });
+  h.bot.command.pending.set(
+    id,
+    (allow: boolean) => void decided.push(allow),
+    setTimeout(() => {}, 0),
+  );
 }
 
 test("a confirmation tap marks the question answered, drops its buttons and settles the agent's wait", async () => {

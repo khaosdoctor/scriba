@@ -13,11 +13,12 @@ import {
   withinSquashWindow,
 } from "../domain/jot/rules.ts";
 import type { IntakeInput } from "../domain/jot/structures.ts";
-import { clipUpdate } from "../libs/feed.ts";
 import { type StatusButtons, statusKeyboard } from "../libs/jot.ts";
+import { type Keyboard, keyboard } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
+import { PendingDecisions } from "../libs/pending.ts";
 import type { FlushQueue } from "../libs/queue.ts";
-import { escapeHtml, shortId } from "../libs/text.ts";
+import { clipUpdate, escapeHtml, shortId } from "../libs/text.ts";
 import { dayBounds, plainDate, plainTime } from "../libs/time.ts";
 import type { Notifier } from "./notifier.ts";
 
@@ -29,6 +30,8 @@ const tilLog = logger("til-flow");
 const QUOTE_CHARS = 600;
 
 export const TIL_NS = "ti";
+
+export const VOICEFIX_NS = "vf";
 
 /** Set (in place of ✍) on a squashed follower's message, marking it as slated to merge
  *  into the previous jot's line. Telegram bots can set at most one reaction per message
@@ -65,7 +68,9 @@ export type TilOutcome =
 
 export class JotService {
   private statusMsgs = new Map<string, number>();
-  private voiceFixPending = new Map<string, (choice: VoiceFixChoice) => void>();
+  private voiceFixPending = new PendingDecisions<VoiceFixChoice>({
+    clearAndUnref: false,
+  });
 
   constructor(private deps: JotDeps) {}
 
@@ -225,7 +230,7 @@ export class JotService {
   private async showStatus(
     jotId: string,
     html: string,
-    keyboard: { inline_keyboard: readonly (readonly object[])[] },
+    keyboard: Keyboard,
   ): Promise<void> {
     const { repo, notifier } = this.deps;
     const existing = this.statusMsgs.get(jotId);
@@ -283,33 +288,26 @@ export class JotService {
       "<b>Proposed fix:</b>",
       `<i>${escapeHtml(proposed)}</i>`,
     ].join("\n");
-    await this.showStatus(jotId, html, {
-      inline_keyboard: [
+    await this.showStatus(
+      jotId,
+      html,
+      keyboard([
         [
-          { text: "📝 Use original", callback_data: `vf:o:${jotId}` },
-          { text: "✨ Use fixed", callback_data: `vf:p:${jotId}` },
+          ["📝 Use original", `${VOICEFIX_NS}:o:${jotId}`],
+          ["✨ Use fixed", `${VOICEFIX_NS}:p:${jotId}`],
         ],
-      ],
-    });
-    return new Promise<VoiceFixChoice>((resolve) => {
-      this.voiceFixPending.set(jotId, resolve);
-      setTimeout(
-        () => {
-          if (this.voiceFixPending.delete(jotId)) {
-            log.info({ jotId }, "voice fix: timed out, using original");
-            resolve("original");
-          }
-        },
-        5 * 60 * 1000,
-      );
-    });
+      ]),
+    );
+    return this.voiceFixPending.wait(jotId, 5 * 60 * 1000, "original", () =>
+      log.info({ jotId }, "voice fix: timed out, using original"),
+    );
   }
 
   pickVoiceFix(
     jotId: string,
     choice: VoiceFixChoice,
   ): (() => void) | undefined {
-    const resolve = this.voiceFixPending.get(jotId);
+    const resolve = this.voiceFixPending.take(jotId);
     if (!resolve) {
       log.warn(
         { jotId },
@@ -317,7 +315,6 @@ export class JotService {
       );
       return undefined;
     }
-    this.voiceFixPending.delete(jotId);
     log.info({ jotId, choice }, "voice fix: user picked");
     return () => resolve(choice);
   }
@@ -349,20 +346,12 @@ export class JotService {
         `💡 That sounds like a TIL. Move this to TIL?\n<blockquote>${escapeHtml(clipUpdate(text, QUOTE_CHARS))}</blockquote>`,
         {
           html: true,
-          keyboard: {
-            inline_keyboard: [
-              [
-                {
-                  text: "✅ Move to TIL",
-                  callback_data: `${TIL_NS}:y:${jotId}`,
-                },
-                {
-                  text: "🚫 Keep in Journal",
-                  callback_data: `${TIL_NS}:n:${jotId}`,
-                },
-              ],
+          keyboard: keyboard([
+            [
+              ["✅ Move to TIL", `${TIL_NS}:y:${jotId}`],
+              ["🚫 Keep in Journal", `${TIL_NS}:n:${jotId}`],
             ],
-          },
+          ]),
         },
       );
     } catch (err) {

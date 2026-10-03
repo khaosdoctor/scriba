@@ -1,5 +1,5 @@
 import { findSection, stampCompletion } from "../../libs/note.ts";
-import { escapeRe, fingerprint } from "../../libs/text.ts";
+import { collapse, escapeRe, fingerprint } from "../../libs/text.ts";
 import { DATE_RE } from "../../libs/time.ts";
 import type { Task, TaskDraft, TaskState, TaskType } from "./entity.ts";
 
@@ -34,12 +34,12 @@ function dateField(fieldMap: Map<string, string>, key: string): string | null {
 }
 
 function taskText(body: string, tag: string): string {
-  return body
-    .replace(FIELD_RE, "")
-    .replace(LEGACY_DONE_RE, "")
-    .replace(new RegExp(`${escapeRe(tag)}(?=\\s|$)`, "g"), "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return collapse(
+    body
+      .replace(FIELD_RE, "")
+      .replace(LEGACY_DONE_RE, "")
+      .replace(new RegExp(`${escapeRe(tag)}(?=\\s|$)`, "g"), ""),
+  );
 }
 
 export function parseTaskLine(
