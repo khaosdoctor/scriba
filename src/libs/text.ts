@@ -106,16 +106,6 @@ export function formatDuration(ms: number): string {
   return `${seconds}s`;
 }
 
-/** A typed entry-size reply: a whole number of characters, or "off" to stop splitting.
- *  Null when it isn't usable: under 40 characters no sentence would ever fit. */
-export function parseEntrySize(text: string): number | null {
-  const typed = text.trim().toLowerCase();
-  if (typed === "off" || typed === "none" || typed === "0") return 0;
-  if (!/^\d{1,4}$/.test(typed)) return null;
-  const size = Number(typed);
-  return size >= 40 && size <= 4000 ? size : null;
-}
-
 export function previewList(items: string[], max: number): string {
   if (items.length <= max) return items.join(", ");
   return `${items.slice(0, max).join(", ")} … +${items.length - max} more`;

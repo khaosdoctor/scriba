@@ -5,9 +5,9 @@ import {
   FOLLOWUP_QUESTIONS,
   type FollowupQuestion,
   followupQuestions,
+  ratingDay,
 } from "../domain/rating/entity.ts";
 import { logger } from "../libs/log.ts";
-import { ratingDay } from "../libs/time.ts";
 import type { Notifier } from "./notifier.ts";
 
 const log = { rating: logger("rating"), followup: logger("followup") };
@@ -51,7 +51,10 @@ export function followupRef(question: FollowupQuestion, date: string): string {
 export function followupFromCode(
   code: string | undefined,
 ): FollowupQuestion | null {
-  return FOLLOWUP_QUESTIONS.find((q) => FOLLOWUP_CODES[q] === code) ?? null;
+  return (
+    FOLLOWUP_QUESTIONS.find((question) => FOLLOWUP_CODES[question] === code) ??
+    null
+  );
 }
 
 export class RatingService {
@@ -73,9 +76,9 @@ export class RatingService {
 
   async prompt(date: string): Promise<void> {
     log.rating.info({ date }, "prompting for daily rating");
-    const button = (n: number) => ({
-      text: String(n),
-      callback_data: `${RATING_NS}:${date}:${n}`,
+    const button = (score: number) => ({
+      text: String(score),
+      callback_data: `${RATING_NS}:${date}:${score}`,
     });
     await this.deps.notifier.send(`📊 How was ${date}? Rate it 1–10:`, {
       keyboard: {

@@ -5,12 +5,12 @@ import {
   type GroqMessage,
   groqChat,
 } from "../data/connections/groq.ts";
+import type { Candidate } from "../domain/link-rule/entity.ts";
 import { TASK_TYPES } from "../domain/task/entity.ts";
 import {
   type DetectedTask,
   DetectedTaskSchema,
 } from "../domain/task/structures.ts";
-import type { Candidate } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import {
   CircuitBreaker,

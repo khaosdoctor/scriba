@@ -9,7 +9,7 @@ import {
   resolve,
   sep,
 } from "node:path";
-import type { AliasEntry } from "../../libs/links.ts";
+import type { AliasEntry } from "../../domain/link-rule/entity.ts";
 import { logger } from "../../libs/log.ts";
 import type { ObsidianClient } from "./notes.ts";
 
@@ -20,8 +20,8 @@ const log = logger("vault");
  *  symlink inside the vault can still point out of it. */
 export function isInsideRoot(root: string, target: string): boolean {
   if (!root || !target) return false;
-  const r = root.endsWith(sep) ? root.slice(0, -1) : root;
-  return target === r || target.startsWith(r + sep);
+  const base = root.endsWith(sep) ? root.slice(0, -1) : root;
+  return target === base || target.startsWith(base + sep);
 }
 
 // Enforced here, not asked for in the prompt: a request for "the whole vault" gets a
@@ -66,21 +66,22 @@ export class VaultService {
    * nearest existing parent is what gets realpathed.
    */
   private async safePath(
-    p: string,
+    requested: string,
   ): Promise<{ abs: string; rel: string; root: string }> {
     if (!this.root) throw new Error("vault path is not configured");
-    if (typeof p !== "string" || !p.trim()) throw new Error("path is required");
-    if (p.includes("\0")) throw new Error("invalid path");
+    if (typeof requested !== "string" || !requested.trim())
+      throw new Error("path is required");
+    if (requested.includes("\0")) throw new Error("invalid path");
     const root = await realpath(this.root);
-    const abs = resolve(root, p.replace(/^\/+/, ""));
+    const abs = resolve(root, requested.replace(/^\/+/, ""));
     if (!isInsideRoot(root, abs))
-      throw new Error(`path escapes the vault: ${p}`);
+      throw new Error(`path escapes the vault: ${requested}`);
     let probe = abs;
     for (;;) {
       try {
         const real = await realpath(probe);
         if (!isInsideRoot(root, real))
-          throw new Error(`path escapes the vault via a symlink: ${p}`);
+          throw new Error(`path escapes the vault via a symlink: ${requested}`);
         break;
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
@@ -103,16 +104,16 @@ export class VaultService {
     );
     if (!entries) {
       // `dir` may be a single note (list/search called with a note path).
-      const s = await stat(dir).catch(() => null);
-      if (s?.isFile() && extname(dir) === ".md") acc.push(dir);
+      const info = await stat(dir).catch(() => null);
+      if (info?.isFile() && extname(dir) === ".md") acc.push(dir);
       return acc;
     }
-    for (const e of entries) {
-      if (e.name.startsWith(".") || e.name === opts.skip) continue; // .obsidian, .trash, .git
-      if (e.isSymbolicLink() && !opts.symlinks) continue;
-      const p = join(dir, e.name);
-      if (e.isDirectory()) await this.walk(p, opts, acc);
-      else if (extname(e.name) === ".md") acc.push(p);
+    for (const entry of entries) {
+      if (entry.name.startsWith(".") || entry.name === opts.skip) continue; // .obsidian, .trash, .git
+      if (entry.isSymbolicLink() && !opts.symlinks) continue;
+      const child = join(dir, entry.name);
+      if (entry.isDirectory()) await this.walk(child, opts, acc);
+      else if (extname(entry.name) === ".md") acc.push(child);
     }
     return acc;
   }
@@ -129,7 +130,7 @@ export class VaultService {
 
   async listNotes(dir = ""): Promise<string> {
     const { root, files } = await this.notesUnder(dir);
-    const rels = files.map((f) => relative(root, f)).sort();
+    const rels = files.map((file) => relative(root, file)).sort();
     const shown = rels.slice(0, MAX_LIST);
     const cut =
       rels.length > shown.length
@@ -149,20 +150,20 @@ export class VaultService {
   }
 
   async searchNotes(query: string, dir = ""): Promise<string> {
-    const q = query.trim().toLowerCase();
-    if (!q) throw new Error("query is required");
+    const needle = query.trim().toLowerCase();
+    if (!needle) throw new Error("query is required");
     const { root, files } = await this.notesUnder(dir);
     const hits: string[] = [];
-    for (const f of files) {
+    for (const file of files) {
       if (hits.length >= MAX_HITS) break;
-      const text = await readFile(f, "utf8").catch(() => "");
-      if (!text.toLowerCase().includes(q)) continue;
+      const text = await readFile(file, "utf8").catch(() => "");
+      if (!text.toLowerCase().includes(needle)) continue;
       const line = text
         .split("\n")
-        .find((l) => l.toLowerCase().includes(q))
+        .find((candidate) => candidate.toLowerCase().includes(needle))
         ?.trim()
         .slice(0, 200);
-      hits.push(`${relative(root, f)}: ${line ?? ""}`);
+      hits.push(`${relative(root, file)}: ${line ?? ""}`);
     }
     log.info({ query, hits: hits.length }, "command: vault_search");
     return hits.length ? hits.join("\n") : `no note matches "${query}"`;
@@ -226,19 +227,22 @@ export class VaultService {
 
     const found = await this.walk(this.root, INDEX_WALK);
     const present = new Set(found);
-    for (const p of this.byFile.keys())
-      if (!present.has(p)) this.byFile.delete(p);
+    for (const known of this.byFile.keys())
+      if (!present.has(known)) this.byFile.delete(known);
 
-    for (const f of found) {
-      const mtimeMs = (await stat(f).catch(() => null))?.mtimeMs;
-      if (mtimeMs === undefined || this.byFile.get(f)?.mtimeMs === mtimeMs)
+    for (const file of found) {
+      const mtimeMs = (await stat(file).catch(() => null))?.mtimeMs;
+      if (mtimeMs === undefined || this.byFile.get(file)?.mtimeMs === mtimeMs)
         continue;
-      const text = await readFile(f, "utf8").catch(() => null);
+      const text = await readFile(file, "utf8").catch(() => null);
       if (text === null) continue;
-      this.byFile.set(f, { mtimeMs, aliases: parseAliasEntries(f, text) });
+      this.byFile.set(file, {
+        mtimeMs,
+        aliases: parseAliasEntries(file, text),
+      });
     }
 
-    this.flat = [...this.byFile.values()].flatMap((e) => e.aliases);
+    this.flat = [...this.byFile.values()].flatMap((entry) => entry.aliases);
     log.debug(
       { files: this.byFile.size, aliases: this.flat.length },
       "vault index rebuilt",
@@ -249,12 +253,12 @@ export class VaultService {
   private startWatch(root: string): void {
     try {
       this.watcher = watch(root, { recursive: true }, (_event, file) => {
-        const f = file ? String(file) : "";
+        const changed = file ? String(file) : "";
         // Ignore dotdirs (e.g. .obsidian writes constantly) and non-markdown churn.
         if (
-          f &&
-          (f.split(/[/\\]/).some((seg) => seg.startsWith(".")) ||
-            !f.endsWith(".md"))
+          changed &&
+          (changed.split(/[/\\]/).some((seg) => seg.startsWith(".")) ||
+            !changed.endsWith(".md"))
         )
           return;
         if (this.debounce) clearTimeout(this.debounce);
@@ -270,7 +274,7 @@ export class VaultService {
   }
 }
 
-const unquote = (s: string) => s.trim().replace(/^["']|["']$/g, "");
+const unquote = (text: string) => text.trim().replace(/^["']|["']$/g, "");
 
 function parseAliasEntries(path: string, text: string): AliasEntry[] {
   const note = basename(path, ".md");
@@ -280,8 +284,8 @@ function parseAliasEntries(path: string, text: string): AliasEntry[] {
   const block = front.match(/^aliases:\s*\n((?:\s*-\s*.+\n?)+)/m)?.[1];
   const items = inline?.trim()
     ? inline.split(",")
-    : (block?.split("\n").map((l) => l.replace(/^\s*-\s*/, "")) ?? []);
-  for (const a of items.map(unquote).filter(Boolean))
-    out.push({ note, alias: a });
+    : (block?.split("\n").map((line) => line.replace(/^\s*-\s*/, "")) ?? []);
+  for (const alias of items.map(unquote).filter(Boolean))
+    out.push({ note, alias });
   return out;
 }

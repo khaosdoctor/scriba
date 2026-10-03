@@ -5,6 +5,7 @@ import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { VaultService } from "../data/repositories/vault.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import { isReprocessable, reprocessTargets } from "../domain/jot/rules.ts";
+import { notesFor } from "../domain/link-rule/entity.ts";
 import {
   formatDeployNotice,
   formatHealth,
@@ -334,9 +335,7 @@ export class AdminService {
     }
     return {
       surface,
-      notes: list
-        .filter((rejection) => rejection.surface === surface)
-        .map((rejection) => rejection.note),
+      notes: notesFor(list, surface),
     };
   }
 
