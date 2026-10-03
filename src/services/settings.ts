@@ -1,6 +1,6 @@
 import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
-import type { VaultService } from "../data/repositories/vault.ts";
+import type { VaultRepository } from "../data/repositories/vault.ts";
 import type { LinkRule } from "../domain/link-rule/entity.ts";
 import type {
   SettingKey,
@@ -30,7 +30,7 @@ const log = logger("menu");
 export interface SettingsDeps {
   repo: SettingsRepository;
   linkRules: LinkRuleRepository;
-  links: Pick<VaultService, "list" | "stats">;
+  links: Pick<VaultRepository, "list" | "stats">;
   enricher: Pick<Enricher, "setModel">;
   scheduler: Pick<Scheduler, "rearm">;
   notifier: Pick<Notifier, "send">;

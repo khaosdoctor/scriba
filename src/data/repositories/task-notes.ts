@@ -27,7 +27,7 @@ export interface TaskNoteConfig {
   insert: "top" | "bottom";
 }
 
-export class TaskNotesService {
+export class TaskNoteRepository {
   constructor(
     private obsidian: ObsidianClient,
     private notes: Record<TaskType, TaskNoteConfig>,

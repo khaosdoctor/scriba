@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import type { ObsidianClient } from "./notes.ts";
-import { isInsideRoot, VaultService } from "./vault.ts";
+import { isInsideRoot, VaultRepository } from "./vault.ts";
 
 /** A vault with one note, plus a secret outside it and a symlink pointing at that secret. */
 async function fixture() {
@@ -32,7 +32,7 @@ async function fixture() {
     root,
     written,
     deleted,
-    tools: new VaultService(root, obsidian),
+    tools: new VaultRepository(root, obsidian),
     cleanup: () => rm(base, { recursive: true, force: true }),
   };
 }
@@ -189,7 +189,7 @@ test("isInsideRoot accepts the root and its children, rejects siblings", () => {
 });
 
 test("a vault path that isn't configured disables the tools", async () => {
-  const tools = new VaultService(null, {} as ObsidianClient);
+  const tools = new VaultRepository(null, {} as ObsidianClient);
   assert.equal(tools.enabled, false);
   await assert.rejects(() => tools.read("x.md"), /not configured/);
 });
@@ -201,7 +201,7 @@ test("ids used for confirmations are unguessable enough", () => {
 });
 
 test("empty vault path yields no candidates", async () => {
-  const idx = new VaultService(null, {} as ObsidianClient);
+  const idx = new VaultRepository(null, {} as ObsidianClient);
   assert.equal(await idx.rebuild(), 0);
   assert.deepEqual(idx.list(), []);
   idx.startIndex();
@@ -226,7 +226,7 @@ test("rebuild indexes titles + inline and block aliases, skips non-md/dotfiles",
     await mkdir(join(dir, ".obsidian"));
     await writeFile(join(dir, ".obsidian", "hidden.md"), "hidden"); // dotdir skipped
 
-    const idx = new VaultService(dir, {} as ObsidianClient);
+    const idx = new VaultRepository(dir, {} as ObsidianClient);
     const count = await idx.rebuild();
     assert.equal(count, 4); // four .md files, dotdir ignored
     assert.deepEqual(idx.stats(), { enabled: true, files: 4, aliases: 8 });
@@ -255,7 +255,7 @@ const poll = async (cond: () => boolean, tries = 40, ms = 100) => {
 
 test("startIndex() scans initially and reflects later changes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "scriba-watch-"));
-  const idx = new VaultService(dir, {} as ObsidianClient);
+  const idx = new VaultRepository(dir, {} as ObsidianClient);
   try {
     await writeFile(join(dir, "Seed.md"), "seed");
     idx.startIndex(300); // short periodic backstop → deterministic regardless of watch timing
@@ -273,7 +273,7 @@ test("startIndex() scans initially and reflects later changes", async () => {
 
 test("startIndex() survives a vault folder that cannot be watched", async () => {
   const dir = join(await mkdtemp(join(tmpdir(), "scriba-nowatch-")), "missing");
-  const idx = new VaultService(dir, {} as ObsidianClient);
+  const idx = new VaultRepository(dir, {} as ObsidianClient);
   try {
     idx.startIndex(300);
     assert.equal(await idx.rebuild(), 0);
@@ -286,7 +286,7 @@ test("rebuild is incremental: reflects adds, edits, and deletes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "scriba-inc-"));
   try {
     await writeFile(join(dir, "A.md"), "---\naliases: [aa]\n---\n");
-    const idx = new VaultService(dir, {} as ObsidianClient);
+    const idx = new VaultRepository(dir, {} as ObsidianClient);
     assert.equal(await idx.rebuild(), 1);
     assert.ok(idx.list().some((e) => e.alias === "aa"));
 

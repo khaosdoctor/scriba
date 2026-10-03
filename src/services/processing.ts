@@ -3,7 +3,7 @@ import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { TaskDraftRepository } from "../data/repositories/task-drafts.ts";
-import type { VaultService } from "../data/repositories/vault.ts";
+import type { VaultRepository } from "../data/repositories/vault.ts";
 import { type Jot, MAX_ATTEMPTS } from "../domain/jot/entity.ts";
 import {
   combineEnrichSource,
@@ -64,7 +64,7 @@ export interface ProcessingDeps {
   obsidian: ObsidianClient;
   transcriber: Transcriber;
   enricher: Enricher;
-  links: VaultService;
+  links: VaultRepository;
   jots: JotService;
   edits: Pick<EditService, "drainQueued">;
   tasks: Pick<TaskService, "suggest">;

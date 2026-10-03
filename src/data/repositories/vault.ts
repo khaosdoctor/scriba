@@ -33,7 +33,7 @@ interface WalkOptions {
 const AGENT_WALK: WalkOptions = { limit: MAX_LIST * 4 };
 const INDEX_WALK: WalkOptions = { symlinks: true, skip: "internal" };
 
-export class VaultService {
+export class VaultRepository {
   private byFile = new Map<
     string,
     { mtimeMs: number; aliases: AliasEntry[] }

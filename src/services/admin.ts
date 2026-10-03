@@ -2,7 +2,7 @@ import type { GithubReleases } from "../data/connections/github.ts";
 import type { JotRepository } from "../data/repositories/jots.ts";
 import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
-import type { VaultService } from "../data/repositories/vault.ts";
+import type { VaultRepository } from "../data/repositories/vault.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import { isReprocessable, reprocessTargets } from "../domain/jot/rules.ts";
 import { notesFor } from "../domain/link-rule/entity.ts";
@@ -70,7 +70,7 @@ export interface AdminDeps {
   queue: FlushQueue;
   processing: ProcessingService;
   transcriber: FallbackTranscriber;
-  links: VaultService;
+  links: VaultRepository;
   github: GithubReleases;
   health: HealthMonitor;
   notifier: Pick<Notifier, "notify">;

@@ -52,7 +52,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   (`data/repositories/index.ts`), and each service takes the repositories it needs. Do not
   write queries anywhere else: add a method to the repository. Vault operations
   live here too: `ObsidianClient` (`notes.ts`, the note operations and the per-note lock, over `ObsidianConnection`),
-  `TaskNotesService` (`task-notes.ts`, the two task notes) and `VaultService` (`vault.ts`,
+  `TaskNoteRepository` (`task-notes.ts`, the two task notes) and `VaultRepository` (`vault.ts`,
   the read-only mount and the link index).
 - **External clients live in `data/connections/`.** One client per source, with no business
   operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber` and `groqChat`
@@ -231,9 +231,9 @@ Layers call downward only: presentation calls services, services call data. `dom
   What it has is six custom in-process tools (`createSdkMcpServer` + `tool()` from the agent
   SDK) in `AgentService` (`services/agent.ts`): `vault_list`/`vault_read`/`vault_search` off
   the read-only mount, `vault_write`/`vault_delete` through Obsidian's REST API (the mount
-  can't be written), both through `VaultService` (`data/repositories/vault.ts`), and
+  can't be written), both through `VaultRepository` (`data/repositories/vault.ts`), and
   `web_fetch` through `WebService` (`data/connections/web.ts`), plus the SDK's `WebSearch`
-  for research. Every path goes through `VaultService.safePath`: string containment
+  for research. Every path goes through `VaultRepository.safePath`: string containment
   (`isInsideRoot`) **and** a realpath check, so
   neither `../` nor a symlink inside the vault gets out. `web_fetch` is http(s) only,
   re-checks every redirect hop, and refuses anything resolving to a private address: the bot
@@ -301,7 +301,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   half and is deliberately tolerant of what is really in those notes: the older
   `✅ 2026-03-02` done marker beside `[completion:: ]`, cancelled `- [-]` rows, a typo'd
   `[start::6-03-01]`, an empty description, and `[id:: ]`/`[dependsOn:: ]` fields it must
-  leave untouched. `TaskNotesService` (`data/repositories/task-notes.ts`) is the I/O half:
+  leave untouched. `TaskNoteRepository` (`data/repositories/task-notes.ts`) is the I/O half:
   read-modify-write under the note lock (`ObsidianClient.updateNote`), bumping the note's `updatedAt` frontmatter.
 - **A message never becomes a task directly.** Task mode (`/task`, closed by `/done` or 15
   minutes idle) turns each message into a *draft*, shown on a confirmation card whose
