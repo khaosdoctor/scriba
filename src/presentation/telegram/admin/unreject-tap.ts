@@ -8,9 +8,9 @@ const log = logger("bot");
 export const UNREJECT_NS = "ur";
 
 export function unrejectView(admin: AdminService): Composer<Context> {
-  return namespace(UNREJECT_NS, async (ctx, [step, ...idx]) => {
+  return namespace(UNREJECT_NS, async (ctx, [step, ...idx], responder) => {
     const word = await admin.rejectedWord(step, idx);
-    if (!word) return ctx.answerCallbackQuery({ text: "expired" });
+    if (!word) return responder.ack("expired");
     const { surface } = word;
 
     if (step === "s") {
@@ -21,7 +21,7 @@ export function unrejectView(admin: AdminService): Composer<Context> {
       const kb = new InlineKeyboard();
       for (const [i, note] of word.notes.entries())
         kb.text(note, `${UNREJECT_NS}:p:${idx[0]}:${i}`).row();
-      await ctx.answerCallbackQuery();
+      await responder.ack();
       return ctx.editMessageText(`Unreject "${surface}" → which note?`, {
         reply_markup: kb,
       });
@@ -29,11 +29,9 @@ export function unrejectView(admin: AdminService): Composer<Context> {
 
     if (step === "p") {
       const pair = await admin.unrejectNote(word, idx);
-      if (!pair) return ctx.answerCallbackQuery({ text: "expired" });
+      if (!pair) return responder.ack("expired");
       const { note, removed } = pair;
-      await ctx.answerCallbackQuery({
-        text: removed ? "unrejected" : "already gone",
-      });
+      await responder.ack(removed ? "unrejected" : "already gone");
       return ctx.editMessageText(
         removed
           ? `↩️ "${surface}" may link to [[${note}]] again`
@@ -41,6 +39,6 @@ export function unrejectView(admin: AdminService): Composer<Context> {
       );
     }
 
-    await ctx.answerCallbackQuery();
+    await responder.ack();
   });
 }

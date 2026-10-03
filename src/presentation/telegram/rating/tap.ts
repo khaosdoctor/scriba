@@ -4,7 +4,6 @@ import { RatingSchema } from "../../../domain/rating/entity.ts";
 import { logger } from "../../../libs/log.ts";
 import { IsoDateSchema } from "../../../libs/time.ts";
 import { RATING_NS, type RatingService } from "../../../services/rating.ts";
-import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
 const log = logger("rating");
@@ -12,8 +11,7 @@ const log = logger("rating");
 const Payload = z.tuple([IsoDateSchema, RatingSchema]);
 
 export function ratingView(rating: RatingService): Composer<Context> {
-  return namespace(RATING_NS, async (ctx, [date, n]) => {
-    const responder = new Responder(ctx);
+  return namespace(RATING_NS, async (ctx, [date, n], responder) => {
     log.debug({ date, n }, "rating button tapped");
     const payload = Payload.safeParse([date, n]);
     if (!payload.success) {

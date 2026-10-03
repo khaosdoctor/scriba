@@ -1,11 +1,9 @@
 import type { Composer, Context } from "grammy";
 import { type EditService, LINK_NS } from "../../../services/edits.ts";
-import { Responder } from "../chat.ts";
 import { namespace } from "../namespace.ts";
 
 export function linkView(edits: EditService): Composer<Context> {
-  return namespace(LINK_NS, async (ctx, [verdict, pendingId]) => {
-    const responder = new Responder(ctx);
+  return namespace(LINK_NS, async (ctx, [verdict, pendingId], responder) => {
     if (!pendingId) return responder.ack();
     const outcome = await edits.confirmLink(pendingId, verdict !== "n");
     if (outcome === "expired") return responder.ack("expired");

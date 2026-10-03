@@ -8,6 +8,7 @@ import type {
   LinkPrompt,
   SettingsService,
 } from "../../../services/settings.ts";
+import type { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
 import { backTo, pagedScreen, withClose } from "../keyboard.ts";
 import type { Tap } from "../namespace.ts";
@@ -24,41 +25,49 @@ type Mode = "edit" | "send";
 
 export function linkRulesTap(deps: LinkDeps) {
   const { settings } = deps;
-  const prompt = async (ctx: Tap, kind: LinkPrompt, gi?: number) => {
-    await ctx.answerCallbackQuery({ text: "Answer the prompt below ↓" });
+  const prompt = async (
+    responder: Responder,
+    kind: LinkPrompt,
+    gi?: number,
+  ) => {
+    await responder.ack("Answer the prompt below ↓");
     return settings.askLink(kind, gi);
   };
-  return async (ctx: Tap, [action, arg, arg2]: string[]): Promise<void> => {
+  return async (
+    ctx: Tap,
+    [action, arg, arg2]: string[],
+    responder: Responder,
+  ): Promise<void> => {
     switch (action) {
       case "links":
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         return home(ctx, settings);
       case "lsw":
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         return stopwordsStep(ctx, settings);
       case "lswa":
-        return prompt(ctx, "sw");
+        return prompt(responder, "sw");
       case "lswl":
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         return stopwordPage(ctx, settings, Number(arg) || 0);
       case "lswd": {
         const gi = arg === undefined ? -1 : Number(arg);
         const word = (await settings.stopwords())[gi];
         if (word === undefined) {
           log.warn({ arg }, "link wizard: stopword index out of range");
-          return void ctx.answerCallbackQuery({ text: "expired" });
+          return void responder.ack("expired");
         }
         // Answer before the write, so a slow DB round-trip can't outlive Telegram's
         // callback-query window: the re-rendered page carries the result.
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         await settings.removeStopword(word);
         return stopwordPage(ctx, settings, Math.floor(gi / PAGE));
       }
       case "lrj":
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         return rejectedWords(ctx, settings, Number(arg) || 0);
       case "lrjs":
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         return rejectedNotes(ctx, settings, Number(arg), Number(arg2) || 0);
       case "lrju": {
         const list = await settings.rejections();
@@ -73,9 +82,9 @@ export function linkRulesTap(deps: LinkDeps) {
             { a: arg, b: arg2 },
             "link wizard: rejection index out of range",
           );
-          return void ctx.answerCallbackQuery({ text: "expired" });
+          return void responder.ack("expired");
         }
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         // The surface disappears from step 2 once its last note is freed, so fall back
         // there rather than re-rendering an empty note list.
         const left = await settings.unreject(surface, note);
@@ -84,67 +93,65 @@ export function linkRulesTap(deps: LinkDeps) {
           : rejectedWords(ctx, settings, Math.floor(si / PAGE));
       }
       case "lrg":
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         return pairsPage(ctx, settings, Number(arg) || 0);
       case "lrgv":
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         return pairDetail(ctx, settings, Number(arg));
       case "lrga":
-        return prompt(ctx, "rg");
+        return prompt(responder, "rg");
       case "lrgd": {
         const gi = arg === undefined ? -1 : Number(arg);
         const pair = (await settings.pairs())[gi];
         if (!pair) {
           log.warn({ arg }, "link wizard: pair index out of range");
-          return void ctx.answerCallbackQuery({ text: "expired" });
+          return void responder.ack("expired");
         }
         // Answer before the write, so a slow DB round-trip can't outlive Telegram's
         // callback-query window: the re-rendered page carries the result.
-        await ctx.answerCallbackQuery({ text: `dropped ${pair.surface}` });
+        await responder.ack(`dropped ${pair.surface}`);
         await settings.removePair(pair);
         return pairsPage(ctx, settings, Math.floor(gi / PAGE));
       }
       case "lrgw":
-        return prompt(ctx, "rgw", Number(arg));
+        return prompt(responder, "rgw", Number(arg));
       case "lrgt": {
         const gi = Number(arg);
         const pair = (await settings.pairs())[gi];
         if (!pair) {
           log.warn({ gi }, "link wizard: retarget index out of range");
-          return void ctx.answerCallbackQuery({ text: "expired" });
+          return void responder.ack("expired");
         }
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         settings.retarget(pair);
         return notePicker(ctx, deps, "edit", 0);
       }
       case "lrgp": {
         const picked = settings.pick(Number(arg));
-        if (!picked) return void ctx.answerCallbackQuery({ text: "expired" });
-        await ctx.answerCallbackQuery({
-          text: `${picked.word} → ${picked.note}`,
-        });
+        if (!picked) return void responder.ack("expired");
+        await responder.ack(`${picked.word} → ${picked.note}`);
         await settings.savePair(picked.word, picked.note);
         return advance(ctx, deps, "edit");
       }
       case "lrgn":
-        await ctx.answerCallbackQuery();
+        await responder.ack();
         return notePicker(ctx, deps, "edit", Number(arg) || 0);
       case "lrgq":
-        return prompt(ctx, "rgn");
+        return prompt(responder, "rgn");
       case "lrgm":
-        return prompt(ctx, "rgm");
+        return prompt(responder, "rgm");
       case "lrgs":
-        await ctx.answerCallbackQuery({ text: "skipped" });
+        await responder.ack("skipped");
         return settings.skip() === undefined
           ? finished(ctx, deps, "edit")
           : notePicker(ctx, deps, "edit", 0);
       case "lrgc":
-        await ctx.answerCallbackQuery({ text: "cancelled" });
+        await responder.ack("cancelled");
         settings.cancel();
         return pairsPage(ctx, settings, 0);
       default:
         log.warn({ action }, "unknown menu action");
-        await ctx.answerCallbackQuery();
+        await responder.ack();
     }
   };
 }

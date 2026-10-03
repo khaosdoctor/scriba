@@ -17,7 +17,6 @@ import type {
   SettingsPrompt,
   SettingsService,
 } from "../../../services/settings.ts";
-import { Responder } from "../chat.ts";
 import type { ViewDeps } from "../index.ts";
 import { STILL_PROCESSING } from "../journal/edit-reply.ts";
 import { backTo, pagedScreen, withClose } from "../keyboard.ts";
@@ -218,11 +217,10 @@ export function menuView(deps: ViewDeps): Composer<Context> {
     edits,
   } = deps;
   const links = linkRulesTap(deps);
-  return namespace("menu", async (ctx, rest) => {
+  return namespace("menu", async (ctx, rest, responder) => {
     const [action, arg] = rest;
     const tapped = ctx.callbackQuery.message;
     if (tapped) menus.touch(tapped.chat.id, tapped.message_id);
-    const responder = new Responder(ctx);
     const redraw = async () =>
       ctx.editMessageText(MENU_TEXT, {
         reply_markup: rootKeyboard(await settings.root()),
@@ -440,7 +438,7 @@ export function menuView(deps: ViewDeps): Composer<Context> {
         log.info({ jotId: arg }, "menu: edit jot — prompting for a reply");
         return jotController.askEdit(arg);
       default:
-        return links(ctx, rest);
+        return links(ctx, rest, responder);
     }
   });
 }
