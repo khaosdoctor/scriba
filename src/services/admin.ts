@@ -17,7 +17,7 @@ import {
 } from "../libs/admin.ts";
 import { formatJotDetail } from "../libs/jot.ts";
 import { distinctSurfaces } from "../libs/links.ts";
-import { logger } from "../libs/log.ts";
+import { type Logger, logger } from "../libs/log.ts";
 import type { PageView } from "../libs/page.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { pluralize } from "../libs/text.ts";
@@ -204,14 +204,21 @@ export class AdminService {
   async flush(): Promise<string> {
     const depth = this.deps.queue.depth;
     log.flush.info({ depth }, "/flush command");
-    await this.deps.queue.flush();
-    return `⚡ flushed (${depth} queued)`;
+    this.background(this.deps.queue.flush(), log.flush, "/flush");
+    return `⚡ flushing (${depth} queued)`;
   }
 
   async retryPass(): Promise<string> {
     log.sweep.info("/sweep command");
-    await this.deps.processing.retryPass();
-    return "🧹 sweep done";
+    this.background(this.deps.processing.retryPass(), log.sweep, "/sweep");
+    return "🧹 sweep started";
+  }
+
+  /** Runs jot processing without holding the command's reply. grammy handles one update
+   *  at a time, and a batch can wait minutes on a button tap (voice fix) that would be
+   *  queued behind this handler. Nothing awaits the work, so its failure is logged here. */
+  private background(work: Promise<void>, scope: Logger, label: string): void {
+    work.catch((err) => scope.error({ err }, `${label} failed`));
   }
 
   async retry(args: string): Promise<string> {
@@ -231,7 +238,7 @@ export class AdminService {
       return `🔄 retrying ${arg}`;
     }
     const requeued = await repo.resetFailed(arg === "all");
-    if (requeued) void processing.retryPass();
+    if (requeued) this.background(processing.retryPass(), log.retry, "/retry");
     log.retry.info({ count: requeued, all: arg === "all" }, "/retry command");
     return `🔄 requeued ${pluralize(requeued, "jot")}${arg === "all" ? " (incl. abandoned)" : ""}`;
   }

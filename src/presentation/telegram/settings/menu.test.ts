@@ -288,9 +288,9 @@ test("maintenance actions run their command and show the result over the mainten
   ]);
 
   const flush = edit(await harness.tap("menu:flush"));
-  assert.equal(flush?.text, "⚡ flushed (0 queued)");
+  assert.equal(flush?.text, "⚡ flushing (0 queued)");
   assert.ok(button(flush, "menu:retryall"));
-  assert.equal(edit(await harness.tap("menu:sweep"))?.text, "🧹 sweep done");
+  assert.equal(edit(await harness.tap("menu:sweep"))?.text, "🧹 sweep started");
   harness.repo.resetProcessing = 2;
   assert.equal(
     edit(await harness.tap("menu:unstick"))?.text,

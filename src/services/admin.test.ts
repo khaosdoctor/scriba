@@ -408,19 +408,48 @@ test("/unreject with a word and a note removes that rejection and says which", a
   );
 });
 
-test("/flush drains the queue and reports how many were waiting", async () => {
+// A batch can wait minutes on a voice-fix tap, and that tap is an update grammy only
+// handles once this command's handler returns: the reply must not wait for the batch.
+const neverSettles = () => new Promise<void>(() => {});
+
+test("/flush starts the drain without waiting for the batch", async () => {
   const flushed: string[] = [];
   const { admin } = setup({
-    queue: { depth: 3, flush: async () => void flushed.push("flush") },
+    queue: {
+      depth: 3,
+      flush: () => {
+        flushed.push("flush");
+        return neverSettles();
+      },
+    },
   });
-  assert.equal(await admin.flush(), "⚡ flushed (3 queued)");
+  assert.equal(await admin.flush(), "⚡ flushing (3 queued)");
   assert.deepEqual(flushed, ["flush"]);
 });
 
-test("/sweep runs the retry pass and confirms", async () => {
-  const { admin, calls } = setup();
-  assert.equal(await admin.retryPass(), "🧹 sweep done");
-  assert.deepEqual(calls, ["retryPass()"]);
+test("/sweep starts the retry pass without waiting for it", async () => {
+  const passes: string[] = [];
+  const { admin } = setup({
+    processing: {
+      retryPass: () => {
+        passes.push("retryPass");
+        return neverSettles();
+      },
+    },
+  });
+  assert.equal(await admin.retryPass(), "🧹 sweep started");
+  assert.deepEqual(passes, ["retryPass"]);
+});
+
+test("a sweep that fails in the background is logged, not left unhandled", async () => {
+  const { admin } = setup({
+    processing: {
+      retryPass: () => Promise.reject(new Error("database is locked")),
+    },
+  });
+  assert.equal(await admin.retryPass(), "🧹 sweep started");
+  // node:test fails the run on an unhandled rejection, reported once this tick ends.
+  await new Promise((resolve) => setImmediate(resolve));
 });
 
 test("/version names the running release and the first seven characters of the sha", () => {
