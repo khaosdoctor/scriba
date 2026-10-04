@@ -1,3 +1,10 @@
+## [1.54.1](https://github.com/khaosdoctor/scriba/compare/v1.54.0...v1.54.1) (2026-10-04)
+
+
+### Bug Fixes
+
+* don't hold the update loop while /flush and /sweep run ([7ddf7a0](https://github.com/khaosdoctor/scriba/commit/7ddf7a0f7c7c0c7f91c9975b0af02e82e998bb99))
+
 ## [1.54.0](https://github.com/khaosdoctor/scriba/compare/v1.53.3...v1.54.0) (2026-10-04)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * move to the layered layout and guard in-flight jots ([#63](https://github.com/khaosdoctor/scriba/issues/63)) ([85a14c1](https://github.com/khaosdoctor/scriba/commit/85a14c163a342f6374780330bd0b58909550657a))
-
-## [1.53.0](https://github.com/khaosdoctor/scriba/compare/v1.52.0...v1.53.0) (2026-09-30)
-
-
-### Features
-
-* ask follow-up questions after the nightly rating for what's still empty ([#23](https://github.com/khaosdoctor/scriba/issues/23)) ([f31d6d7](https://github.com/khaosdoctor/scriba/commit/f31d6d723c8765a0df05ef49e97a67bb6c20cdf0))
 
