@@ -1,3 +1,10 @@
+## [1.54.0](https://github.com/khaosdoctor/scriba/compare/v1.53.3...v1.54.0) (2026-10-04)
+
+
+### Features
+
+* release the layered refactor and the code cleanup ([9ee4ff3](https://github.com/khaosdoctor/scriba/commit/9ee4ff305c7b98981668da5a51be6c494f04b83c))
+
 ## [1.53.3](https://github.com/khaosdoctor/scriba/compare/v1.53.2...v1.53.3) (2026-10-03)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * ask follow-up questions after the nightly rating for what's still empty ([#23](https://github.com/khaosdoctor/scriba/issues/23)) ([f31d6d7](https://github.com/khaosdoctor/scriba/commit/f31d6d723c8765a0df05ef49e97a67bb6c20cdf0))
-
-## [1.52.0](https://github.com/khaosdoctor/scriba/compare/v1.51.0...v1.52.0) (2026-09-30)
-
-
-### Features
-
-* offer to move jots that sound like a TIL to the TIL section ([#22](https://github.com/khaosdoctor/scriba/issues/22)) ([eaf49a6](https://github.com/khaosdoctor/scriba/commit/eaf49a6c4db49acff984f6af58ade108599cd873))
 
