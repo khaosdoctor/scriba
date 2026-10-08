@@ -213,6 +213,15 @@ Layers call downward only: presentation calls services, services call data. `dom
   model's only part is being told, when the text is over the cap, to put blank lines between
   topics so the seams land on a change of subject; it may add nothing else. The give-up path
   (`fail`) never splits — getting the text into the note at all is the point there.
+- **The voice fix applies itself; 📝 Use original is the way back.** With `fixVoiceTranscript`
+  on and a `voiceFixModel` set, `ProcessingService.fixVoice` cleans the transcript up and
+  enriches the cleaned text with no question asked: a prompt to pick one held the whole
+  batch for up to five minutes and, being an edit of the status message, never notified.
+  The raw transcript is kept in `jots.original_transcript`, and the finished status
+  carries **📝 Use original** (`vf:<jotId>`, `EditService.useOriginal`). The tap takes out
+  the pieces a split cut off (found by `jots.parent_id`, which `pieceJot` sets), puts the
+  raw transcript back and reprocesses the jot. A kept original means the fix already ran,
+  so a reprocess never cleans the transcript again.
 - **Relative-date phrases become daily-note links.** `linkDateWords` (`libs/links.ts`) runs on
   the composed line after enrichment, resolving phrases like "yesterday", "three weeks
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not

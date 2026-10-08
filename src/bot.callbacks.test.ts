@@ -26,8 +26,6 @@ const jot = (over: Partial<Jot> = {}): Jot =>
 const noteWith = (text: string, id = ID) =>
   `# Journal\n${journalLine("10:00:00", text, id)}\n`;
 
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
-
 type Opts = {
   jots?: Jot[];
   /** message id -> jot id; the default maps message 77 to the default jot */
@@ -80,8 +78,16 @@ async function harness(over: Opts = {}) {
       if (existing) jots.set(id, { ...existing, status: "deleted" });
     },
     groupFollowers: async (id: string) => over.followers?.[id] ?? [],
+    piecesOf: async (id: string) =>
+      [...jots.values()].filter(
+        (stored) => stored.parent_id === id && stored.status !== "deleted",
+      ),
     updateJot: async (id: string, patch: object) =>
       void updates.push([id, patch]),
+    resetForReprocess: async (ids: string[]) => {
+      events.push(`repo.resetForReprocess:${ids.join(",")}`);
+      return ids;
+    },
     resetForRetry: async (id: string) => {
       events.push(`repo.resetForRetry:${id}`);
       return jots.get(id)?.status !== "processing";
@@ -241,76 +247,54 @@ async function harness(over: Opts = {}) {
   };
 }
 
-// --- vf: voice fix choice ---
+// --- vf: use the original transcript ---
 
-async function openVoiceFix(fixture: Awaited<ReturnType<typeof harness>>) {
-  const pending: Promise<"original" | "proposed"> =
-    fixture.bot.jotController.awaitVoiceFix(
-      ID,
-      "a <b> original",
-      "the fixed one",
-    );
-  while (!fixture.bot.jotController.voiceFixPending.has(ID)) await tick();
-  return pending;
-}
+const PIECE = "bbbb2222";
 
-test("the voice-fix prompt shows both transcripts and the two choice buttons in one message", async (testContext) => {
-  testContext.mock.timers.enable({ apis: ["setTimeout"] });
-  const fixture = await harness();
-  const pending = openVoiceFix(fixture);
-  await tick();
-  const sent = fixture.api.find((call) => call.method === "sendMessage");
-  assert.equal(
-    sent?.payload.text,
-    "<b>Original transcript:</b>\n<i>a &lt;b&gt; original</i>\n\n<b>Proposed fix:</b>\n<i>the fixed one</i>",
-  );
-  assert.equal(sent?.payload.parse_mode, "HTML");
-  assert.deepEqual(fixture.buttons(sent), [
-    ["📝 Use original", `vf:o:${ID}`],
-    ["✨ Use fixed", `vf:p:${ID}`],
+test("Use original takes the split piece out, restores the raw transcript and reprocesses", async () => {
+  const voiceJot = jot({
+    kind: "audio",
+    raw_text: null,
+    transcript: "Fixed first half.",
+    original_transcript: "um fixed first half uh and the rest",
+  });
+  const fixture = await harness({
+    jots: [
+      voiceJot,
+      jot({ id: PIECE, anchor: PIECE, raw_text: "Rest.", parent_id: ID }),
+    ],
+    notes: {
+      [NOTE]: `# Journal\n${journalLine("10:00:00", "Fixed first half.", ID)}\n${journalLine("10:00:00", "Rest.", PIECE)}\n`,
+    },
+  });
+  await fixture.tap(`vf:${ID}`);
+  assert.equal(fixture.note()?.includes(PIECE), false);
+  assert.equal(fixture.note()?.includes(ID), true);
+  assert.equal(fixture.jots.get(PIECE)?.status, "deleted");
+  assert.deepEqual(fixture.updates, [
+    [ID, { transcript: "um fixed first half uh and the rest" }],
   ]);
-  assert.deepEqual(
-    fixture.api.map((call) => call.method),
-    ["sendMessage"],
-  );
-  await fixture.tap(`vf:o:${ID}`);
-  await pending;
+  assert.ok(fixture.events.includes(`queue.add:${ID}`));
+  assert.deepEqual(fixture.answers(), ["using the original transcript"]);
+  assert.deepEqual(fixture.edits(), [
+    "📝 reprocessing with the original transcript…",
+  ]);
 });
 
-test("tapping a voice-fix button resolves the wait with that choice", async (testContext) => {
-  testContext.mock.timers.enable({ apis: ["setTimeout"] });
-  for (const [data, choice, toast] of [
-    [`vf:p:${ID}`, "proposed", "using fixed version"],
-    [`vf:o:${ID}`, "original", "keeping original"],
+test("Use original on a jot with no kept transcript, or one still processing, changes nothing", async () => {
+  for (const [stored, toast] of [
+    [jot({ kind: "audio" }), "gone"],
+    [
+      jot({ kind: "audio", status: "processing", original_transcript: "raw" }),
+      "still processing",
+    ],
   ] as const) {
-    const fixture = await harness();
-    const pending = openVoiceFix(fixture);
-    await tick();
-    await fixture.tap(data);
-    assert.equal(await pending, choice);
+    const fixture = await harness({ jots: [stored] });
+    await fixture.tap(`vf:${ID}`);
+    assert.deepEqual(fixture.updates, []);
     assert.deepEqual(fixture.answers(), [toast]);
-    assert.equal(fixture.bot.jotController.voiceFixPending.has(ID), false);
+    assert.deepEqual(fixture.edits(), []);
   }
-});
-
-test("an unanswered voice-fix prompt falls back to the original after five minutes", async (testContext) => {
-  testContext.mock.timers.enable({ apis: ["setTimeout"] });
-  const fixture = await harness();
-  const pending = openVoiceFix(fixture);
-  await tick();
-  testContext.mock.timers.tick(5 * 60 * 1000);
-  assert.equal(await pending, "original");
-  assert.equal(fixture.bot.jotController.voiceFixPending.has(ID), false);
-
-  await fixture.tap(`vf:p:${ID}`);
-  assert.deepEqual(fixture.answers(), ["expired"]);
-});
-
-test("a voice-fix tap with no pending choice says expired, and a malformed one is just acknowledged", async () => {
-  const fixture = await harness();
-  await fixture.tap(`vf:o:${ID}`);
-  await fixture.tap("vf:o");
-  assert.deepEqual(fixture.answers(), ["expired", undefined]);
 });
 
 // --- rt: retry ---

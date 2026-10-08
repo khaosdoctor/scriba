@@ -24,7 +24,7 @@ export function callbackViews(deps: ViewDeps): Composer<Context>[] {
   unknown.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
   return [
     menuView(deps),
-    voiceFixView(jots),
+    voiceFixView(edits),
     retryView(jots),
     removeView(UNDO_NS, deps),
     removeView(DELETE_NS, deps),

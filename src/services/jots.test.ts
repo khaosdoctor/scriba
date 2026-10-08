@@ -602,23 +602,6 @@ test("the merge opt-out ignores an unknown message and a leader, and reports a l
   assert.deepEqual(late.reacts(), []);
 });
 
-// --- the voice-fix pick ---
-
-test("a voice-fix pick is claimed once: the second claim and an unknown jot get nothing", () => {
-  const harness = setup();
-  const choices: string[] = [];
-  (harness.jots as any).voiceFixPending.set("abcd1234", (choice: string) =>
-    choices.push(choice),
-  );
-  const settle = harness.jots.pickVoiceFix("abcd1234", "proposed");
-  assert.ok(settle);
-  assert.deepEqual(choices, []);
-  settle();
-  assert.deepEqual(choices, ["proposed"]);
-  assert.equal(harness.jots.pickVoiceFix("abcd1234", "original"), undefined);
-  assert.equal(harness.jots.pickVoiceFix("ffffffff", "original"), undefined);
-});
-
 // --- liveness ---
 
 test("liveJot tells a missing id, a missing jot and a deleted jot apart from a live one", async () => {

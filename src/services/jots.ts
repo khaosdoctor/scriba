@@ -16,7 +16,6 @@ import type { IntakeInput } from "../domain/jot/structures.ts";
 import { type StatusButtons, statusKeyboard } from "../libs/jot.ts";
 import { type Keyboard, keyboard } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
-import { PendingDecisions } from "../libs/pending.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { clipUpdate, escapeHtml, shortId } from "../libs/text.ts";
 import { dayBounds, plainDate, plainTime } from "../libs/time.ts";
@@ -30,8 +29,6 @@ const tilLog = logger("til-flow");
 const QUOTE_CHARS = 600;
 
 export const TIL_NS = "ti";
-
-export const VOICEFIX_NS = "vf";
 
 /** Set (in place of ✍) on a squashed follower's message, marking it as slated to merge
  *  into the previous jot's line. Telegram bots can set at most one reaction per message
@@ -48,7 +45,6 @@ const OUTCOME_EMOJI: Record<JotOutcome, string> = {
 };
 
 type JotOutcome = "done" | "failed" | "retrying";
-export type VoiceFixChoice = "original" | "proposed";
 
 export interface JotDeps {
   repo: JotRepository;
@@ -71,9 +67,6 @@ export type TilOutcome =
 
 export class JotService {
   private statusMsgs = new Map<string, number>();
-  private voiceFixPending = new PendingDecisions<VoiceFixChoice>({
-    clearAndUnref: false,
-  });
 
   constructor(private deps: JotDeps) {}
 
@@ -156,7 +149,8 @@ export class JotService {
       time,
       raw_text: rawText,
       transcript: null,
-      proposed_text: null,
+      original_transcript: null,
+      parent_id: null,
       section,
       asset_path: null,
       file_id: input.fileId ?? null,
@@ -307,51 +301,6 @@ export class JotService {
     const messageId = await this.deps.repo.messageForJot(jotId);
     if (!messageId) return;
     await this.deps.notifier.react(messageId, OUTCOME_EMOJI[state]);
-  }
-
-  /** Show both transcript versions on the jot's status message and wait for the owner to
-   *  pick one. Times out to 'original' after 5 minutes so processing never stalls. */
-  async awaitVoiceFix(
-    jotId: string,
-    original: string,
-    proposed: string,
-  ): Promise<VoiceFixChoice> {
-    const html = [
-      "<b>Original transcript:</b>",
-      `<i>${escapeHtml(original)}</i>`,
-      "",
-      "<b>Proposed fix:</b>",
-      `<i>${escapeHtml(proposed)}</i>`,
-    ].join("\n");
-    await this.showStatus(
-      jotId,
-      html,
-      keyboard([
-        [
-          ["📝 Use original", `${VOICEFIX_NS}:o:${jotId}`],
-          ["✨ Use fixed", `${VOICEFIX_NS}:p:${jotId}`],
-        ],
-      ]),
-    );
-    return this.voiceFixPending.wait(jotId, 5 * 60 * 1000, "original", () =>
-      log.info({ jotId }, "voice fix: timed out, using original"),
-    );
-  }
-
-  pickVoiceFix(
-    jotId: string,
-    choice: VoiceFixChoice,
-  ): (() => void) | undefined {
-    const resolve = this.voiceFixPending.take(jotId);
-    if (!resolve) {
-      log.warn(
-        { jotId },
-        "voice fix: no pending choice (timed out or duplicate)",
-      );
-      return undefined;
-    }
-    log.info({ jotId, choice }, "voice fix: user picked");
-    return () => resolve(choice);
   }
 
   async retry(jot: Jot): Promise<"queued" | "in-flight"> {

@@ -7,6 +7,7 @@ import {
   entryContent,
   isEditableJot,
   isFollower,
+  isReprocessable,
   journalLine,
   sourceField,
   stripJournalLine,
@@ -22,6 +23,7 @@ import {
 import { keyboard } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import { anchorLine, deleteAnchorLine } from "../libs/note.ts";
+import type { FlushQueue } from "../libs/queue.ts";
 import { shortId } from "../libs/text.ts";
 import type { Enricher } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
@@ -38,8 +40,9 @@ export interface EditDeps {
   linkRules: LinkRuleRepository;
   obsidian: ObsidianClient;
   enricher: Pick<Enricher, "editText">;
-  jots: Pick<JotService, "status" | "leaderOf">;
+  jots: Pick<JotService, "status" | "leaderOf" | "deleteStatus">;
   notifier: Pick<Notifier, "send">;
+  queue: Pick<FlushQueue, "add">;
 }
 
 export type EditOutcome =
@@ -179,6 +182,31 @@ export class EditService {
         return text;
       },
     };
+  }
+
+  /** 📝 Use original: put the raw transcript back and reprocess from it. The pieces split
+   *  off the fixed text go first, since the reprocess splits the original afresh. */
+  async useOriginal(jotId?: string): Promise<"gone" | "busy" | "queued"> {
+    const { repo, jots, queue } = this.deps;
+    const jot = jotId ? await repo.getJot(jotId) : undefined;
+    if (!jot?.original_transcript) {
+      log.warn({ jotId }, "use original: no kept transcript");
+      return "gone";
+    }
+    if (!isReprocessable(jot.status)) {
+      log.warn({ jotId, status: jot.status }, "use original: jot is busy");
+      return "busy";
+    }
+    for (const piece of await repo.piecesOf(jot.id)) {
+      await this.deleteJot(piece);
+      await jots.deleteStatus(piece.id);
+    }
+    await repo.updateJot(jot.id, { transcript: jot.original_transcript });
+    const reset = await repo.resetForReprocess([jot.id]);
+    if (!reset.length) return "busy";
+    queue.add(reset);
+    log.info({ jotId }, "use original: reprocessing from the raw transcript");
+    return "queued";
   }
 
   async toggleEmbed(

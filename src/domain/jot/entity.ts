@@ -38,7 +38,10 @@ export interface Jot {
   time: string;
   raw_text: string | null;
   transcript: string | null;
-  proposed_text: string | null;
+  /** The raw transcript, kept when the voice fix replaced it (📝 Use original). */
+  original_transcript: string | null;
+  /** The jot this one was split off from, for a spillover piece. */
+  parent_id: string | null;
   section: JotSection;
   asset_path: string | null;
   file_id: string | null;

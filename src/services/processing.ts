@@ -79,7 +79,8 @@ export function pieceJot(
     kind: "text",
     raw_text: pieceText,
     transcript: null,
-    proposed_text: null,
+    original_transcript: null,
+    parent_id: parent.id,
     asset_path: null, // the media stays on the parent's line, embedded once
     file_id: null,
     status: "done",
@@ -133,10 +134,7 @@ export interface ProcessingDeps {
     "available" | "describeImage" | "enrich" | "fixTranscript"
   >;
   links: Pick<VaultRepository, "list">;
-  jots: Pick<
-    JotService,
-    "askTil" | "awaitVoiceFix" | "deleteStatus" | "react" | "status"
-  >;
+  jots: Pick<JotService, "askTil" | "deleteStatus" | "react" | "status">;
   edits: Pick<EditService, "drainQueued" | "askLink">;
   tasks: Pick<TaskService, "suggest" | "draftsFor">;
   notifier: Pick<Notifier, "typing">;
@@ -243,6 +241,9 @@ export class ProcessingService {
       )
     )
       return jot;
+    // A kept original means the fix already ran (or 📝 Use original undid it): a
+    // reprocess must not clean the transcript up again.
+    if (jot.original_transcript !== null) return jot;
     const original = jot.transcript.trim();
     await this.deps.jots.status(
       id,
@@ -261,26 +262,17 @@ export class ProcessingService {
         );
         return original;
       });
-    const fixed = await this.settleVoiceFix(jot, original, proposed);
-    await this.deps.jots.status(id, voiceStatus(fixed.transcript!, WEAVING));
-    return fixed;
-  }
-
-  private async settleVoiceFix(
-    jot: Jot,
-    original: string,
-    proposed: string,
-  ): Promise<Jot> {
-    const { id } = jot;
+    await this.deps.jots.status(id, voiceStatus(proposed, WEAVING));
     if (proposed === original) {
       log.info({ id }, "voice fix: no change proposed");
       return jot;
     }
-    const choice = await this.deps.jots.awaitVoiceFix(id, original, proposed);
-    const winner = choice === "proposed" ? proposed : original;
-    await this.deps.repo.updateJot(id, { transcript: winner });
-    log.info({ id, choice }, `voice fix: user picked ${choice}`);
-    return { ...jot, transcript: winner };
+    // Applied straight away, with 📝 Use original on the finished status as the way
+    // back: a prompt to pick one stalled the batch and was easy to miss.
+    const patch = { transcript: proposed, original_transcript: original };
+    await this.deps.repo.updateJot(id, patch);
+    log.info({ id }, "voice fix: applied");
+    return { ...jot, ...patch };
   }
 
   private async loadGroup(jot: Jot): Promise<Group> {
@@ -496,7 +488,13 @@ export class ProcessingService {
     await this.deps.jots.status(
       jot.id,
       doneMessage(jot.time, jot.kind, text, jot.id, squashed, part),
-      { undo: true, embed: embedOffer(text) },
+      {
+        undo: true,
+        embed: embedOffer(text),
+        original:
+          jot.original_transcript !== null &&
+          jot.transcript !== jot.original_transcript,
+      },
     );
   }
 

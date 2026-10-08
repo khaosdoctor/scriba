@@ -171,21 +171,23 @@ ledger("rt", [
 
 ledger("vf", [
   {
-    tap: `vf:o:${ID}`,
-    when: "keep the original",
-    setup: (harness) =>
-      harness.bot.jotController.voiceFixPending.set(ID, () => {}),
-    expect: "ack(keeping original)",
+    tap: `vf:${ID}`,
+    when: "fixed voice jot, answered after the reset and the queue",
+    setup: (harness) => {
+      withJot({ kind: "audio", original_transcript: "raw" })(harness);
+      harness.repo.piecesOf = [];
+      harness.repo.resetForReprocess = [ID];
+    },
+    expect:
+      "repo.getJot > repo.piecesOf > repo.updateJot > repo.resetForReprocess > queue.add > ack(using the original transcript) > tg.editMessageText",
   },
   {
-    tap: `vf:p:${ID}`,
-    when: "use the fixed version",
-    setup: (harness) =>
-      harness.bot.jotController.voiceFixPending.set(ID, () => {}),
-    expect: "ack(using fixed version)",
+    tap: `vf:${ID}`,
+    when: "no kept transcript",
+    setup: withJot({ kind: "audio" }),
+    expect: "repo.getJot > ack(gone)",
   },
-  { tap: `vf:o:${ID}`, when: "no pending choice", expect: "ack(expired)" },
-  { tap: "vf:o", when: "no jot id", expect: "ack()" },
+  { tap: "vf:", when: "no jot id", expect: "ack(gone)" },
 ]);
 
 const REJECTED = [{ surface: "milk", note: "Milk" }];

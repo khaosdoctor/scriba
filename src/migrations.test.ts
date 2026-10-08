@@ -7,6 +7,8 @@ import { withNative } from "./test/sqlite.ts";
 
 const BEFORE_SECTION = "20260922000000";
 const SECTION = "20260930000000";
+const TIL_OFFERED = "20260930000001";
+const ORIGINAL_TRANSCRIPT = "20261009000000";
 
 const columns = async (knex: Knex) =>
   ((await knex.raw("PRAGMA table_info(jots)")) as { name: string }[]).map(
@@ -165,7 +167,7 @@ test("til_offered adds a column that defaults to false for rows that predate it"
 
 test("til_offered down drops only its column, and up again does not collide", async (testContext) => {
   await withDb(testContext, async (knex) => {
-    await knex.migrate.latest();
+    await migrateTo(knex, TIL_OFFERED);
     await insertOld(knex, "aaaaaaaa");
     await insertOld(knex, "bbbbbbbb");
     await knex("jots").where({ id: "aaaaaaaa" }).update({ til_offered: true });
@@ -184,6 +186,28 @@ test("til_offered down drops only its column, and up again does not collide", as
       rows.map((row) => Number(row.til_offered)),
       [0, 0],
     );
+  });
+});
+
+test("original_transcript takes over proposed_text with its data, and down gives it back", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await migrateTo(knex, TIL_OFFERED);
+    await insertOld(knex, "aaaaaaaa");
+    await knex("jots")
+      .where({ id: "aaaaaaaa" })
+      .update({ proposed_text: "raw words" });
+
+    await migrateTo(knex, ORIGINAL_TRANSCRIPT);
+    assert.deepEqual(
+      await knex("jots").select("original_transcript", "parent_id"),
+      [{ original_transcript: "raw words", parent_id: null }],
+    );
+
+    await knex.migrate.down();
+    const down = await columns(knex);
+    assert.ok(down.includes("proposed_text"));
+    assert.ok(!down.includes("original_transcript"));
+    assert.ok(!down.includes("parent_id"));
   });
 });
 

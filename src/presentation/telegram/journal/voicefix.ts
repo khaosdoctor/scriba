@@ -1,23 +1,22 @@
 import type { Composer, Context } from "grammy";
-import {
-  type JotService,
-  VOICEFIX_NS,
-  type VoiceFixChoice,
-} from "../../../services/jots.ts";
+import { ORIGINAL_NS } from "../../../libs/jot.ts";
+import type { EditService } from "../../../services/edits.ts";
 import { namespace } from "../namespace.ts";
 
-const TOASTS: Record<VoiceFixChoice, string> = {
-  proposed: "using fixed version",
-  original: "keeping original",
-};
+const TOASTS = {
+  gone: "gone",
+  busy: "still processing",
+  queued: "using the original transcript",
+} as const;
 
-export function voiceFixView(jots: JotService): Composer<Context> {
-  return namespace(VOICEFIX_NS, async (_ctx, [verdict, jotId], responder) => {
-    if (!jotId || !verdict) return responder.ack();
-    const choice: VoiceFixChoice = verdict === "p" ? "proposed" : "original";
-    const settle = jots.pickVoiceFix(jotId, choice);
-    if (!settle) return responder.ack("expired");
-    await responder.ack(TOASTS[choice]);
-    settle();
+/** 📝 Use original on a finished voice jot whose transcript the voice fix rewrote. */
+export function voiceFixView(edits: EditService): Composer<Context> {
+  return namespace(ORIGINAL_NS, async (ctx, [jotId], responder) => {
+    const outcome = await edits.useOriginal(jotId);
+    await responder.ack(TOASTS[outcome]);
+    if (outcome === "queued")
+      await ctx.editMessageText(
+        "📝 reprocessing with the original transcript…",
+      );
   });
 }

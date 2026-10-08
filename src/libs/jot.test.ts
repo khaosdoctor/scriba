@@ -78,6 +78,10 @@ test("the status keyboard carries one button per asked action, and clears them w
   assert.deepEqual(buttons({ embed: "plain" }), [
     { text: "🔗 Plain link", callback_data: "em:a1b2c3d4:0" },
   ]);
+  assert.deepEqual(buttons({ undo: true, original: true }), [
+    { text: "↩️ Undo", callback_data: "un:a1b2c3d4" },
+    { text: "📝 Use original", callback_data: "vf:a1b2c3d4" },
+  ]);
 });
 
 test("doneMessage marks which piece a split jot is", () => {
@@ -165,7 +169,8 @@ test("formatJotDetail shows full text and includes errors", () => {
     time: "10:00:00",
     raw_text: null,
     transcript: "x".repeat(400),
-    proposed_text: null,
+    original_transcript: null,
+    parent_id: null,
     section: "journal",
     asset_path: null,
     file_id: null,
@@ -191,7 +196,8 @@ test("jotPreview falls back to (kind) for a captionless attach-only jot", () => 
     time: "10:00:00",
     raw_text: null,
     transcript: null,
-    proposed_text: null,
+    original_transcript: null,
+    parent_id: null,
     section: "journal" as const,
     asset_path: null,
     file_id: null,

@@ -58,12 +58,15 @@ export type StatusButtons = {
   undo?: boolean;
   discard?: boolean;
   embed?: "embed" | "plain";
+  /** The voice fix rewrote the transcript: offer the raw one back. */
+  original?: boolean;
 };
 
 export const UNDO_NS = "un";
 export const EMBED_NS = "em";
 export const RETRY_NS = "rt";
 export const DELETE_NS = "dl";
+export const ORIGINAL_NS = "vf";
 
 export function statusKeyboard(jotId: string, opts?: StatusButtons) {
   const row: { text: string; callback_data: string }[] = [];
@@ -75,6 +78,11 @@ export function statusKeyboard(jotId: string, opts?: StatusButtons) {
     row.push({
       text: "🔗 Plain link",
       callback_data: `${EMBED_NS}:${jotId}:0`,
+    });
+  if (opts?.original)
+    row.push({
+      text: "📝 Use original",
+      callback_data: `${ORIGINAL_NS}:${jotId}`,
     });
   if (opts?.retry)
     row.push({ text: "🔄 Retry", callback_data: `${RETRY_NS}:${jotId}` });

@@ -89,6 +89,13 @@ export class JotRepository {
       .whereNot({ status: "deleted" })
       .orderBy("received_at");
   }
+  /** The live spillover pieces a split cut off this jot. */
+  async piecesOf(parentId: string): Promise<Jot[]> {
+    return this.knex<Jot>("jots")
+      .where({ parent_id: parentId })
+      .whereNot({ status: "deleted" })
+      .orderBy("received_at");
+  }
   async pendingJots(): Promise<Jot[]> {
     return this.knex<Jot>("jots")
       .where({ status: "pending" })

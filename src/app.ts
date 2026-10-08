@@ -192,6 +192,7 @@ export async function createScriba(
     enricher,
     jots,
     notifier: chat,
+    queue,
   });
   const tasks = new TaskService({
     repo: repo.taskDrafts,

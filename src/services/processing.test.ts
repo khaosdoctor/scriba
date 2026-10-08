@@ -225,7 +225,6 @@ function pipeline(
       tilAsks.push([id, text]);
       calls.push("askTil");
     },
-    awaitVoiceFix: async () => "original" as const,
   };
   const processor: any = new ProcessingService({
     repo,
@@ -465,7 +464,6 @@ interface WorldOptions {
   settings?: Partial<Record<SettingKey, string>>;
   enrichText?: string;
   fixTranscript?: (original: string, model: string) => Promise<string>;
-  voiceChoice?: "original" | "proposed";
 }
 
 async function world(testContext: TestContext, options: WorldOptions = {}) {
@@ -482,7 +480,6 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
   const calls: string[] = [];
   const enriched: string[] = [];
   const assets: string[] = [];
-  const voiceFixAsks: [string, string][] = [];
   let note = "## Journal\n";
 
   const add = async (newJot: Jot) => {
@@ -545,10 +542,6 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
     },
     deleteStatus: async () => {},
     askTil: async () => {},
-    awaitVoiceFix: async (_id: string, original: string, proposed: string) => {
-      voiceFixAsks.push([original, proposed]);
-      return options.voiceChoice ?? "proposed";
-    },
   };
   const processor = new ProcessingService({
     repo: repo.jots,
@@ -583,7 +576,6 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
     calls,
     enriched,
     assets,
-    voiceFixAsks,
     htmls: () => statuses.map((seen) => seen.html),
   };
 }
@@ -732,11 +724,13 @@ const voiceJot = (transcript: string) =>
     file_id: "voice-file",
   });
 
-test("a voice fix with a change asks which one to keep, and the pick is what gets enriched", async (testContext) => {
+const offersOriginal = (testWorld: { statuses: Seen[] }) =>
+  testWorld.statuses.at(-1)?.opts?.original;
+
+test("a voice fix with a change is applied without asking, keeps the raw transcript and offers it back", async (testContext) => {
   const testWorld = await world(testContext, {
     settings: voiceSettings,
     fixTranscript: async () => "Ship the release on Friday.",
-    voiceChoice: "proposed",
   });
   if (!testWorld) return;
   await testWorld.add(voiceJot("ship the release on friday"));
@@ -748,44 +742,58 @@ test("a voice fix with a change asks which one to keep, and the pick is what get
     "🎤 <i>ship the release on friday</i>\n\n🔧 Checking transcript…",
     "🎤 <i>Ship the release on Friday.</i>\n\n✨ Weaving it into your journal…",
   ]);
-  assert.deepEqual(testWorld.voiceFixAsks, [
-    ["ship the release on friday", "Ship the release on Friday."],
-  ]);
   assert.deepEqual(testWorld.enriched, ["Ship the release on Friday."]);
-  assert.equal(
-    (await testWorld.repo.getJot("abcd1234"))?.transcript,
-    "Ship the release on Friday.",
-  );
+  const row = await testWorld.repo.getJot("abcd1234");
+  assert.equal(row?.transcript, "Ship the release on Friday.");
+  assert.equal(row?.original_transcript, "ship the release on friday");
+  assert.equal(offersOriginal(testWorld), true);
 });
 
-test("picking the original keeps the transcript as it was", async (testContext) => {
+test("a jot back on its original transcript is not fixed again and offers nothing", async (testContext) => {
   const testWorld = await world(testContext, {
     settings: voiceSettings,
-    fixTranscript: async () => "Ship the release on Friday.",
-    voiceChoice: "original",
+    fixTranscript: async () => {
+      throw new Error("must not be called");
+    },
   });
   if (!testWorld) return;
-  await testWorld.add(voiceJot("ship the release on friday"));
+  await testWorld.add({
+    ...voiceJot("ship the release on friday"),
+    original_transcript: "ship the release on friday",
+  });
   await testWorld.processor.processJot("abcd1234");
 
-  assert.equal(
-    testWorld.htmls()[3],
-    "🎤 <i>ship the release on friday</i>\n\n✨ Weaving it into your journal…",
-  );
   assert.deepEqual(testWorld.enriched, ["ship the release on friday"]);
-  assert.equal(
-    (await testWorld.repo.getJot("abcd1234"))?.transcript,
-    "ship the release on friday",
+  assert.equal(offersOriginal(testWorld), false);
+});
+
+test("the pieces of a split voice jot remember the jot they came from", async (testContext) => {
+  const testWorld = await world(testContext, {
+    settings: { ...voiceSettings, entryMaxChars: "20" },
+    fixTranscript: async () => "First thought here.\n\nSecond thought here.",
+  });
+  if (!testWorld) return;
+  await testWorld.add(voiceJot("first thought here second thought here"));
+  await testWorld.processor.processJot("abcd1234");
+
+  const pieces = await testWorld.repo.piecesOf("abcd1234");
+  assert.deepEqual(
+    pieces.map((piece) => piece.raw_text),
+    ["Second thought here."],
   );
 });
 
-test("a voice fix that changes nothing asks nobody and escapes the transcript in HTML", async (testContext) => {
+test("a voice fix that changes nothing keeps no original and escapes the transcript in HTML", async (testContext) => {
   const testWorld = await world(testContext, { settings: voiceSettings });
   if (!testWorld) return;
   await testWorld.add(voiceJot("if a < b & c"));
   await testWorld.processor.processJot("abcd1234");
 
-  assert.deepEqual(testWorld.voiceFixAsks, []);
+  assert.equal(
+    (await testWorld.repo.getJot("abcd1234"))?.original_transcript,
+    null,
+  );
+  assert.equal(offersOriginal(testWorld), false);
   assert.deepEqual(testWorld.htmls().slice(0, 4), [
     "🎤 Transcribing your voice note…",
     "🎤 <i>if a &lt; b &amp; c</i>\n\n✨ Weaving it into your journal…",
@@ -806,7 +814,6 @@ test("a voice fix that errors keeps the original transcript and the jot still co
   await testWorld.add(voiceJot("plain words"));
   await testWorld.processor.processJot("abcd1234");
 
-  assert.deepEqual(testWorld.voiceFixAsks, []);
   assert.deepEqual(testWorld.enriched, ["plain words"]);
   assert.equal((await testWorld.repo.getJot("abcd1234"))?.status, "done");
 });
@@ -851,7 +858,6 @@ test("every model down during the voice fix holds the jot: pending, no attempt c
   assert.equal(row?.status, "pending");
   assert.equal(row?.attempts, 0);
   assert.equal(row?.error, HELD_MARKER);
-  assert.deepEqual(testWorld.voiceFixAsks, []);
   assert.deepEqual(testWorld.enriched, []);
   assert.equal(testWorld.note(), before);
   const last = testWorld.statuses.at(-1);
