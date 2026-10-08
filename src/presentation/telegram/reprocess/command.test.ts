@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { botHarness } from "../../../test/bot-harness.ts";
+import { botHarness, sampleJot } from "../../../test/bot-harness.ts";
 import { ROOT_TEXT } from "./tap.ts";
 
 test("/reprocess opens the scope picker with a Close button", async () => {
@@ -21,4 +21,26 @@ test("/reprocess opens the scope picker with a Close button", async () => {
       ["✖ Close", "rp:close"],
     ],
   );
+});
+
+test("/reprocess <id> queues that jot without opening the picker", async () => {
+  const harness = await botHarness();
+  const queued: string[][] = [];
+  harness.repo.getJot = async (id: string) =>
+    id === "aaaa1111" ? sampleJot({ id, anchor: id }) : undefined;
+  harness.repo.resetForReprocess = async (ids: string[]) => ids;
+  harness.queue.add = (ids: string[]) => void queued.push(ids);
+  const run = await harness.say("/reprocess AAAA1111");
+  assert.deepEqual(run.texts("sendMessage"), [
+    "🔁 Reprocessing 1 jot from aaaa1111…",
+  ]);
+  assert.equal(run.calls[0]?.payload.reply_markup, undefined);
+  assert.deepEqual(queued, [["aaaa1111"]]);
+});
+
+test("/reprocess with an unknown id says so", async () => {
+  const harness = await botHarness();
+  harness.repo.getJot = async () => undefined;
+  const run = await harness.say("/reprocess deadbeef");
+  assert.deepEqual(run.texts("sendMessage"), ["Jot deadbeef not found."]);
 });

@@ -31,7 +31,7 @@ const COMMANDS = [
   ["menu", "Open the interactive control menu"],
   ["rate", "Rate a day 1–10 (today, or /rate YYYY-MM-DD)"],
   ["habits", "Review habits (yesterday, or /habits YYYY-MM-DD)"],
-  ["reprocess", `Reprocess jots ${EM} a day, a date range, or one jot`],
+  ["reprocess", `Reprocess jots ${EM} a day, a date range, or one jot by id`],
   ["command", "Open a vault assistant session (/done to close)"],
   ["task", "Turn every message into a task (/done to close)"],
   ["taskadd", "Add one task in one message: /taskadd <what and when>"],
