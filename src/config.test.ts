@@ -15,7 +15,7 @@ test("groq key is optional and the sidecar url has a default", () => {
   const config = load();
   assert.equal(config.transcription.groqApiKey, "");
   assert.match(config.transcription.parakeetUrl, /parakeet:5092/);
-  assert.equal(config.enrich.backupModel, "claude-sonnet-5");
+  assert.equal(config.enrich.backupModel, "claude-sonnet-5-5");
 });
 
 test("groq key and an explicit PARAKEET_URL are passed through", () => {

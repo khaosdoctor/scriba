@@ -26,11 +26,9 @@ const reprocessLog = logger("reprocess");
 
 export const MENU_TEXT = "🗂 scriba control menu";
 
-// Haiku 4.5 stays one tap away as the rollback for 5.5.
 const MODEL_PRESETS = [
   "claude-haiku-5-5",
-  "claude-haiku-4-5",
-  "claude-sonnet-5",
+  "claude-sonnet-5-5",
   "claude-opus-5",
 ];
 const ENTRY_SIZES = [140, 280, 560, 1000, 0];

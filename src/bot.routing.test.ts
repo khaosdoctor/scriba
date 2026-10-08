@@ -479,13 +479,13 @@ const PRODUCERS: Producer[] = [
   {
     name: "enrichment model",
     owner: "settings",
-    text: "🧠 Reply with the model ID for enrichment (e.g. claude-sonnet-5): (md:em)",
+    text: "🧠 Reply with the model ID for enrichment (e.g. claude-sonnet-5-5): (md:em)",
     produce: (harness) => sent(harness.tap("menu:emc")),
   },
   {
     name: "voice fix model",
     owner: "settings",
-    text: "🧠 Reply with the model ID for voice fix (e.g. claude-sonnet-5): (md:vfm)",
+    text: "🧠 Reply with the model ID for voice fix (e.g. claude-sonnet-5-5): (md:vfm)",
     produce: (harness) => sent(harness.tap("menu:vfc")),
   },
   {

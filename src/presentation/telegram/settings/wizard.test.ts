@@ -149,7 +149,7 @@ test("a typed model id is trimmed and stored, and only the enrichment model reac
 
   const empty = await answer(harness, ENRICH, "  ");
   assert.deepEqual(empty.texts("sendMessage"), [
-    "Send a model ID (e.g. claude-sonnet-5).",
+    "Send a model ID (e.g. claude-sonnet-5-5).",
   ]);
   assert.equal(harness.settings.get("enrichModel"), "claude-sonnet-5-20260101");
 });
