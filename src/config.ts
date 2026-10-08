@@ -70,7 +70,7 @@ const EnvObject = z.object({
   // gpt-oss-120b is Groq's strongest open-weight model for structured JSON in/out.
   // Text-only: image captioning can't fall back (Groq has no production vision model),
   // so a captionless image posts embedded-but-uncaptioned when the primary is down.
-  AGENT_MODEL: z.string().default("claude-haiku-4-5"),
+  AGENT_MODEL: z.string().default("claude-haiku-5-5"),
   ENRICH_BACKUP_MODEL: z.string().default("claude-sonnet-5"),
   ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
   // OpenCode Go: OpenAI-compatible fallback after Groq. Requires an API key from
