@@ -1,3 +1,11 @@
+## [1.56.0](https://github.com/khaosdoctor/scriba/compare/v1.55.0...v1.56.0) (2026-10-08)
+
+
+### Features
+
+* **reprocess:** /reprocess <id> reprocesses that jot without the picker ([3d09ef1](https://github.com/khaosdoctor/scriba/commit/3d09ef171be57557519dae19a76d731ea225a736))
+* **voice:** apply the transcript fix without asking, with a Use original button ([0e4d21d](https://github.com/khaosdoctor/scriba/commit/0e4d21d4ed74e0c3edccb87e519705999e220002))
+
 ## [1.55.0](https://github.com/khaosdoctor/scriba/compare/v1.54.1...v1.55.0) (2026-10-08)
 
 
@@ -25,11 +33,4 @@
 ### Bug Fixes
 
 * menu habit review day across a clock change and impossible dates ([#81](https://github.com/khaosdoctor/scriba/issues/81)) ([9baf0d5](https://github.com/khaosdoctor/scriba/commit/9baf0d5269dcf86f12c8fb92a9bd7e5d91f15208))
-
-## [1.53.2](https://github.com/khaosdoctor/scriba/compare/v1.53.1...v1.53.2) (2026-10-02)
-
-
-### Bug Fixes
-
-* scrub the Telegram bot token from every log line ([#68](https://github.com/khaosdoctor/scriba/issues/68)) ([269da9a](https://github.com/khaosdoctor/scriba/commit/269da9a09f8b011097697b3f8511077e24f6f2ae))
 
