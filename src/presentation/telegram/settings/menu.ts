@@ -34,12 +34,14 @@ const MODEL_PRESETS = [
 const ENTRY_SIZES = [140, 280, 560, 1000, 0];
 
 const onOff = (on: boolean) => (on ? "on" : "off");
-// "claude-haiku-5-5" → "haiku 5.5", "claude-sonnet-5" → "sonnet 5".
+// "claude-haiku-5-5" → "haiku 5.5", "claude-sonnet-5" → "sonnet 5". Version parts are
+// one or two digits, so a dated snapshot keeps its date: "claude-sonnet-5-20260101" →
+// "sonnet 5-20260101", not "sonnet 5.20260101".
 const shortModel = (model: string) =>
   model
     .replace("claude-", "")
-    .replace(/-(\d+)-(\d+)$/, " $1.$2")
-    .replace(/-(\d+)$/, " $1");
+    .replace(/-(\d{1,2})-(\d{1,2})(?!\d)/, " $1.$2")
+    .replace(/-(\d{1,2})(?![\d.])/, " $1");
 
 export function rootKeyboard(state: RootState): InlineKeyboard {
   return new InlineKeyboard()

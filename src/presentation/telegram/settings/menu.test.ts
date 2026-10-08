@@ -62,8 +62,8 @@ test("the root menu shows every switch, the sizes and the models as stored, with
         nightlyRating: "off",
         nightlyFollowup: "off",
         ratingTime: "23:30",
-        enrichModel: "claude-sonnet-5",
-        voiceFixModel: "claude-haiku-4-5",
+        enrichModel: "claude-sonnet-5-20260101",
+        voiceFixModel: "claude-haiku-4-5-20251001",
       })
     ).tap("menu:root"),
   );
@@ -72,8 +72,11 @@ test("the root menu shows every switch, the sizes and the models as stored, with
   assert.equal(button(stored, "menu:rtsw").text, "🌙 Nightly rating: off");
   assert.equal(button(stored, "menu:fusw").text, "💬 Follow-up: off");
   assert.equal(button(stored, "menu:rtt").text, "🕛 Rating time: 23:30");
-  assert.equal(button(stored, "menu:em").text, "🧠 Enrich: sonnet 5");
-  assert.equal(button(stored, "menu:vfm").text, "🎤 VF model: haiku 4.5");
+  assert.equal(button(stored, "menu:em").text, "🧠 Enrich: sonnet 5-20260101");
+  assert.equal(
+    button(stored, "menu:vfm").text,
+    "🎤 VF model: haiku 4.5-20251001",
+  );
 });
 
 test("/menu sends a fresh root menu and retires the chat's previous one", async () => {
