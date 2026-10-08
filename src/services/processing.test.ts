@@ -747,6 +747,14 @@ test("a voice fix with a change is applied without asking, keeps the raw transcr
   assert.equal(row?.transcript, "Ship the release on Friday.");
   assert.equal(row?.original_transcript, "ship the release on friday");
   assert.equal(offersOriginal(testWorld), true);
+  assert.ok(
+    testWorld
+      .htmls()
+      .at(-1)
+      ?.endsWith(
+        "🎤 Original transcript:\n<blockquote expandable>ship the release on friday</blockquote>",
+      ),
+  );
 });
 
 test("a jot back on its original transcript is not fixed again and offers nothing", async (testContext) => {
@@ -765,6 +773,7 @@ test("a jot back on its original transcript is not fixed again and offers nothin
 
   assert.deepEqual(testWorld.enriched, ["ship the release on friday"]);
   assert.equal(offersOriginal(testWorld), false);
+  assert.ok(!testWorld.htmls().at(-1)?.includes("Original transcript"));
 });
 
 test("the pieces of a split voice jot remember the jot they came from", async (testContext) => {

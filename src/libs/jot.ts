@@ -1,6 +1,6 @@
 import type { Jot, JotKind, JotStatus } from "../domain/jot/entity.ts";
 import { isEmbeddableUrl } from "./links.ts";
-import { escapeHtml } from "./text.ts";
+import { clipUpdate, escapeHtml } from "./text.ts";
 import { plainDate } from "./time.ts";
 
 // One matcher for every URL form in a line: `![alt](url)` (embedded), `[text](url)`
@@ -105,6 +105,16 @@ export function doneMessage(
 ): string {
   const split = part ? `\n✂️ part ${part.i} of ${part.of}` : "";
   return `✅ Saved to your journal\n<blockquote>🕒 ${time} · ${escapeHtml(donePreview(kind, textPart))}</blockquote>\n🔖 <code>${id}</code>${squashLine(squashedTotal)}${split}`;
+}
+
+/** Cap on the raw transcript shown under a fixed voice jot, so the status stays inside
+ *  Telegram's 4096 characters next to the entry itself. */
+const ORIGINAL_CHARS = 1500;
+
+/** The transcript as it came from the transcriber, folded away under the finished status of
+ *  a voice jot the fix rewrote, so 📝 Use original is never a blind tap. */
+export function originalQuote(original: string): string {
+  return `\n🎤 Original transcript:\n<blockquote expandable>${escapeHtml(clipUpdate(original, ORIGINAL_CHARS))}</blockquote>`;
 }
 
 // A failure message is only as useful as what you can do about it, and both messages below

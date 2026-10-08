@@ -20,6 +20,7 @@ import {
   embedOffer,
   gaveUpMessage,
   heldNotice,
+  originalQuote,
   retryNotice,
 } from "../libs/jot.ts";
 import { candidates, forcedCandidates, linkDateWords } from "../libs/links.ts";
@@ -485,16 +486,16 @@ export class ProcessingService {
     squashed: number,
     part?: { i: number; of: number },
   ): Promise<void> {
+    const original =
+      jot.original_transcript !== null &&
+      jot.transcript !== jot.original_transcript
+        ? jot.original_transcript
+        : null;
     await this.deps.jots.status(
       jot.id,
-      doneMessage(jot.time, jot.kind, text, jot.id, squashed, part),
-      {
-        undo: true,
-        embed: embedOffer(text),
-        original:
-          jot.original_transcript !== null &&
-          jot.transcript !== jot.original_transcript,
-      },
+      doneMessage(jot.time, jot.kind, text, jot.id, squashed, part) +
+        (original === null ? "" : originalQuote(original)),
+      { undo: true, embed: embedOffer(text), original: original !== null },
     );
   }
 

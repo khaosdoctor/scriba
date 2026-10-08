@@ -9,6 +9,7 @@ import {
   formatJotDetail,
   gaveUpMessage,
   jotPreview,
+  originalQuote,
   parseLiteralEdit,
   retryNotice,
   setEmbeds,
@@ -82,6 +83,16 @@ test("the status keyboard carries one button per asked action, and clears them w
     { text: "↩️ Undo", callback_data: "un:a1b2c3d4" },
     { text: "📝 Use original", callback_data: "vf:a1b2c3d4" },
   ]);
+});
+
+test("originalQuote folds the raw transcript away, escaped and capped", () => {
+  assert.equal(
+    originalQuote("if a < b"),
+    "\n🎤 Original transcript:\n<blockquote expandable>if a &lt; b</blockquote>",
+  );
+  const long = originalQuote("word ".repeat(1000));
+  assert.ok(long.length < 1600);
+  assert.ok(long.endsWith("…</blockquote>"));
 });
 
 test("doneMessage marks which piece a split jot is", () => {
