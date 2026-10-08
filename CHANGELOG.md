@@ -1,3 +1,10 @@
+## [1.57.0](https://github.com/khaosdoctor/scriba/compare/v1.56.0...v1.57.0) (2026-10-08)
+
+
+### Features
+
+* **voice:** show the raw transcript under a fixed voice jot ([a015cb9](https://github.com/khaosdoctor/scriba/commit/a015cb96a2d4d3a8682c26882b3640bd0393c39a))
+
 ## [1.56.0](https://github.com/khaosdoctor/scriba/compare/v1.55.0...v1.56.0) (2026-10-08)
 
 
@@ -26,11 +33,4 @@
 ### Features
 
 * release the layered refactor and the code cleanup ([9ee4ff3](https://github.com/khaosdoctor/scriba/commit/9ee4ff305c7b98981668da5a51be6c494f04b83c))
-
-## [1.53.3](https://github.com/khaosdoctor/scriba/compare/v1.53.2...v1.53.3) (2026-10-03)
-
-
-### Bug Fixes
-
-* menu habit review day across a clock change and impossible dates ([#81](https://github.com/khaosdoctor/scriba/issues/81)) ([9baf0d5](https://github.com/khaosdoctor/scriba/commit/9baf0d5269dcf86f12c8fb92a9bd7e5d91f15208))
 
