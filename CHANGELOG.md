@@ -1,3 +1,10 @@
+## [1.55.0](https://github.com/khaosdoctor/scriba/compare/v1.54.1...v1.55.0) (2026-10-08)
+
+
+### Features
+
+* **models:** move to Claude Haiku 5.5 and Sonnet 5.5 ([#93](https://github.com/khaosdoctor/scriba/issues/93)) ([16b7da0](https://github.com/khaosdoctor/scriba/commit/16b7da0462da5578d2902443505f2cfafa65bf61))
+
 ## [1.54.1](https://github.com/khaosdoctor/scriba/compare/v1.54.0...v1.54.1) (2026-10-04)
 
 
@@ -25,11 +32,4 @@
 ### Bug Fixes
 
 * scrub the Telegram bot token from every log line ([#68](https://github.com/khaosdoctor/scriba/issues/68)) ([269da9a](https://github.com/khaosdoctor/scriba/commit/269da9a09f8b011097697b3f8511077e24f6f2ae))
-
-## [1.53.1](https://github.com/khaosdoctor/scriba/compare/v1.53.0...v1.53.1) (2026-10-02)
-
-
-### Bug Fixes
-
-* move to the layered layout and guard in-flight jots ([#63](https://github.com/khaosdoctor/scriba/issues/63)) ([85a14c1](https://github.com/khaosdoctor/scriba/commit/85a14c163a342f6374780330bd0b58909550657a))
 
