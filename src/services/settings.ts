@@ -49,8 +49,8 @@ export type LinkPrompt = "sw" | "rg" | "rgn" | "rgm" | "rgw";
 const PROMPTS: Record<SettingsPrompt, string> = {
   es: `✂️ Reply to this message with how many characters one journal entry may be: 40–4000, or "off" to stop splitting. ${WIZARD_ENTRYSIZE_REF}`,
   rt: `🕛 Reply to this message with the time for the nightly rating, as HH:MM in 24-hour time, like 23:30. A time before 12:00 rates the day that just ended, a later one rates today. ${WIZARD_RATING_TIME_REF}`,
-  em: `🧠 Reply with the model ID for enrichment (e.g. claude-sonnet-5): ${WIZARD_ENRICH_MODEL_REF}`,
-  vfm: `🧠 Reply with the model ID for voice fix (e.g. claude-sonnet-5): ${WIZARD_VOICEFIX_MODEL_REF}`,
+  em: `🧠 Reply with the model ID for enrichment (e.g. claude-sonnet-5-5): ${WIZARD_ENRICH_MODEL_REF}`,
+  vfm: `🧠 Reply with the model ID for voice fix (e.g. claude-sonnet-5-5): ${WIZARD_VOICEFIX_MODEL_REF}`,
 };
 
 const PICK_PAGE = 6;

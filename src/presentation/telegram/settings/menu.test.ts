@@ -62,8 +62,8 @@ test("the root menu shows every switch, the sizes and the models as stored, with
         nightlyRating: "off",
         nightlyFollowup: "off",
         ratingTime: "23:30",
-        enrichModel: "claude-sonnet-5",
-        voiceFixModel: "claude-haiku-4-5",
+        enrichModel: "claude-sonnet-5-20260101",
+        voiceFixModel: "claude-haiku-4-5-20251001",
       })
     ).tap("menu:root"),
   );
@@ -72,8 +72,11 @@ test("the root menu shows every switch, the sizes and the models as stored, with
   assert.equal(button(stored, "menu:rtsw").text, "🌙 Nightly rating: off");
   assert.equal(button(stored, "menu:fusw").text, "💬 Follow-up: off");
   assert.equal(button(stored, "menu:rtt").text, "🕛 Rating time: 23:30");
-  assert.equal(button(stored, "menu:em").text, "🧠 Enrich: sonnet 5");
-  assert.equal(button(stored, "menu:vfm").text, "🎤 VF model: haiku 4.5");
+  assert.equal(button(stored, "menu:em").text, "🧠 Enrich: sonnet 5-20260101");
+  assert.equal(
+    button(stored, "menu:vfm").text,
+    "🎤 VF model: haiku 4.5-20251001",
+  );
 });
 
 test("/menu sends a fresh root menu and retires the chat's previous one", async () => {
@@ -176,14 +179,17 @@ test("a typed-value button sends a force reply with its marker and leaves the me
 });
 
 test("the model picker marks the current model, and a pick stores it, telling the enricher only for enrichment", async () => {
-  const harness = await withStored({ enrichModel: "claude-sonnet-5" });
+  const harness = await withStored({ enrichModel: "claude-sonnet-5-5" });
   const models: string[] = [];
   harness.enricher.setModel = (model: string) => void models.push(model);
   const picker = edit(await harness.tap("menu:em"));
-  assert.equal(picker?.text, "🧠 Enrichment model\n\nCurrent: claude-sonnet-5");
+  assert.equal(
+    picker?.text,
+    "🧠 Enrichment model\n\nCurrent: claude-sonnet-5-5",
+  );
   assert.deepEqual(labels(picker), [
-    ["haiku 4.5"],
-    ["✅ sonnet 5"],
+    ["haiku 5.5"],
+    ["✅ sonnet 5.5"],
     ["opus 5"],
     ["✍️ Type a model"],
     ["‹ Back"],
@@ -197,13 +203,13 @@ test("the model picker marks the current model, and a pick stores it, telling th
   assert.deepEqual(answers(pick), ["enrichment: opus 5"]);
   assert.deepEqual(labels(edit(pick))[2], ["✅ opus 5"]);
 
-  const vf = await harness.tap("menu:vfs:claude-haiku-4-5");
-  assert.equal(harness.settings.get("voiceFixModel"), "claude-haiku-4-5");
+  const vf = await harness.tap("menu:vfs:claude-haiku-5-5");
+  assert.equal(harness.settings.get("voiceFixModel"), "claude-haiku-5-5");
   assert.deepEqual(models, ["claude-opus-5"]);
-  assert.deepEqual(answers(vf), ["voice fix: haiku 4.5"]);
+  assert.deepEqual(answers(vf), ["voice fix: haiku 5.5"]);
   assert.equal(
     edit(vf)?.text,
-    "🎤 Voice fix model\n\nCurrent: claude-haiku-4-5",
+    "🎤 Voice fix model\n\nCurrent: claude-haiku-5-5",
   );
 
   for (const stale of ["menu:ems", "menu:vfs:  "])

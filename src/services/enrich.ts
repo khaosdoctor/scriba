@@ -528,6 +528,9 @@ export class Enricher {
         // Linking a journal line needs no reasoning, and haiku's default thinking cost
         // 6-7s a call, pushing it past ENRICH_TIMEOUT_MS while the answer took under 1s.
         thinking: { type: "disabled" },
+        // The 5.5 models can't turn thinking off (the CLI ignores "disabled" for them),
+        // so low effort is what keeps their thinking short. Models without effort drop it.
+        effort: "low",
         ...(systemPrompt ? { systemPrompt } : {}),
         ...(model ? { model } : {}),
         ...(outputFormat ? { outputFormat } : {}),

@@ -27,7 +27,7 @@ const model = (which: "em" | "vfm"): Reply => {
   const { key, label, button } = MODELS[which];
   return {
     warn: "menu: empty model reply",
-    invalid: "Send a model ID (e.g. claude-sonnet-5).",
+    invalid: "Send a model ID (e.g. claude-sonnet-5-5).",
     button,
     async apply(settings, body) {
       const id = body.trim();

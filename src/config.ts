@@ -70,8 +70,8 @@ const EnvObject = z.object({
   // gpt-oss-120b is Groq's strongest open-weight model for structured JSON in/out.
   // Text-only: image captioning can't fall back (Groq has no production vision model),
   // so a captionless image posts embedded-but-uncaptioned when the primary is down.
-  AGENT_MODEL: z.string().default("claude-haiku-4-5"),
-  ENRICH_BACKUP_MODEL: z.string().default("claude-sonnet-5"),
+  AGENT_MODEL: z.string().default("claude-haiku-5-5"),
+  ENRICH_BACKUP_MODEL: z.string().default("claude-sonnet-5-5"),
   ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
   // OpenCode Go: OpenAI-compatible fallback after Groq. Requires an API key from
   // opencode.ai/go. The model runs through OpenCode's proxy, not direct DeepSeek.
@@ -83,9 +83,9 @@ const EnvObject = z.object({
 
   // Voice-fix: when enabled, a second model lightly cleans the transcript before
   // enrichment. Sonnet by default: haiku paraphrases too aggressively.
-  VOICE_FIX_MODEL: z.string().default("claude-sonnet-5"),
+  VOICE_FIX_MODEL: z.string().default("claude-sonnet-5-5"),
 
-  COMMAND_MODEL: z.string().default("claude-sonnet-5"),
+  COMMAND_MODEL: z.string().default("claude-sonnet-5-5"),
   // Thinking budget for command mode. The session relays the agent's reasoning to the
   // chat as it works, which is only worth anything if the model actually thinks. 0
   // turns extended thinking off (and with it the thinking lines).

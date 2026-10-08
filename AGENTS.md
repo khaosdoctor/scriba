@@ -118,7 +118,9 @@ Layers call downward only: presentation calls services, services call data. `dom
   `ENRICH_TIMEOUT_MS` (15s): the SDK gets an `AbortController` and the answer is raced
   against it, the chat fallbacks get the same cap with SDK retries off (the next step is
   the retry). SDK calls run with extended thinking off (`thinking: { type: "disabled" }`):
-  linking a line needs none, and haiku's default thinking took 6-7s of a ~9-15s call. Each
+  linking a line needs none, and haiku's default thinking took 6-7s of a ~9-15s call. The
+  5.5 models can't turn thinking off (the CLI ignores "disabled" for them), so the same
+  calls also send `effort: "low"`, which keeps their thinking short. Each
   step has a `CircuitBreaker` (`libs/model.ts`, token-free): three transient
   failures in a row (`isRecoverable`: timeouts, 5xx, 429, network) and the step is skipped
   for two minutes, then one trial call decides. An unusable answer or a rejected key still
@@ -246,7 +248,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   re-checks every redirect hop, and refuses anything resolving to a private address: the bot
   sits inside a LAN of unauthenticated services, so fetching must not become a way to read
   them. Writes and deletes stop for a Telegram ✅/❌ confirmation (`canUseTool` awaits the
-  tap, 5-minute timeout defaulting to refusal). `COMMAND_MODEL` (default `claude-sonnet-5`)
+  tap, 5-minute timeout defaulting to refusal). `COMMAND_MODEL` (default `claude-sonnet-5-5`)
   is separate from `AGENT_MODEL` — enrichment is a haiku-sized job, writing a note in the
   owner's voice is not. Style guidance lives in the system prompt, but the vault outranks
   it: the agent is told to read neighbouring notes first and to follow `internal/voice.md`
