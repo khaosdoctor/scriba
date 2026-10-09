@@ -1,3 +1,11 @@
+## [1.58.0](https://github.com/khaosdoctor/scriba/compare/v1.57.0...v1.58.0) (2026-10-09)
+
+
+### Features
+
+* **fix:** /fix re-runs the text clean-up over a jot and shows the result ([6d2d209](https://github.com/khaosdoctor/scriba/commit/6d2d20937803c8795015172a3a35b9c1c7a66fda))
+* **til:** write TIL lines without the time ([298fa0c](https://github.com/khaosdoctor/scriba/commit/298fa0cf695474c23a4f51136be53a930db4e7c0))
+
 ## [1.57.0](https://github.com/khaosdoctor/scriba/compare/v1.56.0...v1.57.0) (2026-10-08)
 
 
@@ -26,11 +34,4 @@
 ### Bug Fixes
 
 * don't hold the update loop while /flush and /sweep run ([7ddf7a0](https://github.com/khaosdoctor/scriba/commit/7ddf7a0f7c7c0c7f91c9975b0af02e82e998bb99))
-
-## [1.54.0](https://github.com/khaosdoctor/scriba/compare/v1.53.3...v1.54.0) (2026-10-04)
-
-
-### Features
-
-* release the layered refactor and the code cleanup ([9ee4ff3](https://github.com/khaosdoctor/scriba/commit/9ee4ff305c7b98981668da5a51be6c494f04b83c))
 
