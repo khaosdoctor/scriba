@@ -20,6 +20,12 @@ const EMBEDDABLE = [
   /^https?:\/\/[^?#]+\.(png|jpe?g|gif|webp|avif|svg|bmp)([?#]|$)/i,
 ];
 
+/** `[[note|shown]]` -> `shown`, `[[note]]` -> `note`: text as it was before linking, for a
+ *  model that has to rework it (the enricher links it again afterwards). */
+export function unlinkWikilinks(text: string): string {
+  return text.replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1");
+}
+
 export function isEmbeddableUrl(url: string): boolean {
   return EMBEDDABLE.some((re) => re.test(url));
 }

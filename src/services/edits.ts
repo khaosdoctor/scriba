@@ -1,9 +1,11 @@
 import type { JotRepository } from "../data/repositories/jots.ts";
 import type { LinkRuleRepository } from "../data/repositories/link-rules.ts";
 import type { ObsidianClient } from "../data/repositories/notes.ts";
+import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import {
   editedJotText,
+  enrichableSource,
   entryContent,
   isEditableJot,
   isFollower,
@@ -21,10 +23,11 @@ import {
   setEmbeds,
 } from "../libs/jot.ts";
 import { keyboard } from "../libs/keyboard.ts";
+import { unlinkWikilinks } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import { anchorLine, deleteAnchorLine } from "../libs/note.ts";
 import type { FlushQueue } from "../libs/queue.ts";
-import { shortId } from "../libs/text.ts";
+import { clipUpdate, errorText, escapeHtml, shortId } from "../libs/text.ts";
 import type { Enricher } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
 import type { Notifier } from "./notifier.ts";
@@ -35,11 +38,15 @@ export const LINK_NS = "lk";
 
 const LINE_NOT_FOUND = "Couldn't find that line in the note.";
 
+/** Cap on the fixed text quoted back by /fix, so the reply fits Telegram. */
+const FIXED_CHARS = 1500;
+
 export interface EditDeps {
   repo: JotRepository;
   linkRules: LinkRuleRepository;
+  settings: Pick<SettingsRepository, "getSetting">;
   obsidian: ObsidianClient;
-  enricher: Pick<Enricher, "editText">;
+  enricher: Pick<Enricher, "editText" | "fixTranscript">;
   jots: Pick<JotService, "status" | "leaderOf" | "deleteStatus">;
   notifier: Pick<Notifier, "send">;
   queue: Pick<FlushQueue, "add">;
@@ -187,7 +194,7 @@ export class EditService {
   /** 📝 Use original: put the raw transcript back and reprocess from it. The pieces split
    *  off the fixed text go first, since the reprocess splits the original afresh. */
   async useOriginal(jotId?: string): Promise<"gone" | "busy" | "queued"> {
-    const { repo, jots, queue } = this.deps;
+    const { repo, queue } = this.deps;
     const jot = jotId ? await repo.getJot(jotId) : undefined;
     if (!jot?.original_transcript) {
       log.warn({ jotId }, "use original: no kept transcript");
@@ -197,16 +204,101 @@ export class EditService {
       log.warn({ jotId, status: jot.status }, "use original: jot is busy");
       return "busy";
     }
-    for (const piece of await repo.piecesOf(jot.id)) {
-      await this.deleteJot(piece);
-      await jots.deleteStatus(piece.id);
-    }
-    await repo.updateJot(jot.id, { transcript: jot.original_transcript });
+    await this.dropPieces(jot);
+    await repo.updateJot(jot.id, {
+      [sourceField(jot.kind)]: jot.original_transcript,
+    });
     const reset = await repo.resetForReprocess([jot.id]);
     if (!reset.length) return "busy";
     queue.add(reset);
     log.info({ jotId }, "use original: reprocessing from the raw transcript");
     return "queued";
+  }
+
+  /** /fix: run the transcript clean-up again over a jot's whole entry (a piece resolves to
+   *  the jot it was split from, and the pieces are folded back in), tell the owner what it
+   *  became, and reprocess from the fixed text. The text before the fix is kept for
+   *  📝 Use original. Runs in the background, so it reports through the notifier and
+   *  never throws. */
+  async refix(jotId: string): Promise<void> {
+    const { notifier } = this.deps;
+    try {
+      await notifier.send(await this.refixReply(jotId), { html: true });
+    } catch (err) {
+      log.error({ jotId, err }, "fix: failed");
+      await notifier
+        .send(`🔧 Couldn't fix ${jotId}: ${escapeHtml(errorText(err))}`, {
+          html: true,
+        })
+        .catch((sendErr: unknown) =>
+          log.error({ jotId, err: sendErr }, "fix: failure notice not sent"),
+        );
+    }
+  }
+
+  private async refixReply(jotId: string): Promise<string> {
+    const { repo, settings, enricher, queue, obsidian } = this.deps;
+    const target = await this.fixTarget(jotId);
+    if (!target) return `Jot ${jotId} not found.`;
+    if (target.kind !== "audio" && target.kind !== "text")
+      return `Jot ${target.id} has no text to fix.`;
+    if (isFollower(target) || (await repo.groupFollowers(target.id)).length > 0)
+      return `Jot ${target.id} is part of a squashed entry, so there's no single text to fix.`;
+    if (!isReprocessable(target.status))
+      return `Jot ${target.id} is still processing. Try again once it's done.`;
+    const model = await settings.getSetting("voiceFixModel");
+    if (!model) return "No voice-fix model is set. Pick one in /menu.";
+    // The note's order, not received_at: a jot split twice has pieces sharing an offset.
+    const note = await obsidian.readNote(target.note_path);
+    const pieces = (await repo.piecesOf(target.id)).sort(
+      (first, second) =>
+        note.indexOf(`^${first.anchor}`) - note.indexOf(`^${second.anchor}`),
+    );
+    const source = unlinkWikilinks(
+      [
+        enrichableSource(target),
+        ...pieces.map((piece) => piece.raw_text ?? ""),
+      ].join(" "),
+    ).trim();
+    if (!source) return `Jot ${target.id} has no text to fix.`;
+    log.info(
+      { jotId: target.id, pieces: pieces.length, chars: source.length },
+      "fix: running the transcript fix again",
+    );
+    const fixed = (await enricher.fixTranscript(source, model)).trim();
+    if (fixed === source) {
+      log.info({ jotId: target.id }, "fix: nothing to change");
+      return `🔧 Nothing to fix in ${target.id}, the text is already clean.`;
+    }
+    await this.dropPieces(target);
+    await repo.updateJot(target.id, {
+      [sourceField(target.kind)]: fixed,
+      original_transcript: source,
+    });
+    const reset = await repo.resetForReprocess([target.id]);
+    if (!reset.length)
+      return `Jot ${target.id} is still processing. Try again once it's done.`;
+    queue.add(reset);
+    log.info({ jotId: target.id }, "fix: reprocessing from the fixed text");
+    return `🔧 Fixed text for <code>${target.id}</code>:\n<blockquote expandable>${escapeHtml(clipUpdate(fixed, FIXED_CHARS))}</blockquote>\nReprocessing it now. 📝 Use original on the finished message puts the old text back.`;
+  }
+
+  /** The jot a /fix acts on: a split piece stands for the jot it was cut from. */
+  private async fixTarget(jotId: string): Promise<Jot | undefined> {
+    const { repo } = this.deps;
+    const jot = await repo.getJot(jotId);
+    if (!jot || jot.status === "deleted") return undefined;
+    if (!jot.parent_id) return jot;
+    const parent = await repo.getJot(jot.parent_id);
+    return parent && parent.status !== "deleted" ? parent : jot;
+  }
+
+  /** Takes out the pieces a split cut off a jot, ahead of a reprocess that splits anew. */
+  private async dropPieces(jot: Jot): Promise<void> {
+    for (const piece of await this.deps.repo.piecesOf(jot.id)) {
+      await this.deleteJot(piece);
+      await this.deps.jots.deleteStatus(piece.id);
+    }
   }
 
   async toggleEmbed(

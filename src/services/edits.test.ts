@@ -215,3 +215,224 @@ test("a reply instruction to a TIL jot still processing is queued verbatim", asy
   );
   assert.deepEqual(harness.queued, [[ID, "TIL: make it shorter"]]);
 });
+
+// --- /fix ---
+
+const PIECE = "bbbbbbbb";
+
+/** A voice jot split into two lines, with the fixer and the reprocess queue recorded. */
+function fixSetup(
+  over: {
+    rows?: Jot[];
+    model?: string;
+    followers?: Jot[];
+    fix?: (text: string) => Promise<string>;
+    note?: string;
+  } = {},
+) {
+  const rows = new Map(
+    (
+      over.rows ?? [
+        jot({
+          kind: "audio",
+          raw_text: null,
+          transcript: "so um we shipped [[Project Kite|the kite]] build",
+        }),
+        jot({
+          id: PIECE,
+          anchor: PIECE,
+          raw_text: "and it went fine",
+          parent_id: ID,
+        }),
+      ]
+    ).map((row) => [row.id, row]),
+  );
+  const notes = new Map([
+    [
+      NOTE,
+      over.note ??
+        `# Journal\n${journalLine(TIME, "so um we shipped the kite build", ID)}\n${journalLine(TIME, "and it went fine", PIECE)}\n`,
+    ],
+  ]);
+  const updates: [string, Partial<Jot>][] = [];
+  const queued: string[][] = [];
+  const fixed: string[] = [];
+  const sent: string[] = [];
+  const repo = {
+    getJot: async (id: string) => rows.get(id),
+    groupFollowers: async (id: string) =>
+      id === ID ? (over.followers ?? []) : [],
+    piecesOf: async (id: string) =>
+      [...rows.values()].filter(
+        (row) => row.parent_id === id && row.status !== "deleted",
+      ),
+    markDeleted: async (id: string) => {
+      const row = rows.get(id);
+      if (row) rows.set(id, { ...row, status: "deleted" });
+    },
+    updateJot: async (id: string, patch: Partial<Jot>) =>
+      void updates.push([id, patch]),
+    resetForReprocess: async (ids: string[]) => ids,
+  };
+  const obsidian: any = {
+    readNote: async (path: string) => notes.get(path) ?? "",
+    writeNote: async (path: string, content: string) =>
+      void notes.set(path, content),
+    ...noteOps(() => obsidian),
+  };
+  const edits = new EditService({
+    repo,
+    settings: {
+      getSetting: async () =>
+        over.model === undefined ? "fixer-model" : over.model,
+    },
+    obsidian,
+    enricher: {
+      fixTranscript: async (text: string) => {
+        fixed.push(text);
+        return over.fix
+          ? over.fix(text)
+          : "So we shipped the kite build, and it went fine.";
+      },
+    },
+    jots: { deleteStatus: async () => {} },
+    notifier: {
+      send: async (text: string) => {
+        sent.push(text);
+        return 1;
+      },
+    },
+    queue: { add: (ids: string[]) => void queued.push(ids) },
+  } as never);
+  return { edits, rows, notes, updates, queued, fixed, sent };
+}
+
+test("/fix on a split piece fixes the whole entry from its jot, drops the piece and reprocesses", async () => {
+  const harness = fixSetup();
+  await harness.edits.refix(PIECE);
+
+  assert.deepEqual(harness.fixed, [
+    "so um we shipped the kite build and it went fine",
+  ]);
+  assert.equal(harness.rows.get(PIECE)?.status, "deleted");
+  assert.equal(harness.notes.get(NOTE)?.includes(PIECE), false);
+  assert.deepEqual(harness.updates, [
+    [
+      ID,
+      {
+        transcript: "So we shipped the kite build, and it went fine.",
+        original_transcript: "so um we shipped the kite build and it went fine",
+      },
+    ],
+  ]);
+  assert.deepEqual(harness.queued, [[ID]]);
+  assert.match(
+    harness.sent[0] ?? "",
+    /Fixed text for <code>aaaaaaaa<\/code>:\n<blockquote expandable>So we shipped the kite build, and it went fine\.<\/blockquote>/,
+  );
+});
+
+test("/fix folds pieces in the order they read in the note, whatever order they were stored in", async () => {
+  const LATER = "cccccccc";
+  const harness = fixSetup({
+    rows: [
+      jot({ raw_text: "first part" }),
+      jot({ id: LATER, anchor: LATER, raw_text: "last part", parent_id: ID }),
+      jot({ id: PIECE, anchor: PIECE, raw_text: "middle part", parent_id: ID }),
+    ],
+    note: `# Journal\n${journalLine(TIME, "first part", ID)}\n${journalLine(TIME, "middle part", PIECE)}\n${journalLine(TIME, "last part", LATER)}\n`,
+  });
+  await harness.edits.refix(ID);
+  assert.deepEqual(harness.fixed, ["first part middle part last part"]);
+});
+
+test("/fix on a text jot fixes its raw text", async () => {
+  const harness = fixSetup({
+    rows: [jot({ raw_text: "went  running" })],
+    fix: async () => "Went running.",
+  });
+  await harness.edits.refix(ID);
+  assert.deepEqual(harness.updates, [
+    [ID, { raw_text: "Went running.", original_transcript: "went  running" }],
+  ]);
+});
+
+test("/fix leaves an already clean entry alone", async () => {
+  const harness = fixSetup({ fix: async (text) => text });
+  await harness.edits.refix(ID);
+  assert.deepEqual(harness.updates, []);
+  assert.deepEqual(harness.queued, []);
+  assert.equal(harness.rows.get(PIECE)?.status, "done");
+  assert.match(harness.sent[0] ?? "", /Nothing to fix/);
+});
+
+test("/fix refuses what it can't fix without calling the model", async () => {
+  const cases: [string, Parameters<typeof fixSetup>[0], RegExp][] = [
+    ["missing", { rows: [] }, /not found/],
+    ["deleted", { rows: [jot({ status: "deleted" })] }, /not found/],
+    ["video", { rows: [jot({ kind: "video" })] }, /no text to fix/],
+    ["empty", { rows: [jot({ raw_text: "  " })] }, /no text to fix/],
+    ["squashed", { followers: [jot({ id: "cccccccc" })] }, /squashed/],
+    ["busy", { rows: [jot({ status: "processing" })] }, /still processing/],
+    ["no model", { model: "" }, /No voice-fix model/],
+  ];
+  for (const [label, options, reply] of cases) {
+    const harness = fixSetup(options);
+    await harness.edits.refix(ID);
+    assert.match(harness.sent[0] ?? "", reply, label);
+    assert.deepEqual(harness.fixed, [], label);
+    assert.deepEqual(harness.updates, [], label);
+  }
+});
+
+test("/fix on a piece whose jot was deleted fixes the piece alone", async () => {
+  const harness = fixSetup({
+    rows: [
+      jot({ status: "deleted" }),
+      jot({
+        id: PIECE,
+        anchor: PIECE,
+        raw_text: "and it went fine",
+        parent_id: ID,
+      }),
+    ],
+    fix: async () => "And it went fine.",
+  });
+  await harness.edits.refix(PIECE);
+  assert.deepEqual(harness.fixed, ["and it went fine"]);
+  assert.deepEqual(harness.queued, [[PIECE]]);
+});
+
+test("/fix on a jot that starts processing before the reset queues nothing", async () => {
+  const harness = fixSetup();
+  (harness.edits as any).deps.repo.resetForReprocess = async () => [];
+  await harness.edits.refix(ID);
+  assert.deepEqual(harness.queued, []);
+  assert.match(harness.sent[0] ?? "", /still processing/);
+});
+
+test("/fix survives a Telegram failure while reporting a failed fix", async () => {
+  const harness = fixSetup({
+    fix: async () => {
+      throw new Error("model down");
+    },
+  });
+  (harness.edits as any).deps.notifier.send = async () => {
+    throw new Error("telegram down");
+  };
+  await harness.edits.refix(ID);
+  assert.deepEqual(harness.updates, []);
+});
+
+test("/fix reports a failed model call instead of throwing", async () => {
+  const harness = fixSetup({
+    fix: async () => {
+      throw new Error("model <down>");
+    },
+  });
+  await harness.edits.refix(ID);
+  assert.deepEqual(harness.sent, [
+    "🔧 Couldn't fix aaaaaaaa: model &lt;down&gt;",
+  ]);
+  assert.deepEqual(harness.updates, []);
+});

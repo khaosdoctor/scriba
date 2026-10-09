@@ -11,7 +11,18 @@ import {
   parseAliasEntries,
   parseRuleWords,
   tokenize,
+  unlinkWikilinks,
 } from "./links.ts";
+
+test("unlinkWikilinks puts back the shown words of every wikilink", () => {
+  assert.equal(
+    unlinkWikilinks(
+      "Emailed Alex [[2026-01-15|today]] about [[Acme]] and [[notes/Globex|Globex]].",
+    ),
+    "Emailed Alex today about Acme and Globex.",
+  );
+  assert.equal(unlinkWikilinks("no links here"), "no links here");
+});
 
 const STOP = new Set(["no", "we", "i", "on", "e", "de"]);
 

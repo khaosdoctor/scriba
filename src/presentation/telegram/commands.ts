@@ -18,6 +18,7 @@ import { done } from "./command/done.ts";
 import { habitsCommand } from "./habits/command.ts";
 import type { ViewDeps } from "./index.ts";
 import { deleteCommand } from "./journal/delete.ts";
+import { fixCommand } from "./journal/fix.ts";
 import { start } from "./journal/start.ts";
 import { rate } from "./rating/rate.ts";
 import { reprocess } from "./reprocess/command.ts";
@@ -40,6 +41,7 @@ export const COMMANDS: CommandView[] = [
   rate,
   habitsCommand,
   reprocess,
+  fixCommand,
   commandMode,
   taskCommand,
   taskAddCommand,

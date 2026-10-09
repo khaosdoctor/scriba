@@ -488,7 +488,7 @@ export class ProcessingService {
   ): Promise<void> {
     const original =
       jot.original_transcript !== null &&
-      jot.transcript !== jot.original_transcript
+      jot[sourceField(jot.kind)] !== jot.original_transcript
         ? jot.original_transcript
         : null;
     await this.deps.jots.status(

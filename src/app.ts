@@ -188,6 +188,7 @@ export async function createScriba(
   const edits = new EditService({
     repo: repo.jots,
     linkRules: repo.linkRules,
+    settings: repo.settings,
     obsidian,
     enricher,
     jots,

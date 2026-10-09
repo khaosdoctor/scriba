@@ -38,7 +38,7 @@ export interface Jot {
   time: string;
   raw_text: string | null;
   transcript: string | null;
-  /** The raw transcript, kept when the voice fix replaced it (📝 Use original). */
+  /** The source text before a fix replaced it (the voice fix or /fix), for 📝 Use original. */
   original_transcript: string | null;
   /** The jot this one was split off from, for a spillover piece. */
   parent_id: string | null;

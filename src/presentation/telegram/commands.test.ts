@@ -104,3 +104,27 @@ test("an admin answer longer than Telegram's limit is cut instead of rejected", 
   assert.ok(text!.length <= TELEGRAM_LIMIT);
   assert.match(text!, /abcd1234/);
 });
+
+test("/fix takes the jot from its argument or from the message it replies to", async () => {
+  const harness = await botHarness();
+  harness.repo.jotForMessage = "bbbb2222";
+  const typed = await harness.say("/fix AAAA1111");
+  assert.deepEqual(typed.texts("sendMessage").slice(0, 1), [
+    "🔧 Fixing aaaa1111…",
+  ]);
+  const replied = await harness.say("/fix", { message_id: 77 });
+  assert.deepEqual(replied.texts("sendMessage").slice(0, 1), [
+    "🔧 Fixing bbbb2222…",
+  ]);
+});
+
+test("/fix with no jot to act on says how to use it", async () => {
+  const harness = await botHarness();
+  harness.repo.jotForMessage = undefined;
+  const bare = await harness.say("/fix");
+  const unmapped = await harness.say("/fix", { message_id: 77 });
+  for (const run of [bare, unmapped])
+    assert.deepEqual(run.texts("sendMessage"), [
+      "Send /fix <id>, or reply /fix to a journal message.",
+    ]);
+});

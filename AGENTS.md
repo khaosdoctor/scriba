@@ -221,7 +221,15 @@ Layers call downward only: presentation calls services, services call data. `dom
   carries **📝 Use original** (`vf:<jotId>`, `EditService.useOriginal`). The tap takes out
   the pieces a split cut off (found by `jots.parent_id`, which `pieceJot` sets), puts the
   raw transcript back and reprocesses the jot. A kept original means the fix already ran,
-  so a reprocess never cleans the transcript again.
+  so a reprocess never cleans the transcript again. The status also quotes the raw
+  transcript, folded away (`originalQuote`), so the button is never a blind tap.
+  **`/fix <id>`** (or `/fix` as a reply to a jot's message) runs the same clean-up on
+  demand, for text jots too (`EditService.refix`): a split piece resolves to the jot it came
+  from, the pieces' text is folded back in with wikilinks undone (`unlinkWikilinks`), the
+  fixed text is sent back quoted, and the jot is reprocessed from it with the text before
+  the fix kept in `original_transcript`. The model call runs in the background, so the
+  update loop isn't held, and every outcome (already clean, squashed, still processing, no
+  model, a failed call) is answered with a message.
 - **Relative-date phrases become daily-note links.** `linkDateWords` (`libs/links.ts`) runs on
   the composed line after enrichment, resolving phrases like "yesterday", "three weeks
   ago", or "next Friday" — via `chrono-node`, token-free — against the jot's own day (not

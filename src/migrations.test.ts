@@ -211,6 +211,57 @@ test("original_transcript takes over proposed_text with its data, and down gives
   });
 });
 
+test("old split pieces are linked to the one jot at their whole second, and only that", async (testContext) => {
+  await withDb(testContext, async (knex) => {
+    await migrateTo(knex, ORIGINAL_TRANSCRIPT);
+    const row = (
+      id: string,
+      receivedAt: number,
+      over: Record<string, unknown> = {},
+    ) => ({
+      id,
+      kind: "text",
+      note_path: "n.md",
+      anchor: id,
+      time: "10:00:00",
+      status: "done",
+      received_at: receivedAt,
+      updated_at: receivedAt,
+      ...over,
+    });
+    await knex("jots").insert([
+      row("leader01", 5000, { kind: "audio" }),
+      row("piece001", 5001),
+      row("piece002", 5002),
+      row("other001", 9000, { note_path: "other.md" }),
+      row("strayp01", 9001),
+      row("twin0001", 7000),
+      row("twin0002", 7000, { kind: "audio" }),
+      row("twinpc01", 7001),
+      row("plain001", 8000),
+    ]);
+
+    await knex.migrate.latest();
+    const links = Object.fromEntries(
+      (await knex("jots").select("id", "parent_id")).map((linked) => [
+        linked.id,
+        linked.parent_id,
+      ]),
+    );
+    assert.deepEqual(links, {
+      leader01: null,
+      piece001: "leader01",
+      piece002: "leader01",
+      other001: null,
+      strayp01: null,
+      twin0001: null,
+      twin0002: null,
+      twinpc01: null,
+      plain001: null,
+    });
+  });
+});
+
 const schema = async (knex: Knex) =>
   (await knex.raw(
     "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE 'knex_%' ORDER BY type, name",
