@@ -180,8 +180,11 @@ Layers call downward only: presentation calls services, services call data. `dom
   is stored with the prefix removed and `section = "til"` (`jots.section`, default
   `"journal"`). Every write that has to append a line (placeholder, unsquash, anchor-missing
   fallback) passes `jot.section` to `ObsidianClient.appendJournalLine`, which picks
-  `TIL_HEADING` or `JOURNAL_HEADING`. The line keeps the usual `- _time ::_ text ^anchor`
-  shape, so replace/edit/undo/reprocess find it by anchor anywhere. A missing heading falls
+  `TIL_HEADING` or `JOURNAL_HEADING`. A TIL line is the learning alone, `- text ^anchor`:
+  `journalLine` takes the jot's section and stamps the time only on a journal line, and every
+  writer (placeholder, processed line, split pieces, edits) passes `jot.section`.
+  `stripJournalLine` reads a line with or without the stamp, so replace/edit/undo/reprocess
+  find it by anchor anywhere. A missing heading falls
   back to appending at the end of the note, like Journal. A TIL jot only squashes with
   another TIL jot, and split pieces inherit the section.
 - Jot status: `pending → processing → done` (or `failed` → retry, or `abandoned` on
@@ -414,8 +417,9 @@ Layers call downward only: presentation calls services, services call data. `dom
   task card. `JotService.askTil` sends it and `tilView` (`presentation/telegram/til/tap.ts`,
   callbacks `ti:y|n:<jotId>`) answers it through `JotService.answerTil`; neither holds a
   draft: the jot id is all they need. ✅ calls `ObsidianClient.moveToTil`, which runs `moveAnchorLine` under
-  the note lock: the line is cut out and inserted under `TIL_HEADING` untouched, so its
-  `^anchor` still resolves for edit, undo and reprocess. A note with no TIL heading is not
+  the note lock: the line is cut out and inserted under `TIL_HEADING` with its time stamp
+  dropped (`untimedLine`) and its `^anchor` kept, so it still resolves for edit, undo and
+  reprocess. A note with no TIL heading is not
   touched (the helper reports `heading` missing rather than appending at the end) and the
   card says so. A vault write that throws is logged and answered with an alert; the card
   keeps its buttons, since a reprocess never asks again and another tap is the retry. The

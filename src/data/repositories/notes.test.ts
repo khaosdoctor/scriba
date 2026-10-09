@@ -381,7 +381,7 @@ const TIL_NOTE = [
   "",
 ].join("\n");
 
-test("moveToTil reads once, writes once, and puts the line under TIL with its anchor intact", async () => {
+test("moveToTil reads once, writes once, and puts the line under TIL without its time, anchor intact", async () => {
   const { obsidian, fake } = await client();
   fake.vault.set(TIL_PATH, TIL_NOTE);
   assert.equal(await obsidian.moveToTil(TIL_PATH, "bbbbbbbb"), "moved");
@@ -393,7 +393,7 @@ test("moveToTil reads once, writes once, and puts the line under TIL with its an
       "## Journal",
       "- _10:00:00 ::_ first ^aaaaaaaa",
       "## TIL",
-      "- _10:01:00 ::_ learned x ^bbbbbbbb",
+      "- learned x ^bbbbbbbb",
       "",
     ].join("\n"),
   );

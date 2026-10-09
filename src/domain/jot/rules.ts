@@ -97,16 +97,28 @@ export function stripTilPrefix(text: string): string | null {
   return TIL_PREFIX.test(text) ? text.replace(TIL_PREFIX, "") : null;
 }
 
+/** A TIL line is just the learning: only the journal stamps the time. */
 export function journalLine(
   time: string,
   text: string,
   anchor: string,
+  section: JotSection = "journal",
 ): string {
-  return `- _${time} ::_ ${text} ^${anchor}`;
+  const stamp = section === "til" ? "" : `_${time} ::_ `;
+  return `- ${stamp}${text} ^${anchor}`;
 }
 
-export function placeholderLine(time: string, anchor: string): string {
-  return journalLine(time, "⏳", anchor);
+export function placeholderLine(
+  time: string,
+  anchor: string,
+  section: JotSection = "journal",
+): string {
+  return journalLine(time, "⏳", anchor, section);
+}
+
+/** A journal line moved under TIL loses its time stamp on the way. */
+export function untimedLine(line: string): string {
+  return line.replace(/^- _[^_\n]* ::_ /, "- ");
 }
 
 // An Obsidian block anchor is `^` plus letters/digits/dashes at the end of the line, and
@@ -114,8 +126,9 @@ export function placeholderLine(time: string, anchor: string): string {
 // "3^2" in the text itself from being read as one.
 const ANCHOR_SUFFIX = /\s+\^[A-Za-z0-9-]+[ \t\r]*$/;
 
+/** The text of a line, with or without its time stamp (TIL lines carry none). */
 export function stripJournalLine(line: string, time: string): string {
   return line
-    .replace(new RegExp(`^- _${escapeRe(time)} ::_ `), "")
+    .replace(new RegExp(`^- (?:_${escapeRe(time)} ::_ )?`), "")
     .replace(ANCHOR_SUFFIX, "");
 }

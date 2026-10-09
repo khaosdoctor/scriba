@@ -216,7 +216,11 @@ export class JotService {
   ): Promise<void> {
     const { obsidian } = this.deps;
     await obsidian.ensureDailyNote(date);
-    await obsidian.appendJournalLine(date, placeholderLine(time, id), section);
+    await obsidian.appendJournalLine(
+      date,
+      placeholderLine(time, id, section),
+      section,
+    );
   }
 
   /** The owner reacting 🤝 on a squashed follower's own message: opting it out of the

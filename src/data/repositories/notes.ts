@@ -1,4 +1,5 @@
 import type { JotSection } from "../../domain/jot/entity.ts";
+import { untimedLine } from "../../domain/jot/rules.ts";
 import { logger } from "../../libs/log.ts";
 import {
   anchorLine,
@@ -151,7 +152,12 @@ export class ObsidianClient {
     anchor: string,
   ): Promise<"moved" | "no-line" | "no-heading"> {
     return this.updateNote(notePath, (note, write) => {
-      const moved = moveAnchorLine(note, anchor, this.cfg.tilHeading);
+      const moved = moveAnchorLine(
+        note,
+        anchor,
+        this.cfg.tilHeading,
+        untimedLine,
+      );
       if ("missing" in moved)
         return moved.missing === "line" ? "no-line" : "no-heading";
       write(moved.note);

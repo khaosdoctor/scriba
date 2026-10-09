@@ -353,6 +353,15 @@ test("a TIL jot is never offered the card", async () => {
   assert.deepEqual(scenario.tilAsks, []);
 });
 
+test("a TIL jot's finished line is the learning alone, with no time", async () => {
+  const scenario = pipeline({ section: "til" });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.equal(
+    scenario.note(),
+    `## Journal\n- Learned that X ^${scenario.leaderId}`,
+  );
+});
+
 test("a reprocess after the card was sent does not ask again", async () => {
   const scenario = pipeline({ til: true });
   await scenario.processor.processJot(scenario.leaderId);

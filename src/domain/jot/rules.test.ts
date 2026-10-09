@@ -19,6 +19,7 @@ import {
   sourceField,
   stripJournalLine,
   stripTilPrefix,
+  untimedLine,
   withinSquashWindow,
 } from "./rules.ts";
 
@@ -187,6 +188,25 @@ test("journal + placeholder lines match the vault house style", () => {
   );
 });
 
+test("a TIL line carries only the learning, never the time", () => {
+  assert.equal(
+    journalLine("23:13:18", "cats purr at 25 Hz", "a1b2c3d4", "til"),
+    "- cats purr at 25 Hz ^a1b2c3d4",
+  );
+  assert.equal(
+    placeholderLine("09:00:00", "deadbeef", "til"),
+    "- ⏳ ^deadbeef",
+  );
+});
+
+test("untimedLine drops a journal line's time stamp and leaves an untimed line alone", () => {
+  assert.equal(
+    untimedLine("- _10:01:00 ::_ learned x ^bbbbbbbb"),
+    "- learned x ^bbbbbbbb",
+  );
+  assert.equal(untimedLine("- learned x ^bbbbbbbb"), "- learned x ^bbbbbbbb");
+});
+
 test("stripTilPrefix drops a leading TIL marker in its usual spellings", () => {
   assert.equal(stripTilPrefix("TIL foo"), "foo");
   assert.equal(stripTilPrefix("til foo"), "foo");
@@ -268,4 +288,9 @@ test("stripJournalLine strips the time prefix and anchor suffix", () => {
   );
   // A caret inside the text isn't an anchor: journalLine always writes " ^id" at the end.
   assert.equal(stripJournalLine("- _23:13:18 ::_ 3^2", "23:13:18"), "3^2");
+  // A TIL line has no time stamp to strip.
+  assert.equal(
+    stripJournalLine("- cats purr ^a1b2c3d4", "23:13:18"),
+    "cats purr",
+  );
 });

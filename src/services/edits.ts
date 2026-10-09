@@ -316,7 +316,7 @@ export class EditService {
       jot.anchor,
       (line, write) => {
         const next = setEmbeds(stripJournalLine(line, jot.time), embed);
-        write(journalLine(jot.time, next, jot.anchor));
+        write(journalLine(jot.time, next, jot.anchor, jot.section));
         return next;
       },
     );
@@ -481,7 +481,7 @@ export class EditService {
             text,
             freeform.join("; then "),
           );
-        write(journalLine(jot.time, text, jot.anchor));
+        write(journalLine(jot.time, text, jot.anchor, jot.section));
         return text;
       },
     );
@@ -499,7 +499,7 @@ export class EditService {
       jot.note_path,
       jot.anchor,
       (_line, write) => {
-        write(journalLine(jot.time, content, jot.anchor));
+        write(journalLine(jot.time, content, jot.anchor, jot.section));
         return true;
       },
     );

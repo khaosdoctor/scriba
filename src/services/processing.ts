@@ -416,7 +416,12 @@ export class ProcessingService {
       [
         this.composeLine(jot, linked),
         ...spillover.map((piece) =>
-          journalLine(piece.time, piece.raw_text ?? "", piece.anchor),
+          journalLine(
+            piece.time,
+            piece.raw_text ?? "",
+            piece.anchor,
+            piece.section,
+          ),
         ),
       ].join("\n"),
     );
@@ -686,6 +691,7 @@ export class ProcessingService {
       jot.time,
       entryContent(jot, textPart) || "…",
       jot.anchor,
+      jot.section,
     );
   }
 

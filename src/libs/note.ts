@@ -122,10 +122,13 @@ export function anchorLine(note: string, anchor: string): string | null {
 
 type MoveResult = { note: string } | { missing: "line" | "heading" };
 
+/** Cut the anchored line out and insert it under `heading`, passed through `rewrite` on
+ *  the way (the TIL move drops the time stamp there). */
 export function moveAnchorLine(
   note: string,
   anchor: string,
   heading: string,
+  rewrite: (line: string) => string = (line) => line,
 ): MoveResult {
   const line = anchorLine(note, anchor);
   if (line === null) return { missing: "line" };
@@ -134,5 +137,5 @@ export function moveAnchorLine(
     new RegExp(`${anchorRe(anchor).source}\\n?`, "m"),
     "",
   );
-  return { note: insertJournalLine(without, heading, line) };
+  return { note: insertJournalLine(without, heading, rewrite(line)) };
 }

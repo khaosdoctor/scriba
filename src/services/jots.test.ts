@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { Repository } from "../data/repositories/index.ts";
 import type { JotRepository } from "../data/repositories/jots.ts";
 import type { Jot } from "../domain/jot/entity.ts";
-import { placeholderLine } from "../domain/jot/rules.ts";
 import type { IntakeInput } from "../domain/jot/structures.ts";
 import { moveAnchorLine } from "../libs/note.ts";
 import { plainDate, plainTime, previousDate } from "../libs/time.ts";
@@ -322,9 +321,8 @@ test("a TIL text jot is stored stripped, in the til section, and written under i
   assert.equal(row.section, "til");
   assert.equal(row.raw_text, "sqlite has WAL mode");
   assert.deepEqual(harness.lookups, [[notePath, "til"]]);
-  assert.deepEqual(harness.appended, [
-    [today, placeholderLine(row.time, row.id), "til"],
-  ]);
+  // Under TIL the line carries no time stamp.
+  assert.deepEqual(harness.appended, [[today, `- ⏳ ^${row.id}`, "til"]]);
   assert.deepEqual(harness.mapped, [[77, row.id]]);
   assert.deepEqual(harness.queued, [row.id]);
   assert.deepEqual(harness.reacts(), ["✍"]);
@@ -547,11 +545,7 @@ test("an un-squashed TIL follower is re-appended under the til section", async (
   const harness = intakeSetup({ jotId: "bbbbbbbb", jot: follower });
   await harness.jots.optOutOfSquash(77);
   assert.deepEqual(harness.appended, [
-    [
-      plainDate(follower.received_at),
-      placeholderLine(follower.time, "bbbbbbbb"),
-      "til",
-    ],
+    [plainDate(follower.received_at), "- ⏳ ^bbbbbbbb", "til"],
   ]);
   assert.deepEqual(harness.reacts(), ["✍"]);
   assert.deepEqual(harness.reactedTo(), [77]);
