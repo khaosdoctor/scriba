@@ -2,6 +2,7 @@ import { Composer, type Context } from "grammy";
 import { DELETE_NS, UNDO_NS } from "../../libs/jot.ts";
 import { unrejectView } from "./admin/unreject-tap.ts";
 import { commandView } from "./command/tap.ts";
+import { COMMANDS } from "./commands.ts";
 import { habitsView } from "./habits/tap.ts";
 import type { ViewDeps } from "./index.ts";
 import { embedView } from "./journal/embed.ts";
@@ -23,7 +24,7 @@ export function callbackViews(deps: ViewDeps): Composer<Context>[] {
   const unknown = new Composer<Context>();
   unknown.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
   return [
-    menuView(deps),
+    menuView(deps, COMMANDS),
     voiceFixView(edits),
     retryView(jots),
     removeView(UNDO_NS, deps),

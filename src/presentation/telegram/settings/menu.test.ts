@@ -509,3 +509,21 @@ test("the menu habit review opens for the calendar day before, on the evening af
     if (savedZone !== undefined) process.env.TZ = savedZone;
   }
 });
+
+test("❓ Help sends the /help list as a new message and leaves the menu as it is", async () => {
+  const harness = await botHarness();
+  const root = edit(await harness.tap("menu:root"));
+  assert.equal(button(root, "menu:help").text, "❓ Help");
+
+  const fromMenu = await harness.tap("menu:help");
+  const fromCommand = await harness.say("/help");
+  assert.deepEqual(answers(fromMenu), ["Sending the command list below ↓"]);
+  assert.equal(edit(fromMenu), undefined);
+  const sent = call(fromMenu, "sendMessage") as any;
+  assert.equal(sent?.chat_id, OWNER);
+  assert.equal(sent?.parse_mode, "HTML");
+  assert.deepEqual(
+    fromMenu.texts("sendMessage"),
+    fromCommand.texts("sendMessage"),
+  );
+});

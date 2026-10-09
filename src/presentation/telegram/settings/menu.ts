@@ -9,6 +9,8 @@ import type {
   SettingsPrompt,
   SettingsService,
 } from "../../../services/settings.ts";
+import { helpPages } from "../admin/help.ts";
+import type { CommandView } from "../commands.ts";
 import type { ViewDeps } from "../index.ts";
 import { backTo, withClose } from "../keyboard.ts";
 import { namespace, type Tap } from "../namespace.ts";
@@ -77,6 +79,8 @@ export function rootKeyboard(state: RootState): InlineKeyboard {
     .row()
     .text("🔗 Link rules", menu("links"))
     .text("🛠 Maintenance", menu("maint"))
+    .row()
+    .text("❓ Help", menu("help"))
     .row()
     .text("✖ Close", MENU_CLOSE);
 }
@@ -155,7 +159,12 @@ async function entrySizeScreen(
   );
 }
 
-export function menuView(deps: ViewDeps): Composer<Context> {
+/** `commands` is the slash-command registry, handed in for ❓ Help: importing it here would
+ *  close an import cycle (the registry's /menu view imports this file). */
+export function menuView(
+  deps: ViewDeps,
+  commands: CommandView[],
+): Composer<Context> {
   const { settings, admin, menus, rating, habits, tasks } = deps;
   const links = linkRulesTap(deps);
   const jotBrowser = jotsTap(deps);
@@ -226,6 +235,14 @@ export function menuView(deps: ViewDeps): Composer<Context> {
       case "taskmode":
         await responder.ack();
         return openTaskMode(ctx, tasks);
+      case "help": {
+        await responder.ack("Sending the command list below ↓");
+        const pages = helpPages(commands);
+        log.info({ pages: pages.length }, "menu: help sent");
+        for (const page of pages)
+          await ctx.api.sendMessage(deps.ownerId, page, { parse_mode: "HTML" });
+        return;
+      }
       case "reprocess":
         await responder.ack("Opening reprocess menu below ↓");
         reprocessLog.info("reprocess menu opened (via /menu)");

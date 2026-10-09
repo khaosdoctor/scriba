@@ -20,6 +20,8 @@ const REFUSALS: Record<Exclude<CommandOpen, "opened" | "already">, string> = {
 export const commandMode: CommandView = {
   command: "command",
   description: "Open a vault assistant session (/done to close)",
+  example:
+    '/command, then "write a note on sourdough starters" → the assistant drafts it and asks before writing',
   async run(ctx, { command }) {
     const outcome = command.open();
     if (outcome === "already") return;

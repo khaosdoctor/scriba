@@ -52,7 +52,7 @@ const COMMANDS = [
   ["stopword", `manage stopwords ${EM} /stopword add|del|list [word|page]`],
   ["rejections", `list learned link-rejections ${EM} /rejections [page]`],
   ["unreject", "undo a link-rejection (menu, or /unreject <word> <note>)"],
-  ["help", "list admin commands"],
+  ["help", "List every command with an example"],
 ].map(([command, description]) => ({ command, description }));
 
 const nativeSqlite = await Repository.open(":memory:").then(

@@ -10,6 +10,8 @@ export const TASKADD_EMPTY =
 export const taskAddCommand: CommandView = {
   command: "taskadd",
   description: "Add one task in one message: /taskadd <what and when>",
+  example:
+    "/taskadd buy milk by friday → a task card with the deadline filled in",
   async run(ctx, { tasks }) {
     const text = ctx.match.trim();
     if (!text) {

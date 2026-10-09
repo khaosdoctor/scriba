@@ -9,6 +9,7 @@ const OFF: Record<Mode, string> = {
 export const done: CommandView = {
   command: "done",
   description: "Close the vault assistant or task session",
+  example: "/done → messages go back to the journal",
   async run(ctx, { modes }) {
     const mode = modes.current();
     if (!mode) {

@@ -30,7 +30,10 @@ import { taskCommand } from "./tasks/mode.ts";
 export type CommandView = {
   command: string;
   description: string;
-  /** Listed by /help. The owner allowlist is the only auth either way. */
+  /** A sample use and what it does, shown by /help under the description. */
+  example?: string;
+  /** Listed by /help after the everyday commands. The owner allowlist is the only auth
+   *  either way. */
   admin?: true;
   run(ctx: CommandContext<Context>, deps: ViewDeps): unknown;
 };

@@ -6,6 +6,7 @@ import { UNREJECT_NS } from "./unreject-tap.ts";
 export const unreject: CommandView = {
   command: "unreject",
   description: "undo a link-rejection (menu, or /unreject <word> <note>)",
+  example: "/unreject apple Apple → 'apple' can be linked to [[Apple]] again",
   admin: true,
   async run(ctx, { admin }) {
     const out = await admin.unreject(ctx.match);

@@ -5,6 +5,7 @@ import type { CommandView } from "../commands.ts";
 export const failed: CommandView = {
   command: "failed",
   description: "recent failed/abandoned jots, each with retry + delete buttons",
+  example: "/failed → one row per failed jot with 🔄 and 🗑",
   admin: true,
   async run(ctx, { admin }) {
     const { text, ids } = await admin.failed();

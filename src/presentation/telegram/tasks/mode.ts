@@ -39,6 +39,8 @@ export async function taskMessage(
 export const taskCommand: CommandView = {
   command: "task",
   description: "Turn every message into a task (/done to close)",
+  example:
+    '/task, then "water the plants by friday" → a task card to confirm before it\'s written',
   run(ctx, { tasks }) {
     return openTaskMode(ctx, tasks);
   },

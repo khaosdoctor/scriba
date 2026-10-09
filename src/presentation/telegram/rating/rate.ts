@@ -7,6 +7,7 @@ const log = logger("rating");
 export const rate: CommandView = {
   command: "rate",
   description: "Rate a day 1–10 (today, or /rate YYYY-MM-DD)",
+  example: "/rate 2026-01-15 → asks for that day's rating instead of today's",
   async run(ctx, { rating }) {
     const arg = ctx.match.trim();
     log.info({ arg: arg || "(today)" }, "/rate command");

@@ -551,8 +551,12 @@ Layers call downward only: presentation calls services, services call data. `dom
   finished line; a new secret that can end up in an error message needs a pattern there.
 - **Slash commands are discoverable.** A new command goes into `COMMANDS`
   (`presentation/telegram/commands.ts`). `publishCommands` sends that list to
-  `setMyCommands` at start, so it shows in Telegram's `/` menu, and `/help` lists the ones
-  marked `admin`.
+  `setMyCommands` at start, so it shows in Telegram's `/` menu. `/help`, and the ❓ Help
+  button on the `/menu` root screen, list every command from that same registry
+  (`helpPages` in `admin/help.ts`): the everyday ones first, then the ones marked `admin`,
+  each with its description and its `example` (a sample use and what it does, made-up data
+  only, since the repo is public). The list is split into as many messages as Telegram's
+  limit needs, always between two commands. Give a new command an `example`.
 - **Tests sit next to the source** as `<name>.test.ts`, one per file. Exceptions:
   - The slash commands share `src/presentation/telegram/commands.test.ts`: they're one file
     each but one surface (the `COMMANDS` registry `registerViews` loops over), so the

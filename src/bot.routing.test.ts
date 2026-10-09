@@ -62,7 +62,7 @@ test("a slash command is claimed before the text handler", async () => {
   assert.equal(run.rendered, "tg.sendMessage");
   assert.equal(
     first(run.texts("sendMessage")),
-    "scriba ready. Send text or a voice note to journal. /help for admin commands.",
+    "scriba ready. Send text or a voice note to journal. /help lists every command.",
   );
 });
 

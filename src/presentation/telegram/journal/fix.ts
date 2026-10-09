@@ -9,6 +9,8 @@ const log = logger("bot");
 export const fixCommand: CommandView = {
   command: "fix",
   description: "Clean up a jot's text again: /fix <id>, or reply /fix",
+  example:
+    "/fix 1a2b3c4d → cleans up that jot's text, shows you the result and reprocesses it",
   async run(ctx, { edits, jots }) {
     const typed = ctx.match.trim().toLowerCase();
     const quoted = ctx.message?.reply_to_message?.message_id;

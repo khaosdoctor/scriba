@@ -6,10 +6,12 @@ export function textCommand(
   command: string,
   description: string,
   answer: (admin: AdminService, args: string) => string | Promise<string>,
+  example?: string,
 ): CommandView {
   return {
     command,
     description,
+    example,
     admin: true,
     async run(ctx, { admin }) {
       const text = await answer(admin, ctx.match);

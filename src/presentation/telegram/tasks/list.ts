@@ -21,6 +21,7 @@ const VIEW_ALIASES: Record<string, TaskView> = {
 export const tasksCommand: CommandView = {
   command: "tasks",
   description: "List your tasks — open, today, this week, done",
+  example: "/tasks week → tasks due this week; tap one to tick it off",
   async run(ctx, { tasks }) {
     const arg = ctx.match.trim().toLowerCase();
     const screen = VIEW_ALIASES[arg];

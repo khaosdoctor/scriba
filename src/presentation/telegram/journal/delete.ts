@@ -18,6 +18,7 @@ const REPLIES: Record<EditOutcome, string | null> = {
 export const deleteCommand: CommandView = {
   command: "delete",
   description: "Reply to a journal message with /delete to remove it",
+  example: "reply /delete to a jot's message → its line leaves the note",
   async run(ctx, { edits }) {
     const quoted = ctx.message?.reply_to_message;
     if (!quoted) {

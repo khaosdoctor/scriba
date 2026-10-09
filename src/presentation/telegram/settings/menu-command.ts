@@ -7,6 +7,8 @@ const log = logger("menu");
 export const menuCommand: CommandView = {
   command: "menu",
   description: "Open the interactive control menu",
+  example:
+    "/menu → buttons for rating, tasks, settings, maintenance and this help",
   async run(ctx, { settings, menus }) {
     log.info("menu opened");
     await menus.retire(ctx.chat.id);

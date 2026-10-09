@@ -7,6 +7,8 @@ const log = logger("reprocess");
 export const reprocess: CommandView = {
   command: "reprocess",
   description: "Reprocess jots — a day, a date range, or one jot by id",
+  example:
+    "/reprocess 1a2b3c4d → enriches that jot again; bare /reprocess opens a day/range picker",
   async run(ctx, { admin }) {
     const id = ctx.match.trim().toLowerCase();
     if (id) {

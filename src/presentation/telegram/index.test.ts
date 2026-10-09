@@ -1,25 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { botHarness, EM } from "../../test/bot-harness.ts";
+import { botHarness } from "../../test/bot-harness.ts";
 import { COMMANDS } from "./commands.ts";
-
-const HELP = [
-  "🛠 commands:",
-  `/version ${EM} bot version + commit sha`,
-  `/changelog ${EM} what's new ${EM} /changelog [version|N]`,
-  `/stats ${EM} jot counts ${EM} /stats [today|week|all]`,
-  `/status ${EM} health snapshot`,
-  `/failed ${EM} recent failed/abandoned jots, each with retry + delete buttons`,
-  `/jot ${EM} dump one jot's record ${EM} /jot <id>`,
-  `/flush ${EM} drain the flush queue now`,
-  `/retry ${EM} requeue failed jots ${EM} /retry [id|all]`,
-  `/sweep ${EM} run the retry sweep now`,
-  `/unstick ${EM} reset jots wedged in 'processing'`,
-  `/stopword ${EM} manage stopwords ${EM} /stopword add|del|list [word|page]`,
-  `/rejections ${EM} list learned link-rejections ${EM} /rejections [page]`,
-  `/unreject ${EM} undo a link-rejection (menu, or /unreject <word> <note>)`,
-  `/help ${EM} list admin commands`,
-].join("\n");
 
 test("every command Telegram lists gets an answer from the bot", async () => {
   for (const { command } of COMMANDS) {
@@ -31,11 +13,19 @@ test("every command Telegram lists gets an answer from the bot", async () => {
   }
 });
 
-test("/help lists the admin commands only, itself last", async () => {
+test("/help lists every command with its example, everyday ones before admin ones", async () => {
   const harness = await botHarness();
   const run = await harness.say("/help");
   assert.equal(run.rendered, "tg.sendMessage");
-  assert.equal(run.texts("sendMessage")[0], HELP);
+  assert.equal(run.calls[0]?.payload.parse_mode, "HTML");
+  const [text = ""] = run.texts("sendMessage");
+  for (const { command, example } of COMMANDS) {
+    assert.match(text, new RegExp(`<b>/${command}</b>: `), command);
+    if (example) assert.ok(text.includes("<i>e.g.</i> "), command);
+  }
+  assert.ok(text.indexOf("/taskadd") < text.indexOf("🛠 Admin"));
+  assert.ok(text.indexOf("🛠 Admin") < text.indexOf("/stopword"));
+  assert.ok(text.includes("/jot &lt;id&gt;"));
 });
 
 test("an update from anyone but the owner is dropped, whatever its kind", async () => {

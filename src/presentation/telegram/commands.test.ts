@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TELEGRAM_LIMIT } from "../../libs/text.ts";
 import { botHarness, sampleJot } from "../../test/bot-harness.ts";
+import { helpPages } from "./admin/help.ts";
 import { COMMANDS } from "./commands.ts";
 
 type Row = { text: string; callback_data: string }[];
@@ -28,6 +29,39 @@ test("every command is safe to hand to setMyCommands, once", () => {
       `/${command}'s description is too long`,
     );
   }
+});
+
+test("a help list too long for one message breaks between commands, in order", () => {
+  const filler = "x".repeat(400);
+  const views = Array.from({ length: 30 }, (_unused, index) => ({
+    command: `cmd${index}`,
+    description: filler,
+    example: `/cmd${index} → does thing ${index}`,
+    admin: index >= 20 ? (true as const) : undefined,
+    run: () => {},
+  }));
+  const pages = helpPages(views);
+  assert.ok(pages.length > 1);
+  for (const page of pages) assert.ok(page.length <= TELEGRAM_LIMIT);
+  const joined = pages.join("\n\n");
+  for (const view of views)
+    assert.ok(
+      joined.includes(
+        `<b>/${view.command}</b>: ${filler}\n<i>e.g.</i> /${view.command} → does thing ${view.command.slice(3)}`,
+      ),
+      `${view.command} was cut`,
+    );
+  assert.ok(joined.indexOf("<b>/cmd19</b>") < joined.indexOf("🛠 Admin"));
+  assert.ok(joined.indexOf("🛠 Admin") < joined.indexOf("<b>/cmd20</b>"));
+});
+
+test("a command without an example is listed by its description alone, escaped", () => {
+  const [page] = helpPages([
+    { command: "plain", description: "takes <id>", run: () => {} },
+  ]);
+  assert.ok(
+    page?.includes("<b>/plain</b>: takes &lt;id&gt;\n\n<b>🛠 Admin</b>"),
+  );
 });
 
 test("/failed answers nothing failed without buttons", async () => {
