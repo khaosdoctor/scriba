@@ -1,3 +1,10 @@
+## [1.59.0](https://github.com/khaosdoctor/scriba/compare/v1.58.0...v1.59.0) (2026-10-09)
+
+
+### Features
+
+* **help:** list every command with an example, and a Help button in /menu ([a355fd8](https://github.com/khaosdoctor/scriba/commit/a355fd8d3bf89962491f4364b9d5145eede9a3a8))
+
 ## [1.58.0](https://github.com/khaosdoctor/scriba/compare/v1.57.0...v1.58.0) (2026-10-09)
 
 
@@ -27,11 +34,4 @@
 ### Features
 
 * **models:** move to Claude Haiku 5.5 and Sonnet 5.5 ([#93](https://github.com/khaosdoctor/scriba/issues/93)) ([16b7da0](https://github.com/khaosdoctor/scriba/commit/16b7da0462da5578d2902443505f2cfafa65bf61))
-
-## [1.54.1](https://github.com/khaosdoctor/scriba/compare/v1.54.0...v1.54.1) (2026-10-04)
-
-
-### Bug Fixes
-
-* don't hold the update loop while /flush and /sweep run ([7ddf7a0](https://github.com/khaosdoctor/scriba/commit/7ddf7a0f7c7c0c7f91c9975b0af02e82e998bb99))
 
