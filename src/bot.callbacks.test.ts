@@ -880,7 +880,8 @@ test("editing an image caption keeps the image embed in the line", async () => {
   });
   await fixture.edited({ caption: "a sleepy cat" });
   assert.equal(fixture.note(), noteWith("a sleepy cat ![[assets/cat.png]]"));
-  assert.deepEqual(fixture.updates, []);
+  // the caption is the entry text, so a reprocess must re-enrich the new one
+  assert.deepEqual(fixture.updates, [[ID, { raw_text: "a sleepy cat" }]]);
 });
 
 test("edited text carries its formatting into the line as markdown", async () => {

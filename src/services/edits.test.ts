@@ -36,6 +36,7 @@ function setup(
     [NOTE, `# Journal\n${journalLine(TIME, over.text ?? "earlier", ID)}\n`],
   ]);
   const queued: [string, string][] = [];
+  const updates: [string, object][] = [];
   const statuses: [string, StatusButtons | undefined][] = [];
   const deleted: string[] = [];
   const repo = {
@@ -44,7 +45,8 @@ function setup(
     queueEdit: async (id: string, text: string) => void queued.push([id, text]),
     markDeleted: async (id: string) => void deleted.push(id),
     groupFollowers: async () => [],
-    updateJot: async () => {},
+    updateJot: async (id: string, patch: object) =>
+      void updates.push([id, patch]),
   };
   const obsidian: any = {
     readNote: async (path: string) => notes.get(path) ?? "",
@@ -53,11 +55,14 @@ function setup(
     ...noteOps(() => obsidian),
   };
   const jots = {
-    status: async (_id: string, html: string, opts?: StatusButtons) =>
-      void statuses.push([html, opts]),
+    status: async (_id: string, html: string, opts?: StatusButtons) => {
+      if (statusBroken) throw new Error("telegram down");
+      statuses.push([html, opts]);
+    },
     leaderOf: async (tapped: Jot) => over.leader ?? tapped,
   };
   const removedMsgs: number[] = [];
+  let statusBroken = false;
   const pending: [string, string, string, string][] = [];
   const sent: { text: string; opts: unknown }[] = [];
   const events: string[] = [];
@@ -108,6 +113,10 @@ function setup(
     events,
     removedMsgs,
     notes,
+    updates,
+    statusFails: () => {
+      statusBroken = true;
+    },
   };
 }
 
@@ -257,6 +266,23 @@ test("edit leaves a media jot's embed out of the prompt", async () => {
   assert.match(harness.sent[0]!.text, /<pre>a sunset<\/pre>/);
 });
 
+test("edit offers a video's caption, the embed's alias, as the text", async () => {
+  const video = jot({
+    kind: "video",
+    asset_path: "assets/v.mp4",
+    raw_text: "the dog",
+  });
+  const harness = setup({ jot: video, text: "![[assets/v.mp4|the dog]]" });
+  await harness.edits.askEdit(ID, 55);
+  assert.match(harness.sent[0]!.text, /<pre>the dog<\/pre>/);
+});
+
+test("edit refuses an entry too long for one Telegram message instead of cutting it", async () => {
+  const harness = setup({ text: "word ".repeat(900).trim() });
+  assert.equal(await harness.edits.askEdit(ID, 55), "too-long");
+  assert.deepEqual(harness.sent, []);
+});
+
 test("edit on a squashed follower asks about its leader's line", async () => {
   const harness = setup({
     jot: jot({ id: "bbbbbbbb", anchor: ID }),
@@ -322,6 +348,40 @@ test("the answer to an edit prompt keeps the prompt while the jot is busy, drops
 
   const missing = setup({ jot: null });
   assert.equal(await missing.edits.answerEdit(ID, "new", 90), "gone");
+});
+
+test("the answer to a video's edit prompt rebuilds the embed around the new caption", async () => {
+  const video = jot({
+    kind: "video",
+    asset_path: "assets/v.mp4",
+    raw_text: "the dog",
+  });
+  const harness = setup({ jot: video, text: "![[assets/v.mp4|the dog]]" });
+  assert.equal(await harness.edits.answerEdit(ID, "the cat", 90), "applied");
+  assert.equal(harness.line(), "![[assets/v.mp4|the cat]]");
+  assert.deepEqual(harness.updates, [[ID, { raw_text: "the cat" }]]);
+});
+
+test("the answer to an image's edit prompt folds the caption back without the embed", async () => {
+  const image = jot({ kind: "image", asset_path: "assets/p.jpg" });
+  const harness = setup({ jot: image, text: "a sunset ![[assets/p.jpg]]" });
+  await harness.edits.answerEdit(ID, "a red sunset", 90);
+  assert.equal(harness.line(), "a red sunset ![[assets/p.jpg]]");
+  assert.deepEqual(harness.updates, [[ID, { raw_text: "a red sunset" }]]);
+});
+
+test("a literal edit of an image's line folds back the caption alone", async () => {
+  const image = jot({ kind: "image", asset_path: "assets/p.jpg" });
+  const harness = setup({ jot: image, text: "a sunset ![[assets/p.jpg]]" });
+  await harness.edits.editByReply(77, "s/sunset/sunrise/");
+  assert.deepEqual(harness.updates, [[ID, { raw_text: "a sunrise" }]]);
+});
+
+test("an edit that throws keeps its prompt for the retry", async () => {
+  const harness = setup();
+  harness.statusFails();
+  await assert.rejects(harness.edits.answerEdit(ID, "new", 90));
+  assert.deepEqual(harness.removedMsgs, []);
 });
 
 test("an edit prompt Telegram won't delete doesn't stop the edit", async () => {

@@ -62,8 +62,10 @@ export function entryContent(jot: Jot, text: string): string {
 }
 
 /** The part of a line's text the owner wrote, for editing: a media jot's embed is left
- *  off, since `entryContent` puts it back on save. */
+ *  off, since `entryContent` puts it back on save. A video's line is the embed alone, its
+ *  caption the embed's alias, so the caption is what gets edited. */
 export function editableText(jot: Jot, text: string): string {
+  if (jot.kind === "video") return jot.raw_text ?? "";
   const embed = assetEmbed(jot);
   return embed && text.endsWith(embed)
     ? text.slice(0, -embed.length).trimEnd()

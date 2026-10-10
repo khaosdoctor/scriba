@@ -12,6 +12,7 @@ const TAP_TOASTS = {
   gone: "gone",
   busy: "still processing",
   "no-line": "line not found",
+  "too-long": "too long to edit here — edit it in Obsidian",
 } as const;
 
 const REPLY_TEXTS = {
@@ -27,7 +28,8 @@ export function editView(edits: EditService): Composer<Context> {
       jotId,
       ctx.callbackQuery.message?.message_id,
     );
-    await responder.ack(outcome === "asked" ? undefined : TAP_TOASTS[outcome]);
+    if (outcome === "asked") return responder.ack();
+    await responder.ack(TAP_TOASTS[outcome], { alert: outcome === "too-long" });
   });
 }
 

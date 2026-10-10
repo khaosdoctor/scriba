@@ -303,4 +303,11 @@ test("editableText leaves a media jot's embed off and a text jot's line as is", 
   assert.equal(editableText(image, "no embed here"), "no embed here");
   const text = sampleJot("a1b2c3d4", { kind: "text" });
   assert.equal(editableText(text, "met [[Karl Marx]]"), "met [[Karl Marx]]");
+  const video = sampleJot("a1b2c3d4", {
+    kind: "video",
+    asset_path: "a/v.mp4",
+    raw_text: "the dog",
+  });
+  assert.equal(editableText(video, "![[a/v.mp4|the dog]]"), "the dog");
+  assert.equal(editableText({ ...video, raw_text: null }, "![[a/v.mp4]]"), "");
 });

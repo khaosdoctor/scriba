@@ -209,6 +209,12 @@ ledger("ed", [
     setup: withJot({}, "## Journal\n"),
     expect: "repo.getJot > obsidian.readNote > ack(line not found)",
   },
+  {
+    tap: `ed:${ID}`,
+    when: "entry too long for one message",
+    setup: withJot({}, noteWith("word ".repeat(900).trim())),
+    expect: `repo.getJot > obsidian.readNote > ack!(too long to edit here ${EM} edit it in Obsidian)`,
+  },
   { tap: `ed:${ID}`, when: "jot gone", expect: "repo.getJot > ack(gone)" },
   { tap: "ed:", when: "no jot id", expect: "ack(gone)" },
 ]);
