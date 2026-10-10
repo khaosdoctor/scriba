@@ -1,3 +1,10 @@
+## [1.60.1](https://github.com/khaosdoctor/scriba/compare/v1.60.0...v1.60.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **enrich:** strip quotes wrapping a whole model answer ([#97](https://github.com/khaosdoctor/scriba/issues/97)) ([e4b5bed](https://github.com/khaosdoctor/scriba/commit/e4b5bed6e315d24bd8c71c32bc1769721e00bb0f))
+
 ## [1.60.0](https://github.com/khaosdoctor/scriba/compare/v1.59.0...v1.60.0) (2026-10-10)
 
 
@@ -26,12 +33,4 @@
 ### Features
 
 * **voice:** show the raw transcript under a fixed voice jot ([a015cb9](https://github.com/khaosdoctor/scriba/commit/a015cb96a2d4d3a8682c26882b3640bd0393c39a))
-
-## [1.56.0](https://github.com/khaosdoctor/scriba/compare/v1.55.0...v1.56.0) (2026-10-08)
-
-
-### Features
-
-* **reprocess:** /reprocess <id> reprocesses that jot without the picker ([3d09ef1](https://github.com/khaosdoctor/scriba/commit/3d09ef171be57557519dae19a76d731ea225a736))
-* **voice:** apply the transcript fix without asking, with a Use original button ([0e4d21d](https://github.com/khaosdoctor/scriba/commit/0e4d21d4ed74e0c3edccb87e519705999e220002))
 
