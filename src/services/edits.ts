@@ -4,6 +4,8 @@ import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import {
+  assetEmbed,
+  editableText,
   editedJotText,
   enrichableSource,
   entryContent,
@@ -17,6 +19,7 @@ import {
 import type { EditInput } from "../domain/jot/structures.ts";
 import {
   editConfirmation,
+  editRef,
   embedOffer,
   parseLiteralEdit,
   type StatusButtons,
@@ -27,7 +30,13 @@ import { unlinkWikilinks } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import { anchorLine, deleteAnchorLine } from "../libs/note.ts";
 import type { FlushQueue } from "../libs/queue.ts";
-import { clipUpdate, errorText, escapeHtml, shortId } from "../libs/text.ts";
+import {
+  clipUpdate,
+  errorText,
+  escapeHtml,
+  shortId,
+  TELEGRAM_LIMIT,
+} from "../libs/text.ts";
 import type { Enricher } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
 import type { Notifier } from "./notifier.ts";
@@ -48,7 +57,7 @@ export interface EditDeps {
   obsidian: ObsidianClient;
   enricher: Pick<Enricher, "editText" | "fixTranscript">;
   jots: Pick<JotService, "status" | "leaderOf" | "deleteStatus">;
-  notifier: Pick<Notifier, "send">;
+  notifier: Pick<Notifier, "send" | "delete">;
   queue: Pick<FlushQueue, "add">;
 }
 
@@ -307,7 +316,7 @@ export class EditService {
   ): Promise<EmbedOutcome> {
     const { repo, obsidian, jots } = this.deps;
     const jot = jotId ? await repo.getJot(jotId) : undefined;
-    if (!jot || jot.status !== "done") {
+    if (jot?.status !== "done") {
       log.warn({ jotId, status: jot?.status }, "embed: jot not editable");
       return "gone";
     }
@@ -334,6 +343,104 @@ export class EditService {
         });
       },
     };
+  }
+
+  /** ✏️ Edit on a finished jot: send its current text back as a force-reply prompt, a
+   *  reply to the tapped status message, so the owner copies it, fixes it and sends it
+   *  back. Bots can't fill the compose box, so the text comes in a copyable block. */
+  async askEdit(
+    jotId: string | undefined,
+    replyTo: number | undefined,
+  ): Promise<"gone" | "busy" | "no-line" | "too-long" | "asked"> {
+    const { repo, obsidian, notifier, jots } = this.deps;
+    const jot = jotId ? await repo.getJot(jotId) : undefined;
+    const target = jot && (await jots.leaderOf(jot));
+    if (!target || target.status === "deleted") {
+      log.warn({ jotId }, "edit: jot gone");
+      return "gone";
+    }
+    if (!isEditableJot(target.status)) {
+      log.warn({ jotId: target.id, status: target.status }, "edit: jot busy");
+      return "busy";
+    }
+    const line = anchorLine(
+      await obsidian.readNote(target.note_path),
+      target.anchor,
+    );
+    if (line === null) {
+      log.warn({ jotId: target.id }, "edit: anchored line not found");
+      return "no-line";
+    }
+    const text = editableText(target, stripJournalLine(line, target.time));
+    const head = `✏️ Reply with the new text for ${target.id}. Tap the block to copy it.\n`;
+    const ref = `\n${editRef(target.id)}`;
+    // Cutting the text to fit would hand back a copy that, sent as is, drops the rest of
+    // the entry, so an entry too long for one message is left to Obsidian.
+    // Telegram's cap counts the text after the HTML is parsed, so measure what shows.
+    if (head.length + text.length + ref.length > TELEGRAM_LIMIT) {
+      log.warn(
+        { jotId: target.id, chars: text.length },
+        "edit: entry too long for a prompt",
+      );
+      return "too-long";
+    }
+    const html = `${head.replace(target.id, `<code>${target.id}</code>`)}<pre>${escapeHtml(text)}</pre>${ref}`;
+    await notifier.send(html, {
+      html: true,
+      forceReply: true,
+      placeholder: "The corrected entry",
+      replyTo,
+    });
+    log.info({ jotId: target.id, tapped: jotId }, "edit: prompt sent");
+    return "asked";
+  }
+
+  /** The reply to an ✏️ Edit prompt replaces the jot's whole text, like a native message
+   *  edit. The prompt is scaffolding, so it goes once the edit lands (or its jot is gone);
+   *  one whose jot is busy, or whose edit threw, stays, since replying again is the retry. */
+  async answerEdit(
+    jotId: string,
+    text: string,
+    promptId: number,
+  ): Promise<"gone" | "busy" | "no-line" | "applied"> {
+    const { repo, jots } = this.deps;
+    const jot = await repo.getJot(jotId);
+    const outcome =
+      !jot || jot.status === "deleted"
+        ? "gone"
+        : isEditableJot(jot.status)
+          ? "applied"
+          : "busy";
+    if (outcome === "busy") {
+      log.warn({ jotId, status: jot?.status }, "edit reply: jot busy");
+      return outcome;
+    }
+    if (!jot || outcome === "gone") {
+      log.warn({ jotId }, "edit reply: jot gone");
+      await this.dropPrompt(promptId);
+      return "gone";
+    }
+    const markdown = editedJotText(jot.section, text);
+    log.info(
+      { jotId, chars: markdown.length },
+      "edit reply: replacing jot text",
+    );
+    log.debug({ jotId, text: markdown }, "edit reply: new text");
+    await jots.status(jot.id, "✍️ got your edit — applying…");
+    const confirmation = await this.replaceJotText(jot, markdown);
+    const found = confirmation !== LINE_NOT_FOUND;
+    // A line gone from the note is gone for good, so there's no retry to keep the prompt
+    // for, and nothing left to edit or undo.
+    await this.showFinished(jot, confirmation, found);
+    await this.dropPrompt(promptId);
+    if (!found) log.warn({ jotId }, "edit reply: anchored line not found");
+    return found ? "applied" : "no-line";
+  }
+
+  private async dropPrompt(promptId: number): Promise<void> {
+    await this.deps.notifier
+      .delete(promptId)
+      .catch((err) => log.warn({ err, promptId }, "edit: prompt not deleted"));
   }
 
   async askLink(jotId: string, surface: string, note: string): Promise<string> {
@@ -492,9 +599,13 @@ export class EditService {
 
   /** Replace a jot's whole text (an edited message, not an instruction). The new text is
    *  only the message's text or caption, so a media jot's embed is re-appended: editing an
-   *  image's caption must not drop the image out of the note. */
+   *  image's caption must not drop the image out of the note. A video's caption is the
+   *  embed's alias, so it is rebuilt around the new one and stored for later writes. */
   private async replaceJotText(jot: Jot, newText: string): Promise<string> {
-    const content = entryContent(jot, newText);
+    const video = jot.kind === "video";
+    const content = video
+      ? assetEmbed({ ...jot, raw_text: newText || null })
+      : entryContent(jot, newText);
     const found = await this.deps.obsidian.updateLine(
       jot.note_path,
       jot.anchor,
@@ -504,16 +615,21 @@ export class EditService {
       },
     );
     if (!found) return LINE_NOT_FOUND;
-    await this.syncEditedSource(jot, newText);
+    if (video) await this.deps.repo.updateJot(jot.id, { raw_text: newText });
+    else await this.syncEditedSource(jot, newText);
     return editConfirmation(jot.time, newText);
   }
 
+  /** An image's caption is its entry text and is re-enriched on reprocess like a text
+   *  jot's, so it is folded back too, without the embed the line carries. */
   private async syncEditedSource(jot: Jot, text: string): Promise<void> {
-    if (jot.kind !== "audio" && jot.kind !== "text") return;
+    if (jot.kind === "video") return;
     if (isFollower(jot)) return;
     if ((await this.deps.repo.groupFollowers(jot.id)).length > 0) return;
     const field = sourceField(jot.kind);
-    await this.deps.repo.updateJot(jot.id, { [field]: text });
+    await this.deps.repo.updateJot(jot.id, {
+      [field]: editableText(jot, text),
+    });
     log.info(
       { jotId: jot.id, field },
       "edit folded back into jot source for future reprocessing",

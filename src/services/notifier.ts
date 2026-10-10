@@ -4,6 +4,8 @@ export interface MessageOptions {
   html?: boolean;
   keyboard?: Keyboard;
   forceReply?: boolean;
+  /** Hint shown in the empty compose box while a force-reply is open (64 chars max). */
+  placeholder?: string;
   replyTo?: number;
   silent?: boolean;
 }

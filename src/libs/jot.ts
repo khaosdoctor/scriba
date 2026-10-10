@@ -67,11 +67,24 @@ export const EMBED_NS = "em";
 export const RETRY_NS = "rt";
 export const DELETE_NS = "dl";
 export const ORIGINAL_NS = "vf";
+export const EDIT_NS = "ed";
+
+/** The marker an ✏️ Edit prompt carries, so the reply to it is routed back to its jot
+ *  with nothing held in memory. */
+export function editRef(jotId: string): string {
+  return `(${EDIT_NS}:${jotId})`;
+}
+
+export function parseEditRef(text: string): string | null {
+  return text.match(/\(ed:([0-9a-f]{8})\)/)?.[1] ?? null;
+}
 
 export function statusKeyboard(jotId: string, opts?: StatusButtons) {
   const row: { text: string; callback_data: string }[] = [];
-  if (opts?.undo)
+  if (opts?.undo) {
+    row.push({ text: "✏️ Edit", callback_data: `${EDIT_NS}:${jotId}` });
     row.push({ text: "↩️ Undo", callback_data: `${UNDO_NS}:${jotId}` });
+  }
   if (opts?.embed === "embed")
     row.push({ text: "🖼 Embed", callback_data: `${EMBED_NS}:${jotId}:1` });
   if (opts?.embed === "plain")

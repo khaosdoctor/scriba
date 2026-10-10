@@ -5,6 +5,7 @@ import type { Jot } from "./entity.ts";
 import {
   assetEmbed,
   combineEnrichSource,
+  editableText,
   editedJotText,
   emptyStatusCounts,
   enrichableSource,
@@ -293,4 +294,20 @@ test("stripJournalLine strips the time prefix and anchor suffix", () => {
     stripJournalLine("- cats purr ^a1b2c3d4", "23:13:18"),
     "cats purr",
   );
+});
+
+test("editableText leaves a media jot's embed off and a text jot's line as is", () => {
+  const image = sampleJot("a1b2c3d4", { kind: "image", asset_path: "a/p.jpg" });
+  assert.equal(editableText(image, "sunset  ![[a/p.jpg]]"), "sunset");
+  assert.equal(editableText(image, "![[a/p.jpg]]"), "");
+  assert.equal(editableText(image, "no embed here"), "no embed here");
+  const text = sampleJot("a1b2c3d4", { kind: "text" });
+  assert.equal(editableText(text, "met [[Karl Marx]]"), "met [[Karl Marx]]");
+  const video = sampleJot("a1b2c3d4", {
+    kind: "video",
+    asset_path: "a/v.mp4",
+    raw_text: "the dog",
+  });
+  assert.equal(editableText(video, "![[a/v.mp4|the dog]]"), "the dog");
+  assert.equal(editableText({ ...video, raw_text: null }, "![[a/v.mp4]]"), "");
 });

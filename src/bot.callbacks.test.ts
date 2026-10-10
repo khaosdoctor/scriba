@@ -507,6 +507,7 @@ test("embed rewrites the URL, answers after the write, and offers the opposite t
   assert.deepEqual(
     fixture.buttons(fixture.api.find((call) => call.method === "sendMessage")),
     [
+      ["✏️ Edit", `ed:${ID}`],
       ["↩️ Undo", `un:${ID}`],
       ["🔗 Plain link", `em:${ID}:0`],
     ],
@@ -519,6 +520,7 @@ test("embed rewrites the URL, answers after the write, and offers the opposite t
     .filter((call) => call.method === "editMessageText")
     .at(-1);
   assert.deepEqual(fixture.buttons(last), [
+    ["✏️ Edit", `ed:${ID}`],
     ["↩️ Undo", `un:${ID}`],
     ["🖼 Embed", `em:${ID}:1`],
   ]);
@@ -720,6 +722,49 @@ test("/delete on a jot still processing queues the delete", async () => {
   }
 });
 
+// --- ed: edit the whole entry ---
+
+test("Edit sends the line back as a force-reply, and the answer replaces it without the model", async () => {
+  const fixture = await harness({
+    notes: { [NOTE]: noteWith("met [[Karl Barth|Karl]] Marx") },
+  });
+  await fixture.tap(`ed:${ID}`);
+  const prompt = fixture.api.find((call) => call.method === "sendMessage");
+  assert.deepEqual(prompt?.payload.reply_markup, {
+    force_reply: true,
+    input_field_placeholder: "The corrected entry",
+  });
+  assert.equal(prompt?.payload.reply_parameters.message_id, 50);
+  assert.match(
+    prompt?.payload.text,
+    /<pre>met \[\[Karl Barth\|Karl\]\] Marx<\/pre>/,
+  );
+  assert.deepEqual(fixture.answers(), [undefined]);
+
+  await fixture.replyTo(
+    "met [[Karl Marx]]",
+    `✏️ Reply with the new text\n(ed:${ID})`,
+  );
+  assert.equal(fixture.note(), noteWith("met [[Karl Marx]]"));
+  assert.deepEqual(fixture.editCalls, []);
+  assert.deepEqual(fixture.updates, [[ID, { raw_text: "met [[Karl Marx]]" }]]);
+  assert.ok(
+    fixture.api.some(
+      (call) =>
+        call.method === "deleteMessage" && call.payload.message_id === 77,
+    ),
+  );
+});
+
+test("an answer to an Edit prompt for a jot sent back for processing says so", async () => {
+  const fixture = await harness({ jots: [jot({ status: "processing" })] });
+  await fixture.replyTo("new text", `✏️ Reply with the new text\n(ed:${ID})`);
+  assert.equal(fixture.note(), noteWith("bought milk"));
+  assert.deepEqual(fixture.sends(), [
+    "⏳ still processing — reply to the prompt again once it's done.",
+  ]);
+});
+
 // --- reply edit ---
 
 test("a reply with a literal edit rewrites the line without calling the model", async () => {
@@ -733,7 +778,10 @@ test("a reply with a literal edit rewrites the line without calling the model", 
     card?.payload.text,
     "✏️ Updated\n<blockquote>🕒 10:00:00 · bought oat milk</blockquote>",
   );
-  assert.deepEqual(fixture.buttons(card), [["↩️ Undo", `un:${ID}`]]);
+  assert.deepEqual(fixture.buttons(card), [
+    ["✏️ Edit", `ed:${ID}`],
+    ["↩️ Undo", `un:${ID}`],
+  ]);
 });
 
 test("a freeform reply goes to the model with the line's text", async () => {
@@ -818,6 +866,7 @@ test("editing a message text rewrites the processed jot's line and updates its s
     "✏️ Updated\n<blockquote>🕒 10:00:00 · bought oat milk</blockquote>",
   );
   assert.deepEqual(fixture.buttons(fixture.api.at(-1)), [
+    ["✏️ Edit", `ed:${ID}`],
     ["↩️ Undo", `un:${ID}`],
   ]);
 });
@@ -831,7 +880,8 @@ test("editing an image caption keeps the image embed in the line", async () => {
   });
   await fixture.edited({ caption: "a sleepy cat" });
   assert.equal(fixture.note(), noteWith("a sleepy cat ![[assets/cat.png]]"));
-  assert.deepEqual(fixture.updates, []);
+  // the caption is the entry text, so a reprocess must re-enrich the new one
+  assert.deepEqual(fixture.updates, [[ID, { raw_text: "a sleepy cat" }]]);
 });
 
 test("edited text carries its formatting into the line as markdown", async () => {
@@ -900,7 +950,10 @@ test("the first status message is sent and mapped to the jot, later ones edit it
   assert.equal(second.method, "editMessageText");
   assert.equal(second.payload.message_id, 900);
   assert.equal(second.payload.text, "done");
-  assert.deepEqual(fixture.buttons(second), [["↩️ Undo", `un:${ID}`]]);
+  assert.deepEqual(fixture.buttons(second), [
+    ["✏️ Edit", `ed:${ID}`],
+    ["↩️ Undo", `un:${ID}`],
+  ]);
 
   await fixture.bot.jotController.status(ID, "plain");
   assert.deepEqual(fixture.buttons(fixture.api[2]), []);

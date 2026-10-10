@@ -448,6 +448,23 @@ Layers call downward only: presentation calls services, services call data. `dom
   now applies (`EditService.embedFor`), since it can add, remove or embed a URL. Detection
   and rewrite are `embedOffer`/`setEmbeds` in
   `libs/jot.ts`, token-free; the enricher is told to leave URLs untouched so they survive.
+- **✏️ Edit rewrites a whole entry by hand.** Every status message that carries Undo also
+  carries **✏️ Edit** (`ed:<jotId>`, `editView` in `presentation/telegram/journal/edit.ts`).
+  The tap calls `EditService.askEdit`, which sends the line's current text — wikilinks and
+  all, an image's embed left off, a video's caption (the embed's alias) in place of its
+  line (`editableText` in `domain/jot/rules.ts`) — in a `<pre>`
+  block, as a force-reply that replies to the tapped status message. Bots can't fill the
+  compose box (the Bot API has no such call), so the block is the copy source: tap it, paste,
+  fix, send. This is how a wrong link gets undone from the chat (`[[Karl Barth|Karl]] Marx` →
+  `[[Karl Marx]]`). The prompt carries `(ed:<jotId>)` (`editRef`/`parseEditRef` in
+  `libs/jot.ts`) and the reply is routed by it (`promptReplies`) to `EditService.answerEdit`,
+  which replaces the line wholesale like a native message edit (`replaceJotText`, so the
+  source is folded back and a reprocess keeps it; a video's embed is rebuilt around the new
+  alias) — no model call — and deletes the prompt only once the edit has landed. A squashed
+  follower edits its leader's line; a jot sent back for processing since is refused and its
+  prompt kept, so replying again later is the retry. An entry too long for one Telegram
+  message is refused with an alert rather than cut: sending a cut copy back would drop the
+  rest of the entry.
 - **Every failure is a decision, so it carries both buttons.** Any jot that fails gets
   **🔄 Retry** (`rt:<jotId>`, `retryView` calling `JotService.retry`: `resetForRetry` +
   requeue now) and **🗑 Delete** (`dl:<jotId>`, the same `removeView` as Undo, via
@@ -470,7 +487,7 @@ Layers call downward only: presentation calls services, services call data. `dom
 - **Edits fold back into the source, so reprocess doesn't undo them.** Correcting a jot's
   line (reply `s/old/new/`, a freeform reply instruction, or Telegram's native message-edit)
   also writes the corrected text into the jot's own `transcript` (audio) or `raw_text`
-  (text) field, not just the journal line — otherwise `/reprocess` re-transcribes/re-reads
+  (text, and an image's caption without its embed) field, not just the journal line — otherwise `/reprocess` re-transcribes/re-reads
   the original source and silently reverts the fix. Scoped to a standalone jot
   (`EditService.syncEditedSource`, `services/edits.ts`): a squashed leader/follower is skipped, since a
   squashed line is several jots' sources combined into one and there's no single field to
