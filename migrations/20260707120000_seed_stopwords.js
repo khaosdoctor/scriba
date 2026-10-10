@@ -219,6 +219,6 @@ export async function up(knex) {
   await knex("stopwords").insert(rows).onConflict("word").ignore();
 }
 
-export async function down(knex) {
+export async function down(_knex) {
   // Leave the words in place — a rollback shouldn't resurrect the mislink noise.
 }

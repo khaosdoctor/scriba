@@ -5,7 +5,11 @@ import { PendingDecisions } from "./pending.ts";
 test("a timeout settles with the fallback and reports once", async () => {
   const pending = new PendingDecisions<string>({ clearAndUnref: true });
   const seen: string[] = [];
+  // The wait's own timer is unref'd, so with nothing else pending the event loop would
+  // drain before it fires and the runner would cancel the test: hold the loop open.
+  const keepAlive = setTimeout(() => {}, 1_000);
   const value = await pending.wait("a", 5, "late", () => seen.push("timeout"));
+  clearTimeout(keepAlive);
   assert.equal(value, "late");
   assert.deepEqual(seen, ["timeout"]);
   assert.equal(pending.take("a"), undefined);
