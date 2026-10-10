@@ -41,6 +41,8 @@ export function editAnswerReply(edits: EditService) {
       ctx.message.entities,
     ).trim();
     const outcome = await edits.answerEdit(jotId, text, prompt.message_id);
-    if (outcome !== "applied") await ctx.reply(REPLY_TEXTS[outcome]);
+    // A missing line is already said on the jot's status message.
+    if (outcome === "gone" || outcome === "busy")
+      await ctx.reply(REPLY_TEXTS[outcome]);
   };
 }

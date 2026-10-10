@@ -377,6 +377,24 @@ test("a literal edit of an image's line folds back the caption alone", async () 
   assert.deepEqual(harness.updates, [[ID, { raw_text: "a sunrise" }]]);
 });
 
+test("edit measures the prompt as Telegram does, after the HTML is parsed", async () => {
+  const harness = setup({ text: "&".repeat(1500) });
+  assert.equal(await harness.edits.askEdit(ID, 55), "asked");
+  assert.ok(harness.sent[0]!.text.length > 4096);
+});
+
+test("the answer to an edit prompt whose line is gone says so and offers nothing to undo", async () => {
+  const harness = setup();
+  harness.notes.set(NOTE, "# Journal\n");
+  assert.equal(await harness.edits.answerEdit(ID, "new", 90), "no-line");
+  assert.deepEqual(harness.statuses.at(-1), [
+    "Couldn't find that line in the note.",
+    { undo: false, embed: undefined },
+  ]);
+  assert.deepEqual(harness.removedMsgs, [90]);
+  assert.deepEqual(harness.updates, []);
+});
+
 test("an edit that throws keeps its prompt for the retry", async () => {
   const harness = setup();
   harness.statusFails();

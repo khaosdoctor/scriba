@@ -372,17 +372,20 @@ export class EditService {
       return "no-line";
     }
     const text = editableText(target, stripJournalLine(line, target.time));
-    const prompt = `✏️ Reply with the new text for <code>${target.id}</code>. Tap the block to copy it.\n<pre>${escapeHtml(text)}</pre>\n${editRef(target.id)}`;
+    const head = `✏️ Reply with the new text for ${target.id}. Tap the block to copy it.\n`;
+    const ref = `\n${editRef(target.id)}`;
     // Cutting the text to fit would hand back a copy that, sent as is, drops the rest of
     // the entry, so an entry too long for one message is left to Obsidian.
-    if (prompt.length > TELEGRAM_LIMIT) {
+    // Telegram's cap counts the text after the HTML is parsed, so measure what shows.
+    if (head.length + text.length + ref.length > TELEGRAM_LIMIT) {
       log.warn(
         { jotId: target.id, chars: text.length },
         "edit: entry too long for a prompt",
       );
       return "too-long";
     }
-    await notifier.send(prompt, {
+    const html = `${head.replace(target.id, `<code>${target.id}</code>`)}<pre>${escapeHtml(text)}</pre>${ref}`;
+    await notifier.send(html, {
       html: true,
       forceReply: true,
       placeholder: "The corrected entry",
@@ -399,7 +402,7 @@ export class EditService {
     jotId: string,
     text: string,
     promptId: number,
-  ): Promise<"gone" | "busy" | "applied"> {
+  ): Promise<"gone" | "busy" | "no-line" | "applied"> {
     const { repo, jots } = this.deps;
     const jot = await repo.getJot(jotId);
     const outcome =
@@ -424,9 +427,14 @@ export class EditService {
     );
     log.debug({ jotId, text: markdown }, "edit reply: new text");
     await jots.status(jot.id, "✍️ got your edit — applying…");
-    await this.showFinished(jot, await this.replaceJotText(jot, markdown));
+    const confirmation = await this.replaceJotText(jot, markdown);
+    const found = confirmation !== LINE_NOT_FOUND;
+    // A line gone from the note is gone for good, so there's no retry to keep the prompt
+    // for, and nothing left to edit or undo.
+    await this.showFinished(jot, confirmation, found);
     await this.dropPrompt(promptId);
-    return "applied";
+    if (!found) log.warn({ jotId }, "edit reply: anchored line not found");
+    return found ? "applied" : "no-line";
   }
 
   private async dropPrompt(promptId: number): Promise<void> {
