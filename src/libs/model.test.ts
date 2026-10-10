@@ -176,6 +176,10 @@ test("stripWrappingQuotes unwraps a jot quoted end to end", () => {
 test("stripWrappingQuotes leaves quotes that don't wrap the whole jot", () => {
   assert.equal(stripWrappingQuotes('"A" and "B"'), '"A" and "B"');
   assert.equal(
+    stripWrappingQuotes('"""A""" and """B"""'),
+    '"""A""" and """B"""',
+  );
+  assert.equal(
     stripWrappingQuotes("\u201CA\u201D and \u201CB\u201D"),
     "\u201CA\u201D and \u201CB\u201D",
   );

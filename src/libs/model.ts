@@ -151,7 +151,7 @@ export function stripWrappingQuotes(text: string): string {
   let out = text.trim();
   for (let depth = 0; depth < 5; depth++) {
     const fenced = out.match(/^"""([\s\S]*)"""$/);
-    if (fenced) {
+    if (fenced && !fenced[1]?.includes('"""')) {
       out = (fenced[1] ?? "").trim();
       continue;
     }
