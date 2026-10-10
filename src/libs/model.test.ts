@@ -161,12 +161,28 @@ test("stripWrappingQuotes unwraps a jot quoted end to end", () => {
   );
   assert.equal(stripWrappingQuotes("\u201EHej\u201C"), "Hej");
   assert.equal(stripWrappingQuotes("\u2018quiet day\u2019"), "quiet day");
+  assert.equal(
+    stripWrappingQuotes("\u2018I\u2019m tired\u2019"),
+    "I\u2019m tired",
+  );
+  assert.equal(
+    stripWrappingQuotes("\u201CKarl\u2019s book\u201D"),
+    "Karl\u2019s book",
+  );
   assert.equal(stripWrappingQuotes("\u00ABbonjour\u00BB"), "bonjour");
   assert.equal(stripWrappingQuotes('"""\n"layered"\n"""'), "layered");
 });
 
 test("stripWrappingQuotes leaves quotes that don't wrap the whole jot", () => {
   assert.equal(stripWrappingQuotes('"A" and "B"'), '"A" and "B"');
+  assert.equal(
+    stripWrappingQuotes("\u201CA\u201D and \u201CB\u201D"),
+    "\u201CA\u201D and \u201CB\u201D",
+  );
+  assert.equal(
+    stripWrappingQuotes("\u2018A\u2019 and \u2018B\u2019"),
+    "\u2018A\u2019 and \u2018B\u2019",
+  );
   assert.equal(stripWrappingQuotes('She said "hi"'), 'She said "hi"');
   assert.equal(
     stripWrappingQuotes("'Twas the students'"),

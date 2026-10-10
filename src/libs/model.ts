@@ -144,8 +144,9 @@ const QUOTE_PAIRS: Record<string, string> = {
 
 /** A jot is never one quotation from end to end, so a model answer wrapped in quotes
  *  (echoing the prompt's `"""` fence, or a plain `"…"`) is unwrapped, layer by layer.
- *  A pair only counts when the closing quote appears nowhere inside, so `"A" and "B"`
- *  keeps its quotes. */
+ *  A pair only counts when no other quotation starts inside it, so `"A" and "B"` and
+ *  `“A” and “B”` keep their quotes; for curly pairs that means another opener, since the
+ *  closer doubles as an apostrophe (`‘I’m tired’`). */
 export function stripWrappingQuotes(text: string): string {
   let out = text.trim();
   for (let depth = 0; depth < 5; depth++) {
@@ -154,10 +155,11 @@ export function stripWrappingQuotes(text: string): string {
       out = (fenced[1] ?? "").trim();
       continue;
     }
-    const close = QUOTE_PAIRS[out[0] ?? ""];
+    const open = out[0] ?? "";
+    const close = QUOTE_PAIRS[open];
     if (close === undefined || out.length < 2 || !out.endsWith(close)) break;
     const inner = out.slice(1, -1);
-    if (inner.includes(close)) break;
+    if (inner.includes(open === close ? close : open)) break;
     out = inner.trim();
   }
   return out;
