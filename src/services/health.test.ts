@@ -217,9 +217,11 @@ test("a refused dual-stack host is reported by its error code", async () => {
     autoSelectFamily: true,
     connect: {
       lookup: (_host, _options, done) =>
+        // IPv4 first: the aggregate takes the first attempt's code, and a host with no
+        // IPv6 answers ::1 with EAFNOSUPPORT rather than a refusal.
         (done as unknown as (err: null, found: object[]) => void)(null, [
-          { address: "::1", family: 6 },
           { address: "127.0.0.1", family: 4 },
+          { address: "::1", family: 6 },
         ]),
     },
   });
