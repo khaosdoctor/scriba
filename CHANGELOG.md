@@ -1,3 +1,10 @@
+## [1.60.0](https://github.com/khaosdoctor/scriba/compare/v1.59.0...v1.60.0) (2026-10-10)
+
+
+### Features
+
+* **journal:** add an Edit button that rewrites a whole entry ([#98](https://github.com/khaosdoctor/scriba/issues/98)) ([4979d99](https://github.com/khaosdoctor/scriba/commit/4979d99651530fd9a60c2a869ae451a55214ce52))
+
 ## [1.59.0](https://github.com/khaosdoctor/scriba/compare/v1.58.0...v1.59.0) (2026-10-09)
 
 
@@ -27,11 +34,4 @@
 
 * **reprocess:** /reprocess <id> reprocesses that jot without the picker ([3d09ef1](https://github.com/khaosdoctor/scriba/commit/3d09ef171be57557519dae19a76d731ea225a736))
 * **voice:** apply the transcript fix without asking, with a Use original button ([0e4d21d](https://github.com/khaosdoctor/scriba/commit/0e4d21d4ed74e0c3edccb87e519705999e220002))
-
-## [1.55.0](https://github.com/khaosdoctor/scriba/compare/v1.54.1...v1.55.0) (2026-10-08)
-
-
-### Features
-
-* **models:** move to Claude Haiku 5.5 and Sonnet 5.5 ([#93](https://github.com/khaosdoctor/scriba/issues/93)) ([16b7da0](https://github.com/khaosdoctor/scriba/commit/16b7da0462da5578d2902443505f2cfafa65bf61))
 
