@@ -22,10 +22,18 @@ const jot = (over: Partial<Jot> = {}): Jot =>
   });
 const tilJot = (over: Partial<Jot> = {}) => jot({ section: "til", ...over });
 
-function setup(over: { jot?: Jot | null; mapped?: boolean } = {}) {
+function setup(
+  over: {
+    jot?: Jot | null;
+    mapped?: boolean;
+    text?: string;
+    leader?: Jot;
+    deleteFails?: boolean;
+  } = {},
+) {
   const row = over.jot === undefined ? jot() : over.jot;
   const notes = new Map([
-    [NOTE, `# Journal\n${journalLine(TIME, "earlier", ID)}\n`],
+    [NOTE, `# Journal\n${journalLine(TIME, over.text ?? "earlier", ID)}\n`],
   ]);
   const queued: [string, string][] = [];
   const statuses: [string, StatusButtons | undefined][] = [];
@@ -47,7 +55,9 @@ function setup(over: { jot?: Jot | null; mapped?: boolean } = {}) {
   const jots = {
     status: async (_id: string, html: string, opts?: StatusButtons) =>
       void statuses.push([html, opts]),
+    leaderOf: async (tapped: Jot) => over.leader ?? tapped,
   };
+  const removedMsgs: number[] = [];
   const pending: [string, string, string, string][] = [];
   const sent: { text: string; opts: unknown }[] = [];
   const events: string[] = [];
@@ -67,6 +77,10 @@ function setup(over: { jot?: Jot | null; mapped?: boolean } = {}) {
       sent.push({ text, opts });
       events.push("send");
       return 1;
+    },
+    delete: async (messageId: number) => {
+      if (over.deleteFails) throw new Error("message to delete not found");
+      removedMsgs.push(messageId);
     },
   };
   const edits = new EditService({
@@ -92,6 +106,8 @@ function setup(over: { jot?: Jot | null; mapped?: boolean } = {}) {
     pending,
     sent,
     events,
+    removedMsgs,
+    notes,
   };
 }
 
@@ -214,6 +230,104 @@ test("a reply instruction to a TIL jot still processing is queued verbatim", asy
     "queued",
   );
   assert.deepEqual(harness.queued, [[ID, "TIL: make it shorter"]]);
+});
+
+// --- ✏️ Edit ---
+
+test("edit sends the line's text back as a copyable force-reply to the tapped message", async () => {
+  const harness = setup({ text: "met [[Karl Barth|Karl]] Marx & co" });
+  assert.equal(await harness.edits.askEdit(ID, 55), "asked");
+  assert.deepEqual(harness.sent, [
+    {
+      text: `✏️ Reply with the new text for <code>${ID}</code>. Tap the block to copy it.\n<pre>met [[Karl Barth|Karl]] Marx &amp; co</pre>\n(ed:${ID})`,
+      opts: {
+        html: true,
+        forceReply: true,
+        placeholder: "The corrected entry",
+        replyTo: 55,
+      },
+    },
+  ]);
+});
+
+test("edit leaves a media jot's embed out of the prompt", async () => {
+  const image = jot({ kind: "image", asset_path: "assets/p.jpg" });
+  const harness = setup({ jot: image, text: "a sunset ![[assets/p.jpg]]" });
+  await harness.edits.askEdit(ID, 55);
+  assert.match(harness.sent[0]!.text, /<pre>a sunset<\/pre>/);
+});
+
+test("edit on a squashed follower asks about its leader's line", async () => {
+  const harness = setup({
+    jot: jot({ id: "bbbbbbbb", anchor: ID }),
+    leader: jot(),
+  });
+  assert.equal(await harness.edits.askEdit("bbbbbbbb", 55), "asked");
+  assert.match(harness.sent[0]!.text, new RegExp(`\\(ed:${ID}\\)`));
+});
+
+test("edit refuses a jot that is gone, busy or missing its line", async () => {
+  assert.equal(await setup({ jot: null }).edits.askEdit(ID, 55), "gone");
+  assert.equal(await setup().edits.askEdit(undefined, 55), "gone");
+  assert.equal(
+    await setup({ jot: jot({ status: "deleted" }) }).edits.askEdit(ID, 55),
+    "gone",
+  );
+  assert.equal(
+    await setup({ jot: jot({ status: "processing" }) }).edits.askEdit(ID, 55),
+    "busy",
+  );
+  const lost = setup();
+  lost.notes.set(NOTE, "# Journal\n");
+  assert.equal(await lost.edits.askEdit(ID, 55), "no-line");
+  assert.deepEqual(lost.sent, []);
+});
+
+test("the answer to an edit prompt replaces the line, drops the prompt and keeps the buttons", async () => {
+  const harness = setup({ text: "met [[Karl Barth|Karl]] Marx" });
+  assert.equal(
+    await harness.edits.answerEdit(ID, "met [[Karl Marx]]", 90),
+    "applied",
+  );
+  assert.equal(harness.line(), "met [[Karl Marx]]");
+  assert.deepEqual(harness.removedMsgs, [90]);
+  assert.deepEqual(harness.statuses, [
+    ["✍️ got your edit — applying…", undefined],
+    [
+      editConfirmation(TIME, "met [[Karl Marx]]"),
+      { undo: true, embed: undefined },
+    ],
+  ]);
+});
+
+test("the answer to an edit prompt on a TIL jot loses a re-typed marker", async () => {
+  const harness = setup({ jot: tilJot() });
+  await harness.edits.answerEdit(ID, "TIL: octopuses have three hearts", 90);
+  assert.equal(
+    stripJournalLine(anchorLine(harness.notes.get(NOTE)!, ID)!, TIME),
+    "octopuses have three hearts",
+  );
+});
+
+test("the answer to an edit prompt keeps the prompt while the jot is busy, drops it once gone", async () => {
+  const busy = setup({ jot: jot({ status: "processing" }) });
+  assert.equal(await busy.edits.answerEdit(ID, "new", 90), "busy");
+  assert.deepEqual(busy.removedMsgs, []);
+  assert.deepEqual(busy.statuses, []);
+
+  const gone = setup({ jot: jot({ status: "deleted" }) });
+  assert.equal(await gone.edits.answerEdit(ID, "new", 90), "gone");
+  assert.deepEqual(gone.removedMsgs, [90]);
+  assert.equal(gone.line(), "earlier");
+
+  const missing = setup({ jot: null });
+  assert.equal(await missing.edits.answerEdit(ID, "new", 90), "gone");
+});
+
+test("an edit prompt Telegram won't delete doesn't stop the edit", async () => {
+  const harness = setup({ deleteFails: true });
+  assert.equal(await harness.edits.answerEdit(ID, "new", 90), "applied");
+  assert.equal(harness.line(), "new");
 });
 
 // --- /fix ---

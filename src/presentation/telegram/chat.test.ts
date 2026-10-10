@@ -72,6 +72,18 @@ test("a message can ask for a forced reply or hang off an earlier message, and o
   ]);
 });
 
+test("a forced reply can carry a placeholder for the empty compose box", async () => {
+  const { chat, rec } = harness();
+  await chat.send("new text?", { forceReply: true, placeholder: "The entry" });
+  assert.deepEqual(rec.calls.map(wire), [
+    {
+      chat_id: OWNER,
+      text: "new text?",
+      reply_markup: { force_reply: true, input_field_placeholder: "The entry" },
+    },
+  ]);
+});
+
 test("a message that must interrupt says so to Telegram explicitly", async () => {
   const { chat, rec } = harness();
   await chat.send("<b>tasks</b>", { html: true, silent: false });

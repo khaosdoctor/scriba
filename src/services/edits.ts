@@ -4,6 +4,7 @@ import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import {
+  editableText,
   editedJotText,
   enrichableSource,
   entryContent,
@@ -17,6 +18,7 @@ import {
 import type { EditInput } from "../domain/jot/structures.ts";
 import {
   editConfirmation,
+  editRef,
   embedOffer,
   parseLiteralEdit,
   type StatusButtons,
@@ -48,7 +50,7 @@ export interface EditDeps {
   obsidian: ObsidianClient;
   enricher: Pick<Enricher, "editText" | "fixTranscript">;
   jots: Pick<JotService, "status" | "leaderOf" | "deleteStatus">;
-  notifier: Pick<Notifier, "send">;
+  notifier: Pick<Notifier, "send" | "delete">;
   queue: Pick<FlushQueue, "add">;
 }
 
@@ -307,7 +309,7 @@ export class EditService {
   ): Promise<EmbedOutcome> {
     const { repo, obsidian, jots } = this.deps;
     const jot = jotId ? await repo.getJot(jotId) : undefined;
-    if (!jot || jot.status !== "done") {
+    if (jot?.status !== "done") {
       log.warn({ jotId, status: jot?.status }, "embed: jot not editable");
       return "gone";
     }
@@ -334,6 +336,80 @@ export class EditService {
         });
       },
     };
+  }
+
+  /** ✏️ Edit on a finished jot: send its current text back as a force-reply prompt, a
+   *  reply to the tapped status message, so the owner copies it, fixes it and sends it
+   *  back. Bots can't fill the compose box, so the text comes in a copyable block. */
+  async askEdit(
+    jotId: string | undefined,
+    replyTo: number | undefined,
+  ): Promise<"gone" | "busy" | "no-line" | "asked"> {
+    const { repo, obsidian, notifier, jots } = this.deps;
+    const jot = jotId ? await repo.getJot(jotId) : undefined;
+    const target = jot && (await jots.leaderOf(jot));
+    if (!target || target.status === "deleted") {
+      log.warn({ jotId }, "edit: jot gone");
+      return "gone";
+    }
+    if (!isEditableJot(target.status)) {
+      log.warn({ jotId: target.id, status: target.status }, "edit: jot busy");
+      return "busy";
+    }
+    const line = anchorLine(
+      await obsidian.readNote(target.note_path),
+      target.anchor,
+    );
+    if (line === null) {
+      log.warn({ jotId: target.id }, "edit: anchored line not found");
+      return "no-line";
+    }
+    const text = editableText(target, stripJournalLine(line, target.time));
+    await notifier.send(
+      `✏️ Reply with the new text for <code>${target.id}</code>. Tap the block to copy it.\n<pre>${escapeHtml(text)}</pre>\n${editRef(target.id)}`,
+      {
+        html: true,
+        forceReply: true,
+        placeholder: "The corrected entry",
+        replyTo,
+      },
+    );
+    log.info({ jotId: target.id, tapped: jotId }, "edit: prompt sent");
+    return "asked";
+  }
+
+  /** The reply to an ✏️ Edit prompt replaces the jot's whole text, like a native message
+   *  edit. The prompt is scaffolding, so it goes once the edit lands; one whose jot is
+   *  busy stays, since a later reply to it is the retry. */
+  async answerEdit(
+    jotId: string,
+    text: string,
+    promptId: number,
+  ): Promise<"gone" | "busy" | "applied"> {
+    const { repo, jots, notifier } = this.deps;
+    const jot = await repo.getJot(jotId);
+    const outcome =
+      !jot || jot.status === "deleted"
+        ? "gone"
+        : isEditableJot(jot.status)
+          ? "applied"
+          : "busy";
+    if (outcome === "busy") {
+      log.warn({ jotId, status: jot?.status }, "edit reply: jot busy");
+      return outcome;
+    }
+    await notifier
+      .delete(promptId)
+      .catch((err) => log.warn({ err, promptId }, "edit: prompt not deleted"));
+    if (!jot || outcome === "gone") {
+      log.warn({ jotId }, "edit reply: jot gone");
+      return "gone";
+    }
+    const markdown = editedJotText(jot.section, text);
+    log.info({ jotId, text: markdown }, "edit reply: replacing jot text");
+    await jots.status(jot.id, "✍️ got your edit — applying…");
+    await this.showFinished(jot, await this.replaceJotText(jot, markdown));
+    return "applied";
   }
 
   async askLink(jotId: string, surface: string, note: string): Promise<string> {

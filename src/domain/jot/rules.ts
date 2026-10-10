@@ -61,6 +61,15 @@ export function entryContent(jot: Jot, text: string): string {
   return [text, assetEmbed(jot)].filter(Boolean).join(" ");
 }
 
+/** The part of a line's text the owner wrote, for editing: a media jot's embed is left
+ *  off, since `entryContent` puts it back on save. */
+export function editableText(jot: Jot, text: string): string {
+  const embed = assetEmbed(jot);
+  return embed && text.endsWith(embed)
+    ? text.slice(0, -embed.length).trimEnd()
+    : text;
+}
+
 export function withinSquashWindow(
   prevReceivedAt: number,
   nowReceivedAt: number,

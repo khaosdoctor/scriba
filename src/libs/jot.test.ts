@@ -5,11 +5,13 @@ import {
   doneMessage,
   donePreview,
   editConfirmation,
+  editRef,
   embedOffer,
   formatJotDetail,
   gaveUpMessage,
   jotPreview,
   originalQuote,
+  parseEditRef,
   parseLiteralEdit,
   retryNotice,
   setEmbeds,
@@ -73,6 +75,7 @@ test("the status keyboard carries one button per asked action, and clears them w
     { text: "🗑 Delete", callback_data: "dl:a1b2c3d4" },
   ]);
   assert.deepEqual(buttons({ undo: true, embed: "embed" }), [
+    { text: "✏️ Edit", callback_data: "ed:a1b2c3d4" },
     { text: "↩️ Undo", callback_data: "un:a1b2c3d4" },
     { text: "🖼 Embed", callback_data: "em:a1b2c3d4:1" },
   ]);
@@ -80,6 +83,7 @@ test("the status keyboard carries one button per asked action, and clears them w
     { text: "🔗 Plain link", callback_data: "em:a1b2c3d4:0" },
   ]);
   assert.deepEqual(buttons({ undo: true, original: true }), [
+    { text: "✏️ Edit", callback_data: "ed:a1b2c3d4" },
     { text: "↩️ Undo", callback_data: "un:a1b2c3d4" },
     { text: "📝 Use original", callback_data: "vf:a1b2c3d4" },
   ]);
@@ -227,4 +231,14 @@ test("jotPreview falls back to (kind) for a captionless attach-only jot", () => 
     jotPreview({ ...base, kind: "audio", transcript: "hello there" }, 5),
     "hello",
   );
+});
+
+test("an edit ref round-trips a jot id and ignores anything else", () => {
+  assert.equal(editRef("a1b2c3d4"), "(ed:a1b2c3d4)");
+  assert.equal(
+    parseEditRef(`✏️ Reply…\nsome text\n${editRef("a1b2c3d4")}`),
+    "a1b2c3d4",
+  );
+  assert.equal(parseEditRef("(ed:nothex!!)"), null);
+  assert.equal(parseEditRef("(fu:j:2026-10-10)"), null);
 });

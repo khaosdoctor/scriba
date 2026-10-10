@@ -190,6 +190,29 @@ ledger("vf", [
   { tap: "vf:", when: "no jot id", expect: "ack(gone)" },
 ]);
 
+ledger("ed", [
+  {
+    tap: `ed:${ID}`,
+    when: "finished jot, answered after the prompt is sent",
+    setup: withJot(),
+    expect: "repo.getJot > obsidian.readNote > tg.sendMessage > ack()",
+  },
+  {
+    tap: `ed:${ID}`,
+    when: "jot still processing",
+    setup: withJot({ status: "processing" }),
+    expect: "repo.getJot > ack(still processing)",
+  },
+  {
+    tap: `ed:${ID}`,
+    when: "line gone from the note",
+    setup: withJot({}, "## Journal\n"),
+    expect: "repo.getJot > obsidian.readNote > ack(line not found)",
+  },
+  { tap: `ed:${ID}`, when: "jot gone", expect: "repo.getJot > ack(gone)" },
+  { tap: "ed:", when: "no jot id", expect: "ack(gone)" },
+]);
+
 const REJECTED = [{ surface: "milk", note: "Milk" }];
 const withRejected = (harness: Harness) => {
   harness.repo.rejectionList = REJECTED;

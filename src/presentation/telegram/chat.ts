@@ -20,7 +20,14 @@ function sendParams(opts: SendOptions = {}) {
   return {
     ...params(opts),
     ...(opts.forceReply
-      ? { reply_markup: { force_reply: true as const } }
+      ? {
+          reply_markup: {
+            force_reply: true as const,
+            ...(opts.placeholder
+              ? { input_field_placeholder: opts.placeholder }
+              : {}),
+          },
+        }
       : {}),
     ...(opts.replyTo
       ? {

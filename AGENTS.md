@@ -448,6 +448,19 @@ Layers call downward only: presentation calls services, services call data. `dom
   now applies (`EditService.embedFor`), since it can add, remove or embed a URL. Detection
   and rewrite are `embedOffer`/`setEmbeds` in
   `libs/jot.ts`, token-free; the enricher is told to leave URLs untouched so they survive.
+- **✏️ Edit rewrites a whole entry by hand.** Every status message that carries Undo also
+  carries **✏️ Edit** (`ed:<jotId>`, `editView` in `presentation/telegram/journal/edit.ts`).
+  The tap calls `EditService.askEdit`, which sends the line's current text — wikilinks and
+  all, a media jot's embed left off (`editableText` in `domain/jot/rules.ts`) — in a `<pre>`
+  block, as a force-reply that replies to the tapped status message. Bots can't fill the
+  compose box (the Bot API has no such call), so the block is the copy source: tap it, paste,
+  fix, send. This is how a wrong link gets undone from the chat (`[[Karl Barth|Karl]] Marx` →
+  `[[Karl Marx]]`). The prompt carries `(ed:<jotId>)` (`editRef`/`parseEditRef` in
+  `libs/jot.ts`) and the reply is routed by it (`promptReplies`) to `EditService.answerEdit`,
+  which replaces the line wholesale like a native message edit (`replaceJotText`, so the
+  source is folded back and a reprocess keeps it) — no model call — and deletes the prompt.
+  A squashed follower edits its leader's line; a jot sent back for processing since is
+  refused and its prompt kept, so replying again later is the retry.
 - **Every failure is a decision, so it carries both buttons.** Any jot that fails gets
   **🔄 Retry** (`rt:<jotId>`, `retryView` calling `JotService.retry`: `resetForRetry` +
   requeue now) and **🗑 Delete** (`dl:<jotId>`, the same `removeView` as Undo, via

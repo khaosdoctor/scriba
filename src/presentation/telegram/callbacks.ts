@@ -5,6 +5,7 @@ import { commandView } from "./command/tap.ts";
 import { COMMANDS } from "./commands.ts";
 import { habitsView } from "./habits/tap.ts";
 import type { ViewDeps } from "./index.ts";
+import { editView } from "./journal/edit.ts";
 import { embedView } from "./journal/embed.ts";
 import { linkView } from "./journal/link.ts";
 import { removeView } from "./journal/remove.ts";
@@ -30,6 +31,7 @@ export function callbackViews(deps: ViewDeps): Composer<Context>[] {
     removeView(UNDO_NS, deps),
     removeView(DELETE_NS, deps),
     embedView(edits),
+    editView(edits),
     commandView(command),
     tasksView(tasks),
     tilView(jots),

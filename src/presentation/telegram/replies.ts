@@ -2,9 +2,11 @@ import { Composer, type Context } from "grammy";
 import type { Message } from "grammy/types";
 import { parseFollowupRef } from "../../libs/followup.ts";
 import { parseHabitRef } from "../../libs/habits.ts";
+import { parseEditRef } from "../../libs/jot.ts";
 import { parseTaskRef } from "../../libs/tasks.ts";
 import { habitReply } from "./habits/reply.ts";
 import type { ViewDeps } from "./index.ts";
+import { editAnswerReply } from "./journal/edit.ts";
 import type { TextReply } from "./namespace.ts";
 import { followupReply } from "./rating/followup-reply.ts";
 import {
@@ -30,12 +32,13 @@ function replyTo<T>(
 }
 
 export function promptReplies(deps: ViewDeps): Composer<Context>[] {
-  const { habits, rating, jots, tasks } = deps;
+  const { habits, rating, jots, tasks, edits } = deps;
   return [
     replyTo(parseHabitRef, habitReply(habits)),
     replyTo(parseFollowupRef, followupReply(rating, jots)),
     replyTo(parseSettingsRef, wizardReply(deps)),
     replyTo(parseLinkRef, linkReply(deps)),
     replyTo(parseTaskRef, taskReply(tasks)),
+    replyTo(parseEditRef, editAnswerReply(edits)),
   ];
 }
