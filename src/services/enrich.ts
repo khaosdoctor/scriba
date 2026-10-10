@@ -21,6 +21,7 @@ import {
   isRecoverable,
   parseModelJson,
   type SwitchTarget,
+  stripWrappingQuotes,
   unwrapModelPayload,
 } from "../libs/model.ts";
 import { errorText } from "../libs/text.ts";
@@ -308,8 +309,9 @@ export class Enricher {
     // without an AI-written display line.
     try {
       const { text } = await this.run({ prompt });
-      log.debug({ caption: text.trim() }, "describeImage: got caption");
-      return text.trim();
+      const caption = stripWrappingQuotes(text);
+      log.debug({ caption }, "describeImage: got caption");
+      return caption;
     } catch (err) {
       log.warn(
         { err },
@@ -327,7 +329,7 @@ export class Enricher {
       system: VOICE_FIX_SYSTEM,
       model,
     });
-    const result = fixed.trim() || text;
+    const result = stripWrappingQuotes(fixed) || text;
     log.info(
       { originalChars: text.length, fixedChars: result.length },
       "fixTranscript: done",
@@ -339,7 +341,7 @@ export class Enricher {
     const prompt = `Current journal text:\n"""${fence(current)}"""\n\nEdit instruction: ${fence(instruction)}\n\nReturn ONLY the edited text, nothing else. Preserve voice and any [[wikilinks]] unless the edit changes them.`;
     log.debug({ instruction }, "editText: calling agent");
     const { text } = await this.run({ prompt });
-    return text.trim() || current;
+    return stripWrappingQuotes(text) || current;
   }
 
   private async run<T = SdkOut>({

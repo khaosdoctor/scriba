@@ -4,6 +4,7 @@ import {
   CircuitBreaker,
   isRecoverable,
   parseModelJson,
+  stripWrappingQuotes,
   switchNotice,
   unwrapModelPayload,
 } from "./model.ts";
@@ -146,5 +147,59 @@ test("isRecoverable covers the OpenAI-shaped SDKs' network errors", () => {
   assert.equal(
     isRecoverable(new Error("timeout after 15s (claude-haiku-4-5)")),
     true,
+  );
+});
+
+test("stripWrappingQuotes unwraps a jot quoted end to end", () => {
+  assert.equal(
+    stripWrappingQuotes('"Learned that [[Rust]] has no GC."'),
+    "Learned that [[Rust]] has no GC.",
+  );
+  assert.equal(
+    stripWrappingQuotes("  \u201CWent for a run.\u201D "),
+    "Went for a run.",
+  );
+  assert.equal(stripWrappingQuotes("\u201EHej\u201C"), "Hej");
+  assert.equal(stripWrappingQuotes("\u2018quiet day\u2019"), "quiet day");
+  assert.equal(
+    stripWrappingQuotes("\u2018I\u2019m tired\u2019"),
+    "I\u2019m tired",
+  );
+  assert.equal(
+    stripWrappingQuotes("\u201CKarl\u2019s book\u201D"),
+    "Karl\u2019s book",
+  );
+  assert.equal(stripWrappingQuotes("\u00ABbonjour\u00BB"), "bonjour");
+  assert.equal(stripWrappingQuotes('"""\n"layered"\n"""'), "layered");
+});
+
+test("stripWrappingQuotes leaves quotes that don't wrap the whole jot", () => {
+  assert.equal(stripWrappingQuotes('"A" and "B"'), '"A" and "B"');
+  assert.equal(
+    stripWrappingQuotes('"""A""" and """B"""'),
+    '"""A""" and """B"""',
+  );
+  assert.equal(
+    stripWrappingQuotes("\u201CA\u201D and \u201CB\u201D"),
+    "\u201CA\u201D and \u201CB\u201D",
+  );
+  assert.equal(
+    stripWrappingQuotes("\u2018A\u2019 and \u2018B\u2019"),
+    "\u2018A\u2019 and \u2018B\u2019",
+  );
+  assert.equal(stripWrappingQuotes('She said "hi"'), 'She said "hi"');
+  assert.equal(
+    stripWrappingQuotes("'Twas the students'"),
+    "'Twas the students'",
+  );
+  assert.equal(stripWrappingQuotes('"'), '"');
+  assert.equal(stripWrappingQuotes('"half'), '"half');
+  assert.equal(stripWrappingQuotes(""), "");
+});
+
+test("unwrapModelPayload drops a plain quote pair around the text", () => {
+  assert.equal(
+    unwrapModelPayload({ text: '"TIL octopuses have three hearts"' }).text,
+    "TIL octopuses have three hearts",
   );
 });

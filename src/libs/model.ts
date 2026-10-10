@@ -128,7 +128,39 @@ export function unwrapModelPayload(payload: ModelPayload): ModelPayload {
       til: out.til === true ? true : (inner.til ?? out.til),
     };
   }
-  const fenced = out.text.trim().match(/^"""([\s\S]*)"""$/);
-  if (fenced) out.text = (fenced[1] ?? "").trim();
+  out.text = stripWrappingQuotes(out.text);
+  return out;
+}
+
+/** Opening quote → the closing quote that pairs with it. Straight single quotes are left
+ *  out: an entry can open on "'Twas" and end on "the students'". */
+const QUOTE_PAIRS: Record<string, string> = {
+  '"': '"',
+  "\u201C": "\u201D", // “ ”
+  "\u201E": "\u201C", // „ “
+  "\u2018": "\u2019", // ‘ ’
+  "\u00AB": "\u00BB", // « »
+};
+
+/** A jot is never one quotation from end to end, so a model answer wrapped in quotes
+ *  (echoing the prompt's `"""` fence, or a plain `"…"`) is unwrapped, layer by layer.
+ *  A pair only counts when no other quotation starts inside it, so `"A" and "B"` and
+ *  `“A” and “B”` keep their quotes; for curly pairs that means another opener, since the
+ *  closer doubles as an apostrophe (`‘I’m tired’`). */
+export function stripWrappingQuotes(text: string): string {
+  let out = text.trim();
+  for (let depth = 0; depth < 5; depth++) {
+    const fenced = out.match(/^"""([\s\S]*)"""$/);
+    if (fenced && !fenced[1]?.includes('"""')) {
+      out = (fenced[1] ?? "").trim();
+      continue;
+    }
+    const open = out[0] ?? "";
+    const close = QUOTE_PAIRS[open];
+    if (close === undefined || out.length < 2 || !out.endsWith(close)) break;
+    const inner = out.slice(1, -1);
+    if (inner.includes(open === close ? close : open)) break;
+    out = inner.trim();
+  }
   return out;
 }
