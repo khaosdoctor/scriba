@@ -31,7 +31,7 @@ import {
   type SwitchNotifier,
 } from "./services/enrich.ts";
 import { HabitService } from "./services/habits.ts";
-import { HealthMonitor, upstreams } from "./services/health.ts";
+import { HealthCheck, upstreams } from "./services/health.ts";
 import { JotService } from "./services/jots.ts";
 import { MediaService } from "./services/media.ts";
 import { Modes } from "./services/modes.ts";
@@ -54,7 +54,7 @@ export interface ExternalServices {
   scheduler?: Scheduler;
   queue?: FlushQueue;
   processing?: ProcessingService;
-  health?: HealthMonitor;
+  health?: HealthCheck;
   github?: GithubReleases;
 }
 
@@ -256,7 +256,7 @@ export async function createScriba(
 
   const health =
     externalServices.health ??
-    new HealthMonitor(
+    new HealthCheck(
       upstreams(
         {
           groqApiKey: config.enrich.groqApiKey,
@@ -266,7 +266,6 @@ export async function createScriba(
         },
         obsidian.dispatcher,
       ),
-      notify,
     );
   const admin = new AdminService({
     repo: repo.jots,
@@ -342,7 +341,6 @@ export async function createScriba(
       links.startIndex();
       await scheduler.start();
       void processing.retryPass();
-      health.start();
       await publishCommands(bot.api);
       void bot.start({
         allowed_updates: [
@@ -363,7 +361,6 @@ export async function createScriba(
     async stop() {
       await bot.stop();
       scheduler.stop();
-      health.stop();
       links.stopIndex();
       await repo.close();
     },

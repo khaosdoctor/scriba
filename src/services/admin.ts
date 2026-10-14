@@ -22,7 +22,7 @@ import type { PageView } from "../libs/page.ts";
 import type { FlushQueue } from "../libs/queue.ts";
 import { pluralize } from "../libs/text.ts";
 import { dayBounds, plainDate, startOfToday } from "../libs/time.ts";
-import type { HealthMonitor } from "./health.ts";
+import type { HealthCheck } from "./health.ts";
 import type { JotService } from "./jots.ts";
 import type { Notifier } from "./notifier.ts";
 import type { ProcessingService } from "./processing.ts";
@@ -72,7 +72,7 @@ export interface AdminDeps {
   transcriber: Pick<FallbackTranscriber, "chain">;
   links: Pick<VaultRepository, "stats">;
   github: Pick<GithubReleases, "byVersion" | "latest" | "recent">;
-  health: Pick<HealthMonitor, "snapshot">;
+  health: Pick<HealthCheck, "check">;
   notifier: Pick<Notifier, "notify">;
   jots: Pick<JotService, "retry">;
   build: { version: string; sha: string };
@@ -169,7 +169,7 @@ export class AdminService {
       sha: build.sha,
       uptimeMs: Date.now() - startedAt,
     });
-    return `${snapshot}\n\n${formatHealth(health.snapshot(), Date.now())}`;
+    return `${snapshot}\n\n${formatHealth(await health.check())}`;
   }
 
   async failed(): Promise<{ text: string; ids: string[] }> {

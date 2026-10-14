@@ -67,16 +67,13 @@ export function formatStatus(view: StatusView): string {
   ].join("\n");
 }
 
-export function formatHealth(rows: UpstreamStatus[], now: number): string {
+export function formatHealth(rows: UpstreamStatus[]): string {
   const lines = ["Upstreams:"];
   for (const row of rows) {
-    // 🟡 is one failed probe: an error on show, but not yet the two that make it down.
-    const dot = !row.up ? "🔴" : row.failures ? "🟡" : "🟢";
-    const parts = [`${dot} ${row.name}`];
-    if (!row.up) parts.push(`down ${formatDuration(now - row.since)}`);
-    parts.push(
-      row.latencyMs === null ? "not probed yet" : `${row.latencyMs} ms`,
-    );
+    const parts = [
+      `${row.up ? "🟢" : "🔴"} ${row.name}`,
+      `${row.latencyMs} ms`,
+    ];
     if (row.error) parts.push(clipUpdate(row.error, 120));
     lines.push(parts.join(" · "));
   }

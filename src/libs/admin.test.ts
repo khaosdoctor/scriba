@@ -130,61 +130,22 @@ test("formatStatus summarises health", () => {
 });
 
 test("formatHealth renders one line per upstream", () => {
-  const now = 1_000_000;
-  const out = formatHealth(
-    [
-      {
-        name: "anthropic",
-        up: true,
-        latencyMs: 120,
-        error: null,
-        failures: 0,
-        since: 0,
-      },
-      {
-        name: "groq",
-        up: false,
-        latencyMs: 5001,
-        error: "HTTP 401",
-        failures: 3,
-        since: now - 180_000,
-      },
-      {
-        name: "parakeet",
-        up: true,
-        latencyMs: null,
-        error: null,
-        failures: 0,
-        since: now,
-      },
-    ],
-    now,
-  );
+  const out = formatHealth([
+    { name: "anthropic", up: true, latencyMs: 120, error: null },
+    { name: "groq", up: false, latencyMs: 5001, error: "HTTP 401" },
+  ]);
   assert.deepEqual(out.split("\n"), [
     "Upstreams:",
     "🟢 anthropic · 120 ms",
-    "🔴 groq · down 3m 0s · 5001 ms · HTTP 401",
-    "🟢 parakeet · not probed yet",
+    "🔴 groq · 5001 ms · HTTP 401",
   ]);
 });
 
 test("formatHealth caps a long error", () => {
-  const out = formatHealth(
-    [
-      {
-        name: "obsidian",
-        up: true,
-        latencyMs: 40,
-        error: "x ".repeat(200),
-        failures: 1,
-        since: 0,
-      },
-    ],
-    0,
-  );
+  const out = formatHealth([
+    { name: "obsidian", up: false, latencyMs: 40, error: "x ".repeat(200) },
+  ]);
   assert.ok(out.split("\n")[1]!.length < 180);
-  // one failed probe is a warning, not green
-  assert.ok(out.split("\n")[1]!.startsWith("🟡 obsidian"));
 });
 
 test("formatStatus shows a disabled link index", () => {

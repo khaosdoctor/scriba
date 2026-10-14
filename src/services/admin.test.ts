@@ -356,29 +356,15 @@ test("/status joins the snapshot with the upstream health", async (testContext) 
     transcriber: { chain: "groq → parakeet" },
     links: { stats: () => ({ enabled: true, files: 12, aliases: 40 }) },
     health: {
-      snapshot: () => [
-        {
-          name: "groq",
-          up: true,
-          latencyMs: 120,
-          error: null,
-          failures: 0,
-          since: NOW,
-        },
-        {
-          name: "parakeet",
-          up: false,
-          latencyMs: null,
-          error: "ECONNREFUSED",
-          failures: 2,
-          since: NOW - 90_000,
-        },
+      check: async () => [
+        { name: "groq", up: true, latencyMs: 120, error: null },
+        { name: "parakeet", up: false, latencyMs: 3, error: "ECONNREFUSED" },
       ],
     },
   });
   assert.equal(
     await admin.status(),
-    "🩺 scriba 1.34.0 (abc1234)\nUptime: 2h 55m\nJots: 5 done · 2 in-flight · 2 failed · 1 abandoned\nQueue depth: 3\nTranscriber: groq → parakeet\nLink index: 12 files / 40 aliases\n\nUpstreams:\n🟢 groq · 120 ms\n🔴 parakeet · down 1m 30s · not probed yet · ECONNREFUSED",
+    "🩺 scriba 1.34.0 (abc1234)\nUptime: 2h 55m\nJots: 5 done · 2 in-flight · 2 failed · 1 abandoned\nQueue depth: 3\nTranscriber: groq → parakeet\nLink index: 12 files / 40 aliases\n\nUpstreams:\n🟢 groq · 120 ms\n🔴 parakeet · 3 ms · ECONNREFUSED",
   );
 });
 

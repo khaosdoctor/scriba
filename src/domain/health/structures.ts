@@ -1,8 +1,6 @@
 export interface UpstreamStatus {
   name: string;
   up: boolean;
-  latencyMs: number | null;
+  latencyMs: number;
   error: string | null;
-  failures: number;
-  since: number;
 }

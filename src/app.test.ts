@@ -14,7 +14,6 @@ import type { SettingKey } from "./domain/setting/entity.ts";
 import { Scheduler } from "./libs/scheduler.ts";
 import { WIZARD_RATING_TIME_REF } from "./libs/wizard.ts";
 import type { SwitchNotifier } from "./services/enrich.ts";
-import { HealthMonitor } from "./services/health.ts";
 
 const env = {
   TELEGRAM_BOT_TOKEN: "t",
@@ -141,7 +140,6 @@ function recordSettingWrites(context: TestContext, events: string[]) {
 dbTest("createScriba wires everything and starts nothing", async (context) => {
   const started = {
     scheduler: context.mock.method(Scheduler.prototype, "start"),
-    health: context.mock.method(HealthMonitor.prototype, "start"),
     links: context.mock.method(VaultRepository.prototype, "startIndex"),
     polling: context.mock.method(Bot.prototype, "start"),
   };

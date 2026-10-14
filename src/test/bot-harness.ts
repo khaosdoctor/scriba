@@ -190,7 +190,7 @@ export async function botHarness() {
     stats: () => ({ enabled: true, files: 2, aliases: 3 }),
     enabled: true,
   };
-  const health = { snapshot: () => [] };
+  const health = { check: async () => [] };
   const github = {
     latest: async () => null,
     recent: async () => [],

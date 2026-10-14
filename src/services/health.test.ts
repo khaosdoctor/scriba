@@ -5,7 +5,7 @@ import { after, test } from "node:test";
 import { Agent } from "undici";
 import { OPENCODE_BASE_URL } from "../data/connections/groq.ts";
 import {
-  HealthMonitor,
+  HealthCheck,
   modelsUrlFor,
   type Upstream,
   upstreams,
@@ -42,29 +42,8 @@ after(() => {
   server.close();
 });
 
-function monitor(
-  targets: Upstream[],
-  over: {
-    notify?: (text: string) => Promise<void>;
-    intervalMs?: number;
-    timeoutMs?: number;
-  } = {},
-) {
-  const notices: string[] = [];
-  const health = new HealthMonitor(
-    targets,
-    over.notify ??
-      (async (text) => {
-        notices.push(text);
-      }),
-    over.intervalMs,
-    over.timeoutMs ?? 1_000,
-  );
-  return { health, notices };
-}
-
-const upOf = (health: HealthMonitor, name: string) =>
-  health.snapshot().find((status) => status.name === name)?.up;
+const checker = (targets: Upstream[], timeoutMs = 1_000) =>
+  new HealthCheck(targets, timeoutMs);
 
 const all = {
   groqApiKey: "gsk-test",
@@ -128,84 +107,62 @@ test("no probe targets an endpoint that generates anything", () => {
 
 test("a probe is a GET with no body, carrying its target's headers", async () => {
   seen.length = 0;
-  const { health } = monitor([
+  await checker([
     { name: "a", url: `${base}/ok`, headers: { Authorization: "Bearer k" } },
-  ]);
-  await health.check();
+  ]).check();
   assert.deepEqual(
     seen.map((request) => [request.method, request.body, request.auth]),
     [["GET", 0, "Bearer k"]],
   );
 });
 
-test("down after 2 failed probes, up on the first success, one notice each", async () => {
+test("one check probes every upstream once and reports each", async () => {
+  seen.length = 0;
   flaky.status = 503;
-  const { health, notices } = monitor([
+  const rows = await checker([
+    { name: "ok", url: `${base}/ok` },
     { name: "groq", url: `${base}/flaky`, requireOk: true },
-  ]);
-
-  await health.check();
-  assert.equal(
-    upOf(health, "groq"),
-    true,
-    "one failure is a blip, not an outage",
+  ]).check();
+  assert.equal(seen.length, 2);
+  assert.deepEqual(
+    rows.map((row) => [row.name, row.up, row.error]),
+    [
+      ["ok", true, null],
+      ["groq", false, "HTTP 503"],
+    ],
   );
-  assert.equal(health.snapshot()[0]!.failures, 1);
-  assert.equal(notices.length, 0);
-
-  await health.check();
-  assert.equal(upOf(health, "groq"), false);
-  assert.equal(health.snapshot()[0]!.error, "HTTP 503");
-  await health.check(); // still down: no second notice
-  assert.equal(notices.length, 1);
-  assert.match(notices[0]!, /groq is unreachable: HTTP 503/);
-
+  assert.equal(typeof rows[0]!.latencyMs, "number");
   flaky.status = 200;
-  await health.check();
-  assert.equal(upOf(health, "groq"), true);
-  const status = health.snapshot()[0]!;
-  assert.equal(status.failures, 0);
-  assert.equal(status.error, null);
-  assert.equal(typeof status.latencyMs, "number");
-  await health.check(); // still up: no second notice
-  assert.equal(notices.length, 2);
-  assert.match(notices[1]!, /groq is back/);
 });
 
 test("any HTTP answer is reachable unless the upstream needs a 2xx", async () => {
-  const { health } = monitor([
+  const rows = await checker([
     { name: "anthropic", url: `${base}/missing` },
     { name: "groq", url: `${base}/missing`, requireOk: true },
-  ]);
-  await health.check();
-  await health.check();
-  assert.equal(upOf(health, "anthropic"), true);
-  assert.equal(upOf(health, "groq"), false);
+  ]).check();
+  assert.deepEqual(
+    rows.map((row) => row.up),
+    [true, false],
+  );
 });
 
 test("a probe that never answers times out as a failure", async () => {
-  const { health } = monitor([{ name: "slow", url: `${base}/stall` }], {
-    timeoutMs: 50,
-  });
   const started = Date.now();
-  await health.check();
-  assert.ok(Date.now() - started < 1_000, "the timeout bounds the round");
-  const status = health.snapshot()[0]!;
-  assert.equal(status.failures, 1);
-  assert.match(status.error ?? "", /timeout|abort/i);
+  const [row] = await checker(
+    [{ name: "slow", url: `${base}/stall` }],
+    50,
+  ).check();
+  assert.ok(Date.now() - started < 1_000, "the timeout bounds the check");
+  assert.equal(row!.up, false);
+  assert.match(row!.error ?? "", /timeout|abort/i);
 });
 
-test("a failing notifier never throws out of a round", async () => {
-  const { health } = monitor([{ name: "dead", url: "http://127.0.0.1:1/" }], {
-    notify: async () => {
-      throw new Error("telegram down too");
-    },
-  });
-  await health.check();
-  await health.check();
-  assert.equal(upOf(health, "dead"), false);
-  // the cause is what says why: undici's own message is only "fetch failed"
-  assert.match(health.snapshot()[0]!.error ?? "", /^fetch failed: \S/);
+test("a refused host reports the cause, not just fetch failed", async () => {
+  const [row] = await checker([
+    { name: "dead", url: "http://127.0.0.1:1/" },
+  ]).check();
+  assert.equal(row!.up, false);
+  assert.match(row!.error ?? "", /^fetch failed: \S/);
 });
 
 test("a refused dual-stack host is reported by its error code", async () => {
@@ -225,35 +182,15 @@ test("a refused dual-stack host is reported by its error code", async () => {
         ]),
     },
   });
-  const { health } = monitor([
+  const [row] = await checker([
     {
       name: "dead",
       url: `http://dual.invalid:${port}/`,
       dispatcher: dualStack,
     },
-  ]);
-  await health.check();
+  ]).check();
   await dualStack.close();
-  assert.match(
-    health.snapshot()[0]!.error ?? "",
-    /^fetch failed: \S*ECONNREFUSED/,
-  );
-});
-
-test("start probes on a timer and stop ends it", async () => {
-  seen.length = 0;
-  const { health } = monitor([{ name: "a", url: `${base}/ok` }], {
-    intervalMs: 20,
-  });
-  health.start();
-  await new Promise((resolve) => setTimeout(resolve, 90));
-  health.stop();
-  // A probe already in flight at stop() still reaches the server; let it before counting.
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  const count = seen.length;
-  assert.ok(count >= 2, `expected repeated probes, saw ${count}`);
-  await new Promise((resolve) => setTimeout(resolve, 100));
-  assert.equal(seen.length, count, "no probe after stop");
+  assert.match(row!.error ?? "", /^fetch failed: \S*ECONNREFUSED/);
 });
 
 test("modelsUrlFor swaps the transcription path for the model listing", () => {

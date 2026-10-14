@@ -68,7 +68,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   takes its connection through the constructor: `Enricher` and `AgentService` get
   `sdkQuery`, `MediaService` gets `TelegramFiles`, and `FallbackTranscriber` gets its
   backend list from `buildTranscriber` in `app.ts`. A new API gets its client here. Still
-  to move: `HealthMonitor` probes the upstreams itself. Don't add more of those.
+  to move: `HealthCheck` probes the upstreams itself. Don't add more of those.
 - **Pure helpers in `libs/` and `domain/`.** Deterministic, token-free helpers (formatting,
   anchor replacement, candidate filtering, edit parsing) live in `libs/<topic>.ts`, each with
   its `<topic>.test.ts`. No network, vault or database access there; the only side effects
@@ -534,18 +534,18 @@ Layers call downward only: presentation calls services, services call data. `dom
   `RatingService.startFollowup`, so a
   rating that is off never reaches it. The switches govern the nightly prompt only: `/rate`
   and the menu's Rate today still ask, and their follow-up follows its own switch.
-- **Connection health never spends a token.** `HealthMonitor` (`services/health.ts`) probes
-  every upstream once a minute, all at once, with a 5s timeout each: Anthropic and
-  Telegram at their bare host, Groq and OpenCode at `/models` with their key (skipped when
-  there is no key), Obsidian at its REST root through the client's own TLS dispatcher, and
-  Parakeet at the `/models` listing next to its transcription URL (`modelsUrlFor`). A
-  probe is a GET with no body, and `upstreams()` is the only place the URLs are built, so
-  `health.test.ts` fails if one of them ever points at a completions, messages or audio
-  endpoint. Two failed probes in a row mark an upstream down, one success brings it back,
-  and each transition is one Telegram notice. An upstream probed with a key needs a 2xx:
-  Groq answers a bad key with 401, while OpenCode's listing doesn't check the key, so
-  there a 2xx only proves the host answers. The rest count any HTTP answer. `/status`
-  lists the snapshot through `formatHealth` (`libs/admin.ts`).
+- **Connection health is checked on demand and never spends a token.** `/status` asks
+  `HealthCheck` (`services/health.ts`) to probe every upstream once, all at once, with a
+  5s timeout each: Anthropic and Telegram at their bare host, Groq and OpenCode at
+  `/models` with their key (skipped when there is no key), Obsidian at its REST root
+  through the client's own TLS dispatcher, and Parakeet at the `/models` listing next to
+  its transcription URL (`modelsUrlFor`). Nothing runs in the background and nothing is
+  sent unprompted. A probe is a GET with no body, and `upstreams()` is the only place the
+  URLs are built, so `health.test.ts` fails if one of them ever points at a completions,
+  messages or audio endpoint. An upstream probed with a key needs a 2xx: Groq answers a
+  bad key with 401, while OpenCode's listing doesn't check the key, so there a 2xx only
+  proves the host answers. The rest count any HTTP answer. The result is rendered by
+  `formatHealth` (`libs/admin.ts`).
 
 ## Conventions
 

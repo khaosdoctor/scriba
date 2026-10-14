@@ -2,7 +2,6 @@ import { type Dispatcher, fetch } from "undici";
 import { OPENCODE_BASE_URL } from "../data/connections/groq.ts";
 import type { UpstreamStatus } from "../domain/health/structures.ts";
 import { logger } from "../libs/log.ts";
-import { formatDuration } from "../libs/text.ts";
 
 const log = logger("health");
 
@@ -77,57 +76,23 @@ function describe(err: unknown): string {
   return err.message;
 }
 
-export class HealthMonitor {
-  private state = new Map<string, UpstreamStatus>();
-  private timer: NodeJS.Timeout | null = null;
-
+/** Probes every upstream once, all at once, when asked: `/status` is the only caller,
+ *  so nothing runs in the background and nothing is ever sent unprompted. */
+export class HealthCheck {
   constructor(
     private targets: Upstream[],
-    private notify: (text: string) => Promise<void>,
-    private intervalMs = 60_000,
     private timeoutMs = 5_000,
-  ) {
-    const now = Date.now();
-    for (const upstream of targets)
-      this.state.set(upstream.name, {
-        name: upstream.name,
-        up: true,
-        latencyMs: null,
-        error: null,
-        failures: 0,
-        since: now,
-      });
-  }
+  ) {}
 
-  start(): void {
+  async check(): Promise<UpstreamStatus[]> {
     log.info(
-      {
-        upstreams: this.targets.map((upstream) => upstream.name),
-        intervalMs: this.intervalMs,
-        timeoutMs: this.timeoutMs,
-      },
-      "health monitor started",
+      { upstreams: this.targets.map((upstream) => upstream.name) },
+      "health check",
     );
-    void this.check();
-    this.timer = setInterval(() => void this.check(), this.intervalMs);
-    this.timer.unref();
+    return Promise.all(this.targets.map((upstream) => this.probe(upstream)));
   }
 
-  stop(): void {
-    if (this.timer) clearInterval(this.timer);
-    this.timer = null;
-    log.info("health monitor stopped");
-  }
-
-  snapshot(): UpstreamStatus[] {
-    return [...this.state.values()].map((status) => ({ ...status }));
-  }
-
-  async check(): Promise<void> {
-    await Promise.all(this.targets.map((upstream) => this.probe(upstream)));
-  }
-
-  private async probe(upstream: Upstream): Promise<void> {
+  private async probe(upstream: Upstream): Promise<UpstreamStatus> {
     const started = Date.now();
     try {
       const res = await fetch(upstream.url, {
@@ -137,53 +102,14 @@ export class HealthMonitor {
       });
       await res.body?.cancel();
       if (upstream.requireOk && !res.ok) throw new Error(`HTTP ${res.status}`);
-      this.record(upstream.name, Date.now() - started, null);
+      const latencyMs = Date.now() - started;
+      log.debug({ upstream: upstream.name, latencyMs }, "probe ok");
+      return { name: upstream.name, up: true, latencyMs, error: null };
     } catch (err) {
-      this.record(upstream.name, Date.now() - started, describe(err));
+      const latencyMs = Date.now() - started;
+      const error = describe(err);
+      log.warn({ upstream: upstream.name, latencyMs, error }, "probe failed");
+      return { name: upstream.name, up: false, latencyMs, error };
     }
-  }
-
-  private record(name: string, latencyMs: number, error: string | null): void {
-    const status = this.state.get(name);
-    if (!status) return;
-    status.latencyMs = latencyMs;
-    status.error = error;
-    if (error === null) {
-      log.debug({ upstream: name, latencyMs }, "probe ok");
-      status.failures = 0;
-      if (status.up) return;
-      const downFor = Date.now() - status.since;
-      status.up = true;
-      status.since = Date.now();
-      log.info(
-        { upstream: name, latencyMs, downForMs: downFor },
-        "upstream up",
-      );
-      this.announce(
-        name,
-        `🟢 ${name} is back (${latencyMs} ms) after ${formatDuration(downFor)} down.`,
-      );
-      return;
-    }
-    status.failures++;
-    log.debug(
-      { upstream: name, latencyMs, error, failures: status.failures },
-      "probe failed",
-    );
-    if (!status.up || status.failures < 2) return;
-    status.up = false;
-    status.since = Date.now();
-    log.warn(
-      { upstream: name, latencyMs, error, failures: status.failures },
-      "upstream down",
-    );
-    this.announce(name, `🔴 ${name} is unreachable: ${error}`);
-  }
-
-  /** Tell the owner. A failed send must not throw back into a probe round. */
-  private announce(name: string, text: string): void {
-    this.notify(text).catch((err) =>
-      log.error({ err, upstream: name }, "health notice failed to send"),
-    );
   }
 }
