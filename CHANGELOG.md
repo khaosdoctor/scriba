@@ -1,3 +1,10 @@
+## [1.61.0](https://github.com/khaosdoctor/scriba/compare/v1.60.1...v1.61.0) (2026-10-14)
+
+
+### Features
+
+* **status:** check upstream health only when /status runs, with no background alerts ([6d5ac40](https://github.com/khaosdoctor/scriba/commit/6d5ac404c6ffc664c61d6c754ab4dffd24c5436d))
+
 ## [1.60.1](https://github.com/khaosdoctor/scriba/compare/v1.60.0...v1.60.1) (2026-10-10)
 
 
@@ -26,11 +33,4 @@
 
 * **fix:** /fix re-runs the text clean-up over a jot and shows the result ([6d2d209](https://github.com/khaosdoctor/scriba/commit/6d2d20937803c8795015172a3a35b9c1c7a66fda))
 * **til:** write TIL lines without the time ([298fa0c](https://github.com/khaosdoctor/scriba/commit/298fa0cf695474c23a4f51136be53a930db4e7c0))
-
-## [1.57.0](https://github.com/khaosdoctor/scriba/compare/v1.56.0...v1.57.0) (2026-10-08)
-
-
-### Features
-
-* **voice:** show the raw transcript under a fixed voice jot ([a015cb9](https://github.com/khaosdoctor/scriba/commit/a015cb96a2d4d3a8682c26882b3640bd0393c39a))
 
