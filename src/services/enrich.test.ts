@@ -924,13 +924,13 @@ test("the cap grows with the text the answer writes back", async () => {
     query: failQuery(),
     fallbacks: [{ apiKey: "k", model: "g" }],
     groqChat: groqFn,
-    timeoutMs: 15_000,
+    timeoutMs: 35_000,
   });
   const transcript = "y".repeat(3000);
   await enricher.fixTranscript(transcript, "sonnet");
   await enricher.enrich({ text: transcript, candidates: [] });
   await enricher.editText(transcript, "fix it");
-  assert.deepEqual(seen, [24_000, 24_000, 24_000]);
+  assert.deepEqual(seen, [44_000, 44_000, 44_000]);
 
   // a slow answer to a long transcript is waited for instead of timed out
   const slowQuery = (() =>
@@ -999,7 +999,7 @@ test("every step down: the chain throws ModelsDownError once and says so once", 
     query: failQuery("overloaded 529"),
     fallbacks: [{ apiKey: "k", model: "g", name: "Groq" }],
     groqChat: failGroq,
-    timeoutMs: 15_000,
+    timeoutMs: 35_000,
     now: () => clock.now,
     notifySwitch: (to) => {
       notices.push(to);

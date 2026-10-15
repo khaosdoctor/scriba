@@ -117,7 +117,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   first (sonnet, then the chat fallbacks), so where it ended up says nothing about where
   enrichment is. Vision has no Groq step.
 - **No model call waits forever, and a dead step is skipped.** Each call is capped at
-  `ENRICH_TIMEOUT_MS` (15s) plus `MS_PER_CHAR` (3ms) per character of the text the answer
+  `ENRICH_TIMEOUT_MS` (35s) plus `MS_PER_CHAR` (3ms) per character of the text the answer
   writes back (enrichment, voice fix, `editText`), since the answer echoes that text and a
   long voice note can't be cleaned up in a short note's time: sonnet's voice fix took ~5s
   on 400 characters and up to 12.5s on 3,250. The SDK gets an `AbortController` and the

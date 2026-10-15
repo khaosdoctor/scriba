@@ -143,7 +143,7 @@ export class Enricher {
   }
 
   private get timeoutMs(): number {
-    return this.deps.timeoutMs ?? 15_000;
+    return this.deps.timeoutMs ?? 35_000;
   }
 
   private breaker(name: string): CircuitBreaker {

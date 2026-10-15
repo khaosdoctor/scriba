@@ -79,7 +79,7 @@ const EnvObject = z.object({
   OPENCODE_FALLBACK_MODEL: z.string().default("deepseek-v4.1-flash"),
   // Cap on one enrichment call, per step of the chain. A call past it counts as a failure
   // towards that step's circuit breaker, and the next step is tried.
-  ENRICH_TIMEOUT_MS: z.coerce.number().positive().default(15_000),
+  ENRICH_TIMEOUT_MS: z.coerce.number().positive().default(35_000),
 
   // Voice-fix: when enabled, a second model lightly cleans the transcript before
   // enrichment. Sonnet by default: haiku paraphrases too aggressively.
