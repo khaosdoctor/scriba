@@ -671,44 +671,6 @@ test("enrich throws when the SDK gives up on structured output (error subtype)",
   );
 });
 
-test("chain tries the second chat fallback when the first one fails", async () => {
-  const calls: { model: string; baseUrl?: string }[] = [];
-  const chatFn: GroqChatFn = async (_key, model, _msgs, baseUrl) => {
-    calls.push({ model, baseUrl });
-    if (model === "groq-model") throw new Error("groq down");
-    return {
-      text: '{"text":"from opencode","ambiguous":[]}',
-      usage: { input: 3, output: 4 },
-    };
-  };
-  const switches: string[] = [];
-  const enricher = new Enricher({
-    model: "claude-haiku-4-5",
-    query: failQuery(),
-    fallbacks: [
-      { apiKey: "gsk", model: "groq-model", name: "Groq" },
-      {
-        apiKey: "oc",
-        model: "deepseek-v4.1-flash",
-        baseUrl: "https://opencode.ai/zen/go/v1",
-        name: "OpenCode",
-      },
-    ],
-    groqChat: chatFn,
-    notifySwitch: (to, model) => {
-      switches.push(`${to}:${model}`);
-    },
-  });
-  const out = await enricher.enrich({ text: "a", candidates: [] });
-  assert.equal(out.text, "from opencode");
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0]!.model, "groq-model");
-  assert.equal(calls[0]!.baseUrl, undefined);
-  assert.equal(calls[1]!.model, "deepseek-v4.1-flash");
-  assert.equal(calls[1]!.baseUrl, "https://opencode.ai/zen/go/v1");
-  assert.deepEqual(switches, ["fallback:OpenCode"]);
-});
-
 test("enrich falls back to Groq text-parsing when structured output is exhausted", async () => {
   const groq = fakeGroq('{"text":"rescued by groq","ambiguous":[]}');
   const enricher = new Enricher({
@@ -899,7 +861,7 @@ test("the SDK gets an abort controller and the chat fallbacks get the timeout", 
   assert.equal(calls[0]!.options.effort, "low");
 
   const seen: (number | undefined)[] = [];
-  const groqFn: GroqChatFn = async (_k, _m, _msgs, _url, timeoutMs) => {
+  const groqFn: GroqChatFn = async (_k, _m, _msgs, timeoutMs) => {
     seen.push(timeoutMs);
     return { text: '{"text":"ok"}', usage: { input: 0, output: 0 } };
   };
@@ -915,7 +877,7 @@ test("the SDK gets an abort controller and the chat fallbacks get the timeout", 
 
 test("the cap grows with the text the answer writes back", async () => {
   const seen: (number | undefined)[] = [];
-  const groqFn: GroqChatFn = async (_k, _m, _msgs, _url, timeoutMs) => {
+  const groqFn: GroqChatFn = async (_k, _m, _msgs, timeoutMs) => {
     seen.push(timeoutMs);
     return { text: '{"text":"ok"}', usage: { input: 0, output: 0 } };
   };

@@ -2,7 +2,7 @@ import { Bot } from "grammy";
 import type { Config } from "./config.ts";
 import { sdkQuery } from "./data/connections/anthropic.ts";
 import { GithubReleases } from "./data/connections/github.ts";
-import { GroqTranscriber, OPENCODE_BASE_URL } from "./data/connections/groq.ts";
+import { GroqTranscriber } from "./data/connections/groq.ts";
 import { ParakeetTranscriber } from "./data/connections/parakeet.ts";
 import { TelegramFiles } from "./data/connections/telegram-files.ts";
 import { WebService } from "./data/connections/web.ts";
@@ -83,13 +83,6 @@ async function buildEnricher(
       apiKey: config.enrich.groqApiKey,
       model: config.enrich.fallbackModel,
       name: "Groq",
-    });
-  if (config.enrich.opencodeApiKey)
-    fallbacks.push({
-      apiKey: config.enrich.opencodeApiKey,
-      model: config.enrich.opencodeModel,
-      baseUrl: OPENCODE_BASE_URL,
-      name: "OpenCode",
     });
   log.info(
     {
@@ -260,7 +253,6 @@ export async function createScriba(
       upstreams(
         {
           groqApiKey: config.enrich.groqApiKey,
-          opencodeApiKey: config.enrich.opencodeApiKey,
           obsidianUrl: config.obsidian.url,
           parakeetUrl: config.transcription.parakeetUrl,
         },

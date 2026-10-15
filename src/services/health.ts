@@ -1,5 +1,4 @@
 import { type Dispatcher, fetch } from "undici";
-import { OPENCODE_BASE_URL } from "../data/connections/groq.ts";
 import type { UpstreamStatus } from "../domain/health/structures.ts";
 import { logger } from "../libs/log.ts";
 
@@ -26,15 +25,13 @@ export interface Upstream {
   url: string;
   headers?: Record<string, string>;
   /** Only a 2xx counts as up. Set where a key is sent: Groq answers a bad key with 401,
-   *  so its probe also catches a revoked key; OpenCode's listing doesn't check the key,
-   *  so there it only proves the host answers. Otherwise any HTTP answer counts. */
+   *  so its probe also catches a revoked key. Otherwise any HTTP answer counts. */
   requireOk?: boolean;
   dispatcher?: Dispatcher;
 }
 
 interface HealthTargets {
   groqApiKey: string;
-  opencodeApiKey: string;
   obsidianUrl: string;
   parakeetUrl: string;
 }
@@ -54,13 +51,6 @@ export function upstreams(
       name: "groq",
       url: "https://api.groq.com/openai/v1/models",
       headers: { Authorization: `Bearer ${targets.groqApiKey}` },
-      requireOk: true,
-    });
-  if (targets.opencodeApiKey)
-    list.push({
-      name: "opencode",
-      url: `${OPENCODE_BASE_URL}/models`,
-      headers: { Authorization: `Bearer ${targets.opencodeApiKey}` },
       requireOk: true,
     });
   return list;

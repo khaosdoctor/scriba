@@ -40,7 +40,6 @@ import {
 export interface EnrichFallback {
   apiKey: string;
   model: string;
-  baseUrl?: string;
   name?: string;
 }
 
@@ -451,7 +450,6 @@ export class Enricher {
                 fallback.apiKey,
                 fallback.model,
                 groqMessages,
-                fallback.baseUrl,
                 timeoutMs,
               ),
           }))

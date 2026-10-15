@@ -58,8 +58,8 @@ Layers call downward only: presentation calls services, services call data. `dom
   over `ObsidianConnection`), `TaskNoteRepository` (`task-notes.ts`, the two task notes) and `VaultRepository` (`vault.ts`,
   the read-only mount and the link index).
 - **External clients live in `data/connections/`.** One client per source, with no business
-  operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber`, `groqChat`
-  and the OpenCode base URL (`groq.ts`), `ObsidianConnection` (`obsidian.ts`, the REST API
+  operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber` and
+  `groqChat` (`groq.ts`), `ObsidianConnection` (`obsidian.ts`, the REST API
   and its TLS dispatcher), `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`),
   `GithubReleases` (`github.ts`), `TelegramFiles` (`telegram-files.ts`, `getFile` and the
   download URL that carries the bot token) and `sdkQuery` (`anthropic.ts`, the Agent SDK's
@@ -110,11 +110,11 @@ Layers call downward only: presentation calls services, services call data. `dom
   (`FallbackTranscriber`); non-English is translated in (Groq `/translations`, or the
   enricher for Parakeet voice + all text).
 - **Every model call falls back remote → local.** Enrichment tries the chosen Claude
-  model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model, then
-  OpenCode Go when `OPENCODE_GO_API_KEY` is set, and posts the jot un-enriched when all
-  fail. The user is told once per change of step, not per jot, with the error that moved
-  it. Only enrichment's own chain sends that notice: the voice fix runs its own model
-  first (sonnet, then the chat fallbacks), so where it ended up says nothing about where
+  model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model when
+  `GROQ_API_KEY` is set, and posts the jot un-enriched when all fail. The user is told
+  once per change of step, not per jot, with the error that moved it. Only enrichment's
+  own chain sends that notice: the voice fix runs its own model first (sonnet, then
+  Groq), so where it ended up says nothing about where
   enrichment is. Vision has no Groq step.
 - **No model call waits forever, and a dead step is skipped.** Each call is capped at
   `ENRICH_TIMEOUT_MS` (35s) plus `MS_PER_CHAR` (3ms) per character of the text the answer
@@ -548,15 +548,14 @@ Layers call downward only: presentation calls services, services call data. `dom
   and the menu's Rate today still ask, and their follow-up follows its own switch.
 - **Connection health is checked on demand and never spends a token.** `/status` asks
   `HealthCheck` (`services/health.ts`) to probe every upstream once, all at once, with a
-  5s timeout each: Anthropic and Telegram at their bare host, Groq and OpenCode at
-  `/models` with their key (skipped when there is no key), Obsidian at its REST root
+  5s timeout each: Anthropic and Telegram at their bare host, Groq at `/models`
+  with its key (skipped when there is no key), Obsidian at its REST root
   through the client's own TLS dispatcher, and Parakeet at the `/models` listing next to
   its transcription URL (`modelsUrlFor`). Nothing runs in the background and nothing is
   sent unprompted. A probe is a GET with no body, and `upstreams()` is the only place the
   URLs are built, so `health.test.ts` fails if one of them ever points at a completions,
-  messages or audio endpoint. An upstream probed with a key needs a 2xx: Groq answers a
-  bad key with 401, while OpenCode's listing doesn't check the key, so there a 2xx only
-  proves the host answers. The rest count any HTTP answer. The result is rendered by
+  messages or audio endpoint. Groq, probed with its key, needs a 2xx, since it answers a
+  bad key with 401. The rest count any HTTP answer. The result is rendered by
   `formatHealth` (`libs/admin.ts`).
 
 ## Conventions
@@ -573,7 +572,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   `warn` for rejected/invalid input, `error` (with `{ err }`) for failures, `debug` for
   raw payloads. A new command or feature without logs on its happy path AND its rejection
   paths is incomplete. Secrets are stripped in pino core via `redact` in `src/libs/log.ts`
-  (`*.token`/`*.key`/`*.groqApiKey`/`*.opencodeApiKey`); log config objects freely, but
+  (`*.token`/`*.key`/`*.groqApiKey`); log config objects freely, but
   add a path there if you introduce a secret with a different field name. A secret inside
   a string (a failed Telegram request's error carries the `bot<token>` URL) is out of
   `redact`'s reach, so the `streamWrite` hook there scrubs the Telegram token from every

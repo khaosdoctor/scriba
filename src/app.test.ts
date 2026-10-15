@@ -328,10 +328,7 @@ dbTest(
   async (context) => {
     const dir = await mkdtemp(join(tmpdir(), "scriba-index-"));
     context.after(() => rm(dir, { recursive: true, force: true }));
-    const config = configFor(join(dir, "scriba.db"), {
-      GROQ_API_KEY: "g",
-      OPENCODE_GO_API_KEY: "oc",
-    });
+    const config = configFor(join(dir, "scriba.db"), { GROQ_API_KEY: "g" });
     const build = { version: "9.9.9", sha: "abc" };
     const modelOf = (app: Scriba) =>
       (app.enricher as unknown as { model: string }).model;

@@ -3,7 +3,6 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 import { Agent } from "undici";
-import { OPENCODE_BASE_URL } from "../data/connections/groq.ts";
 import {
   HealthCheck,
   modelsUrlFor,
@@ -47,16 +46,12 @@ const checker = (targets: Upstream[], timeoutMs = 1_000) =>
 
 const all = {
   groqApiKey: "gsk-test",
-  opencodeApiKey: "oc-test",
   obsidianUrl: "https://127.0.0.1:27124",
   parakeetUrl: "http://parakeet:5092/v1/audio/transcriptions",
 };
 
-test("upstreams skips Groq and OpenCode without a key", () => {
-  const list = upstreams(
-    { ...all, groqApiKey: "", opencodeApiKey: "" },
-    new Agent(),
-  );
+test("upstreams skips Groq without a key", () => {
+  const list = upstreams({ ...all, groqApiKey: "" }, new Agent());
   assert.deepEqual(
     list.map((upstream) => upstream.name),
     ["anthropic", "telegram", "obsidian", "parakeet"],
@@ -72,12 +67,6 @@ test("upstreams sends each key only to its own host", () => {
     name: "groq",
     url: "https://api.groq.com/openai/v1/models",
     headers: { Authorization: "Bearer gsk-test" },
-    requireOk: true,
-  });
-  assert.deepEqual(byName.get("opencode"), {
-    name: "opencode",
-    url: `${OPENCODE_BASE_URL}/models`,
-    headers: { Authorization: "Bearer oc-test" },
     requireOk: true,
   });
   assert.equal(byName.get("anthropic")?.headers, undefined);
