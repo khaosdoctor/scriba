@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { QueryFn } from "../data/connections/anthropic.ts";
 import type { GroqChatFn } from "../data/connections/groq.ts";
-import { Enricher, ModelsDownError } from "./enrich.ts";
+import { Enricher, ModelsDownError, MS_PER_CHAR } from "./enrich.ts";
 
 type Msg =
   | {
@@ -671,44 +671,6 @@ test("enrich throws when the SDK gives up on structured output (error subtype)",
   );
 });
 
-test("chain tries the second chat fallback when the first one fails", async () => {
-  const calls: { model: string; baseUrl?: string }[] = [];
-  const chatFn: GroqChatFn = async (_key, model, _msgs, baseUrl) => {
-    calls.push({ model, baseUrl });
-    if (model === "groq-model") throw new Error("groq down");
-    return {
-      text: '{"text":"from opencode","ambiguous":[]}',
-      usage: { input: 3, output: 4 },
-    };
-  };
-  const switches: string[] = [];
-  const enricher = new Enricher({
-    model: "claude-haiku-4-5",
-    query: failQuery(),
-    fallbacks: [
-      { apiKey: "gsk", model: "groq-model", name: "Groq" },
-      {
-        apiKey: "oc",
-        model: "deepseek-v4.1-flash",
-        baseUrl: "https://opencode.ai/zen/go/v1",
-        name: "OpenCode",
-      },
-    ],
-    groqChat: chatFn,
-    notifySwitch: (to, model) => {
-      switches.push(`${to}:${model}`);
-    },
-  });
-  const out = await enricher.enrich({ text: "a", candidates: [] });
-  assert.equal(out.text, "from opencode");
-  assert.equal(calls.length, 2);
-  assert.equal(calls[0]!.model, "groq-model");
-  assert.equal(calls[0]!.baseUrl, undefined);
-  assert.equal(calls[1]!.model, "deepseek-v4.1-flash");
-  assert.equal(calls[1]!.baseUrl, "https://opencode.ai/zen/go/v1");
-  assert.deepEqual(switches, ["fallback:OpenCode"]);
-});
-
 test("enrich falls back to Groq text-parsing when structured output is exhausted", async () => {
   const groq = fakeGroq('{"text":"rescued by groq","ambiguous":[]}');
   const enricher = new Enricher({
@@ -899,7 +861,7 @@ test("the SDK gets an abort controller and the chat fallbacks get the timeout", 
   assert.equal(calls[0]!.options.effort, "low");
 
   const seen: (number | undefined)[] = [];
-  const groqFn: GroqChatFn = async (_k, _m, _msgs, _url, timeoutMs) => {
+  const groqFn: GroqChatFn = async (_k, _m, _msgs, timeoutMs) => {
     seen.push(timeoutMs);
     return { text: '{"text":"ok"}', usage: { input: 0, output: 0 } };
   };
@@ -910,7 +872,62 @@ test("the SDK gets an abort controller and the chat fallbacks get the timeout", 
     groqChat: groqFn,
     timeoutMs: 1234,
   }).enrich({ text: "x", candidates: [] });
-  assert.deepEqual(seen, [1234]);
+  assert.deepEqual(seen, [1234 + MS_PER_CHAR]);
+});
+
+test("the cap grows with the text the answer writes back", async () => {
+  const seen: (number | undefined)[] = [];
+  const groqFn: GroqChatFn = async (_k, _m, _msgs, timeoutMs) => {
+    seen.push(timeoutMs);
+    return { text: '{"text":"ok"}', usage: { input: 0, output: 0 } };
+  };
+  const enricher = new Enricher({
+    model: "m",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "k", model: "g" }],
+    groqChat: groqFn,
+    timeoutMs: 35_000,
+  });
+  const transcript = "y".repeat(3000);
+  await enricher.fixTranscript(transcript, "sonnet");
+  await enricher.enrich({ text: transcript, candidates: [] });
+  await enricher.editText(transcript, "fix it");
+  assert.deepEqual(seen, [44_000, 44_000, 44_000]);
+
+  // a slow answer to a long transcript is waited for instead of timed out
+  const slowQuery = (() =>
+    (async function* () {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      yield assistantText("cleaned");
+    })()) as unknown as QueryFn;
+  const fixed = await new Enricher({
+    query: slowQuery,
+    timeoutMs: 20,
+  }).fixTranscript("z".repeat(30), "sonnet");
+  assert.equal(fixed, "cleaned");
+});
+
+test("the voice fix's own chain never sends an enrichment switch notice", async () => {
+  const fake = modelQuery(new Set(["claude-sonnet-5"]), '{"text":"ok"}');
+  const switches: string[] = [];
+  const enricher = new Enricher({
+    model: "claude-haiku-4-5",
+    query: fake.fn,
+    backupModel: "claude-sonnet-5",
+    fallbacks: [{ apiKey: "k", model: "g", name: "Groq" }],
+    groqChat: fakeGroq("cleaned by groq").fn,
+    notifySwitch: (to, model) => {
+      switches.push(`${to}:${model}`);
+    },
+  });
+  // sonnet fails the voice fix and Groq answers at the chain's second step
+  assert.equal(
+    await enricher.fixTranscript("raw", "claude-sonnet-5"),
+    "cleaned by groq",
+  );
+  // enrichment itself never left haiku
+  await enricher.enrich({ text: "x", candidates: [] });
+  assert.deepEqual(switches, []);
 });
 
 test("a step that keeps failing is skipped once its circuit opens", async () => {
@@ -944,7 +961,7 @@ test("every step down: the chain throws ModelsDownError once and says so once", 
     query: failQuery("overloaded 529"),
     fallbacks: [{ apiKey: "k", model: "g", name: "Groq" }],
     groqChat: failGroq,
-    timeoutMs: 15_000,
+    timeoutMs: 35_000,
     now: () => clock.now,
     notifySwitch: (to) => {
       notices.push(to);

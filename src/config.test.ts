@@ -18,6 +18,12 @@ test("groq key is optional and the sidecar url has a default", () => {
   assert.equal(config.enrich.backupModel, "claude-sonnet-5-5");
 });
 
+test("a variable the schema doesn't know, such as a retired key, is ignored", () => {
+  assert.doesNotThrow(() =>
+    load({ RETIRED_API_KEY: "left over in the deploy" }),
+  );
+});
+
 test("groq key and an explicit PARAKEET_URL are passed through", () => {
   const config = load({
     GROQ_API_KEY: "gk",

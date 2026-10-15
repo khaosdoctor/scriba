@@ -58,8 +58,8 @@ Layers call downward only: presentation calls services, services call data. `dom
   over `ObsidianConnection`), `TaskNoteRepository` (`task-notes.ts`, the two task notes) and `VaultRepository` (`vault.ts`,
   the read-only mount and the link index).
 - **External clients live in `data/connections/`.** One client per source, with no business
-  operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber`, `groqChat`
-  and the OpenCode base URL (`groq.ts`), `ObsidianConnection` (`obsidian.ts`, the REST API
+  operations: `openDb` (`sqlite.ts`, knex and migrations), `GroqTranscriber` and
+  `groqChat` (`groq.ts`), `ObsidianConnection` (`obsidian.ts`, the REST API
   and its TLS dispatcher), `ParakeetTranscriber` (`parakeet.ts`), `WebService` (`web.ts`),
   `GithubReleases` (`github.ts`), `TelegramFiles` (`telegram-files.ts`, `getFile` and the
   download URL that carries the bot token) and `sdkQuery` (`anthropic.ts`, the Agent SDK's
@@ -110,14 +110,19 @@ Layers call downward only: presentation calls services, services call data. `dom
   (`FallbackTranscriber`); non-English is translated in (Groq `/translations`, or the
   enricher for Parakeet voice + all text).
 - **Every model call falls back remote → local.** Enrichment tries the chosen Claude
-  model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model, then
-  OpenCode Go when `OPENCODE_GO_API_KEY` is set, and posts the jot un-enriched when all
-  fail. The user is told once per change of step, not per jot, with the error that moved
-  it. Vision has no Groq step.
+  model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model when
+  `GROQ_API_KEY` is set, and posts the jot un-enriched when all fail. The user is told
+  once per change of step, not per jot, with the error that moved it. Only enrichment's
+  own chain sends that notice: the voice fix runs its own model first (sonnet, then
+  Groq), so where it ended up says nothing about where
+  enrichment is. Vision has no Groq step.
 - **No model call waits forever, and a dead step is skipped.** Each call is capped at
-  `ENRICH_TIMEOUT_MS` (15s): the SDK gets an `AbortController` and the answer is raced
-  against it, the chat fallbacks get the same cap with SDK retries off (the next step is
-  the retry). SDK calls run with extended thinking off (`thinking: { type: "disabled" }`):
+  `ENRICH_TIMEOUT_MS` (35s) plus `MS_PER_CHAR` (3ms) per character of the text the answer
+  writes back (enrichment, voice fix, `editText`), since the answer echoes that text and a
+  long voice note can't be cleaned up in a short note's time: sonnet's voice fix took ~5s
+  on 400 characters and up to 12.5s on 3,250. The SDK gets an `AbortController` and the
+  answer is raced against it, the chat fallbacks get the same cap with SDK retries off
+  (the next step is the retry). SDK calls run with extended thinking off (`thinking: { type: "disabled" }`):
   linking a line needs none, and haiku's default thinking took 6-7s of a ~9-15s call. The
   5.5 models can't turn thinking off (the CLI ignores "disabled" for them), so the same
   calls also send `effort: "low"`, which keeps their thinking short. Each
@@ -452,15 +457,23 @@ Layers call downward only: presentation calls services, services call data. `dom
   carries **✏️ Edit** (`ed:<jotId>`, `editView` in `presentation/telegram/journal/edit.ts`).
   The tap calls `EditService.askEdit`, which sends the line's current text — wikilinks and
   all, an image's embed left off, a video's caption (the embed's alias) in place of its
-  line (`editableText` in `domain/jot/rules.ts`) — in a `<pre>`
-  block, as a force-reply that replies to the tapped status message. Bots can't fill the
-  compose box (the Bot API has no such call), so the block is the copy source: tap it, paste,
-  fix, send. This is how a wrong link gets undone from the chat (`[[Karl Barth|Karl]] Marx` →
-  `[[Karl Marx]]`). The prompt carries `(ed:<jotId>)` (`editRef`/`parseEditRef` in
-  `libs/jot.ts`) and the reply is routed by it (`promptReplies`) to `EditService.answerEdit`,
-  which replaces the line wholesale like a native message edit (`replaceJotText`, so the
-  source is folded back and a reprocess keeps it; a video's embed is rebuilt around the new
-  alias) — no model call — and deletes the prompt only once the edit has landed. A squashed
+  line (`editableText` in `domain/jot/rules.ts`) — as inline `<code>`, in a force-reply
+  that replies to the tapped status message. Bots can't fill the compose box (the Bot API
+  has no such call), so the code span is the copy source: tap it, paste, fix, send. It is
+  inline code and not a `<pre>` block because a tap on inline code copies plain text on
+  every client, while Telegram Desktop copies a `<pre>` block with its formatting and pastes
+  it back as a code block. This is how a wrong link gets undone from the chat
+  (`[[Karl Barth|Karl]] Marx` → `[[Karl Marx]]`). The prompt carries `(ed:<jotId>)`
+  (`editRef`/`parseEditRef` in `libs/jot.ts`) and the reply is routed by it
+  (`promptReplies`) to `EditService.answerEdit`, which replaces the line wholesale like a
+  native message edit (`replaceJotText`, so the source is folded back and a reprocess keeps
+  it; a video's embed is rebuilt around the new alias) — no model call — and deletes the
+  prompt only once the edit has landed. A reply that is an `s/old/new/` substitution
+  (`parseSedEdit` in `libs/jot.ts`, the sed half of `parseLiteralEdit`) is applied to the
+  text the prompt showed instead, read under the note lock, and goes through the same
+  `replaceJotText`: a media jot's embed path is never substituted, and a video's caption is
+  stored like any other edit. The prompt says so. The "replace X with Y" form is not read there, since an entry can start
+  that way. A squashed
   follower edits its leader's line; a jot sent back for processing since is refused and its
   prompt kept, so replying again later is the retry. An entry too long for one Telegram
   message is refused with an alert rather than cut: sending a cut copy back would drop the
@@ -536,15 +549,14 @@ Layers call downward only: presentation calls services, services call data. `dom
   and the menu's Rate today still ask, and their follow-up follows its own switch.
 - **Connection health is checked on demand and never spends a token.** `/status` asks
   `HealthCheck` (`services/health.ts`) to probe every upstream once, all at once, with a
-  5s timeout each: Anthropic and Telegram at their bare host, Groq and OpenCode at
-  `/models` with their key (skipped when there is no key), Obsidian at its REST root
+  5s timeout each: Anthropic and Telegram at their bare host, Groq at `/models`
+  with its key (skipped when there is no key), Obsidian at its REST root
   through the client's own TLS dispatcher, and Parakeet at the `/models` listing next to
   its transcription URL (`modelsUrlFor`). Nothing runs in the background and nothing is
   sent unprompted. A probe is a GET with no body, and `upstreams()` is the only place the
   URLs are built, so `health.test.ts` fails if one of them ever points at a completions,
-  messages or audio endpoint. An upstream probed with a key needs a 2xx: Groq answers a
-  bad key with 401, while OpenCode's listing doesn't check the key, so there a 2xx only
-  proves the host answers. The rest count any HTTP answer. The result is rendered by
+  messages or audio endpoint. Groq, probed with its key, needs a 2xx, since it answers a
+  bad key with 401. The rest count any HTTP answer. The result is rendered by
   `formatHealth` (`libs/admin.ts`).
 
 ## Conventions
@@ -561,7 +573,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   `warn` for rejected/invalid input, `error` (with `{ err }`) for failures, `debug` for
   raw payloads. A new command or feature without logs on its happy path AND its rejection
   paths is incomplete. Secrets are stripped in pino core via `redact` in `src/libs/log.ts`
-  (`*.token`/`*.key`/`*.groqApiKey`/`*.opencodeApiKey`); log config objects freely, but
+  (`*.token`/`*.key`/`*.groqApiKey`); log config objects freely, but
   add a path there if you introduce a secret with a different field name. A secret inside
   a string (a failed Telegram request's error carries the `bot<token>` URL) is out of
   `redact`'s reach, so the `streamWrite` hook there scrubs the Telegram token from every

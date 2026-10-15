@@ -59,6 +59,25 @@ test("a row shows the dates a task carries and says when it has no text", () => 
   );
 });
 
+test("a postponed task shows its new deadline and is not marked late", () => {
+  assert.equal(
+    taskListLine(
+      task({ text: "put off", due: "2026-08-20", start: "2026-09-05" }),
+      1,
+      TODAY,
+    ),
+    "1. ☐ put off · due 2026-09-05 <i>personal</i>",
+  );
+  assert.equal(
+    taskListLine(
+      task({ text: "still late", due: "2026-08-27", start: "2026-08-25" }),
+      2,
+      TODAY,
+    ),
+    "2. ☐ still late · due 2026-08-27 ⚠️ · starts 2026-08-25 <i>personal</i>",
+  );
+});
+
 test("the card and the row labels say what's missing", () => {
   const card = taskCard({
     description: "Buy cat sand",

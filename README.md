@@ -12,7 +12,7 @@ today's daily note, just because I am too lazy
 - **Your vault looks like mine.** Daily notes under `notes/daily notes`, a `## Journal` heading to write under, a `## Habits` checklist, a daily-note template and an assets folder. You can change all of it (check [Environment](#environment)), but the defaults match my vault.
 - **Tasks live in two notes.** One for work and one for personal, each with its tasks as a checklist under a single heading, tagged, with `[start:: yyyy-mm-dd]` (optional) and `[due:: yyyy-mm-dd]` (the deadline). That's the shape the Obsidian Tasks plugin queries, and you can configure the paths, headings and tags.
 - **The vault is in English.** If you send something in another language, it gets translated on the way in.
-- **You have a Claude subscription** (an OAuth token, not an API key). Enrichment runs on haiku and falls back to sonnet, then to a free Groq model, then to OpenCode Go if you set `OPENCODE_GO_API_KEY`.
+- **You have a Claude subscription** (an OAuth token, not an API key). Enrichment runs on haiku and falls back to sonnet, then to a free Groq model if you set `GROQ_API_KEY`.
 - **It runs as one always-on process.** Long polling, because it's simpler
 - **It's deployed on Coolify.** The GH Actions here trigger the deploy because Coolify caches Docker image tags in a weird way. If you don't want that, just disable the actions
 

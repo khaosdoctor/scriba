@@ -49,6 +49,14 @@ export function effectiveStart(task: Task): string | null {
   return task.start ?? task.due;
 }
 
+/** The deadline the lists go by. A start moved past the deadline means the task was put
+ *  off, so the later of the two counts: otherwise a postponed task stays overdue, and in
+ *  the morning summary, until its stale `[due:: ]` is edited too. */
+export function effectiveDue(task: Task): string | null {
+  if (task.start && task.due && task.start > task.due) return task.start;
+  return task.due;
+}
+
 export type TaskView =
   | "day"
   | "open"
@@ -75,21 +83,26 @@ export function filterTasks(
   const inWeek = (date: string | null) =>
     !!date && date >= weekStart && date <= weekEnd;
   const twoWeeks = shiftDate(today, 14);
-  const matches: Record<Exclude<TaskView, "done">, (task: Task) => boolean> = {
-    day: (task) =>
-      (!!task.due && task.due <= today) || effectiveStart(task) === today,
+  const matches: Record<
+    Exclude<TaskView, "done">,
+    (due: string | null, task: Task) => boolean
+  > = {
+    day: (due, task) =>
+      (!!due && due <= today) || effectiveStart(task) === today,
     open: () => true,
-    future: (task) => !!task.due && task.due >= today,
-    overdue: (task) => !!task.due && task.due < today,
-    today: (task) => task.due === today || effectiveStart(task) === today,
-    week: (task) => inWeek(task.due) || inWeek(effectiveStart(task)),
-    two: (task) => !!task.due && task.due >= today && task.due <= twoWeeks,
+    future: (due) => !!due && due >= today,
+    overdue: (due) => !!due && due < today,
+    today: (due, task) => due === today || effectiveStart(task) === today,
+    week: (due, task) => inWeek(due) || inWeek(effectiveStart(task)),
+    two: (due) => !!due && due >= today && due <= twoWeeks,
   };
   const open = tasks.filter((task) => task.state === "open");
-  const picked = open.filter(matches[view]);
+  const picked = open.filter((task) => matches[view](effectiveDue(task), task));
   return picked.sort(
     (left, right) =>
-      (left.due ?? "9999-99-99").localeCompare(right.due ?? "9999-99-99") ||
+      (effectiveDue(left) ?? "9999-99-99").localeCompare(
+        effectiveDue(right) ?? "9999-99-99",
+      ) ||
       (effectiveStart(left) ?? "").localeCompare(effectiveStart(right) ?? "") ||
       left.text.localeCompare(right.text),
   );

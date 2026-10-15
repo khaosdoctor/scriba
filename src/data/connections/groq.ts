@@ -36,13 +36,10 @@ export class GroqTranscriber {
  *  text turns, or a content-part array for the vision (image) turn. */
 export type GroqMessage = { role: "system" | "user"; content: unknown };
 
-export const OPENCODE_BASE_URL = "https://opencode.ai/zen/go/v1";
-
 export type GroqChatFn = (
   apiKey: string,
   model: string,
   messages: GroqMessage[],
-  baseUrl: string | undefined,
   timeoutMs: number,
 ) => Promise<{ text: string; usage: { input: number; output: number } }>;
 
@@ -50,17 +47,11 @@ export const groqChat: GroqChatFn = async (
   apiKey,
   model,
   messages,
-  baseUrl,
   timeoutMs,
 ) => {
   // No SDK retries: the next tier is the retry, and three timed-out attempts would hold
   // the jot three times as long before it got there.
-  const groq = new Groq({
-    apiKey,
-    maxRetries: 0,
-    timeout: timeoutMs,
-    ...(baseUrl ? { baseURL: baseUrl } : {}),
-  });
+  const groq = new Groq({ apiKey, maxRetries: 0, timeout: timeoutMs });
   const res = await groq.chat.completions.create({
     model,
     temperature: 0,

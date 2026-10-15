@@ -9,7 +9,7 @@ export const level = process.env.LOG_LEVEL ?? "debug";
 // Secrets stripped in pino core so they never reach any stream, any call site. Wildcards
 // match the config secrets (telegram.token, obsidian.key, transcription.groqApiKey).
 const redact = {
-  paths: ["*.token", "*.key", "*.groqApiKey", "*.opencodeApiKey"],
+  paths: ["*.token", "*.key", "*.groqApiKey"],
   censor: "***",
 };
 // A failed Telegram request puts the whole api.telegram.org/bot<token>/ URL in its error

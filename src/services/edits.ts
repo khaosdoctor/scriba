@@ -22,6 +22,7 @@ import {
   editRef,
   embedOffer,
   parseLiteralEdit,
+  parseSedEdit,
   type StatusButtons,
   setEmbeds,
 } from "../libs/jot.ts";
@@ -347,7 +348,9 @@ export class EditService {
 
   /** ✏️ Edit on a finished jot: send its current text back as a force-reply prompt, a
    *  reply to the tapped status message, so the owner copies it, fixes it and sends it
-   *  back. Bots can't fill the compose box, so the text comes in a copyable block. */
+   *  back. Bots can't fill the compose box, so the text comes as inline code: a tap copies
+   *  it as plain text on every client, where a `<pre>` block clicked on Telegram Desktop
+   *  copies as a code block and pastes back as one. */
   async askEdit(
     jotId: string | undefined,
     replyTo: number | undefined,
@@ -372,7 +375,7 @@ export class EditService {
       return "no-line";
     }
     const text = editableText(target, stripJournalLine(line, target.time));
-    const head = `✏️ Reply with the new text for ${target.id}. Tap the block to copy it.\n`;
+    const head = `✏️ Reply with the new text for ${target.id}, or a fix like s/old/new/. Tap the text to copy it.\n`;
     const ref = `\n${editRef(target.id)}`;
     // Cutting the text to fit would hand back a copy that, sent as is, drops the rest of
     // the entry, so an entry too long for one message is left to Obsidian.
@@ -384,7 +387,7 @@ export class EditService {
       );
       return "too-long";
     }
-    const html = `${head.replace(target.id, `<code>${target.id}</code>`)}<pre>${escapeHtml(text)}</pre>${ref}`;
+    const html = `${head.replace(target.id, `<code>${target.id}</code>`)}<code>${escapeHtml(text)}</code>${ref}`;
     await notifier.send(html, {
       html: true,
       forceReply: true,
@@ -396,8 +399,10 @@ export class EditService {
   }
 
   /** The reply to an ✏️ Edit prompt replaces the jot's whole text, like a native message
-   *  edit. The prompt is scaffolding, so it goes once the edit lands (or its jot is gone);
-   *  one whose jot is busy, or whose edit threw, stays, since replying again is the retry. */
+   *  edit, unless it is an `s/old/new/` substitution, which is applied to the line like a
+   *  reply to the jot's own message. The prompt is scaffolding, so it goes once the edit
+   *  lands (or its jot is gone); one whose jot is busy, or whose edit threw, stays, since
+   *  replying again is the retry. */
   async answerEdit(
     jotId: string,
     text: string,
@@ -420,14 +425,8 @@ export class EditService {
       await this.dropPrompt(promptId);
       return "gone";
     }
-    const markdown = editedJotText(jot.section, text);
-    log.info(
-      { jotId, chars: markdown.length },
-      "edit reply: replacing jot text",
-    );
-    log.debug({ jotId, text: markdown }, "edit reply: new text");
     await jots.status(jot.id, "✍️ got your edit — applying…");
-    const confirmation = await this.replaceJotText(jot, markdown);
+    const confirmation = await this.answerText(jot, text);
     const found = confirmation !== LINE_NOT_FOUND;
     // A line gone from the note is gone for good, so there's no retry to keep the prompt
     // for, and nothing left to edit or undo.
@@ -435,6 +434,25 @@ export class EditService {
     await this.dropPrompt(promptId);
     if (!found) log.warn({ jotId }, "edit reply: anchored line not found");
     return found ? "applied" : "no-line";
+  }
+
+  private async answerText(jot: Jot, text: string): Promise<string> {
+    const sed = parseSedEdit(text);
+    if (sed) {
+      log.info({ jotId: jot.id, edit: text }, "edit reply: substituting");
+      // Only the text Edit showed is substituted, so a media embed's path stays intact.
+      // A callback keeps the replacement literal: "$$" or "$&" are not replace patterns here.
+      return this.replaceJotText(jot, (current) =>
+        current.replaceAll(sed.old, () => sed.new),
+      );
+    }
+    const markdown = editedJotText(jot.section, text);
+    log.info(
+      { jotId: jot.id, chars: markdown.length },
+      "edit reply: replacing jot text",
+    );
+    log.debug({ jotId: jot.id, text: markdown }, "edit reply: new text");
+    return this.replaceJotText(jot, markdown);
   }
 
   private async dropPrompt(promptId: number): Promise<void> {
@@ -581,7 +599,7 @@ export class EditService {
             freeform.push(ins);
             continue;
           }
-          text = text.replaceAll(lit.old, lit.new);
+          text = text.replaceAll(lit.old, () => lit.new);
         }
         if (freeform.length)
           text = await this.deps.enricher.editText(
@@ -600,21 +618,29 @@ export class EditService {
   /** Replace a jot's whole text (an edited message, not an instruction). The new text is
    *  only the message's text or caption, so a media jot's embed is re-appended: editing an
    *  image's caption must not drop the image out of the note. A video's caption is the
-   *  embed's alias, so it is rebuilt around the new one and stored for later writes. */
-  private async replaceJotText(jot: Jot, newText: string): Promise<string> {
+   *  embed's alias, so it is rebuilt around the new one and stored for later writes. A
+   *  function is handed the current editable text, read under the note lock. */
+  private async replaceJotText(
+    jot: Jot,
+    edit: string | ((current: string) => string),
+  ): Promise<string> {
     const video = jot.kind === "video";
-    const content = video
-      ? assetEmbed({ ...jot, raw_text: newText || null })
-      : entryContent(jot, newText);
-    const found = await this.deps.obsidian.updateLine(
+    const newText = await this.deps.obsidian.updateLine(
       jot.note_path,
       jot.anchor,
-      (_line, write) => {
+      (line, write) => {
+        const text =
+          typeof edit === "string"
+            ? edit
+            : edit(editableText(jot, stripJournalLine(line, jot.time)));
+        const content = video
+          ? assetEmbed({ ...jot, raw_text: text || null })
+          : entryContent(jot, text);
         write(journalLine(jot.time, content, jot.anchor, jot.section));
-        return true;
+        return text;
       },
     );
-    if (!found) return LINE_NOT_FOUND;
+    if (newText === null) return LINE_NOT_FOUND;
     if (video) await this.deps.repo.updateJot(jot.id, { raw_text: newText });
     else await this.syncEditedSource(jot, newText);
     return editConfirmation(jot.time, newText);

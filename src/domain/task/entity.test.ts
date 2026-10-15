@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sampleTask as task } from "../../test/fakes.ts";
-import { effectiveStart, filterTasks } from "./entity.ts";
+import { effectiveDue, effectiveStart, filterTasks } from "./entity.ts";
 
 const TODAY = "2026-08-29"; // a Saturday
 
@@ -59,6 +59,36 @@ test("the list presets mirror the vault's task queries", () => {
   assert.deepEqual(texts("done"), ["new done", "old done"]); // newest completion first
   // "this week" is Sun 23rd–Sat 29th: the overdue one is out, a task starting today is in.
   assert.deepEqual(texts("week"), ["today", "starts today"]);
+});
+
+test("a task whose start was moved past its deadline counts as due on the new start", () => {
+  const tasks = [
+    task({ start: "2026-08-10", due: "2026-08-20", text: "late" }),
+    task({ start: "2026-09-05", due: "2026-08-20", text: "put off" }),
+    task({ start: "2026-08-29", due: "2026-08-20", text: "put off to today" }),
+  ];
+  const texts = (view: Parameters<typeof filterTasks>[1]) =>
+    filterTasks(tasks, view, TODAY).map((row) => row.text);
+  assert.deepEqual(texts("day"), ["late", "put off to today"]);
+  assert.deepEqual(texts("overdue"), ["late"]);
+  assert.deepEqual(texts("today"), ["put off to today"]);
+  assert.deepEqual(texts("week"), ["put off to today"]);
+  assert.deepEqual(texts("two"), ["put off to today", "put off"]);
+  assert.deepEqual(texts("future"), ["put off to today", "put off"]);
+  assert.deepEqual(texts("open"), ["late", "put off to today", "put off"]);
+});
+
+test("effectiveDue is the later of the start and the deadline", () => {
+  assert.equal(effectiveDue(task({ due: "2026-09-02" })), "2026-09-02");
+  assert.equal(effectiveDue(task({ start: "2026-08-30" })), null);
+  assert.equal(
+    effectiveDue(task({ start: "2026-08-30", due: "2026-09-02" })),
+    "2026-09-02",
+  );
+  assert.equal(
+    effectiveDue(task({ start: "2026-09-05", due: "2026-09-02" })),
+    "2026-09-05",
+  );
 });
 
 test("effectiveStart falls back to the deadline", () => {

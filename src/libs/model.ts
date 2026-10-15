@@ -51,7 +51,7 @@ export function switchNotice(
 
 export function isRecoverable(err: unknown): boolean {
   const message = errorText(err).toLowerCase();
-  // "connection error" / "timed out" are the OpenAI-shaped SDKs' (Groq, OpenCode) words
+  // "connection error" / "timed out" are the OpenAI-shaped Groq SDK's words
   // for the same network failures.
   return /timeout|timed out|connection error|etimedout|econnrefused|econnreset|enotfound|eai_again|fetch failed|socket|network|429|overloaded|\b5\d\d\b/.test(
     message,

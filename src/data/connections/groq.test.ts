@@ -62,13 +62,15 @@ test("an audio file keeps its own extension, and a JSON answer is read as well",
   assert.match(seen.at(-1)!.body, /filename="audio\.mp3"/);
 });
 
-test("groqChat posts the messages to an OpenAI-compatible base URL with the timeout and reads the answer with its usage", async () => {
+test("groqChat posts the messages to Groq with the timeout and reads the answer with its usage", async () => {
   answer.type = "application/json";
   answer.body = JSON.stringify({
     choices: [{ message: { content: "ok" } }],
     usage: { prompt_tokens: 3, completion_tokens: 5 },
   });
-  const out = await groqChat("key", "model-x", messages, url, 5000);
+  const out = await viaGroqHost(() =>
+    groqChat("key", "model-x", messages, 5000),
+  );
   const request = seen.at(-1)!;
   assert.deepEqual(out, { text: "ok", usage: { input: 3, output: 5 } });
   assert.ok(request.url.endsWith("/chat/completions"));
@@ -79,11 +81,11 @@ test("groqChat posts the messages to an OpenAI-compatible base URL with the time
   });
 });
 
-test("groqChat without a base URL talks to Groq itself, and a reply with no choices and no usage counts as empty", async () => {
+test("groqChat counts a reply with no choices and no usage as empty", async () => {
   answer.type = "application/json";
   answer.body = JSON.stringify({ choices: [] });
   const out = await viaGroqHost(() =>
-    groqChat("key", "model-x", messages, undefined, 5000),
+    groqChat("key", "model-x", messages, 5000),
   );
   assert.deepEqual(out, { text: "", usage: { input: 0, output: 0 } });
   assert.ok(seen.at(-1)!.url.endsWith("/chat/completions"));
