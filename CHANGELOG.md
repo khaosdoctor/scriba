@@ -1,3 +1,10 @@
+## [1.62.0](https://github.com/khaosdoctor/scriba/compare/v1.61.0...v1.62.0) (2026-10-15)
+
+
+### Features
+
+* **enrich:** scale model timeouts from 35s and drop OpenCode, fix the task summary and edit prompt ([#100](https://github.com/khaosdoctor/scriba/issues/100)) ([1647c61](https://github.com/khaosdoctor/scriba/commit/1647c6193bbed6fff978ea95ec440b467f8ffb51))
+
 ## [1.61.0](https://github.com/khaosdoctor/scriba/compare/v1.60.1...v1.61.0) (2026-10-14)
 
 
@@ -25,12 +32,4 @@
 ### Features
 
 * **help:** list every command with an example, and a Help button in /menu ([a355fd8](https://github.com/khaosdoctor/scriba/commit/a355fd8d3bf89962491f4364b9d5145eede9a3a8))
-
-## [1.58.0](https://github.com/khaosdoctor/scriba/compare/v1.57.0...v1.58.0) (2026-10-09)
-
-
-### Features
-
-* **fix:** /fix re-runs the text clean-up over a jot and shows the result ([6d2d209](https://github.com/khaosdoctor/scriba/commit/6d2d20937803c8795015172a3a35b9c1c7a66fda))
-* **til:** write TIL lines without the time ([298fa0c](https://github.com/khaosdoctor/scriba/commit/298fa0cf695474c23a4f51136be53a930db4e7c0))
 
