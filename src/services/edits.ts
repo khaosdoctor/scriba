@@ -441,8 +441,9 @@ export class EditService {
     if (sed) {
       log.info({ jotId: jot.id, edit: text }, "edit reply: substituting");
       // Only the text Edit showed is substituted, so a media embed's path stays intact.
+      // A callback keeps the replacement literal: "$$" or "$&" are not replace patterns here.
       return this.replaceJotText(jot, (current) =>
-        current.replaceAll(sed.old, sed.new),
+        current.replaceAll(sed.old, () => sed.new),
       );
     }
     const markdown = editedJotText(jot.section, text);
@@ -598,7 +599,7 @@ export class EditService {
             freeform.push(ins);
             continue;
           }
-          text = text.replaceAll(lit.old, lit.new);
+          text = text.replaceAll(lit.old, () => lit.new);
         }
         if (freeform.length)
           text = await this.deps.enricher.editText(

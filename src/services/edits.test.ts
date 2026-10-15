@@ -434,6 +434,21 @@ test("an s/old/new/ answer on a video's edit prompt changes and keeps the captio
   assert.deepEqual(harness.updates, [[ID, { raw_text: "the dog in 2025" }]]);
 });
 
+test("an s/old/new/ answer inserts dollar signs literally", async () => {
+  const harness = setup({ text: "formula foo" });
+  assert.equal(
+    await harness.edits.answerEdit(ID, "s/foo/$$x$$ $&/", 90),
+    "applied",
+  );
+  assert.equal(harness.line(), "formula $$x$$ $&");
+});
+
+test("a sed reply to a jot's message inserts dollar signs literally", async () => {
+  const harness = setup({ text: "formula foo" });
+  await harness.edits.editByReply(77, "s/foo/$$x$$ $&/");
+  assert.equal(harness.line(), "formula $$x$$ $&");
+});
+
 test("a literal edit of an image's line folds back the caption alone", async () => {
   const image = jot({ kind: "image", asset_path: "assets/p.jpg" });
   const harness = setup({ jot: image, text: "a sunset ![[assets/p.jpg]]" });
