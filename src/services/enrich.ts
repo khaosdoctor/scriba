@@ -113,6 +113,11 @@ const outputFormat = (schema: z.ZodType): OutputFormat => {
 const TASK_OUTPUT_FORMAT = outputFormat(TaskOutputStrict);
 const ENRICH_OUTPUT_FORMAT = outputFormat(EnrichOutputStrict);
 
+/** Added to the cap per character of text the answer writes back. Sonnet's voice fix
+ *  took ~5s on 400 characters and up to 12.5s on 3,250, so a fixed cap fails every
+ *  long voice note while short ones keep the plain ENRICH_TIMEOUT_MS. */
+export const MS_PER_CHAR = 3;
+
 export interface EnricherDeps {
   query: QueryFn;
   model?: string;
@@ -197,6 +202,7 @@ export class Enricher {
     );
     return this.run({
       prompt,
+      chars: input.text.length,
       system: SYSTEM,
       jsonTail: ENRICH_JSON_ONLY,
       outputFormat: ENRICH_OUTPUT_FORMAT,
@@ -326,6 +332,7 @@ export class Enricher {
     log.info({ chars: text.length, model }, "fixTranscript: calling agent");
     const { text: fixed } = await this.run({
       prompt,
+      chars: text.length,
       system: VOICE_FIX_SYSTEM,
       model,
     });
@@ -340,12 +347,13 @@ export class Enricher {
   async editText(current: string, instruction: string): Promise<string> {
     const prompt = `Current journal text:\n"""${fence(current)}"""\n\nEdit instruction: ${fence(instruction)}\n\nReturn ONLY the edited text, nothing else. Preserve voice and any [[wikilinks]] unless the edit changes them.`;
     log.debug({ instruction }, "editText: calling agent");
-    const { text } = await this.run({ prompt });
+    const { text } = await this.run({ prompt, chars: current.length });
     return stripWrappingQuotes(text) || current;
   }
 
   private async run<T = SdkOut>({
     prompt,
+    chars = 0,
     system,
     jsonTail = "",
     outputFormat,
@@ -353,6 +361,7 @@ export class Enricher {
     parse = (out) => out as T,
   }: {
     prompt: string | AsyncIterable<unknown>;
+    chars?: number;
     system?: string;
     jsonTail?: string;
     outputFormat?: OutputFormat;
@@ -365,6 +374,7 @@ export class Enricher {
       jsonTail,
       outputFormat,
       modelOverride,
+      this.timeoutMs + chars * MS_PER_CHAR,
     );
     let lastErr: unknown;
     for (const [tier, step] of steps.entries()) {
@@ -392,7 +402,9 @@ export class Enricher {
       breaker.success();
       try {
         const out = parse(raw);
-        await this.settle(tier, step.name, lastErr);
+        // `tier` indexes enrichment's chain. A call with its own model (the voice fix)
+        // runs a different chain, so its position says nothing about enrichment.
+        if (!modelOverride) await this.settle(tier, step.name, lastErr);
         log.info(
           { step: step.name, tier, usage: raw.usage },
           "enrich: step answered",
@@ -412,6 +424,7 @@ export class Enricher {
     jsonTail: string,
     outputFormat: OutputFormat | undefined,
     modelOverride: string | undefined,
+    timeoutMs: number,
   ): { name: string; call: () => Promise<SdkOut> }[] {
     const sdkSystem =
       system && outputFormat ? system + USE_OUTPUT_TOOL : system;
@@ -427,7 +440,8 @@ export class Enricher {
     return [
       ...this.models(modelOverride ?? this.model).map((model) => ({
         name: model ?? "default",
-        call: () => this.runSdk(prompt, sdkSystem, outputFormat, model),
+        call: () =>
+          this.runSdk(prompt, sdkSystem, outputFormat, model, timeoutMs),
       })),
       ...(groqMessages
         ? this.fallbacks.map((fallback) => ({
@@ -438,7 +452,7 @@ export class Enricher {
                 fallback.model,
                 groqMessages,
                 fallback.baseUrl,
-                this.timeoutMs,
+                timeoutMs,
               ),
           }))
         : []),
@@ -474,6 +488,7 @@ export class Enricher {
     systemPrompt: string | undefined,
     outputFormat: OutputFormat | undefined,
     model: string | undefined,
+    timeoutMs: number,
   ): Promise<SdkOut> {
     // The abort kills the CLI subprocess; the race is what guarantees this returns even
     // if the stream never ends after it.
@@ -482,10 +497,10 @@ export class Enricher {
       () =>
         abortController.abort(
           new Error(
-            `timeout after ${this.timeoutMs / 1000}s (${model ?? "default"})`,
+            `timeout after ${timeoutMs / 1000}s (${model ?? "default"})`,
           ),
         ),
-      this.timeoutMs,
+      timeoutMs,
     );
     const timedOut = new Promise<never>((_, reject) =>
       abortController.signal.addEventListener(

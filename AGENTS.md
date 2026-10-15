@@ -113,11 +113,16 @@ Layers call downward only: presentation calls services, services call data. `dom
   model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model, then
   OpenCode Go when `OPENCODE_GO_API_KEY` is set, and posts the jot un-enriched when all
   fail. The user is told once per change of step, not per jot, with the error that moved
-  it. Vision has no Groq step.
+  it. Only enrichment's own chain sends that notice: the voice fix runs its own model
+  first (sonnet, then the chat fallbacks), so where it ended up says nothing about where
+  enrichment is. Vision has no Groq step.
 - **No model call waits forever, and a dead step is skipped.** Each call is capped at
-  `ENRICH_TIMEOUT_MS` (15s): the SDK gets an `AbortController` and the answer is raced
-  against it, the chat fallbacks get the same cap with SDK retries off (the next step is
-  the retry). SDK calls run with extended thinking off (`thinking: { type: "disabled" }`):
+  `ENRICH_TIMEOUT_MS` (15s) plus `MS_PER_CHAR` (3ms) per character of the text the answer
+  writes back (enrichment, voice fix, `editText`), since the answer echoes that text and a
+  long voice note can't be cleaned up in a short note's time: sonnet's voice fix took ~5s
+  on 400 characters and up to 12.5s on 3,250. The SDK gets an `AbortController` and the
+  answer is raced against it, the chat fallbacks get the same cap with SDK retries off
+  (the next step is the retry). SDK calls run with extended thinking off (`thinking: { type: "disabled" }`):
   linking a line needs none, and haiku's default thinking took 6-7s of a ~9-15s call. The
   5.5 models can't turn thinking off (the CLI ignores "disabled" for them), so the same
   calls also send `effort: "low"`, which keeps their thinking short. Each
