@@ -13,6 +13,7 @@ import {
   originalQuote,
   parseEditRef,
   parseLiteralEdit,
+  parseSedEdit,
   retryNotice,
   setEmbeds,
   statusKeyboard,
@@ -33,6 +34,13 @@ test("literal edit parser handles sed and natural forms, rejects freeform", () =
     new: "the dog",
   });
   assert.equal(parseLiteralEdit("make this clearer"), null);
+});
+
+test("sed edit parser takes only the s/old/new/ form", () => {
+  assert.deepEqual(parseSedEdit(" s/a\\/b/c/ "), { old: "a/b", new: "c" });
+  assert.deepEqual(parseSedEdit("s/pot/"), { old: "pot", new: "" });
+  assert.equal(parseSedEdit("replace pot with potentiometer"), null);
+  assert.equal(parseSedEdit("sold the car"), null);
 });
 
 test("donePreview shows enriched text in full, labels attach-only", () => {

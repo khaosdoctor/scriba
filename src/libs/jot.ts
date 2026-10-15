@@ -35,17 +35,23 @@ export function donePreview(kind: JotKind, textPart: string): string {
   return "saved";
 }
 
+/** An `s/old/new/` substitution, alone: unlike the "replace X with Y" form it can't be
+ *  mistaken for an entry's own text. */
+export function parseSedEdit(msg: string): { old: string; new: string } | null {
+  const sed = msg.trim().match(/^s\/((?:\\.|[^/])+)\/((?:\\.|[^/])*)\/?$/);
+  if (!sed || sed[1] === undefined || sed[2] === undefined) return null;
+  return {
+    old: sed[1].replace(/\\\//g, "/"),
+    new: sed[2].replace(/\\\//g, "/"),
+  };
+}
+
 export function parseLiteralEdit(
   msg: string,
 ): { old: string; new: string } | null {
+  const sed = parseSedEdit(msg);
+  if (sed) return sed;
   const trimmed = msg.trim();
-  const sed = trimmed.match(/^s\/((?:\\.|[^/])+)\/((?:\\.|[^/])*)\/?$/);
-  if (sed && sed[1] !== undefined && sed[2] !== undefined) {
-    return {
-      old: sed[1].replace(/\\\//g, "/"),
-      new: sed[2].replace(/\\\//g, "/"),
-    };
-  }
   const repl = trimmed.match(/^replace\s+"?(.+?)"?\s+with\s+"?(.+?)"?$/i);
   if (repl && repl[1] !== undefined && repl[2] !== undefined) {
     return { old: repl[1], new: repl[2] };

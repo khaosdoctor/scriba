@@ -737,7 +737,7 @@ test("Edit sends the line back as a force-reply, and the answer replaces it with
   assert.equal(prompt?.payload.reply_parameters.message_id, 50);
   assert.match(
     prompt?.payload.text,
-    /<pre>met \[\[Karl Barth\|Karl\]\] Marx<\/pre>/,
+    /<code>met \[\[Karl Barth\|Karl\]\] Marx<\/code>/,
   );
   assert.deepEqual(fixture.answers(), [undefined]);
 

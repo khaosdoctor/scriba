@@ -248,7 +248,7 @@ test("edit sends the line's text back as a copyable force-reply to the tapped me
   assert.equal(await harness.edits.askEdit(ID, 55), "asked");
   assert.deepEqual(harness.sent, [
     {
-      text: `✏️ Reply with the new text for <code>${ID}</code>. Tap the block to copy it.\n<pre>met [[Karl Barth|Karl]] Marx &amp; co</pre>\n(ed:${ID})`,
+      text: `✏️ Reply with the new text for <code>${ID}</code>, or a fix like s/old/new/. Tap the text to copy it.\n<code>met [[Karl Barth|Karl]] Marx &amp; co</code>\n(ed:${ID})`,
       opts: {
         html: true,
         forceReply: true,
@@ -263,7 +263,7 @@ test("edit leaves a media jot's embed out of the prompt", async () => {
   const image = jot({ kind: "image", asset_path: "assets/p.jpg" });
   const harness = setup({ jot: image, text: "a sunset ![[assets/p.jpg]]" });
   await harness.edits.askEdit(ID, 55);
-  assert.match(harness.sent[0]!.text, /<pre>a sunset<\/pre>/);
+  assert.match(harness.sent[0]!.text, /<code>a sunset<\/code>/);
 });
 
 test("edit offers a video's caption, the embed's alias, as the text", async () => {
@@ -274,7 +274,7 @@ test("edit offers a video's caption, the embed's alias, as the text", async () =
   });
   const harness = setup({ jot: video, text: "![[assets/v.mp4|the dog]]" });
   await harness.edits.askEdit(ID, 55);
-  assert.match(harness.sent[0]!.text, /<pre>the dog<\/pre>/);
+  assert.match(harness.sent[0]!.text, /<code>the dog<\/code>/);
 });
 
 test("edit refuses an entry too long for one Telegram message instead of cutting it", async () => {
@@ -324,6 +324,38 @@ test("the answer to an edit prompt replaces the line, drops the prompt and keeps
       { undo: true, embed: undefined },
     ],
   ]);
+});
+
+test("an s/old/new/ answer to an edit prompt substitutes in the line and folds it back", async () => {
+  const harness = setup({ text: "met [[Karl Barth|Karl]] Marx" });
+  assert.equal(
+    await harness.edits.answerEdit(
+      ID,
+      "s/[[Karl Barth|Karl]] Marx/[[Karl Marx]]/",
+      90,
+    ),
+    "applied",
+  );
+  assert.equal(harness.line(), "met [[Karl Marx]]");
+  assert.deepEqual(harness.updates, [[ID, { raw_text: "met [[Karl Marx]]" }]]);
+  assert.deepEqual(harness.removedMsgs, [90]);
+  assert.deepEqual(harness.statuses.at(-1), [
+    editConfirmation(TIME, "met [[Karl Marx]]"),
+    { undo: true, embed: undefined },
+  ]);
+});
+
+test("an answer to an edit prompt that only reads like an instruction replaces the line", async () => {
+  const harness = setup();
+  await harness.edits.answerEdit(ID, "replace the tire with a spare", 90);
+  assert.equal(harness.line(), "replace the tire with a spare");
+});
+
+test("an s/old/new/ answer whose line is gone says so", async () => {
+  const harness = setup();
+  harness.notes.set(NOTE, "# Journal\n");
+  assert.equal(await harness.edits.answerEdit(ID, "s/a/b/", 90), "no-line");
+  assert.deepEqual(harness.removedMsgs, [90]);
 });
 
 test("the answer to an edit prompt on a TIL jot loses a re-typed marker", async () => {

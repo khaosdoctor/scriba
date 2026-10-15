@@ -452,15 +452,22 @@ Layers call downward only: presentation calls services, services call data. `dom
   carries **✏️ Edit** (`ed:<jotId>`, `editView` in `presentation/telegram/journal/edit.ts`).
   The tap calls `EditService.askEdit`, which sends the line's current text — wikilinks and
   all, an image's embed left off, a video's caption (the embed's alias) in place of its
-  line (`editableText` in `domain/jot/rules.ts`) — in a `<pre>`
-  block, as a force-reply that replies to the tapped status message. Bots can't fill the
-  compose box (the Bot API has no such call), so the block is the copy source: tap it, paste,
-  fix, send. This is how a wrong link gets undone from the chat (`[[Karl Barth|Karl]] Marx` →
-  `[[Karl Marx]]`). The prompt carries `(ed:<jotId>)` (`editRef`/`parseEditRef` in
-  `libs/jot.ts`) and the reply is routed by it (`promptReplies`) to `EditService.answerEdit`,
-  which replaces the line wholesale like a native message edit (`replaceJotText`, so the
-  source is folded back and a reprocess keeps it; a video's embed is rebuilt around the new
-  alias) — no model call — and deletes the prompt only once the edit has landed. A squashed
+  line (`editableText` in `domain/jot/rules.ts`) — as inline `<code>`, in a force-reply
+  that replies to the tapped status message. Bots can't fill the compose box (the Bot API
+  has no such call), so the code span is the copy source: tap it, paste, fix, send. It is
+  inline code and not a `<pre>` block because a tap on inline code copies plain text on
+  every client, while Telegram Desktop copies a `<pre>` block with its formatting and pastes
+  it back as a code block. This is how a wrong link gets undone from the chat
+  (`[[Karl Barth|Karl]] Marx` → `[[Karl Marx]]`). The prompt carries `(ed:<jotId>)`
+  (`editRef`/`parseEditRef` in `libs/jot.ts`) and the reply is routed by it
+  (`promptReplies`) to `EditService.answerEdit`, which replaces the line wholesale like a
+  native message edit (`replaceJotText`, so the source is folded back and a reprocess keeps
+  it; a video's embed is rebuilt around the new alias) — no model call — and deletes the
+  prompt only once the edit has landed. A reply that is an `s/old/new/` substitution
+  (`parseSedEdit` in `libs/jot.ts`, the sed half of `parseLiteralEdit`) is applied to the
+  line instead, through the same `applyEdits` a reply to the jot's own message uses, and the
+  prompt says so. The "replace X with Y" form is not read there, since an entry can start
+  that way. A squashed
   follower edits its leader's line; a jot sent back for processing since is refused and its
   prompt kept, so replying again later is the retry. An entry too long for one Telegram
   message is refused with an alert rather than cut: sending a cut copy back would drop the
