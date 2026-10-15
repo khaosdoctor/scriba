@@ -1,9 +1,10 @@
-import type {
-  Task,
-  TaskDraft,
-  TaskState,
-  TaskType,
-  TaskView,
+import {
+  effectiveDue,
+  type Task,
+  type TaskDraft,
+  type TaskState,
+  type TaskType,
+  type TaskView,
 } from "../domain/task/entity.ts";
 import { clip, escapeHtml } from "./text.ts";
 import { plainDate } from "./time.ts";
@@ -49,18 +50,19 @@ export function taskListLine(
   today = plainDate(),
   max = 160,
 ): string {
-  const late =
-    task.state === "open" && task.due && task.due < today ? " ⚠️" : "";
+  // A postponed task shows the deadline the lists file it under; the note keeps its own.
+  const due = task.state === "open" ? effectiveDue(task) : task.due;
+  const late = task.state === "open" && due && due < today ? " ⚠️" : "";
   const dates =
     task.state === "done"
       ? task.completion
         ? ` · done ${task.completion}`
         : ""
-      : task.due
-        ? ` · due ${task.due}${late}`
+      : due
+        ? ` · due ${due}${late}`
         : "";
   const started =
-    task.state === "open" && task.start && task.start !== task.due
+    task.state === "open" && task.start && task.start !== due
       ? ` · starts ${task.start}`
       : "";
   const text = clip(task.text || "(no description)", max);
