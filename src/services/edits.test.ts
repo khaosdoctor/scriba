@@ -402,6 +402,38 @@ test("the answer to an image's edit prompt folds the caption back without the em
   assert.deepEqual(harness.updates, [[ID, { raw_text: "a red sunset" }]]);
 });
 
+test("an s/old/new/ answer on an image's edit prompt leaves the embed's path alone", async () => {
+  const image = jot({ kind: "image", asset_path: "assets/2026-p.jpg" });
+  const harness = setup({
+    jot: image,
+    text: "sunset in 2026 ![[assets/2026-p.jpg]]",
+  });
+  assert.equal(
+    await harness.edits.answerEdit(ID, "s/2026/2025/", 90),
+    "applied",
+  );
+  assert.equal(harness.line(), "sunset in 2025 ![[assets/2026-p.jpg]]");
+  assert.deepEqual(harness.updates, [[ID, { raw_text: "sunset in 2025" }]]);
+});
+
+test("an s/old/new/ answer on a video's edit prompt changes and keeps the caption alone", async () => {
+  const video = jot({
+    kind: "video",
+    asset_path: "assets/2026-v.mp4",
+    raw_text: "the dog in 2026",
+  });
+  const harness = setup({
+    jot: video,
+    text: "![[assets/2026-v.mp4|the dog in 2026]]",
+  });
+  assert.equal(
+    await harness.edits.answerEdit(ID, "s/2026/2025/", 90),
+    "applied",
+  );
+  assert.equal(harness.line(), "![[assets/2026-v.mp4|the dog in 2025]]");
+  assert.deepEqual(harness.updates, [[ID, { raw_text: "the dog in 2025" }]]);
+});
+
 test("a literal edit of an image's line folds back the caption alone", async () => {
   const image = jot({ kind: "image", asset_path: "assets/p.jpg" });
   const harness = setup({ jot: image, text: "a sunset ![[assets/p.jpg]]" });

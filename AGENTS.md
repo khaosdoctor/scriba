@@ -470,8 +470,9 @@ Layers call downward only: presentation calls services, services call data. `dom
   it; a video's embed is rebuilt around the new alias) — no model call — and deletes the
   prompt only once the edit has landed. A reply that is an `s/old/new/` substitution
   (`parseSedEdit` in `libs/jot.ts`, the sed half of `parseLiteralEdit`) is applied to the
-  line instead, through the same `applyEdits` a reply to the jot's own message uses, and the
-  prompt says so. The "replace X with Y" form is not read there, since an entry can start
+  text the prompt showed instead, read under the note lock, and goes through the same
+  `replaceJotText`: a media jot's embed path is never substituted, and a video's caption is
+  stored like any other edit. The prompt says so. The "replace X with Y" form is not read there, since an entry can start
   that way. A squashed
   follower edits its leader's line; a jot sent back for processing since is refused and its
   prompt kept, so replying again later is the retry. An entry too long for one Telegram

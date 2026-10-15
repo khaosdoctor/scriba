@@ -437,9 +437,13 @@ export class EditService {
   }
 
   private async answerText(jot: Jot, text: string): Promise<string> {
-    if (parseSedEdit(text)) {
+    const sed = parseSedEdit(text);
+    if (sed) {
       log.info({ jotId: jot.id, edit: text }, "edit reply: substituting");
-      return this.applyEdits(jot, [text]);
+      // Only the text Edit showed is substituted, so a media embed's path stays intact.
+      return this.replaceJotText(jot, (current) =>
+        current.replaceAll(sed.old, sed.new),
+      );
     }
     const markdown = editedJotText(jot.section, text);
     log.info(
@@ -613,21 +617,29 @@ export class EditService {
   /** Replace a jot's whole text (an edited message, not an instruction). The new text is
    *  only the message's text or caption, so a media jot's embed is re-appended: editing an
    *  image's caption must not drop the image out of the note. A video's caption is the
-   *  embed's alias, so it is rebuilt around the new one and stored for later writes. */
-  private async replaceJotText(jot: Jot, newText: string): Promise<string> {
+   *  embed's alias, so it is rebuilt around the new one and stored for later writes. A
+   *  function is handed the current editable text, read under the note lock. */
+  private async replaceJotText(
+    jot: Jot,
+    edit: string | ((current: string) => string),
+  ): Promise<string> {
     const video = jot.kind === "video";
-    const content = video
-      ? assetEmbed({ ...jot, raw_text: newText || null })
-      : entryContent(jot, newText);
-    const found = await this.deps.obsidian.updateLine(
+    const newText = await this.deps.obsidian.updateLine(
       jot.note_path,
       jot.anchor,
-      (_line, write) => {
+      (line, write) => {
+        const text =
+          typeof edit === "string"
+            ? edit
+            : edit(editableText(jot, stripJournalLine(line, jot.time)));
+        const content = video
+          ? assetEmbed({ ...jot, raw_text: text || null })
+          : entryContent(jot, text);
         write(journalLine(jot.time, content, jot.anchor, jot.section));
-        return true;
+        return text;
       },
     );
-    if (!found) return LINE_NOT_FOUND;
+    if (newText === null) return LINE_NOT_FOUND;
     if (video) await this.deps.repo.updateJot(jot.id, { raw_text: newText });
     else await this.syncEditedSource(jot, newText);
     return editConfirmation(jot.time, newText);
