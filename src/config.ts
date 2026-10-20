@@ -39,7 +39,7 @@ const EnvObject = z.object({
   TASKS_WORK_INSERT: z.enum(["top", "bottom"]).default("top"),
   TASKS_PERSONAL_NOTE: z
     .string()
-    .default("notes/tracking notes/dashboards/Todos.md"),
+    .default("notes/tracking notes/tracking notes.md"),
   TASKS_PERSONAL_HEADING: z.string().default("Things to do"),
   TASKS_PERSONAL_TAG: z.string().default("#type/todo"),
   TASKS_PERSONAL_INSERT: z.enum(["top", "bottom"]).default("bottom"),
