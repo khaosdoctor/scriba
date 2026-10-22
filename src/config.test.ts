@@ -72,6 +72,18 @@ test("a blank TIL_HEADING fails at boot", () => {
     );
 });
 
+test("task note paths drop the backslash Coolify puts before a quote", () => {
+  const config = load({
+    TASKS_WORK_NOTE: "notes/tracking notes/What\\'s going on at work.md",
+    TASKS_PERSONAL_NOTE: 'notes/the \\"later\\" list.md',
+  });
+  assert.equal(
+    config.tasks.work.path,
+    "notes/tracking notes/What's going on at work.md",
+  );
+  assert.equal(config.tasks.personal.path, 'notes/the "later" list.md');
+});
+
 test("TIL_HEADING is configurable without touching the other headings", () => {
   const config = load({ TIL_HEADING: "Today I learned" });
   assert.equal(config.obsidian.tilHeading, "Today I learned");

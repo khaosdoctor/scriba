@@ -2,6 +2,14 @@ import { z } from "zod";
 
 const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "must be HH:MM");
 
+// Coolify escapes quotes in env values ("What's" arrives as "What\'s"). Obsidian
+// forbids a backslash in a file name, so dropping one before a quote is always safe.
+const notePath = (fallback: string) =>
+  z
+    .string()
+    .default(fallback)
+    .transform((path) => path.replace(/\\(['"])/g, "$1"));
+
 // Whole environment is one schema: coercion, defaults, and cross-field checks
 // all live here so a misconfigured deploy fails at boot with a readable message.
 const EnvObject = z.object({
@@ -31,15 +39,11 @@ const EnvObject = z.object({
   HABITS_HEADING: z.string().default("Habits"),
   ASSETS_DIR: z.string().default("internal/assets/journal"),
 
-  TASKS_WORK_NOTE: z
-    .string()
-    .default("notes/work notes/What's going on at work.md"),
+  TASKS_WORK_NOTE: notePath("notes/work notes/What's going on at work.md"),
   TASKS_WORK_HEADING: z.string().default("Other Tasks"),
   TASKS_WORK_TAG: z.string().default("#type/todo/work"),
   TASKS_WORK_INSERT: z.enum(["top", "bottom"]).default("top"),
-  TASKS_PERSONAL_NOTE: z
-    .string()
-    .default("notes/tracking notes/dashboards/Todos.md"),
+  TASKS_PERSONAL_NOTE: notePath("notes/tracking notes/dashboards/Todos.md"),
   TASKS_PERSONAL_HEADING: z.string().default("Things to do"),
   TASKS_PERSONAL_TAG: z.string().default("#type/todo"),
   TASKS_PERSONAL_INSERT: z.enum(["top", "bottom"]).default("bottom"),
