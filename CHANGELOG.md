@@ -1,3 +1,10 @@
+## [1.62.1](https://github.com/khaosdoctor/scriba/compare/v1.62.0...v1.62.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* **config:** unescape quotes Coolify adds to task note paths ([5ed7abc](https://github.com/khaosdoctor/scriba/commit/5ed7abcd7f813ae9aadd6f5f708721dca41bc3ec))
+
 ## [1.62.0](https://github.com/khaosdoctor/scriba/compare/v1.61.0...v1.62.0) (2026-10-15)
 
 
@@ -25,11 +32,4 @@
 ### Features
 
 * **journal:** add an Edit button that rewrites a whole entry ([#98](https://github.com/khaosdoctor/scriba/issues/98)) ([4979d99](https://github.com/khaosdoctor/scriba/commit/4979d99651530fd9a60c2a869ae451a55214ce52))
-
-## [1.59.0](https://github.com/khaosdoctor/scriba/compare/v1.58.0...v1.59.0) (2026-10-09)
-
-
-### Features
-
-* **help:** list every command with an example, and a Help button in /menu ([a355fd8](https://github.com/khaosdoctor/scriba/commit/a355fd8d3bf89962491f4364b9d5145eede9a3a8))
 
