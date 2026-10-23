@@ -3,7 +3,9 @@ import { logger } from "../../libs/log.ts";
 
 const log = logger("transcribe");
 
-/** Remote: Groq Whisper. Uses /translations, so any spoken language → English. */
+/** Remote: Groq Whisper. Uses /transcriptions with no language set, so the transcript
+ *  stays in the language spoken (Whisper detects it per note) and the enricher translates
+ *  it. /translations went word for word: "abrir o jogo" came back "open the game". */
 export class GroqTranscriber {
   private groq: Groq;
   constructor(apiKey: string) {
@@ -15,11 +17,8 @@ export class GroqTranscriber {
   async transcribe(bytes: Uint8Array, ext: string): Promise<string> {
     // Groq validates by extension; Telegram voice is .oga, which isn't in its list.
     const groqExt = ext === "oga" ? "ogg" : ext;
-    log.debug(
-      { backend: "groq", ext, bytes: bytes.length },
-      "transcribing (translations)",
-    );
-    const res = await this.groq.audio.translations.create({
+    log.debug({ backend: "groq", ext, bytes: bytes.length }, "transcribing");
+    const res = await this.groq.audio.transcriptions.create({
       file: await toFile(bytes, `audio.${groqExt}`),
       model: "whisper-large-v3",
       response_format: "text",

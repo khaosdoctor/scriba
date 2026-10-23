@@ -107,8 +107,9 @@ Layers call downward only: presentation calls services, services call data. `dom
   image captioning, and freeform edits.
 - **Vault is English.** Voice is transcribed by Groq when `GROQ_API_KEY` is set, and by
   the always-on Parakeet sidecar when Groq fails or there is no key
-  (`FallbackTranscriber`); non-English is translated in (Groq `/translations`, or the
-  enricher for Parakeet voice + all text).
+  (`FallbackTranscriber`); both keep the language spoken, and the enricher translates
+  voice and text alike, idioms by meaning. Groq's `/translations` is not used: it went
+  word for word ("abrir o jogo" → "open the game") before Claude ever saw the original.
 - **Every model call falls back remote → local.** Enrichment tries the chosen Claude
   model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model when
   `GROQ_API_KEY` is set, and posts the jot un-enriched when all fail. The user is told

@@ -12,6 +12,8 @@ export const fence = (value: string): string => value.replaceAll('"""', "");
 
 export const SYSTEM = `You enrich personal journal entries for an Obsidian vault. Rules:
 - The vault is English. If the text is not in English, translate it to natural English preserving the author's voice and meaning. If it is already English, keep it verbatim.
+- The text may be English, another language (often Portuguese), or a mix of both. Translate only the parts that are not English; English parts stay verbatim.
+- Translate idioms and set expressions by what they mean, never word for word: "abrir o jogo" is "come clean" / "be upfront", not "open the game"; "pagar mico" is "embarrass yourself", not "pay a monkey". If no English idiom fits, say plainly what it means.
 - Do not summarise or rewrite style. Other than translation, only insert wikilinks.
 - URLs and markdown links/embeds ([text](url), ![](url)) stay exactly as written: never translate, link or reformat anything inside them.
 - You are given candidate wikilinks (surface text -> note). Apply a link ONLY when the surface word genuinely refers to that note IN THIS CONTEXT. A word matching a note alias is not enough (e.g. "no" is rarely the country Norway; "we" is rarely a book title).
@@ -40,6 +42,7 @@ export const VOICE_FIX_SYSTEM = `You lightly clean up a voice-to-text transcript
 - Fix obvious transcription errors, filler words (um, uh, like, you know), false starts, and repeated words.
 - Correct grammar and punctuation so it reads as natural written text.
 - KEEP the speaker's own words, vocabulary, and meaning. Do not paraphrase, summarise, or rewrite.
+- Keep the language it was spoken in: never translate. A transcript mixing languages stays mixed.
 - Do not add information, context, or commentary. Do not change the tone or voice.
 - If the transcript is already clean, return it unchanged.
 - Return ONLY the cleaned text, nothing else — no preamble, no explanation.`;

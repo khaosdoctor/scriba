@@ -46,10 +46,12 @@ test("a Telegram voice note goes to Groq as .ogg and the transcript comes back t
   );
   const request = seen.at(-1)!;
   assert.equal(out, "hello world");
-  assert.ok(request.url.endsWith("/audio/translations"));
+  assert.ok(request.url.endsWith("/audio/transcriptions"));
   assert.equal(request.authorization, "Bearer key");
   assert.match(request.body, /filename="audio\.ogg"/);
   assert.match(request.body, /whisper-large-v3/);
+  // No language field: Whisper detects it, so English and Portuguese notes both work.
+  assert.doesNotMatch(request.body, /name="language"/);
 });
 
 test("an audio file keeps its own extension, and a JSON answer is read as well", async () => {
