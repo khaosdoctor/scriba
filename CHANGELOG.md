@@ -1,3 +1,10 @@
+## [1.63.1](https://github.com/khaosdoctor/scriba/compare/v1.63.0...v1.63.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **backfill:** only the judge model may approve a past-day move ([2d6d688](https://github.com/khaosdoctor/scriba/commit/2d6d6885e1e200d36ed8164de10acfa1a2f57343))
+
 ## [1.63.0](https://github.com/khaosdoctor/scriba/compare/v1.62.1...v1.63.0) (2026-10-31)
 
 
@@ -26,11 +33,4 @@
 ### Features
 
 * **status:** check upstream health only when /status runs, with no background alerts ([6d5ac40](https://github.com/khaosdoctor/scriba/commit/6d5ac404c6ffc664c61d6c754ab4dffd24c5436d))
-
-## [1.60.1](https://github.com/khaosdoctor/scriba/compare/v1.60.0...v1.60.1) (2026-10-10)
-
-
-### Bug Fixes
-
-* **enrich:** strip quotes wrapping a whole model answer ([#97](https://github.com/khaosdoctor/scriba/issues/97)) ([e4b5bed](https://github.com/khaosdoctor/scriba/commit/e4b5bed6e315d24bd8c71c32bc1769721e00bb0f))
 
