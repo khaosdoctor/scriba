@@ -81,6 +81,9 @@ const EnvObject = z.object({
   // Cap on one enrichment call, per step of the chain. A call past it counts as a failure
   // towards that step's circuit breaker, and the next step is tried.
   ENRICH_TIMEOUT_MS: z.coerce.number().positive().default(35_000),
+  // The one model allowed to approve moving an entry to a past day without asking. No
+  // fallback: when it fails, the owner gets the card instead.
+  BACKFILL_JUDGE_MODEL: z.string().default("claude-sonnet-5-5"),
 
   // Voice-fix: when enabled, a second model lightly cleans the transcript before
   // enrichment. Sonnet by default: haiku paraphrases too aggressively.
@@ -136,6 +139,7 @@ function toConfig(env: z.infer<typeof EnvObject>) {
       // Reuses the transcription Groq key; empty disables the fallback.
       groqApiKey: env.GROQ_API_KEY ?? "",
       timeoutMs: env.ENRICH_TIMEOUT_MS,
+      judgeModel: env.BACKFILL_JUDGE_MODEL,
     },
     voiceFix: {
       model: env.VOICE_FIX_MODEL,

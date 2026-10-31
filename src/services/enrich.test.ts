@@ -1196,12 +1196,40 @@ test("confirmPastDay is true only on a structured sameDay true, and false on any
   assert.equal(down, false);
 });
 
-test("confirmPastDay reads a plain JSON answer from a chat fallback", async () => {
+test("confirmPastDay asks only the judge model: when it fails, no backup or Groq step can approve a move", async () => {
+  const groq = fakeGroq('{"sameDay": true}');
+  const models: string[] = [];
+  const failing: QueryFn = ((args: any) => {
+    models.push(args.options.model);
+    return failQuery()(args);
+  }) as any;
   const sameDay = await new Enricher({
-    model: "claude-haiku-4-5",
-    query: failQuery(),
+    model: "claude-sonnet-5-5",
+    backupModel: "claude-haiku-5-5",
+    judgeModel: "claude-sonnet-5-5",
+    query: failing,
     fallbacks: [{ apiKey: "k", model: "m" }],
-    groqChat: fakeGroq('{"sameDay": true}').fn,
+    groqChat: groq.fn,
+  }).confirmPastDay("x", "yesterday");
+  assert.equal(sameDay, false);
+  assert.deepEqual(models, ["claude-sonnet-5-5"]);
+  assert.equal(groq.calls.length, 0);
+});
+
+test("confirmPastDay uses the judge model even when enrichment runs on another", async () => {
+  const { fn, calls } = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      result: "",
+      structured_output: { sameDay: true },
+    },
+  ]);
+  const sameDay = await new Enricher({
+    model: "claude-haiku-5-5",
+    judgeModel: "claude-sonnet-5-5",
+    query: fn,
   }).confirmPastDay("x", "yesterday");
   assert.equal(sameDay, true);
+  assert.equal(calls[0]!.options.model, "claude-sonnet-5-5");
 });

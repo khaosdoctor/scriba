@@ -37,9 +37,6 @@ Do not write any preamble, explanation, commentary, or acknowledgement of the ta
 
 export const SAME_DAY_SYSTEM = `You check one personal journal entry before it is filed under an earlier day. Set "sameDay" to true only when EVERYTHING in the entry happened on the single day the author names: no part of it is about today, about another day, or about something still ongoing. A plan, a feeling about it now, or a mention of the day in passing is false. When unsure, false.`;
 
-export const SAME_DAY_JSON_ONLY = `
-Your entire response must be exactly one JSON object and nothing else: {"sameDay": false}`;
-
 export const USE_OUTPUT_TOOL = `
 Give your answer only by calling the StructuredOutput tool, with each field holding its own value. Write no text.`;
 

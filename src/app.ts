@@ -100,6 +100,7 @@ async function buildEnricher(
     query: sdkQuery,
     fallbacks,
     backupModel: config.enrich.backupModel,
+    judgeModel: config.enrich.judgeModel,
     timeoutMs: config.enrich.timeoutMs,
     notifySwitch,
   });

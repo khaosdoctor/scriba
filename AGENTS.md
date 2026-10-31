@@ -442,7 +442,8 @@ Layers call downward only: presentation calls services, services call data. `dom
   in today's note only (so follow-up answers filed under another day and reprocessed old
   jots are left alone), and `jots.backfill_offered`, set once asked. A split entry is
   never offered. `offer` runs after the line is written: a specific guess goes to
-  `Enricher.confirmPastDay`, a yes/no second read on the enrichment chain, and only its
+  `Enricher.confirmPastDay`, a yes/no second read on `BACKFILL_JUDGE_MODEL` (sonnet) alone,
+  never down the enrichment chain, so a weaker fallback can't approve a move; only its
   yes moves the line without asking, followed by a message with **↩️ Undo move**
   (`bf:u:<jotId>`); any failure is a no. Everything else gets a card with the guessed day
   and the three before it (`bf:m:<jotId>:<date>`), **📅 Other day** (`bf:c:<jotId>:<YYYY-MM>`,
@@ -454,7 +455,7 @@ Layers call downward only: presentation calls services, services call data. `dom
   so `journalLine` renders the stamp and every edit, undo and reprocess finds the line
   unchanged; `received_at` stays the arrival, and undo moves the line back there with the
   plain time. Later, the second opinion may move to a local decision model (Jeb on giskard,
-  p(yes) >= 0.9); until then it is the enrichment chain.
+  p(yes) >= 0.9); until then it is the judge model.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button: `un:<jotId>`, handled by
   `removeView` in `presentation/telegram/journal/remove.ts`, which calls

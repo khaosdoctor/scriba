@@ -30,7 +30,6 @@ import {
   type EnrichInput,
   enrichPrompt,
   fence,
-  SAME_DAY_JSON_ONLY,
   SAME_DAY_SYSTEM,
   SYSTEM,
   TASK_JSON_ONLY,
@@ -131,6 +130,8 @@ export interface EnricherDeps {
   fallbacks?: EnrichFallback[];
   groqChat?: GroqChatFn;
   backupModel?: string;
+  /** The only model that may approve a past-day move; the enrichment model when unset. */
+  judgeModel?: string;
   timeoutMs?: number;
   now?: () => number;
   notifySwitch?: SwitchNotifier;
@@ -273,29 +274,31 @@ export class Enricher {
   }
 
   /** A second read before an entry is moved to another day without asking: true only
-   *  when the model answers that all of it happened on `phrase`'s day. Any failure is
-   *  false, so a doubt or an outage asks the owner instead of moving. */
+   *  when the judge model answers that all of it happened on `phrase`'s day. It runs on
+   *  that one model and never down the enrichment chain, so a weaker fallback can't
+   *  approve a move: any failure is false, and the owner gets the card instead. */
   async confirmPastDay(text: string, phrase: string): Promise<boolean> {
     const prompt = `Journal entry:\n"""${fence(text)}"""\n\nThe author says it happened "${fence(phrase)}".`;
-    log.info({ chars: text.length, phrase }, "confirmPastDay: calling agent");
+    const model = this.deps.judgeModel ?? this.model;
+    log.info(
+      { chars: text.length, phrase, model },
+      "confirmPastDay: calling agent",
+    );
     try {
-      const sameDay = await this.run({
+      const { structuredOutput } = await this.runSdk(
         prompt,
-        chars: 0,
-        system: SAME_DAY_SYSTEM,
-        jsonTail: SAME_DAY_JSON_ONLY,
-        outputFormat: SAME_DAY_OUTPUT_FORMAT,
-        parse: ({ text: raw, structuredOutput }) => {
-          const parsed =
-            SameDayStrict.safeParse(structuredOutput).data ??
-            SameDayStrict.safeParse(parseModelJson(raw)).data;
-          if (!parsed)
-            throw new Error(`no usable answer: ${raw.slice(0, 200)}`);
-          return parsed.sameDay;
-        },
-      });
-      log.info({ phrase, sameDay }, "confirmPastDay: agent responded");
-      return sameDay;
+        SAME_DAY_SYSTEM + USE_OUTPUT_TOOL,
+        SAME_DAY_OUTPUT_FORMAT,
+        model,
+        this.timeoutMs,
+      );
+      const parsed = SameDayStrict.safeParse(structuredOutput).data;
+      if (!parsed) throw new Error("no usable answer");
+      log.info(
+        { phrase, sameDay: parsed.sameDay },
+        "confirmPastDay: agent responded",
+      );
+      return parsed.sameDay;
     } catch (err) {
       log.warn({ err, phrase }, "confirmPastDay failed — asking instead");
       return false;
