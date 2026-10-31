@@ -127,6 +127,18 @@ export function placeholderLine(
   return journalLine(time, "⏳", anchor, section);
 }
 
+/** A backfilled jot keeps the clock time it arrived at and says on which day it was
+ *  written, so `journalLine` renders `_22:45:13 (backfilled in 2026-10-31) ::_`. Kept in
+ *  `jot.time` itself, so every writer and `stripJournalLine` handle it unchanged. */
+export function backfilledTime(time: string, writtenOn: string): string {
+  return `${arrivalTime(time)} (backfilled in ${writtenOn})`;
+}
+
+/** The HH:MM:SS a jot arrived at, without any backfill note. */
+export function arrivalTime(time: string): string {
+  return time.slice(0, 8);
+}
+
 /** A journal line moved under TIL loses its time stamp on the way. */
 export function untimedLine(line: string): string {
   return line.replace(/^- _[^_\n]* ::_ /, "- ");

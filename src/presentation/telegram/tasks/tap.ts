@@ -13,6 +13,12 @@ import { namespace } from "../namespace.ts";
 
 const log = logger("tasks-flow");
 
+const DETECTION_SWITCH = {
+  det: "taskDetection",
+  til: "tilDetection",
+  bf: "backfillDetection",
+} as const;
+
 const asView = (view?: string): TaskView =>
   view && view in VIEW_LABEL ? (view as TaskView) : "open";
 
@@ -131,8 +137,9 @@ export function tasksView(tasks: TaskService): Composer<Context> {
         );
       }
       case "det":
-      case "til": {
-        const key = action === "det" ? "taskDetection" : "tilDetection";
+      case "til":
+      case "bf": {
+        const key = DETECTION_SWITCH[action];
         await responder.ack(SETTINGS[key].label(await tasks.toggle(key)));
         return showMenu(ctx, tasks);
       }

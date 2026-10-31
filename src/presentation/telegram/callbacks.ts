@@ -1,6 +1,7 @@
 import { Composer, type Context } from "grammy";
 import { DELETE_NS, UNDO_NS } from "../../libs/jot.ts";
 import { unrejectView } from "./admin/unreject-tap.ts";
+import { backfillView } from "./backfill/tap.ts";
 import { commandView } from "./command/tap.ts";
 import { COMMANDS } from "./commands.ts";
 import { habitsView } from "./habits/tap.ts";
@@ -21,7 +22,7 @@ import { tilView } from "./til/tap.ts";
 /** One view per callback namespace, with the empty answer for an unknown namespace last so
  *  a stale button never leaves its spinner running. */
 export function callbackViews(deps: ViewDeps): Composer<Context>[] {
-  const { command, tasks, jots, edits, rating, habits, admin } = deps;
+  const { command, tasks, jots, edits, rating, habits, admin, backfill } = deps;
   const unknown = new Composer<Context>();
   unknown.on("callback_query:data", (ctx) => ctx.answerCallbackQuery());
   return [
@@ -35,6 +36,7 @@ export function callbackViews(deps: ViewDeps): Composer<Context>[] {
     commandView(command),
     tasksView(tasks),
     tilView(jots),
+    backfillView(backfill),
     linkView(edits),
     unrejectView(admin),
     ratingView(rating),

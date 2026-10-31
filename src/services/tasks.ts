@@ -549,6 +549,7 @@ export class TaskService {
     const { settings } = this.deps;
     const tasks = await settings.getSetting("taskDetection");
     const til = await settings.getSetting("tilDetection");
+    const backfill = await settings.getSetting("backfillDetection");
     const screens = Object.keys(VIEW_LABEL).filter((view) => view !== "future");
     return {
       text: MENU_TEXT,
@@ -560,6 +561,12 @@ export class TaskService {
         ),
         [[`🔎 Spot tasks in jots: ${tasks ? "on" : "off"}`, `${TASKS_NS}:det`]],
         [[`💡 Spot TILs in jots: ${til ? "on" : "off"}`, `${TASKS_NS}:til`]],
+        [
+          [
+            `🗓 Spot past days in jots: ${backfill ? "on" : "off"}`,
+            `${TASKS_NS}:bf`,
+          ],
+        ],
         [CLOSE],
       ]),
     };
@@ -572,15 +579,13 @@ export class TaskService {
   }
 
   async toggle(
-    key: Extract<SwitchKey, "taskDetection" | "tilDetection">,
+    key: Extract<
+      SwitchKey,
+      "taskDetection" | "tilDetection" | "backfillDetection"
+    >,
   ): Promise<boolean> {
     const enabled = await this.deps.settings.toggleSetting(key);
-    log.info(
-      { enabled },
-      key === "taskDetection"
-        ? "tasks: jot detection toggled"
-        : "tasks: TIL detection toggled",
-    );
+    log.info({ enabled, key }, "tasks: detection switch toggled");
     return enabled;
   }
 

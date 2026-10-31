@@ -104,13 +104,13 @@ Layers call downward only: presentation calls services, services call data. `dom
   `SETTINGS` (`domain/setting/entity.ts`).
 - **No tokens for control flow.** Batch timing, retry classification, candidate filtering,
   language routing must not call the model. The agent is only for enrichment, translation,
-  image captioning, and freeform edits.
+  image captioning, freeform edits, and the past-day second opinion.
 - **Vault is English.** Voice is transcribed by Groq when `GROQ_API_KEY` is set, and by
   the always-on Parakeet sidecar when Groq fails or there is no key
   (`FallbackTranscriber`); non-English is translated in (Groq `/translations`, or the
   enricher for Parakeet voice + all text).
 - **Every model call falls back remote → local.** Enrichment tries the chosen Claude
-  model (haiku by default), then `ENRICH_BACKUP_MODEL` (sonnet), then the Groq model when
+  model (sonnet by default), then `ENRICH_BACKUP_MODEL` (haiku), then the Groq model when
   `GROQ_API_KEY` is set, and posts the jot un-enriched when all fail. The user is told
   once per change of step, not per jot, with the error that moved it. Only enrichment's
   own chain sends that notice: the voice fix runs its own model first (sonnet, then
@@ -274,8 +274,8 @@ Layers call downward only: presentation calls services, services call data. `dom
   sits inside a LAN of unauthenticated services, so fetching must not become a way to read
   them. Writes and deletes stop for a Telegram ✅/❌ confirmation (`canUseTool` awaits the
   tap, 5-minute timeout defaulting to refusal). `COMMAND_MODEL` (default `claude-sonnet-5-5`)
-  is separate from `AGENT_MODEL` — enrichment is a haiku-sized job, writing a note in the
-  owner's voice is not. Style guidance lives in the system prompt, but the vault outranks
+  is separate from `AGENT_MODEL`, so enrichment and note writing can run on different
+  models. Style guidance lives in the system prompt, but the vault outranks
   it: the agent is told to read neighbouring notes first and to follow `internal/voice.md`
   if the vault has one.
 - **Command mode never blocks on the agent.** `CommandService.handle` takes a message, gives it its own
@@ -430,6 +430,31 @@ Layers call downward only: presentation calls services, services call data. `dom
   keeps its buttons, since a reprocess never asks again and another tap is the retry. The
   quoted jot is cut to 600 characters (`clipUpdate`) so the card always fits Telegram. After a move the leader's and every squashed follower's `section` becomes
   `til`, so the re-append fallbacks write the line back under TIL, not Journal.
+- **An entry about a past day moves to that day's note, from the same enrichment call.**
+  The enricher's JSON carries an optional `past`: the author's own words for when, set
+  only when the WHOLE entry happened then ("last week I bought a lamp" → `"last week"`;
+  "went to buy the lamp I saw last week" has none). The model never does date arithmetic:
+  `backfillGuess` (`libs/backfill.ts`, token-free) resolves the words with chrono (en, pt,
+  sv) against the jot's own day, reading a bare weekday backwards, and calls the guess
+  `specific` only when the words name one day (no week, month, weekend, "a while") and no
+  other date in the entry points elsewhere. `BackfillService.detect` (`services/backfill.ts`)
+  adds the guards: the `backfillDetection` switch (task menu, next to TIL spotting), a jot
+  in today's note only (so follow-up answers filed under another day and reprocessed old
+  jots are left alone), and `jots.backfill_offered`, set once asked. A split entry is
+  never offered. `offer` runs after the line is written: a specific guess goes to
+  `Enricher.confirmPastDay`, a yes/no second read on the enrichment chain, and only its
+  yes moves the line without asking, followed by a message with **↩️ Undo move**
+  (`bf:u:<jotId>`); any failure is a no. Everything else gets a card with the guessed day
+  and the three before it (`bf:m:<jotId>:<date>`), **📅 Other day** (`bf:c:<jotId>:<YYYY-MM>`,
+  a Monday-first month grid of buttons redrawn in place, only past days tappable) and
+  **🚫 Keep today** (`bf:k`). `ObsidianClient.moveToDay` writes the target note first and
+  cuts the source second, under the source's lock, so a failure leaves the entry twice
+  rather than nowhere. The moved jot (leader and squashed followers) gets the new
+  `note_path` and a `time` of `22:45:13 (backfilled in 2026-10-31)` (`backfilledTime`),
+  so `journalLine` renders the stamp and every edit, undo and reprocess finds the line
+  unchanged; `received_at` stays the arrival, and undo moves the line back there with the
+  plain time. Later, the second opinion may move to a local decision model (Jeb on giskard,
+  p(yes) >= 0.9); until then it is the enrichment chain.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button: `un:<jotId>`, handled by
   `removeView` in `presentation/telegram/journal/remove.ts`, which calls

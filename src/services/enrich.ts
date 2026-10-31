@@ -30,6 +30,8 @@ import {
   type EnrichInput,
   enrichPrompt,
   fence,
+  SAME_DAY_JSON_ONLY,
+  SAME_DAY_SYSTEM,
   SYSTEM,
   TASK_JSON_ONLY,
   TASK_SYSTEM,
@@ -73,6 +75,7 @@ interface EnrichResult {
   ambiguous: Candidate[]; // links to confirm via Telegram buttons
   tasks: DetectedTask[]; // things to do, proposed for confirmation as tasks
   til: boolean; // the entry reads like something the author learned
+  past?: string; // the author's own words for the past day the whole entry happened on
   usage: { input: number; output: number };
 }
 
@@ -94,6 +97,7 @@ const enrichedPayloadSchema = z.object({
   // without the field is a valid answer — it just means "no tasks in this one".
   tasks: tasksSchema.optional(),
   til: z.boolean().optional(),
+  past: z.string().optional(),
 });
 
 const EnrichOutputStrict = z.strictObject({
@@ -101,7 +105,10 @@ const EnrichOutputStrict = z.strictObject({
   ambiguous: z.array(z.strictObject({ surface: z.string(), note: z.string() })),
   tasks: z.array(TaskOutputStrict.partial({ type: true })),
   til: z.boolean(),
+  past: z.string().optional(),
 });
+
+const SameDayStrict = z.strictObject({ sameDay: z.boolean() });
 
 /** The SDK takes raw JSON Schema without the `$schema` key zod adds. */
 const outputFormat = (schema: z.ZodType): OutputFormat => {
@@ -111,6 +118,7 @@ const outputFormat = (schema: z.ZodType): OutputFormat => {
 
 const TASK_OUTPUT_FORMAT = outputFormat(TaskOutputStrict);
 const ENRICH_OUTPUT_FORMAT = outputFormat(EnrichOutputStrict);
+const SAME_DAY_OUTPUT_FORMAT = outputFormat(SameDayStrict);
 
 /** Added to the cap per character of text the answer writes back. Sonnet's voice fix
  *  took ~5s on 400 characters and up to 12.5s on 3,250, so a fixed cap fails every
@@ -246,17 +254,52 @@ export class Enricher {
     const ambiguous = ambiguousSchema.safeParse(unwrapped.ambiguous).data ?? [];
     const tasks = tasksSchema.safeParse(unwrapped.tasks).data ?? [];
     const til = unwrapped.til === true;
+    const past =
+      typeof unwrapped.past === "string" && unwrapped.past.trim()
+        ? unwrapped.past.trim()
+        : undefined;
     log.info(
       {
         usage,
         ambiguous: ambiguous.length,
         tasks: tasks.length,
         til,
+        past,
         structured: structuredOutput !== undefined,
       },
       "enrich: agent responded",
     );
-    return { text: unwrapped.text, ambiguous, tasks, til, usage };
+    return { text: unwrapped.text, ambiguous, tasks, til, past, usage };
+  }
+
+  /** A second read before an entry is moved to another day without asking: true only
+   *  when the model answers that all of it happened on `phrase`'s day. Any failure is
+   *  false, so a doubt or an outage asks the owner instead of moving. */
+  async confirmPastDay(text: string, phrase: string): Promise<boolean> {
+    const prompt = `Journal entry:\n"""${fence(text)}"""\n\nThe author says it happened "${fence(phrase)}".`;
+    log.info({ chars: text.length, phrase }, "confirmPastDay: calling agent");
+    try {
+      const sameDay = await this.run({
+        prompt,
+        chars: 0,
+        system: SAME_DAY_SYSTEM,
+        jsonTail: SAME_DAY_JSON_ONLY,
+        outputFormat: SAME_DAY_OUTPUT_FORMAT,
+        parse: ({ text: raw, structuredOutput }) => {
+          const parsed =
+            SameDayStrict.safeParse(structuredOutput).data ??
+            SameDayStrict.safeParse(parseModelJson(raw)).data;
+          if (!parsed)
+            throw new Error(`no usable answer: ${raw.slice(0, 200)}`);
+          return parsed.sameDay;
+        },
+      });
+      log.info({ phrase, sameDay }, "confirmPastDay: agent responded");
+      return sameDay;
+    } catch (err) {
+      log.warn({ err, phrase }, "confirmPastDay failed — asking instead");
+      return false;
+    }
   }
 
   async extractTask(text: string): Promise<DetectedTask> {

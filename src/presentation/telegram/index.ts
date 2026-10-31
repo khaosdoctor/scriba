@@ -1,6 +1,7 @@
 import type { Api, Bot, Context } from "grammy";
 import { logger } from "../../libs/log.ts";
 import type { AdminService } from "../../services/admin.ts";
+import type { BackfillService } from "../../services/backfill.ts";
 import type { CommandService } from "../../services/command.ts";
 import type { EditService } from "../../services/edits.ts";
 import type { HabitService } from "../../services/habits.ts";
@@ -34,6 +35,7 @@ export type ViewDeps = {
   jots: JotService;
   edits: EditService;
   admin: AdminService;
+  backfill: BackfillService;
 };
 
 const describe = (ctx: Context) => ({

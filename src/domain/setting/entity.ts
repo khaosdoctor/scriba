@@ -9,6 +9,7 @@ export type SettingKey =
   | "nightlyFollowup"
   | "taskDetection"
   | "tilDetection"
+  | "backfillDetection"
   | "ratingTime"
   | "deployId";
 
@@ -75,6 +76,14 @@ export const SETTINGS = {
     parse: onUnlessOff,
     label: (on) =>
       on ? "I'll suggest TILs again" : "I'll stop suggesting TILs",
+  },
+  backfillDetection: {
+    kind: "switch",
+    parse: onUnlessOff,
+    label: (on) =>
+      on
+        ? "I'll move entries about past days again"
+        : "I'll stop moving entries about past days",
   },
   ratingTime: {
     kind: "time",

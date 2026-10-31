@@ -842,7 +842,7 @@ ledger("tk", [
   {
     tap: "tk:m",
     when: "task menu",
-    expect: "ack() > repo.getSetting×2 > tg.editMessageText",
+    expect: "ack() > repo.getSetting×3 > tg.editMessageText",
   },
   {
     tap: "tk:v:open:0",
@@ -864,13 +864,13 @@ ledger("tk", [
     tap: "tk:det",
     when: "toggle task detection, answered after the write",
     expect:
-      "repo.toggleSetting > ack(I'll stop suggesting tasks) > repo.getSetting×2 > tg.editMessageText",
+      "repo.toggleSetting > ack(I'll stop suggesting tasks) > repo.getSetting×3 > tg.editMessageText",
   },
   {
     tap: "tk:til",
     when: "toggle TIL detection, answered after the write",
     expect:
-      "repo.toggleSetting > ack(I'll stop suggesting TILs) > repo.getSetting×2 > tg.editMessageText",
+      "repo.toggleSetting > ack(I'll stop suggesting TILs) > repo.getSetting×3 > tg.editMessageText",
   },
   {
     tap: "tk:close",
@@ -1049,7 +1049,7 @@ ledger("menu: entry points into other flows", [
   {
     tap: "menu:tasks",
     when: "task menu",
-    expect: "ack(Opening tasks below ↓) > repo.getSetting×2 > tg.sendMessage",
+    expect: "ack(Opening tasks below ↓) > repo.getSetting×3 > tg.sendMessage",
   },
   { tap: "menu:taskmode", when: "task mode", expect: "ack() > tg.sendMessage" },
   {

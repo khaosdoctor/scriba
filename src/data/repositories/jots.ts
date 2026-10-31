@@ -303,4 +303,18 @@ export class JotRepository {
     await this.knex("jots").where({ id: jotId }).update({ til_offered: true });
     log.debug({ id: jotId }, "til offered");
   }
+
+  async backfillOffered(jotId: string): Promise<boolean> {
+    const row = await this.knex("jots")
+      .where({ id: jotId })
+      .first("backfill_offered");
+    return Boolean(row?.backfill_offered);
+  }
+
+  async markBackfillOffered(jotId: string): Promise<void> {
+    await this.knex("jots")
+      .where({ id: jotId })
+      .update({ backfill_offered: true });
+    log.debug({ id: jotId }, "backfill offered");
+  }
 }

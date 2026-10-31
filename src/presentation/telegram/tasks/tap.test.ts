@@ -25,7 +25,7 @@ test("a list button redraws the tapped message with that screen, and an unknown 
   );
 });
 
-test("the Tasks button goes back to the menu with both detection switches", async () => {
+test("the Tasks button goes back to the menu with every detection switch", async () => {
   const run = await (await open()).tap("tk:m");
   const edit = run.calls.find((call) => call.method === "editMessageText");
   assert.match(edit?.payload.text, /🗂 Tasks/);
@@ -33,8 +33,18 @@ test("the Tasks button goes back to the menu with both detection switches", asyn
     edit?.payload.reply_markup.inline_keyboard
       .flat()
       .map((button: { callback_data: string }) => button.callback_data)
-      .slice(-3),
-    ["tk:det", "tk:til", "tk:close"],
+      .slice(-4),
+    ["tk:det", "tk:til", "tk:bf", "tk:close"],
+  );
+});
+
+test("the past-day switch toggles its own setting", async () => {
+  const harness = await open();
+  const run = await harness.tap("tk:bf");
+  assert.equal(
+    run.calls.find((call) => call.method === "answerCallbackQuery")?.payload
+      .text,
+    "I'll stop moving entries about past days",
   );
 });
 

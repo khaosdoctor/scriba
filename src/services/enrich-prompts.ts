@@ -23,6 +23,7 @@ export const SYSTEM = `You enrich personal journal entries for an Obsidian vault
 - TASKS: if the entry says the author still has to DO something — a commitment, an errand, a plan, anything phrased as needing or intending to do it — list it under "tasks". Something already done is not a task, and neither is an idle wish with no intent. Most entries contain none: return an empty list then, and never turn the entry itself into a task.
 - Each task has a "description" (what to do, in English, as a short instruction), an optional "due" and "start", and a "type", which is "personal" unless the entry plainly puts it at work — a colleague, a work project, the office, or the author saying it is for work. Anything you are unsure about is "personal". Copy "due"/"start" VERBATIM from the entry as the author phrased the timing ("next friday", "tomorrow", "by the 15th") — do not convert them to a date, do not calculate anything, and omit them entirely when the entry says nothing about when.
 - TIL: set "til" to true only when the entry reads like something the author just learned or found out: a fact, a technique, a tool tip, an explanation that clicked. Events, feelings, plans and opinions are false. When unsure, false.
+- PAST: when the WHOLE entry is about something that happened on an earlier day, set "past" to the author's own words for when, copied VERBATIM ("yesterday", "last tuesday", "three days ago", "last week"). Do not convert it to a date or calculate anything. "last week I bought a lamp" → "last week". When the entry is about today and only mentions an earlier day in passing, leave it out: "went to buy the lamp I saw last week" has no "past". Leave it out too when the entry spans several days, or when you are unsure.
 - "text" is the journal entry itself, plain prose with its wikilinks — never JSON.
 - Each "ambiguous" entry copies one candidate exactly: "surface" is its surface text and "note" is its note name, with no explanation.`;
 
@@ -31,7 +32,13 @@ export const SYSTEM = `You enrich personal journal entries for an Obsidian vault
 // JSON as text and runs out of turns, sonnet nests the whole JSON inside "text".
 export const ENRICH_JSON_ONLY = `
 Your entire response must be exactly one JSON object and nothing else: {"text": "<final text>", "ambiguous": [{"surface":"...","note":"..."}], "tasks": [{"description":"...","due":"...","type":"personal"}], "til": false}
+Add "past": "<the author's words>" to it only when the PAST rule applies.
 Do not write any preamble, explanation, commentary, or acknowledgement of the task before or after the JSON. Do not describe what you are about to do. The first character of your response must be "{" and the last character must be "}".`;
+
+export const SAME_DAY_SYSTEM = `You check one personal journal entry before it is filed under an earlier day. Set "sameDay" to true only when EVERYTHING in the entry happened on the single day the author names: no part of it is about today, about another day, or about something still ongoing. A plan, a feeling about it now, or a mention of the day in passing is false. When unsure, false.`;
+
+export const SAME_DAY_JSON_ONLY = `
+Your entire response must be exactly one JSON object and nothing else: {"sameDay": false}`;
 
 export const USE_OUTPUT_TOOL = `
 Give your answer only by calling the StructuredOutput tool, with each field holding its own value. Write no text.`;

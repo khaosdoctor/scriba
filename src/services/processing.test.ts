@@ -156,6 +156,8 @@ function pipeline(
     writeFails?: boolean;
     section?: "journal" | "til";
     ambiguous?: { surface: string; note: string }[];
+    past?: string;
+    split?: boolean;
   } = {},
 ) {
   const calls: string[] = [];
@@ -178,7 +180,7 @@ function pipeline(
   const repo = {
     getJot: async (id: string) => jots.get(id),
     claim: async () => true,
-    ...new FakeSettings(),
+    ...new FakeSettings(over.split ? { entryMaxChars: "30" } : {}),
     updateJot: async () => {},
     pendingJots: async () => [],
     groupFollowers: async () => over.followers ?? [],
@@ -208,14 +210,18 @@ function pipeline(
     enrich: async (input: { text: string }) => {
       enriched.push(input.text);
       return {
-        text: "Learned that X",
+        text: over.split
+          ? "Fixed the bike chain.\n\nThen painted the shed door."
+          : "Learned that X",
         ambiguous: over.ambiguous ?? [],
         tasks: over.tasks ?? [],
         til: over.til ?? false,
+        past: over.past,
         usage: { input: 0, output: 0 },
       };
     },
   };
+  const backfillOffers: string[] = [];
   const jotFakes = {
     status: async (_id: string, _html: string, opts?: { undo?: boolean }) =>
       void calls.push(opts?.undo ? "status:done" : "status"),
@@ -253,6 +259,16 @@ function pipeline(
       suggest: async (draft: { description: string }) =>
         void calls.push(`askTask:${draft.description}`),
     },
+    backfill: {
+      detect: async (_jot: Jot, phrase: string | undefined) =>
+        phrase
+          ? { date: "2026-01-01", specific: true, phrase }
+          : (null as null),
+      offer: async (offeredJot: Jot, _past: unknown, text: string) => {
+        backfillOffers.push(`${offeredJot.id}:${text}`);
+        calls.push("backfill");
+      },
+    },
     notifier: { typing: async () => {} },
     transcriber: { transcribe: async () => "" },
     media: {
@@ -270,10 +286,29 @@ function pipeline(
     tilAsks,
     enriched,
     offered,
+    backfillOffers,
     leaderId: leader.id,
     note: () => note,
   };
 }
+
+test("an entry about a past day is offered for a move once it is written, before the drain", async () => {
+  const scenario = pipeline({ past: "yesterday" });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.deepEqual(scenario.backfillOffers, [
+    `${scenario.leaderId}:Learned that X`,
+  ]);
+  const at = (call: string) => scenario.calls.indexOf(call);
+  assert.ok(at("write") < at("backfill"));
+  assert.ok(at("backfill") < at("onJotDone"));
+});
+
+test("an entry split into several jots is never offered for a move", async () => {
+  const scenario = pipeline({ past: "yesterday", split: true });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.ok(scenario.note().includes("Then painted the shed door."));
+  assert.deepEqual(scenario.backfillOffers, []);
+});
 
 test("a jot the enricher read as a TIL gets its card after the entry is written and before the drain", async () => {
   const scenario = pipeline({ til: true });
@@ -563,6 +598,7 @@ async function world(testContext: TestContext, options: WorldOptions = {}) {
     jots,
     edits: { drainQueued: async () => {}, askLink: async () => "pid00001" },
     tasks: { suggest: async () => {}, draftsFor: async () => [] },
+    backfill: { detect: async () => null, offer: async () => {} },
     notifier: { typing: async () => {} },
     media: {
       downloadFile: async (fileId: string) => {

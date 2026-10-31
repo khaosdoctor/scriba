@@ -478,3 +478,64 @@ test("deleteNote raises on a real failure but tolerates a 404", async () => {
   await obsidian.deleteNote("notes/a.md");
   assert.equal(fake.vault.has("notes/a.md"), false);
 });
+
+const FROM = "notes/daily notes/2026-10-31.md";
+const TO = "notes/daily notes/2026-10-27.md";
+
+test("moveToDay writes the line into the other day's journal before cutting it here", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set(
+    FROM,
+    "## Journal\n- _22:00:00 ::_ kept ^aaaaaaaa\n- _22:45:13 ::_ moved ^bbbbbbbb\n",
+  );
+  const result = await obsidian.moveToDay(
+    FROM,
+    "bbbbbbbb",
+    "2026-10-27",
+    "journal",
+    (line) => line.replace("22:45:13", "22:45:13 (backfilled in 2026-10-31)"),
+  );
+  assert.equal(result, "moved");
+  assert.equal(
+    fake.vault.get(FROM),
+    "## Journal\n- _22:00:00 ::_ kept ^aaaaaaaa\n",
+  );
+  assert.ok(
+    fake.vault
+      .get(TO)
+      ?.includes("- _22:45:13 (backfilled in 2026-10-31) ::_ moved ^bbbbbbbb"),
+  );
+  const writes = fake.seen.filter((request) => request.method === "PUT");
+  assert.ok(
+    writes.findLastIndex((request) => request.path === TO) <
+      writes.findIndex((request) => request.path === FROM),
+  );
+});
+
+test("moveToDay leaves both notes alone when the line is gone, and keeps the line when the target write fails", async () => {
+  const { obsidian, fake } = await client();
+  fake.vault.set(FROM, "## Journal\n- x ^aaaaaaaa\n");
+  assert.equal(
+    await obsidian.moveToDay(
+      FROM,
+      "ffffffff",
+      "2026-10-27",
+      "journal",
+      (line) => line,
+    ),
+    "no-line",
+  );
+  assert.equal(fake.vault.has(TO), false);
+  fake.vault.set(TO, "## Journal\n");
+  fake.fail(`PUT ${TO}`, 500);
+  await assert.rejects(() =>
+    obsidian.moveToDay(
+      FROM,
+      "aaaaaaaa",
+      "2026-10-27",
+      "journal",
+      (line) => line,
+    ),
+  );
+  assert.equal(fake.vault.get(FROM), "## Journal\n- x ^aaaaaaaa\n");
+});

@@ -699,17 +699,18 @@ test("a question nobody asked for never grabs the compose box, one from a button
   assert.deepEqual(harness.sent.at(-1)!.opts, { forceReply: true });
 });
 
-test("the task menu lists every screen and shows both detection switches, on by default", async () => {
+test("the task menu lists every screen and shows every detection switch, on by default", async () => {
   const harness = setup();
   const menu = await harness.tasks.menu();
   const rows = menu.keyboard.inline_keyboard;
-  assert.equal(rows.length, 7 + 3);
+  assert.equal(rows.length, 7 + 4);
   assert.deepEqual(
-    rows.slice(-3).map((row) => row.map((button) => button.callback_data)),
-    [["tk:det"], ["tk:til"], ["tk:close"]],
+    rows.slice(-4).map((row) => row.map((button) => button.callback_data)),
+    [["tk:det"], ["tk:til"], ["tk:bf"], ["tk:close"]],
   );
-  assert.match(rows.at(-3)![0]!.text, /Spot tasks in jots: on$/);
-  assert.match(rows.at(-2)![0]!.text, /Spot TILs in jots: on$/);
+  assert.match(rows.at(-4)![0]!.text, /Spot tasks in jots: on$/);
+  assert.match(rows.at(-3)![0]!.text, /Spot TILs in jots: on$/);
+  assert.match(rows.at(-2)![0]!.text, /Spot past days in jots: on$/);
   assert.match(menu.text, /🗂 Tasks/);
 
   await harness.tasks.promptRoot();
@@ -722,7 +723,7 @@ test("the TIL and task detection switches toggle both ways and do not touch each
   assert.equal(harness.settings.get("tilDetection"), "off");
   assert.equal(harness.settings.has("taskDetection"), false);
   assert.match(
-    (await harness.tasks.menu()).keyboard.inline_keyboard.at(-2)![0]!.text,
+    (await harness.tasks.menu()).keyboard.inline_keyboard.at(-3)![0]!.text,
     /Spot TILs in jots: off$/,
   );
 

@@ -3,6 +3,7 @@ import { untimedLine } from "../../domain/jot/rules.ts";
 import { logger } from "../../libs/log.ts";
 import {
   anchorLine,
+  cutAnchorLine,
   insertJournalLine,
   moveAnchorLine,
   replaceAnchorLine,
@@ -162,6 +163,29 @@ export class ObsidianClient {
         return moved.missing === "line" ? "no-line" : "no-heading";
       write(moved.note);
       log.info({ notePath, anchor }, "line moved to TIL");
+      return "moved";
+    });
+  }
+
+  /** Move an anchored line into another day's note, under the same section's heading,
+   *  passed through `rewrite` on the way. The target is written before the line leaves
+   *  the source, so a failure in between leaves the entry twice rather than nowhere.
+   *  ponytail: holds the source's lock while it takes the target's; two moves crossing in
+   *  opposite directions at once would wait on each other, which one owner never does. */
+  async moveToDay(
+    fromPath: string,
+    anchor: string,
+    toDate: string,
+    section: JotSection,
+    rewrite: (line: string) => string,
+  ): Promise<"moved" | "no-line"> {
+    return this.updateNote(fromPath, async (note, write) => {
+      const line = anchorLine(note, anchor);
+      if (line === null) return "no-line";
+      await this.ensureDailyNote(toDate);
+      await this.appendJournalLine(toDate, rewrite(line), section);
+      write(cutAnchorLine(note, anchor));
+      log.info({ fromPath, anchor, toDate }, "line moved to another day");
       return "moved";
     });
   }

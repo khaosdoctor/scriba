@@ -23,6 +23,7 @@ import {
 import { MenuLifetime } from "./presentation/telegram/settings/menu-lifetime.ts";
 import { AdminService } from "./services/admin.ts";
 import { AgentService } from "./services/agent.ts";
+import { BackfillService } from "./services/backfill.ts";
 import { CommandService } from "./services/command.ts";
 import { EditService } from "./services/edits.ts";
 import {
@@ -230,6 +231,13 @@ export async function createScriba(
     notifier: chat,
     ratingTime: config.ratingTime,
   });
+  const backfill = new BackfillService({
+    repo: repo.jots,
+    settings: repo.settings,
+    obsidian,
+    enricher,
+    notifier: chat,
+  });
   const processing: ProcessingService =
     externalServices.processing ??
     new ProcessingService({
@@ -243,6 +251,7 @@ export async function createScriba(
       jots,
       edits,
       tasks,
+      backfill,
       notifier: chat,
       media,
     });
@@ -286,6 +295,7 @@ export async function createScriba(
     jots,
     edits,
     admin,
+    backfill,
   });
 
   scheduler.daily(

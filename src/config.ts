@@ -66,16 +66,17 @@ const EnvObject = z.object({
   // line (rolling window: measured from the previous jot, not the first). 0 disables.
   SQUASH_WINDOW_MS: z.coerce.number().default(15_000),
 
-  // Enrichment runs on the Claude Agent SDK (subscription auth). Haiku is the default:
-  // low cost, plenty of headroom, and the task (translate + insert wikilinks) is simple.
+  // Enrichment runs on the Claude Agent SDK (subscription auth), on Sonnet at low effort:
+  // it costs about what Haiku does and judges context (links, years, past days) better.
   // When the SDK call fails (usage exhausted, overload, network), enrichment retries on
-  // ENRICH_BACKUP_MODEL, then on a free Groq model (reusing GROQ_API_KEY). No key means
-  // no Groq step: jots post un-enriched once both Claude models fail.
+  // ENRICH_BACKUP_MODEL (Haiku, so one model's outage doesn't take both steps down), then
+  // on a free Groq model (reusing GROQ_API_KEY). No key means no Groq step: jots post
+  // un-enriched once both Claude models fail.
   // gpt-oss-120b is Groq's strongest open-weight model for structured JSON in/out.
   // Text-only: image captioning can't fall back (Groq has no production vision model),
   // so a captionless image posts embedded-but-uncaptioned when the primary is down.
-  AGENT_MODEL: z.string().default("claude-haiku-5-5"),
-  ENRICH_BACKUP_MODEL: z.string().default("claude-sonnet-5-5"),
+  AGENT_MODEL: z.string().default("claude-sonnet-5-5"),
+  ENRICH_BACKUP_MODEL: z.string().default("claude-haiku-5-5"),
   ENRICH_FALLBACK_MODEL: z.string().default("openai/gpt-oss-120b"),
   // Cap on one enrichment call, per step of the chain. A call past it counts as a failure
   // towards that step's circuit breaker, and the next step is tried.

@@ -1112,6 +1112,7 @@ test("the SDK receives these exact output schemas for enrichment and task extrac
           },
         },
         til: { type: "boolean" },
+        past: { type: "string" },
       },
       required: ["text", "ambiguous", "tasks", "til"],
       additionalProperties: false,
@@ -1135,4 +1136,72 @@ test("the SDK receives these exact output schemas for enrichment and task extrac
       additionalProperties: false,
     },
   });
+});
+
+test("past carries the author's words through, trimmed, and is absent when blank or missing", async () => {
+  const { out } = await structuredTil({
+    text: "Fixed the bike",
+    ambiguous: [],
+    tasks: [],
+    til: false,
+    past: "  on tuesday ",
+  });
+  assert.equal(out.past, "on tuesday");
+  for (const past of [undefined, "", "   "]) {
+    const { out: blank } = await structuredTil({
+      text: "a",
+      ambiguous: [],
+      past,
+    });
+    assert.equal(blank.past, undefined);
+  }
+});
+
+test("past nested inside a wrapped answer is still read on the fallback path", async () => {
+  const res = await new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "k", model: "m" }],
+    groqChat: fakeGroq(
+      JSON.stringify({
+        text: JSON.stringify({ text: "a", ambiguous: [], past: "yesterday" }),
+      }),
+    ).fn,
+  }).enrich({ text: "x", candidates: [] });
+  assert.equal(res.text, "a");
+  assert.equal(res.past, "yesterday");
+});
+
+test("confirmPastDay is true only on a structured sameDay true, and false on any failure", async () => {
+  const ask = async (structured_output: unknown) => {
+    const { fn, calls } = fakeQuery([
+      { type: "result", subtype: "success", result: "", structured_output },
+    ]);
+    const sameDay = await new Enricher({ query: fn }).confirmPastDay(
+      "on tuesday I fixed the bike",
+      "on tuesday",
+    );
+    return { sameDay, calls };
+  };
+  const yes = await ask({ sameDay: true });
+  assert.equal(yes.sameDay, true);
+  assert.match(String(yes.calls[0]!.prompt), /on tuesday I fixed the bike/);
+  assert.equal(yes.calls[0]!.options.outputFormat.type, "json_schema");
+  assert.equal((await ask({ sameDay: false })).sameDay, false);
+  assert.equal((await ask({ nope: 1 })).sameDay, false);
+  const down = await new Enricher({ query: failQuery() }).confirmPastDay(
+    "x",
+    "yesterday",
+  );
+  assert.equal(down, false);
+});
+
+test("confirmPastDay reads a plain JSON answer from a chat fallback", async () => {
+  const sameDay = await new Enricher({
+    model: "claude-haiku-4-5",
+    query: failQuery(),
+    fallbacks: [{ apiKey: "k", model: "m" }],
+    groqChat: fakeGroq('{"sameDay": true}').fn,
+  }).confirmPastDay("x", "yesterday");
+  assert.equal(sameDay, true);
 });

@@ -5,6 +5,7 @@ import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { VaultRepository } from "../data/repositories/vault.ts";
 import { type Jot, MAX_ATTEMPTS } from "../domain/jot/entity.ts";
 import {
+  arrivalTime,
   combineEnrichSource,
   enrichableSource,
   entryContent,
@@ -27,6 +28,7 @@ import { candidates, forcedCandidates, linkDateWords } from "../libs/links.ts";
 import { logger } from "../libs/log.ts";
 import { isRecoverable } from "../libs/model.ts";
 import { errorText, escapeHtml, shortId, splitEntry } from "../libs/text.ts";
+import type { BackfillService, PastDay } from "./backfill.ts";
 import type { EditService } from "./edits.ts";
 import { type Enricher, ModelsDownError } from "./enrich.ts";
 import type { JotService } from "./jots.ts";
@@ -102,6 +104,7 @@ interface Enriched {
   text: string;
   tasks: TaskDraft[];
   tilCard: boolean;
+  past?: PastDay | null;
 }
 
 interface Written {
@@ -138,6 +141,7 @@ export interface ProcessingDeps {
   jots: Pick<JotService, "askTil" | "deleteStatus" | "react" | "status">;
   edits: Pick<EditService, "drainQueued" | "askLink">;
   tasks: Pick<TaskService, "suggest" | "draftsFor">;
+  backfill: Pick<BackfillService, "detect" | "offer">;
   notifier: Pick<Notifier, "typing">;
   media: Pick<MediaService, "downloadFile">;
 }
@@ -331,8 +335,9 @@ export class ProcessingService {
       jotDay(jot),
     );
     const tilCard = await this.tilWanted(res.til, jot);
+    const past = await this.deps.backfill.detect(jot, res.past, source);
     await this.askToConfirm(id, res.ambiguous);
-    return { text: res.text, tasks, tilCard };
+    return { text: res.text, tasks, tilCard, past };
   }
 
   private async linkCandidates(
@@ -450,7 +455,7 @@ export class ProcessingService {
     jot: Jot,
     { followers, merged }: Group,
     { linked, spillover }: Written,
-    { tasks, tilCard }: Enriched,
+    { tasks, tilCard, past }: Enriched,
   ): Promise<void> {
     try {
       await this.deps.jots.react(jot.id, "done");
@@ -471,6 +476,11 @@ export class ProcessingService {
       for (const draft of tasks)
         await this.deps.tasks.suggest(draft, jot.id, jotDay(jot));
       if (tilCard) await this.deps.jots.askTil(jot.id, linked);
+      // ponytail: a split entry is several lines with their own anchors; it stays put.
+      if (past && !spillover.length)
+        await this.deps.backfill.offer(jot, past, linked);
+      if (past && spillover.length)
+        log.info({ id: jot.id }, "backfill: split entry, not offered");
       await this.deps.edits.drainQueued(jot.id); // apply anything queued while we were working
       for (const follower of followers) {
         await this.deps.jots.react(follower.id, "done");
@@ -634,7 +644,7 @@ export class ProcessingService {
     const patch: Partial<Jot> = {};
     if (jot.kind === "image" || jot.kind === "video") {
       const date = jotDay(jot);
-      const name = `${date}_${jot.time.replaceAll(":", "")}_${jot.id}.${file.ext}`;
+      const name = `${date}_${arrivalTime(jot.time).replaceAll(":", "")}_${jot.id}.${file.ext}`;
       patch.asset_path = await this.deps.obsidian.saveAsset(
         name,
         file.bytes,

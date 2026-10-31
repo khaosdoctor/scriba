@@ -133,9 +133,16 @@ export function moveAnchorLine(
   const line = anchorLine(note, anchor);
   if (line === null) return { missing: "line" };
   if (!findSection(note.split("\n"), heading)) return { missing: "heading" };
-  const without = note.replace(
-    new RegExp(`${anchorRe(anchor).source}\\n?`, "m"),
-    "",
-  );
-  return { note: insertJournalLine(without, heading, rewrite(line)) };
+  return {
+    note: insertJournalLine(
+      cutAnchorLine(note, anchor),
+      heading,
+      rewrite(line),
+    ),
+  };
+}
+
+/** The note without the anchored line, newline included, so no gap is left behind. */
+export function cutAnchorLine(note: string, anchor: string): string {
+  return note.replace(new RegExp(`${anchorRe(anchor).source}\\n?`, "m"), "");
 }
