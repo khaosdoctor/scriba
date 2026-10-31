@@ -1,3 +1,11 @@
+## [1.63.0](https://github.com/khaosdoctor/scriba/compare/v1.62.1...v1.63.0) (2026-10-31)
+
+
+### Features
+
+* **backfill:** move entries about a past day to that day ([963254f](https://github.com/khaosdoctor/scriba/commit/963254f193534778e6288de64a358744d861b574))
+* **review:** skip the rating and the habit review ([098ad24](https://github.com/khaosdoctor/scriba/commit/098ad2418ea10ee8dfa0dc3383d72da3927e38e8))
+
 ## [1.62.1](https://github.com/khaosdoctor/scriba/compare/v1.62.0...v1.62.1) (2026-10-22)
 
 
@@ -25,11 +33,4 @@
 ### Bug Fixes
 
 * **enrich:** strip quotes wrapping a whole model answer ([#97](https://github.com/khaosdoctor/scriba/issues/97)) ([e4b5bed](https://github.com/khaosdoctor/scriba/commit/e4b5bed6e315d24bd8c71c32bc1769721e00bb0f))
-
-## [1.60.0](https://github.com/khaosdoctor/scriba/compare/v1.59.0...v1.60.0) (2026-10-10)
-
-
-### Features
-
-* **journal:** add an Edit button that rewrites a whole entry ([#98](https://github.com/khaosdoctor/scriba/issues/98)) ([4979d99](https://github.com/khaosdoctor/scriba/commit/4979d99651530fd9a60c2a869ae451a55214ce52))
 
