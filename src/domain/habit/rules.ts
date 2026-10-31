@@ -61,6 +61,17 @@ export function completeHabitLine(
   return stampCompletion(out, date);
 }
 
+/** What skipping the review from `fromIndex` on ticks: the pending value habits. A yes/no
+ *  habit stays unticked, since leaving it out is its "no". */
+export function skippedValueHabits(
+  habits: Habit[],
+  fromIndex: number,
+): Habit[] {
+  return habits.filter(
+    (habit) => habit.index >= fromIndex && !habit.done && habit.field,
+  );
+}
+
 export function isHabitsReviewed(note: string): boolean {
   const frontmatter = frontmatterBlock(note);
   if (frontmatter === undefined) return false;

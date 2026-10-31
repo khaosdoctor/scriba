@@ -22,15 +22,17 @@ test("/rate prompts for the day given, and refuses a malformed date with the usa
   assert.deepEqual(day.texts("sendMessage"), [
     "📊 How was 2026-07-05? Rate it 1–10:",
   ]);
-  const rows: { callback_data: string }[][] =
+  const rows: { text: string; callback_data: string }[][] =
     day.calls[0]?.payload.reply_markup.inline_keyboard;
   assert.deepEqual(
     rows.map((row) => row.map((button) => button.callback_data)),
     [
       [1, 2, 3, 4, 5].map((score) => `rate:2026-07-05:${score}`),
       [6, 7, 8, 9, 10].map((score) => `rate:2026-07-05:${score}`),
+      ["rate:2026-07-05:5"],
     ],
   );
+  assert.equal(rows[2]?.[0]?.text, "⏭ Skip (5)");
 
   const today = await harness.say("/rate");
   assert.match(

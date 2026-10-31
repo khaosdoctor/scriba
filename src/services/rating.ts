@@ -21,6 +21,9 @@ export const RATING_NS = "rate";
 
 export const FOLLOWUP_NS = "fu";
 
+/** The score a skipped rating records: the Skip button sends the same payload as 5. */
+const SKIP_RATING = 5;
+
 export interface RatingDeps {
   settings: Pick<SettingsRepository, "getSetting" | "ratingTime">;
   ratings: RatingRepository;
@@ -58,14 +61,15 @@ export class RatingService {
 
   async prompt(date: string): Promise<void> {
     log.rating.info({ date }, "prompting for daily rating");
-    const button = (score: number): Row[number] => [
-      String(score),
+    const button = (score: number, text = String(score)): Row[number] => [
+      text,
       `${RATING_NS}:${date}:${score}`,
     ];
     await this.deps.notifier.send(`📊 How was ${date}? Rate it 1–10:`, {
       keyboard: keyboard([
-        [1, 2, 3, 4, 5].map(button),
-        [6, 7, 8, 9, 10].map(button),
+        [1, 2, 3, 4, 5].map((score) => button(score)),
+        [6, 7, 8, 9, 10].map((score) => button(score)),
+        [button(SKIP_RATING, `⏭ Skip (${SKIP_RATING})`)],
       ]),
     });
   }

@@ -5,6 +5,7 @@ import {
   isHabitsReviewed,
   isNumericValue,
   parseHabits,
+  skippedValueHabits,
 } from "../domain/habit/rules.ts";
 import { keyboard, type Row } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
@@ -23,6 +24,9 @@ export interface HabitDeps {
   notifier: Pick<Notifier, "notify" | "send" | "edit" | "delete">;
   heading: string;
 }
+
+const skipData = (date: string, fromIndex: number) =>
+  `${HABITS_NS}:${date}:skip:${fromIndex}`;
 
 export type FillOutcome = "saved" | "notNumber" | "gone";
 
@@ -57,7 +61,12 @@ export class HabitService {
     const id = await notifier.send(
       `🌱 Time to review habits for ${date} — ${pending.length} to go.`,
       {
-        keyboard: keyboard([[["🌱 Begin", `${HABITS_NS}:${date}:begin`]]]),
+        keyboard: keyboard([
+          [
+            ["🌱 Begin", `${HABITS_NS}:${date}:begin`],
+            ["⏭ Skip all", skipData(date, 0)],
+          ],
+        ]),
       },
     );
     this.activeMsg.set(date, id);
@@ -76,9 +85,7 @@ export class HabitService {
     );
     if (!habit) {
       log.info({ date }, `habit review complete — stamping frontmatter`);
-      await obsidian.setFrontmatter(daily.path, "habitsReviewed", "true");
-      log.info({ date, path: daily.path }, "habitsReviewed frontmatter set");
-      return this.cleanup(date);
+      return this.finish(date, daily.path);
     }
     log.debug(
       { date, index: habit.index, kind: habit.field ? "value" : "yes/no" },
@@ -90,18 +97,56 @@ export class HabitService {
       return;
     }
     const digest = fingerprint(habit.line);
+    const skipRow: Row = [["⏭ Skip the rest", skipData(date, habit.index)]];
     if (habit.field)
       return notifier.edit(
         msgId,
         `🌱 ${habit.label}? Reply to this message with a number.\n(hb:${date}:${habit.index}:${digest})`,
+        { keyboard: keyboard([skipRow]) },
       );
     const button = (text: string, verdict: string): Row[number] => [
       text,
       `${HABITS_NS}:${date}:${habit.index}:${digest}:${verdict}`,
     ];
     await notifier.edit(msgId, `🌱 ${habit.label}?`, {
-      keyboard: keyboard([[button("✅ Yes", "y"), button("❌ No", "n")]]),
+      keyboard: keyboard([
+        [button("✅ Yes", "y"), button("❌ No", "n")],
+        skipRow,
+      ]),
     });
+  }
+
+  /** Ends the review early: every pending value habit from `fromIndex` on is ticked with
+   *  its template value, a yes/no habit stays unticked, and the review is stamped done.
+   *  Lines are located as read under the note lock, like `tick`. */
+  async skip(date: string, fromIndex: number, card?: number): Promise<void> {
+    const { obsidian, heading } = this.deps;
+    if (card) this.activeMsg.set(date, card);
+    const daily = await obsidian.readDailyNote(date);
+    if (!daily) {
+      log.warn({ date }, "habit skip ignored: note gone");
+      return this.cleanup(date);
+    }
+    const ticked = await obsidian.updateNote(daily.path, (note, write) => {
+      const habits = skippedValueHabits(parseHabits(note, heading), fromIndex);
+      if (!habits.length) return 0;
+      write(
+        habits.reduce(
+          (text, habit) =>
+            text.replace(habit.line, () => completeHabitLine(habit.line, date)),
+          note,
+        ),
+      );
+      return habits.length;
+    });
+    log.info({ date, fromIndex, ticked }, "habit review skipped");
+    return this.finish(date, daily.path);
+  }
+
+  private async finish(date: string, path: string): Promise<void> {
+    await this.deps.obsidian.setFrontmatter(path, "habitsReviewed", "true");
+    log.info({ date, path }, "habitsReviewed frontmatter set");
+    return this.cleanup(date);
   }
 
   async tap(

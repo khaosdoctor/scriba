@@ -5,6 +5,7 @@ import {
   isHabitsReviewed,
   isNumericValue,
   parseHabits,
+  skippedValueHabits,
 } from "./rules.ts";
 
 const HABITS_NOTE = [
@@ -56,6 +57,15 @@ test("completeHabitLine is idempotent on an already-done line", () => {
   const done =
     "- [x] Exercised #meta/habits/exercise [completion:: 2026-06-22]";
   assert.equal(completeHabitLine(done, "2026-06-23"), done); // no double tick, no second completion
+});
+
+test("skippedValueHabits picks only pending value habits from the given index", () => {
+  const habits = parseHabits(HABITS_NOTE);
+  assert.deepEqual(
+    skippedValueHabits(habits, 0).map((habit) => habit.label),
+    ["Pages read"],
+  );
+  assert.deepEqual(skippedValueHabits(habits, 2), []);
 });
 
 test("isHabitsReviewed detects the frontmatter flag", () => {

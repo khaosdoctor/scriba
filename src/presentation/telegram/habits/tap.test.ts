@@ -32,6 +32,30 @@ test("Yes ticks the habit, answers the tap, and edits the card into the next que
   assert.match(run.texts("editMessageText")[0] ?? "", /^🌱 Pages read\?/);
 });
 
+test("Skip all ticks the value habit, stamps the review and removes the card", async () => {
+  const harness = await withNote();
+  const run = await harness.tap(`hb:${DAY}:skip:0`, {
+    message: { message_id: 321 },
+  });
+  assert.deepEqual(run.texts("answerCallbackQuery"), [undefined]);
+  assert.equal(
+    run.calls.some((call) => call.method === "deleteMessage"),
+    true,
+  );
+});
+
+test("a skip with a missing or non-numeric start is refused", async () => {
+  for (const data of [
+    `hb:${DAY}:skip`,
+    `hb:${DAY}:skip:x`,
+    `hb:${DAY}:skip:-1`,
+  ]) {
+    const harness = await botHarness();
+    const run = await harness.tap(data);
+    assert.equal(run.rendered, "ack(bad habit)", data);
+  }
+});
+
 test("a payload with a bad date, a non-numeric index or no line digest is refused before any note is read", async () => {
   for (const data of [
     "hb:",

@@ -572,6 +572,16 @@ Layers call downward only: presentation calls services, services call data. `dom
   `RatingService.startFollowup`, so a
   rating that is off never reaches it. The switches govern the nightly prompt only: `/rate`
   and the menu's Rate today still ask, and their follow-up follows its own switch.
+  The rating prompt's **⏭ Skip (5)** sends the same payload as the 5 button, so a skip is a
+  5 through the same `rate()` path, follow-up questions included.
+- **The habit review can be skipped, from the card or from any question.** The card carries
+  **⏭ Skip all** next to Begin and every question (yes/no and value alike) carries **⏭ Skip
+  the rest** (`hb:<date>:skip:<fromIndex>`, routed before the index parse in `habitsView`).
+  `HabitService.skip` ticks every pending value habit from that index on with its template
+  value kept (`skippedValueHabits` in `domain/habit/rules.ts`, `completeHabitLine` with no
+  value), in one `updateNote` call that finds the lines as read under the lock. A yes/no
+  habit stays unticked. It then stamps `habitsReviewed` and removes the card, the same
+  end as a finished review.
 - **Connection health is checked on demand and never spends a token.** `/status` asks
   `HealthCheck` (`services/health.ts`) to probe every upstream once, all at once, with a
   5s timeout each: Anthropic and Telegram at their bare host, Groq at `/models`

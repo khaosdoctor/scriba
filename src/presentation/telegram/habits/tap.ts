@@ -19,6 +19,19 @@ export function habitsView(habits: HabitService): Composer<Context> {
         await responder.ack();
         return habits.ask(date, 0, ctx.callbackQuery.message?.message_id);
       }
+      if (action === "skip") {
+        const fromIndex = Number(digest);
+        if (!digest || !Number.isInteger(fromIndex) || fromIndex < 0) {
+          log.warn({ date, digest }, "habit skip rejected: bad index");
+          return responder.ack("bad habit");
+        }
+        await responder.ack();
+        return habits.skip(
+          date,
+          fromIndex,
+          ctx.callbackQuery.message?.message_id,
+        );
+      }
       const index = Number(action);
       if (!Number.isInteger(index) || !digest) {
         log.warn({ date, action, verd }, "habit tap rejected: bad index");

@@ -43,6 +43,6 @@ test("/habits with a date sends one Begin card counting what is pending", async 
     run.calls[0]?.payload.reply_markup.inline_keyboard
       .flat()
       .map((button: { callback_data: string }) => button.callback_data),
-    ["hb:2026-07-05:begin"],
+    ["hb:2026-07-05:begin", "hb:2026-07-05:skip:0"],
   );
 });

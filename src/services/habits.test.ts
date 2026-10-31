@@ -105,7 +105,10 @@ test("a review sends one Begin card counting what is still pending", async () =>
     `🌱 Time to review habits for ${DATE} — 2 to go.`,
   );
   assert.deepEqual(buttons(fixture.sent[0]!.opts), [
-    [{ text: "🌱 Begin", callback_data: `hb:${DATE}:begin` }],
+    [
+      { text: "🌱 Begin", callback_data: `hb:${DATE}:begin` },
+      { text: "⏭ Skip all", callback_data: `hb:${DATE}:skip:0` },
+    ],
   ]);
 });
 
@@ -150,10 +153,11 @@ test("a yes/no habit turns the card into a question with Yes and No", async () =
       { text: "✅ Yes", callback_data: `hb:${DATE}:0:${MUSIC}:y` },
       { text: "❌ No", callback_data: `hb:${DATE}:0:${MUSIC}:n` },
     ],
+    [{ text: "⏭ Skip the rest", callback_data: `hb:${DATE}:skip:0` }],
   ]);
 });
 
-test("a value habit asks for a number in a reply that carries its marker, with no buttons", async () => {
+test("a value habit asks for a number in a reply that carries its marker, with only Skip the rest as a button", async () => {
   const fixture = setup();
   await fixture.habits.prompt(DATE);
   await fixture.habits.ask(DATE, 1);
@@ -161,7 +165,10 @@ test("a value habit asks for a number in a reply that carries its marker, with n
     fixture.edits[0]!.text,
     `🌱 Pages read? Reply to this message with a number.\n(hb:${DATE}:1:${PAGES})`,
   );
-  assert.equal(fixture.edits[0]!.opts, undefined);
+  assert.deepEqual(
+    buttons(fixture.edits[0]!.opts)[0]!.map((button) => button.text),
+    ["⏭ Skip the rest"],
+  );
 });
 
 test("Yes ticks the line and stamps its completion under the note lock", async () => {
@@ -313,6 +320,70 @@ test("when the note disappears mid-review the card is deleted and nothing is ask
   await fixture.habits.ask(DATE, 0);
   assert.deepEqual(fixture.deletes, [FLOW_MSG]);
   assert.deepEqual(fixture.edits, []);
+});
+
+test("the card offers Skip all next to Begin, and each question offers Skip the rest from its own habit", async () => {
+  const fixture = setup();
+  await fixture.habits.prompt(DATE);
+  assert.deepEqual(buttons(fixture.sent[0]!.opts)[0]!.at(-1), {
+    text: "⏭ Skip all",
+    callback_data: `hb:${DATE}:skip:0`,
+  });
+  await fixture.habits.ask(DATE, 0);
+  await fixture.habits.ask(DATE, 1);
+  assert.deepEqual(buttons(fixture.edits[0]!.opts)[1], [
+    { text: "⏭ Skip the rest", callback_data: `hb:${DATE}:skip:0` },
+  ]);
+  assert.deepEqual(buttons(fixture.edits[1]!.opts), [
+    [{ text: "⏭ Skip the rest", callback_data: `hb:${DATE}:skip:1` }],
+  ]);
+});
+
+test("Skip all ticks the value habit with its template value in one write, leaves the yes/no habit, stamps the review and deletes the card", async () => {
+  const fixture = setup();
+  await fixture.habits.prompt(DATE);
+  fixture.events.length = 0;
+  await fixture.habits.skip(DATE, 0);
+  const note = fixture.vault.get(PATH)!;
+  assert.match(
+    note,
+    new RegExp(
+      `- \\[x\\] \\[Pages read:: 0\\] #meta/habits/reading \\[completion:: ${DATE}\\]`,
+    ),
+  );
+  assert.match(note, /- \[ \] Practiced music/);
+  assert.match(note, /habitsReviewed: true/);
+  assert.equal(fixture.writes.length, 2);
+  assert.deepEqual(fixture.events.at(-1), `delete:${FLOW_MSG}`);
+});
+
+test("Skip the rest leaves habits before its index alone", async () => {
+  const note = NOTE.replace(
+    "- [ ] Practiced music",
+    "- [ ] [Glasses:: 0] Water",
+  );
+  const fixture = setup({ [DATE]: note });
+  await fixture.habits.skip(DATE, 1);
+  const saved = fixture.vault.get(PATH)!;
+  assert.match(saved, /- \[ \] \[Glasses:: 0\] Water/);
+  assert.match(saved, /- \[x\] \[Pages read:: 0\]/);
+});
+
+test("skipping with only yes/no habits left writes no ticks but still stamps the review", async () => {
+  const fixture = setup();
+  await fixture.habits.skip(DATE, 2);
+  assert.equal(fixture.writes.length, 1);
+  assert.match(fixture.vault.get(PATH)!, /habitsReviewed: true/);
+  assert.match(fixture.vault.get(PATH)!, /- \[ \] \[Pages read:: 0\]/);
+});
+
+test("skipping when the note is gone deletes the card and writes nothing", async () => {
+  const fixture = setup();
+  await fixture.habits.prompt(DATE);
+  fixture.vault.delete(PATH);
+  await fixture.habits.skip(DATE, 0);
+  assert.deepEqual(fixture.deletes, [FLOW_MSG]);
+  assert.deepEqual(fixture.writes, []);
 });
 
 test("after a restart a Yes is still recorded but there is no card to continue on", async () => {
