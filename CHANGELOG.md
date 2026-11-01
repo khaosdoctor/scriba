@@ -1,3 +1,10 @@
+## [1.64.1](https://github.com/khaosdoctor/scriba/compare/v1.64.0...v1.64.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **backfill:** undo a move with the words the rewrite replaced ([ce368b0](https://github.com/khaosdoctor/scriba/commit/ce368b0c91a0f51a1465116eab41c1c74c997b47))
+
 ## [1.64.0](https://github.com/khaosdoctor/scriba/compare/v1.63.1...v1.64.0) (2026-11-01)
 
 
@@ -26,11 +33,4 @@
 ### Bug Fixes
 
 * **config:** unescape quotes Coolify adds to task note paths ([5ed7abc](https://github.com/khaosdoctor/scriba/commit/5ed7abcd7f813ae9aadd6f5f708721dca41bc3ec))
-
-## [1.62.0](https://github.com/khaosdoctor/scriba/compare/v1.61.0...v1.62.0) (2026-10-15)
-
-
-### Features
-
-* **enrich:** scale model timeouts from 35s and drop OpenCode, fix the task summary and edit prompt ([#100](https://github.com/khaosdoctor/scriba/issues/100)) ([1647c61](https://github.com/khaosdoctor/scriba/commit/1647c6193bbed6fff978ea95ec440b467f8ffb51))
 
