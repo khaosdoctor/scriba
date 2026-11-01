@@ -1,3 +1,10 @@
+## [1.64.0](https://github.com/khaosdoctor/scriba/compare/v1.63.1...v1.64.0) (2026-11-01)
+
+
+### Features
+
+* **til,backfill:** file the enricher's rewrite on a move, with an Edit button ([37ff97b](https://github.com/khaosdoctor/scriba/commit/37ff97bf5720631726e5239f922c2e94a7d74910))
+
 ## [1.63.1](https://github.com/khaosdoctor/scriba/compare/v1.63.0...v1.63.1) (2026-10-31)
 
 
@@ -26,11 +33,4 @@
 ### Features
 
 * **enrich:** scale model timeouts from 35s and drop OpenCode, fix the task summary and edit prompt ([#100](https://github.com/khaosdoctor/scriba/issues/100)) ([1647c61](https://github.com/khaosdoctor/scriba/commit/1647c6193bbed6fff978ea95ec440b467f8ffb51))
-
-## [1.61.0](https://github.com/khaosdoctor/scriba/compare/v1.60.1...v1.61.0) (2026-10-14)
-
-
-### Features
-
-* **status:** check upstream health only when /status runs, with no background alerts ([6d5ac40](https://github.com/khaosdoctor/scriba/commit/6d5ac404c6ffc664c61d6c754ab4dffd24c5436d))
 
