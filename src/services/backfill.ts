@@ -138,7 +138,8 @@ export class BackfillService {
 
   /** Move a jot's line (and any squashed followers riding on it) to `date`'s note, as the
    *  enricher's rewrite when there is one, at a made-up daytime clock that says when it
-   *  was written. Going back to the day it was written restores the arrival time. */
+   *  was written. Going back to the day it was written restores the arrival time and the
+   *  words the rewrite replaced. */
   async move(jotId: string | undefined, date: string): Promise<MoveOutcome> {
     const { repo, obsidian } = this.deps;
     const jot = jotId ? await repo.getJot(jotId) : undefined;
@@ -158,18 +159,19 @@ export class BackfillService {
     );
     const stamp = (member: Jot) =>
       home ? plainTime(member.received_at) : backfilled;
-    const pastText = home ? null : jot.past_text;
+    // Going home puts back the words the first move replaced; leaving files the rewrite.
+    const text = home ? jot.pre_move_text : jot.past_text;
+    const kept: { words?: string } = {};
     const result = await obsidian
-      .moveToDay(jot.note_path, jot.anchor, date, jot.section, (line) =>
-        journalLine(
+      .moveToDay(jot.note_path, jot.anchor, date, jot.section, (line) => {
+        kept.words = stripJournalLine(line, jot.time);
+        return journalLine(
           stamp(jot),
-          pastText
-            ? entryContent(jot, pastText)
-            : stripJournalLine(line, jot.time),
+          text ? entryContent(jot, text) : kept.words,
           jot.anchor,
           jot.section,
-        ),
-      )
+        );
+      })
       .catch((err: unknown) => {
         log.error({ err, jotId, date }, "backfill move failed");
         return "failed" as const;
@@ -182,9 +184,13 @@ export class BackfillService {
         note_path: notePath,
         time: stamp(member),
       });
-    // The rewrite becomes the jot's source, so a reprocess keeps it.
-    const patch = pastText && !followers.length && sourcePatch(jot, pastText);
+    // The filed words become the jot's source, so a reprocess keeps them.
+    const patch = text && !followers.length && sourcePatch(jot, text);
     if (patch) await repo.updateJot(jot.id, patch);
+    if (home && jot.pre_move_text)
+      await repo.updateJot(jot.id, { pre_move_text: null });
+    if (!home && text && !jot.pre_move_text)
+      await repo.updateJot(jot.id, { pre_move_text: kept.words });
     log.info({ jotId, from: jotDay(jot), to: date }, "backfill: jot moved");
     return "moved";
   }

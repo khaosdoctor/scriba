@@ -46,6 +46,8 @@ export interface Jot {
   til_text?: string | null;
   /** The enricher's past-day rewrite (the entry without its "when"), filed on a move. */
   past_text?: string | null;
+  /** The line's own words before a past-day move filed `past_text`, put back by undo. */
+  pre_move_text?: string | null;
   section: JotSection;
   asset_path: string | null;
   file_id: string | null;

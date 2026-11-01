@@ -154,6 +154,21 @@ test("a specific day the second model agrees on moves the rewrite without asking
   assert.equal(moved.raw_text, "I fixed the bike with [[Ada]]");
 });
 
+test("undo puts back the words the rewrite replaced, in the line and the source", async () => {
+  const { service, moves, stored } = scenario({
+    jot: { past_text: "I fixed the bike" },
+  });
+  assert.equal(await service.move("abcd1234", "2026-10-27"), "moved");
+  assert.equal(stored.get("abcd1234")!.raw_text, "I fixed the bike");
+  // a second move between past days keeps the first words, not the rewrite
+  assert.equal(await service.move("abcd1234", "2026-10-26"), "moved");
+  assert.equal(stored.get("abcd1234")!.pre_move_text, "Fixed the bike");
+  assert.equal(await service.undo("abcd1234"), "moved");
+  assert.equal(moves[2]!.line, "- _22:45:13 ::_ Fixed the bike ^abcd1234");
+  assert.equal(stored.get("abcd1234")!.raw_text, "Fixed the bike");
+  assert.equal(stored.get("abcd1234")!.pre_move_text, null);
+});
+
 test("a move without a rewrite keeps the line's own text", async () => {
   const { service, moves } = scenario();
   assert.equal(await service.move("abcd1234", "2026-10-27"), "moved");

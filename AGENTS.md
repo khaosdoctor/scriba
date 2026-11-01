@@ -465,7 +465,8 @@ Layers call downward only: presentation calls services, services call data. `dom
   (`randomDaytime`), since the arrival time says when it was written; `journalLine`
   renders the stamp and every edit, undo and reprocess finds the line unchanged.
   `received_at` stays the arrival, and undo moves the line back there with the arrival
-  time (the rewrite stays). Later, the second opinion may move to a local decision model (Jeb on giskard,
+  time and the words the rewrite replaced (kept in `jots.pre_move_text` by the first move,
+  folded back into the source the same way). Later, the second opinion may move to a local decision model (Jeb on giskard,
   p(yes) >= 0.9); until then it is the judge model.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button: `un:<jotId>`, handled by
