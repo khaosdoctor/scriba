@@ -43,9 +43,16 @@ function setup(
       void updates.push([id, patch]),
     markTilOffered: async (id: string) => void marked.push(id),
   };
+  const rewrites: string[] = [];
   const obsidian = {
-    moveToTil: async (path: string, anchor: string) => {
+    moveToTil: async (
+      path: string,
+      anchor: string,
+      rewrite?: (line: string) => string,
+    ) => {
       moves.push([path, anchor]);
+      if (rewrite)
+        rewrites.push(rewrite(`- _10:00:00 ::_ whatever ^${anchor}`));
       if (over.moveFails) throw new Error("obsidian is down");
       return over.move ? over.move(path, anchor) : (over.moved ?? "moved");
     },
@@ -66,8 +73,46 @@ function setup(
     lookups,
     moves,
     sends,
+    rewrites,
   };
 }
+
+test("the TIL card shows the enricher's rewrite and keeps it for the move", async () => {
+  const harness = setup();
+  await harness.jots.askTil(
+    "abcd1234",
+    "At least today I learned that balloons can fly",
+    "Balloons can fly",
+  );
+  assert.deepEqual(harness.updates, [
+    ["abcd1234", { til_text: "Balloons can fly" }],
+  ]);
+  assert.match(harness.sends[0]!.text, /<blockquote>Balloons can fly</);
+});
+
+test("accepting files the rewrite as the TIL line and folds it into the source", async () => {
+  const harness = setup({
+    followers: [],
+    jot: { kind: "text", til_text: "Balloons can fly" },
+  });
+  assert.equal(await harness.jots.answerTil("abcd1234", true), "moved");
+  assert.deepEqual(harness.rewrites, ["- Balloons can fly ^abcd1234"]);
+  assert.deepEqual(harness.updates, [
+    ["abcd1234", { section: "til" }],
+    ["abcd1234", { raw_text: "Balloons can fly" }],
+  ]);
+});
+
+test("a squashed line still gets the rewrite, but no single source to fold it into", async () => {
+  const harness = setup({
+    jot: { kind: "text", til_text: "Balloons can fly" },
+  });
+  await harness.jots.answerTil("abcd1234", true);
+  assert.deepEqual(harness.rewrites, ["- Balloons can fly ^abcd1234"]);
+  assert.ok(
+    harness.updates.every(([, patch]) => "section" in (patch as object)),
+  );
+});
 
 test("accepting moves the line and follows it with the leader's and followers' section", async () => {
   const harness = setup();

@@ -75,6 +75,8 @@ interface EnrichResult {
   tasks: DetectedTask[]; // things to do, proposed for confirmation as tasks
   til: boolean; // the entry reads like something the author learned
   past?: string; // the author's own words for the past day the whole entry happened on
+  tilText?: string; // the learning alone, for a TIL move
+  pastText?: string; // the entry without its words for when, for a past-day move
   usage: { input: number; output: number };
 }
 
@@ -97,6 +99,8 @@ const enrichedPayloadSchema = z.object({
   tasks: tasksSchema.optional(),
   til: z.boolean().optional(),
   past: z.string().optional(),
+  tilText: z.string().optional(),
+  pastText: z.string().optional(),
 });
 
 const EnrichOutputStrict = z.strictObject({
@@ -105,7 +109,12 @@ const EnrichOutputStrict = z.strictObject({
   tasks: z.array(TaskOutputStrict.partial({ type: true })),
   til: z.boolean(),
   past: z.string().optional(),
+  tilText: z.string().optional(),
+  pastText: z.string().optional(),
 });
+
+const trimmedText = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() ? value.trim() : undefined;
 
 const SameDayStrict = z.strictObject({ sameDay: z.boolean() });
 
@@ -255,10 +264,9 @@ export class Enricher {
     const ambiguous = ambiguousSchema.safeParse(unwrapped.ambiguous).data ?? [];
     const tasks = tasksSchema.safeParse(unwrapped.tasks).data ?? [];
     const til = unwrapped.til === true;
-    const past =
-      typeof unwrapped.past === "string" && unwrapped.past.trim()
-        ? unwrapped.past.trim()
-        : undefined;
+    const past = trimmedText(unwrapped.past);
+    const tilText = til ? trimmedText(unwrapped.tilText) : undefined;
+    const pastText = past ? trimmedText(unwrapped.pastText) : undefined;
     log.info(
       {
         usage,
@@ -270,7 +278,16 @@ export class Enricher {
       },
       "enrich: agent responded",
     );
-    return { text: unwrapped.text, ambiguous, tasks, til, past, usage };
+    return {
+      text: unwrapped.text,
+      ambiguous,
+      tasks,
+      til,
+      past,
+      tilText,
+      pastText,
+      usage,
+    };
   }
 
   /** A second read before an entry is moved to another day without asking: true only

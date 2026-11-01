@@ -24,7 +24,7 @@ test("a day tap moves the jot and leaves an Undo on the card", async () => {
     edit?.payload.reply_markup.inline_keyboard
       .flat()
       .map((button: any) => button.callback_data),
-    [`bf:u:${JOT_ID}`],
+    [`ed:${JOT_ID}`, `bf:u:${JOT_ID}`],
   );
 });
 

@@ -72,6 +72,14 @@ export function editableText(jot: Jot, text: string): string {
     : text;
 }
 
+/** The patch that folds a line's new text back into the jot's own source, so a reprocess
+ *  keeps it; null for a video (its caption is the embed) or a follower (no single source).
+ *  A leader with followers is the caller's to skip. */
+export function sourcePatch(jot: Jot, text: string): Partial<Jot> | null {
+  if (jot.kind === "video" || isFollower(jot)) return null;
+  return { [sourceField(jot.kind)]: editableText(jot, text) };
+}
+
 export function withinSquashWindow(
   prevReceivedAt: number,
   nowReceivedAt: number,
@@ -127,9 +135,9 @@ export function placeholderLine(
   return journalLine(time, "⏳", anchor, section);
 }
 
-/** A backfilled jot keeps the clock time it arrived at and says on which day it was
- *  written, so `journalLine` renders `_22:45:13 (backfilled in 2026-10-31) ::_`. Kept in
- *  `jot.time` itself, so every writer and `stripJournalLine` handle it unchanged. */
+/** A backfilled jot says on which day it was written, so `journalLine` renders
+ *  `_14:12:07 (backfilled in 2026-10-31) ::_`. Kept in `jot.time` itself, so every writer
+ *  and `stripJournalLine` handle it unchanged. */
 export function backfilledTime(time: string, writtenOn: string): string {
   return `${arrivalTime(time)} (backfilled in ${writtenOn})`;
 }

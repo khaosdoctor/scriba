@@ -7,8 +7,11 @@ import {
   SQUASHABLE_KINDS,
 } from "../domain/jot/entity.ts";
 import {
+  entryContent,
   isFollower,
+  journalLine,
   placeholderLine,
+  sourcePatch,
   stripTilPrefix,
   withinSquashWindow,
 } from "../domain/jot/rules.ts";
@@ -328,10 +331,13 @@ export class JotService {
     await this.deps.repo.mapMessage(messageId, id);
   }
 
-  async askTil(jotId: string, text: string): Promise<void> {
+  /** `tilText` is the enricher's rewrite (the learning alone): it is what the card shows
+   *  and what ✅ files, kept on the jot until then. */
+  async askTil(jotId: string, text: string, tilText?: string): Promise<void> {
+    if (tilText) await this.deps.repo.updateJot(jotId, { til_text: tilText });
     try {
       await this.deps.notifier.send(
-        `💡 That sounds like a TIL. Move this to TIL?\n<blockquote>${escapeHtml(clipUpdate(text, QUOTE_CHARS))}</blockquote>`,
+        `💡 That sounds like a TIL. Move this to TIL?\n<blockquote>${escapeHtml(clipUpdate(tilText ?? text, QUOTE_CHARS))}</blockquote>`,
         {
           html: true,
           keyboard: keyboard([
@@ -365,8 +371,15 @@ export class JotService {
       tilLog.info({ jotId }, "til declined, kept in the journal");
       return "kept";
     }
+    const tilText = jot.til_text;
     const moved = await obsidian
-      .moveToTil(jot.note_path, jot.anchor)
+      .moveToTil(
+        jot.note_path,
+        jot.anchor,
+        tilText
+          ? () => journalLine("", entryContent(jot, tilText), jot.anchor, "til")
+          : undefined,
+      )
       .catch((err: unknown) => {
         tilLog.error(
           { err, jotId },
@@ -391,6 +404,9 @@ export class JotService {
     const followers = await repo.groupFollowers(jot.id);
     for (const member of [jot, ...followers])
       await repo.updateJot(member.id, { section: "til" });
+    // The rewrite becomes the jot's source, so a reprocess keeps the learning alone.
+    const patch = tilText && !followers.length && sourcePatch(jot, tilText);
+    if (patch) await repo.updateJot(jot.id, patch);
     tilLog.info({ jotId }, "til accepted, line moved");
     return "moved";
   }

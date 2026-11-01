@@ -1113,6 +1113,8 @@ test("the SDK receives these exact output schemas for enrichment and task extrac
         },
         til: { type: "boolean" },
         past: { type: "string" },
+        tilText: { type: "string" },
+        pastText: { type: "string" },
       },
       required: ["text", "ambiguous", "tasks", "til"],
       additionalProperties: false,
@@ -1155,6 +1157,51 @@ test("past carries the author's words through, trimmed, and is absent when blank
     });
     assert.equal(blank.past, undefined);
   }
+});
+
+test("the rewrites come through only beside the flag they belong to", async () => {
+  const { out } = await structuredTil({
+    text: "At least today I learned that balloons can fly",
+    ambiguous: [],
+    tasks: [],
+    til: true,
+    tilText: " Balloons can fly ",
+    past: "last tuesday",
+    pastText: "I went to the bar with [[Ada]]",
+  });
+  assert.equal(out.tilText, "Balloons can fly");
+  assert.equal(out.pastText, "I went to the bar with [[Ada]]");
+  const { out: stray } = await structuredTil({
+    text: "a",
+    ambiguous: [],
+    tasks: [],
+    til: false,
+    tilText: "b",
+    pastText: "c",
+  });
+  assert.equal(stray.tilText, undefined);
+  assert.equal(stray.pastText, undefined);
+});
+
+test("a jot already filed as a TIL asks for the learning alone as the text", async () => {
+  const { fn, calls } = fakeQuery([
+    {
+      type: "result",
+      subtype: "success",
+      result: "",
+      structured_output: { text: "Balloons can fly", ambiguous: [] },
+    },
+  ]);
+  const enricher = new Enricher({ query: fn });
+  await enricher.enrich({ text: "that balloons can fly", candidates: [] });
+  await enricher.enrich({
+    text: "that balloons can fly",
+    candidates: [],
+    til: true,
+  });
+  const prompts = calls.map((call) => JSON.stringify(call));
+  assert.doesNotMatch(prompts[0]!, /already filed as a TIL/);
+  assert.match(prompts[1]!, /already filed as a TIL/);
 });
 
 test("past nested inside a wrapped answer is still read on the fallback path", async () => {

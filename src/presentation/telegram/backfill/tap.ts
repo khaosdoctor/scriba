@@ -2,7 +2,7 @@ import { type Composer, type Context, InlineKeyboard } from "grammy";
 import {
   BACKFILL_NS,
   dayLabel,
-  undoMoveKeyboard,
+  movedKeyboard,
 } from "../../../libs/backfill.ts";
 import { logger } from "../../../libs/log.ts";
 import { isIsoDate } from "../../../libs/time.ts";
@@ -80,7 +80,7 @@ export function backfillView(backfill: BackfillService): Composer<Context> {
       return settle(
         ctx,
         `🗓 Moved to ${dayLabel(arg)}.`,
-        new InlineKeyboard(undoMoveKeyboard(jotId!).inline_keyboard),
+        new InlineKeyboard(movedKeyboard(jotId!).inline_keyboard),
       );
     },
   );

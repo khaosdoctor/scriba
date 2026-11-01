@@ -109,6 +109,8 @@ interface ModelPayload {
   tasks?: unknown;
   til?: unknown;
   past?: unknown;
+  tilText?: unknown;
+  pastText?: unknown;
 }
 
 export function unwrapModelPayload(payload: ModelPayload): ModelPayload {
@@ -128,6 +130,8 @@ export function unwrapModelPayload(payload: ModelPayload): ModelPayload {
       tasks: empty(out.tasks) ? (inner.tasks ?? out.tasks) : out.tasks,
       til: out.til === true ? true : (inner.til ?? out.til),
       past: out.past || inner.past,
+      tilText: out.tilText || inner.tilText,
+      pastText: out.pastText || inner.pastText,
     };
   }
   out.text = stripWrappingQuotes(out.text);

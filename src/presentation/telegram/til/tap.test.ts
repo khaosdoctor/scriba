@@ -10,9 +10,21 @@ async function setup(moved: "moved" | "no-line" | "no-heading" = "moved") {
   return harness;
 }
 
-test("each outcome gets its toast and a final card text with the buttons cleared", async () => {
+test("a move settles the card with ✏️ Edit left on it", async () => {
+  const harness = await setup("moved");
+  const run = await harness.tap(`ti:y:${JOT_ID}`);
+  const edit = run.calls.find((call) => call.method === "editMessageText");
+  assert.equal(edit?.payload.text, "💡 Moved to TIL.");
+  assert.deepEqual(
+    edit?.payload.reply_markup.inline_keyboard
+      .flat()
+      .map((button: { callback_data: string }) => button.callback_data),
+    [`ed:${JOT_ID}`],
+  );
+});
+
+test("every other outcome gets its toast and a final card text with the buttons cleared", async () => {
   const cases = [
-    ["moved", `ti:y:${JOT_ID}`, "moved to TIL", "💡 Moved to TIL."],
     [
       "no-line",
       `ti:y:${JOT_ID}`,

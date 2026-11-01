@@ -5,8 +5,24 @@ import {
   backfillGuess,
   calendarRows,
   dayLabel,
+  randomDaytime,
   suggestedDays,
 } from "./backfill.ts";
+
+test("a made-up backfill time stays between 08:00 and 22:00", () => {
+  assert.equal(
+    randomDaytime(() => 0),
+    "08:00:00",
+  );
+  assert.equal(
+    randomDaytime(() => 0.5),
+    "15:00:00",
+  );
+  assert.equal(
+    randomDaytime(() => 0.9999999),
+    "21:59:59",
+  );
+});
 
 // 2026-10-31 is a Saturday.
 const SATURDAY = "2026-10-31";

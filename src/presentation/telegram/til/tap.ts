@@ -1,4 +1,5 @@
 import { type Composer, type Context, InlineKeyboard } from "grammy";
+import { EDIT_NS } from "../../../libs/jot.ts";
 import { logger } from "../../../libs/log.ts";
 import {
   type JotService,
@@ -35,8 +36,13 @@ export function tilView(jots: JotService): Composer<Context> {
     const { toast, alert, card } = REPLIES[outcome];
     await responder.ack(toast, { alert });
     if (card === undefined) return;
+    // A moved line is the enricher's rewrite, so ✏️ Edit stays on hand to fix it.
+    const keyboard =
+      outcome === "moved"
+        ? new InlineKeyboard().text("✏️ Edit", `${EDIT_NS}:${jotId}`)
+        : new InlineKeyboard();
     await ctx
-      .editMessageText(card, { reply_markup: new InlineKeyboard() })
+      .editMessageText(card, { reply_markup: keyboard })
       .catch((err: unknown) => log.warn({ err }, "til card settle failed"));
   });
 }

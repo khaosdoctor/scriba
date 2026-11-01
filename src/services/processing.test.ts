@@ -158,11 +158,14 @@ function pipeline(
     ambiguous?: { surface: string; note: string }[];
     past?: string;
     split?: boolean;
+    tilText?: string;
+    pastText?: string;
   } = {},
 ) {
   const calls: string[] = [];
+  const tilFlags: boolean[] = [];
   const asked: { jotId: string; surface: string; note: string }[] = [];
-  const tilAsks: [string, string][] = [];
+  const tilAsks: string[][] = [];
   const enriched: string[] = [];
   const offered = new Set<string>();
   const leader = jot({
@@ -207,8 +210,9 @@ function pipeline(
     available: () => true,
     describeImage: async () => "",
     fixTranscript: async (original: string) => original,
-    enrich: async (input: { text: string }) => {
+    enrich: async (input: { text: string; til?: boolean }) => {
       enriched.push(input.text);
+      tilFlags.push(input.til ?? false);
       return {
         text: over.split
           ? "Fixed the bike chain.\n\nThen painted the shed door."
@@ -217,6 +221,8 @@ function pipeline(
         tasks: over.tasks ?? [],
         til: over.til ?? false,
         past: over.past,
+        tilText: over.tilText,
+        pastText: over.pastText,
         usage: { input: 0, output: 0 },
       };
     },
@@ -227,8 +233,8 @@ function pipeline(
       void calls.push(opts?.undo ? "status:done" : "status"),
     react: async () => {},
     deleteStatus: async () => {},
-    askTil: async (id: string, text: string) => {
-      tilAsks.push([id, text]);
+    askTil: async (id: string, text: string, tilText?: string) => {
+      tilAsks.push(tilText ? [id, text, tilText] : [id, text]);
       calls.push("askTil");
     },
   };
@@ -260,12 +266,23 @@ function pipeline(
         void calls.push(`askTask:${draft.description}`),
     },
     backfill: {
-      detect: async (_jot: Jot, phrase: string | undefined) =>
+      detect: async (
+        _jot: Jot,
+        phrase: string | undefined,
+        _source: string,
+        text?: string,
+      ) =>
         phrase
-          ? { date: "2026-01-01", specific: true, phrase }
+          ? { date: "2026-01-01", specific: true, phrase, text }
           : (null as null),
-      offer: async (offeredJot: Jot, _past: unknown, text: string) => {
-        backfillOffers.push(`${offeredJot.id}:${text}`);
+      offer: async (
+        offeredJot: Jot,
+        past: { text?: string },
+        linked: string,
+      ) => {
+        backfillOffers.push(
+          [offeredJot.id, linked, past.text].filter(Boolean).join(":"),
+        );
         calls.push("backfill");
       },
     },
@@ -284,6 +301,7 @@ function pipeline(
     calls,
     asked,
     tilAsks,
+    tilFlags,
     enriched,
     offered,
     backfillOffers,
@@ -301,6 +319,30 @@ test("an entry about a past day is offered for a move once it is written, before
   const at = (call: string) => scenario.calls.indexOf(call);
   assert.ok(at("write") < at("backfill"));
   assert.ok(at("backfill") < at("onJotDone"));
+});
+
+test("the enricher's rewrites ride along to the TIL card and the move", async () => {
+  const scenario = pipeline({
+    til: true,
+    tilText: "X is true",
+    past: "yesterday",
+    pastText: "Learned X",
+  });
+  await scenario.processor.processJot(scenario.leaderId);
+  assert.deepEqual(scenario.tilAsks, [
+    [scenario.leaderId, "Learned that X", "X is true"],
+  ]);
+  assert.deepEqual(scenario.backfillOffers, [
+    `${scenario.leaderId}:Learned that X:Learned X`,
+  ]);
+});
+
+test("only a jot filed as a TIL tells the enricher so", async () => {
+  const journal = pipeline();
+  await journal.processor.processJot(journal.leaderId);
+  const til = pipeline({ section: "til" });
+  await til.processor.processJot(til.leaderId);
+  assert.deepEqual([journal.tilFlags, til.tilFlags], [[false], [true]]);
 });
 
 test("an entry split into several jots is never offered for a move", async () => {

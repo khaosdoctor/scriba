@@ -86,6 +86,7 @@ function scenario(
       },
     },
     now: () => ARRIVED,
+    random: () => 0.5, // 15:00:00, halfway through 08:00-22:00
   });
   return { service, leader, stored, moves, sent, marked, confirms };
 }
@@ -100,8 +101,18 @@ const past = (over: Partial<PastDay> = {}): PastDay => ({
 test("detect reads the author's words into a day for a jot in today's note", async () => {
   const { service, leader } = scenario();
   assert.deepEqual(
-    await service.detect(leader, "on tuesday", "on tuesday I fixed the bike"),
-    { date: "2026-10-27", specific: true, phrase: "on tuesday" },
+    await service.detect(
+      leader,
+      "on tuesday",
+      "on tuesday I fixed the bike",
+      "I fixed the bike",
+    ),
+    {
+      date: "2026-10-27",
+      specific: true,
+      phrase: "on tuesday",
+      text: "I fixed the bike",
+    },
   );
 });
 
@@ -118,23 +129,37 @@ test("detect stays quiet when switched off, already asked, or the jot isn't toda
   assert.equal(await plain.service.detect(plain.leader, "soon", "soon"), null);
 });
 
-test("a specific day the second model agrees on moves without asking, with Undo", async () => {
+test("a specific day the second model agrees on moves the rewrite without asking, with Edit and Undo", async () => {
   const { service, leader, moves, sent, marked, stored } = scenario();
-  await service.offer(leader, past(), "on tuesday I fixed the bike");
+  await service.offer(
+    leader,
+    past({ text: "I fixed the bike with [[Ada]]" }),
+    "On tuesday I fixed the bike with [[Ada]]",
+  );
   assert.deepEqual(moves, [
     {
       from: dailyPath(TODAY),
       to: "2026-10-27",
-      line: "- _22:45:13 (backfilled in 2026-10-31) ::_ Fixed the bike ^abcd1234",
+      line: "- _15:00:00 (backfilled in 2026-10-31) ::_ I fixed the bike with [[Ada]] ^abcd1234",
     },
   ]);
   assert.match(sent[0]!.text, /Moved to Tue 2026-10-27/);
-  assert.deepEqual(sent[0]!.buttons, ["bf:u:abcd1234"]);
+  assert.match(sent[0]!.text, /<blockquote>I fixed the bike/);
+  assert.deepEqual(sent[0]!.buttons, ["ed:abcd1234", "bf:u:abcd1234"]);
   assert.deepEqual(marked, ["abcd1234"]);
-  assert.equal(stored.get("abcd1234")!.note_path, dailyPath("2026-10-27"));
+  const moved = stored.get("abcd1234")!;
+  assert.equal(moved.note_path, dailyPath("2026-10-27"));
+  assert.equal(moved.time, "15:00:00 (backfilled in 2026-10-31)");
+  // folded back, so a reprocess files the rewrite rather than "On tuesday ..."
+  assert.equal(moved.raw_text, "I fixed the bike with [[Ada]]");
+});
+
+test("a move without a rewrite keeps the line's own text", async () => {
+  const { service, moves } = scenario();
+  assert.equal(await service.move("abcd1234", "2026-10-27"), "moved");
   assert.equal(
-    stored.get("abcd1234")!.time,
-    "22:45:13 (backfilled in 2026-10-31)",
+    moves[0]!.line,
+    "- _15:00:00 (backfilled in 2026-10-31) ::_ Fixed the bike ^abcd1234",
   );
 });
 
@@ -171,20 +196,26 @@ test("a card that fails to send is left unmarked so a reprocess can ask again", 
   assert.deepEqual(marked, []);
 });
 
-test("a move carries squashed followers along, and undo puts the plain time back", async () => {
+test("a move carries squashed followers along, and undo puts the arrival time back", async () => {
   const follower = sampleJot("ffff0000", {
     anchor: "abcd1234",
     status: "done",
     note_path: dailyPath(TODAY),
     time: "22:45:20",
+    received_at: ARRIVED + 7000,
   });
-  const { service, stored, moves } = scenario({ followers: [follower] });
+  const { service, stored, moves } = scenario({
+    followers: [follower],
+    jot: { past_text: "Fixed the bike" },
+  });
   assert.equal(await service.move("abcd1234", "2026-10-27"), "moved");
   assert.equal(stored.get("ffff0000")!.note_path, dailyPath("2026-10-27"));
   assert.equal(
     stored.get("ffff0000")!.time,
-    "22:45:20 (backfilled in 2026-10-31)",
+    "15:00:00 (backfilled in 2026-10-31)",
   );
+  // a squashed line has no single source to fold the rewrite into
+  assert.equal(stored.get("abcd1234")!.raw_text, "hi");
   assert.equal(await service.undo("abcd1234"), "moved");
   assert.equal(moves[1]!.to, TODAY);
   assert.equal(moves[1]!.line, "- _22:45:13 ::_ Fixed the bike ^abcd1234");

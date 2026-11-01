@@ -14,6 +14,7 @@ import {
   isReprocessable,
   journalLine,
   sourceField,
+  sourcePatch,
   stripJournalLine,
 } from "../domain/jot/rules.ts";
 import type { EditInput } from "../domain/jot/structures.ts";
@@ -649,15 +650,12 @@ export class EditService {
   /** An image's caption is its entry text and is re-enriched on reprocess like a text
    *  jot's, so it is folded back too, without the embed the line carries. */
   private async syncEditedSource(jot: Jot, text: string): Promise<void> {
-    if (jot.kind === "video") return;
-    if (isFollower(jot)) return;
+    const patch = sourcePatch(jot, text);
+    if (!patch) return;
     if ((await this.deps.repo.groupFollowers(jot.id)).length > 0) return;
-    const field = sourceField(jot.kind);
-    await this.deps.repo.updateJot(jot.id, {
-      [field]: editableText(jot, text),
-    });
+    await this.deps.repo.updateJot(jot.id, patch);
     log.info(
-      { jotId: jot.id, field },
+      { jotId: jot.id, field: sourceField(jot.kind) },
       "edit folded back into jot source for future reprocessing",
     );
   }

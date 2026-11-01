@@ -42,6 +42,10 @@ export interface Jot {
   original_transcript: string | null;
   /** The jot this one was split off from, for a spillover piece. */
   parent_id: string | null;
+  /** The enricher's TIL rewrite (the learning alone), filed when the TIL card is accepted. */
+  til_text?: string | null;
+  /** The enricher's past-day rewrite (the entry without its "when"), filed on a move. */
+  past_text?: string | null;
   section: JotSection;
   asset_path: string | null;
   file_id: string | null;

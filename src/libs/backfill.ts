@@ -1,4 +1,5 @@
 import * as chrono from "chrono-node";
+import { EDIT_NS } from "./jot.ts";
 import { keyboard, type Row } from "./keyboard.ts";
 import { isDateLike } from "./links.ts";
 import { dateFromIso, plainDate } from "./time.ts";
@@ -131,6 +132,20 @@ export function backfillCard(jotId: string, date: string) {
   ]);
 }
 
-export function undoMoveKeyboard(jotId: string) {
-  return keyboard([[["↩️ Undo move", `${BACKFILL_NS}:u:${jotId}`]]]);
+/** A moved entry's message: fix the rewritten text, or put it back. */
+export function movedKeyboard(jotId: string) {
+  return keyboard([
+    [
+      ["✏️ Edit", `${EDIT_NS}:${jotId}`],
+      ["↩️ Undo move", `${BACKFILL_NS}:u:${jotId}`],
+    ],
+  ]);
+}
+
+/** A backfilled entry's clock time is made up: some HH:MM:SS between 08:00 and 22:00,
+ *  since the arrival time says when it was written, not when it happened. */
+export function randomDaytime(random: () => number = Math.random): string {
+  const seconds = 8 * 3600 + Math.floor(random() * 14 * 3600);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${pad(Math.floor(seconds / 3600))}:${pad(Math.floor(seconds / 60) % 60)}:${pad(seconds % 60)}`;
 }

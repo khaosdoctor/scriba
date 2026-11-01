@@ -424,7 +424,12 @@ Layers call downward only: presentation calls services, services call data. `dom
   draft: the jot id is all they need. ✅ calls `ObsidianClient.moveToTil`, which runs `moveAnchorLine` under
   the note lock: the line is cut out and inserted under `TIL_HEADING` with its time stamp
   dropped (`untimedLine`) and its `^anchor` kept, so it still resolves for edit, undo and
-  reprocess. A note with no TIL heading is not
+  reprocess. With `til` the enricher also returns `tilText`, the learning alone ("At least
+  today I learned that balloons can fly" → "Balloons can fly"): `askTil` keeps it in
+  `jots.til_text` and quotes it on the card, ✅ files it as the TIL line and folds it into
+  the jot's source (`sourcePatch`, skipped for a squashed line), and the settled card keeps
+  **✏️ Edit** (`ed:<jotId>`) to fix the rewrite. A jot filed as TIL at intake tells the
+  enricher so (`EnrichInput.til`), and its `text` comes back as the learning alone. A note with no TIL heading is not
   touched (the helper reports `heading` missing rather than appending at the end) and the
   card says so. A vault write that throws is logged and answered with an alert; the card
   keeps its buttons, since a reprocess never asks again and another tap is the retry. The
@@ -450,11 +455,17 @@ Layers call downward only: presentation calls services, services call data. `dom
   a Monday-first month grid of buttons redrawn in place, only past days tappable) and
   **🚫 Keep today** (`bf:k`). `ObsidianClient.moveToDay` writes the target note first and
   cuts the source second, under the source's lock, so a failure leaves the entry twice
-  rather than nowhere. The moved jot (leader and squashed followers) gets the new
-  `note_path` and a `time` of `22:45:13 (backfilled in 2026-10-31)` (`backfilledTime`),
-  so `journalLine` renders the stamp and every edit, undo and reprocess finds the line
-  unchanged; `received_at` stays the arrival, and undo moves the line back there with the
-  plain time. Later, the second opinion may move to a local decision model (Jeb on giskard,
+  rather than nowhere. Beside `past` the enricher returns `pastText`, the entry with the
+  words for when taken out ("Last tuesday I went to the bar" → "I went to the bar"),
+  kept in `jots.past_text`, quoted on the card and the moved message, filed as the
+  moved line and folded into the source like the TIL rewrite. Both messages carry
+  **✏️ Edit** next to Undo (`movedKeyboard`). The moved jot (leader and squashed
+  followers) gets the new `note_path` and a `time` of `14:12:07 (backfilled in
+  2026-10-31)` (`backfilledTime`), the clock made up between 08:00 and 22:00
+  (`randomDaytime`), since the arrival time says when it was written; `journalLine`
+  renders the stamp and every edit, undo and reprocess finds the line unchanged.
+  `received_at` stays the arrival, and undo moves the line back there with the arrival
+  time (the rewrite stays). Later, the second opinion may move to a local decision model (Jeb on giskard,
   p(yes) >= 0.9); until then it is the judge model.
 - **Undo is a button on the finished status message.** A jot that reaches `done` (and any
   later edit that leaves it there) carries an ↩️ Undo button: `un:<jotId>`, handled by

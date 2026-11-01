@@ -3,11 +3,12 @@ import type { ObsidianClient } from "../data/repositories/notes.ts";
 import type { SettingsRepository } from "../data/repositories/settings.ts";
 import type { Jot } from "../domain/jot/entity.ts";
 import {
-  arrivalTime,
   backfilledTime,
+  entryContent,
   isEditableJot,
   jotDay,
   journalLine,
+  sourcePatch,
   stripJournalLine,
 } from "../domain/jot/rules.ts";
 import {
@@ -16,12 +17,13 @@ import {
   backfillGuess,
   calendarRows,
   dayLabel,
-  undoMoveKeyboard,
+  movedKeyboard,
+  randomDaytime,
 } from "../libs/backfill.ts";
 import { type Keyboard, keyboard } from "../libs/keyboard.ts";
 import { logger } from "../libs/log.ts";
 import { clipUpdate, escapeHtml } from "../libs/text.ts";
-import { plainDate } from "../libs/time.ts";
+import { plainDate, plainTime } from "../libs/time.ts";
 import type { Enricher } from "./enrich.ts";
 import type { Notifier } from "./notifier.ts";
 
@@ -44,12 +46,15 @@ export interface BackfillDeps {
   enricher: Pick<Enricher, "confirmPastDay">;
   notifier: Pick<Notifier, "send">;
   now?: () => number;
+  random?: () => number;
 }
 
 export type MoveOutcome = "moved" | "gone" | "busy" | "no-line" | "failed";
 
 export interface PastDay extends BackfillGuess {
   phrase: string;
+  /** The enricher's rewrite without the words for when, filed on a move. */
+  text?: string;
 }
 
 const quote = (text: string) =>
@@ -69,6 +74,7 @@ export class BackfillService {
     jot: Jot,
     phrase: string | undefined,
     source: string,
+    pastText?: string,
   ): Promise<PastDay | null> {
     if (!phrase) return null;
     const guess = backfillGuess(phrase, source, jotDay(jot));
@@ -92,12 +98,15 @@ export class BackfillService {
       { id: jot.id, phrase, ...guess },
       "backfill: entry about a past day",
     );
-    return { ...guess, phrase };
+    return { ...guess, phrase, text: pastText };
   }
 
   /** Moves the entry on its own when the words name one day and a second model agrees;
    *  anything less sends the card. Runs after the line is written, like the TIL card. */
-  async offer(jot: Jot, past: PastDay, text: string): Promise<void> {
+  async offer(jot: Jot, past: PastDay, linked: string): Promise<void> {
+    if (past.text)
+      await this.deps.repo.updateJot(jot.id, { past_text: past.text });
+    const text = past.text ?? linked;
     const sure =
       past.specific &&
       (await this.deps.enricher.confirmPastDay(text, past.phrase));
@@ -110,7 +119,7 @@ export class BackfillService {
         );
         await this.deps.notifier.send(
           `🗓 Moved to ${dayLabel(past.date)} (“${escapeHtml(past.phrase)}”)\n${quote(text)}`,
-          { html: true, keyboard: undoMoveKeyboard(jot.id) },
+          { html: true, keyboard: movedKeyboard(jot.id) },
         );
       }
       if (!moved) {
@@ -127,8 +136,9 @@ export class BackfillService {
     await this.deps.repo.markBackfillOffered(jot.id);
   }
 
-  /** Move a jot's line (and any squashed followers riding on it) to `date`'s note. The
-   *  time stamp says when it was written unless it is going back to that day. */
+  /** Move a jot's line (and any squashed followers riding on it) to `date`'s note, as the
+   *  enricher's rewrite when there is one, at a made-up daytime clock that says when it
+   *  was written. Going back to the day it was written restores the arrival time. */
   async move(jotId: string | undefined, date: string): Promise<MoveOutcome> {
     const { repo, obsidian } = this.deps;
     const jot = jotId ? await repo.getJot(jotId) : undefined;
@@ -141,13 +151,21 @@ export class BackfillService {
       return "busy";
     }
     const writtenOn = plainDate(jot.received_at);
-    const stamp = (time: string) =>
-      date === writtenOn ? arrivalTime(time) : backfilledTime(time, writtenOn);
+    const home = date === writtenOn;
+    const backfilled = backfilledTime(
+      randomDaytime(this.deps.random),
+      writtenOn,
+    );
+    const stamp = (member: Jot) =>
+      home ? plainTime(member.received_at) : backfilled;
+    const pastText = home ? null : jot.past_text;
     const result = await obsidian
       .moveToDay(jot.note_path, jot.anchor, date, jot.section, (line) =>
         journalLine(
-          stamp(jot.time),
-          stripJournalLine(line, jot.time),
+          stamp(jot),
+          pastText
+            ? entryContent(jot, pastText)
+            : stripJournalLine(line, jot.time),
           jot.anchor,
           jot.section,
         ),
@@ -158,11 +176,15 @@ export class BackfillService {
       });
     if (result !== "moved") return result;
     const notePath = obsidian.dailyPath(date);
-    for (const member of [jot, ...(await repo.groupFollowers(jot.id))])
+    const followers = await repo.groupFollowers(jot.id);
+    for (const member of [jot, ...followers])
       await repo.updateJot(member.id, {
         note_path: notePath,
-        time: stamp(member.time),
+        time: stamp(member),
       });
+    // The rewrite becomes the jot's source, so a reprocess keeps it.
+    const patch = pastText && !followers.length && sourcePatch(jot, pastText);
+    if (patch) await repo.updateJot(jot.id, patch);
     log.info({ jotId, from: jotDay(jot), to: date }, "backfill: jot moved");
     return "moved";
   }

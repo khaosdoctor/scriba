@@ -104,6 +104,7 @@ interface Enriched {
   text: string;
   tasks: TaskDraft[];
   tilCard: boolean;
+  tilText?: string;
   past?: PastDay | null;
 }
 
@@ -317,6 +318,7 @@ export class ProcessingService {
       candidates: cands,
       merge: merged,
       splitAt: maxChars,
+      til: jot.section === "til",
     });
     log.info(
       {
@@ -335,9 +337,14 @@ export class ProcessingService {
       jotDay(jot),
     );
     const tilCard = await this.tilWanted(res.til, jot);
-    const past = await this.deps.backfill.detect(jot, res.past, source);
+    const past = await this.deps.backfill.detect(
+      jot,
+      res.past,
+      source,
+      res.pastText,
+    );
     await this.askToConfirm(id, res.ambiguous);
-    return { text: res.text, tasks, tilCard, past };
+    return { text: res.text, tasks, tilCard, tilText: res.tilText, past };
   }
 
   private async linkCandidates(
@@ -455,7 +462,7 @@ export class ProcessingService {
     jot: Jot,
     { followers, merged }: Group,
     { linked, spillover }: Written,
-    { tasks, tilCard, past }: Enriched,
+    { tasks, tilCard, tilText, past }: Enriched,
   ): Promise<void> {
     try {
       await this.deps.jots.react(jot.id, "done");
@@ -475,7 +482,7 @@ export class ProcessingService {
       // something already journalled, never a step on the way to journalling it.
       for (const draft of tasks)
         await this.deps.tasks.suggest(draft, jot.id, jotDay(jot));
-      if (tilCard) await this.deps.jots.askTil(jot.id, linked);
+      if (tilCard) await this.deps.jots.askTil(jot.id, linked, tilText);
       // ponytail: a split entry is several lines with their own anchors; it stays put.
       if (past && !spillover.length)
         await this.deps.backfill.offer(jot, past, linked);

@@ -151,14 +151,10 @@ export class ObsidianClient {
   async moveToTil(
     notePath: string,
     anchor: string,
+    rewrite: (line: string) => string = untimedLine,
   ): Promise<"moved" | "no-line" | "no-heading"> {
     return this.updateNote(notePath, (note, write) => {
-      const moved = moveAnchorLine(
-        note,
-        anchor,
-        this.cfg.tilHeading,
-        untimedLine,
-      );
+      const moved = moveAnchorLine(note, anchor, this.cfg.tilHeading, rewrite);
       if ("missing" in moved)
         return moved.missing === "line" ? "no-line" : "no-heading";
       write(moved.note);
